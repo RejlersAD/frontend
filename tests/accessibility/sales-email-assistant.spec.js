@@ -52,6 +52,74 @@ const assistantRoute = async (page, handler = () => ({ body: response() })) => {
   return calls
 }
 
+for (const [reason, expected] of [
+  ['disabled', 'Email AI is disabled on the server.'],
+  ['configuration_missing', 'Email AI configuration is incomplete.'],
+  ['provider_authentication', 'The AI provider rejected the configured API key.'],
+  ['provider_rate_limit', "The AI provider's usage or rate limit was reached."],
+  ['mailbox_unavailable', 'The selected email could not be reloaded from Microsoft.'],
+]) {
+  test(`assistant explains ${reason} without exposing server details or losing input`, async ({ page }) => {
+    const state = await ready(page)
+    const calls = await assistantRoute(page, () => ({ status: 503, body: {
+      code: 'email_assistant_unavailable', reason,
+      detail: 'PRIVATE_DIAGNOSTIC synthetic-secret-key private-email-text',
+    } }))
+    await question(page).fill('What is the submission deadline?')
+    await ask(page).click()
+    await expect(panel(page).getByRole('alert')).toContainText(expected)
+    await expect(question(page)).toHaveValue('What is the submission deadline?')
+    await expect(panel(page)).not.toContainText('PRIVATE_DIAGNOSTIC')
+    await expect(panel(page)).not.toContainText('synthetic-secret-key')
+    await expect(ask(page)).toBeEnabled()
+    expect(calls).toHaveLength(1)
+    assertReadOnly(state)
+  })
+}
+
+test('older assistant timeout and citation errors remain distinct and keep edited drafts', async ({ page }) => {
+  const state = await ready(page)
+  let outcome = { body: response({ kind: 'reply_draft', answer: 'Draft for review.' }) }
+  const calls = await assistantRoute(page, () => outcome)
+  await chip(page, 'Draft reply').click()
+  const draft = panel(page).getByRole('textbox', { name: 'Reply draft', exact: true })
+  await draft.fill('My reviewed draft remains here.')
+  for (const [status, code, expected] of [
+    [504, 'email_assistant_timeout', 'The AI request timed out.'],
+    [502, 'email_assistant_invalid_response', 'The AI answer could not be verified against this email.'],
+  ]) {
+    outcome = { status, body: { code, detail: 'PRIVATE_DIAGNOSTIC' } }
+    await chip(page, 'Check deadline').click()
+    await expect(panel(page).getByRole('alert')).toContainText(expected)
+    await expect(panel(page).getByRole('alert')).not.toContainText('configuration')
+    await expect(panel(page)).not.toContainText('PRIVATE_DIAGNOSTIC')
+    await expect(draft).toHaveValue('My reviewed draft remains here.')
+  }
+  expect(calls).toHaveLength(3)
+  assertReadOnly(state)
+})
+
+test('unknown and hostile failure reasons use a safe fallback and a later retry can succeed', async ({ page }) => {
+  const state = await ready(page)
+  let outcome
+  const calls = await assistantRoute(page, () => outcome)
+  await question(page).fill('Which revision is requested?')
+  for (const reason of [undefined, 'toString', '__proto__', '<img src=x onerror=alert(1)>', { provider_authentication: true }]) {
+    outcome = { status: 503, body: { code: 'email_assistant_unavailable', reason, detail: 'PRIVATE_DIAGNOSTIC' } }
+    await ask(page).click()
+    await expect(panel(page).getByRole('alert')).toContainText('Ask RADAI is temporarily unavailable.')
+    await expect(panel(page)).not.toContainText('PRIVATE_DIAGNOSTIC')
+    await expect(question(page)).toHaveValue('Which revision is requested?')
+    await expect(panel(page).locator('img')).toHaveCount(0)
+  }
+  outcome = { body: response() }
+  await ask(page).click()
+  await expect(panel(page).getByRole('alert')).toHaveCount(0)
+  await expect(panel(page)).toContainText('The email requests revision C.')
+  expect(calls).toHaveLength(6)
+  assertReadOnly(state)
+})
+
 test('Ask RADAI waits for an explicit question and uses only the selected source identifiers', async ({ page }) => {
   const state = await ready(page)
   const calls = await assistantRoute(page)

@@ -31,6 +31,13 @@ within a bounded area. Narrow screens stack the cards.
   passages and placeholders for the user's decisions. Copying a draft does not
   send mail or save an Outlook draft. Errors retain input; source changes and
   access loss clear old answers.
+- **Assistant errors** use an allowlisted backend reason to distinguish missing
+  configuration, provider authentication/access, limits, timeout, mailbox reload
+  and source-evidence failures. Only static messages are rendered; raw server or
+  provider diagnostics are never shown. Unknown reasons use a safe fallback,
+  and older timeout/citation error codes remain supported. Question and draft
+  input survive recoverable failures. Configuration presence does not establish
+  provider authentication or successful production review.
 - **AI suggestions** filters validated reviews available on the current page.
   No page badge claims provider activation. Read filtering and authorized
   mailbox administration remain available in their menus.
@@ -55,6 +62,14 @@ Unavailable configuration or unverifiable provider output produces an explicit
 error. No persistence schema change is introduced.
 
 ## Verification
+
+The diagnostic follow-up passed all 30 assistant/batch browser cases on
+29 September 2026, including configuration/authentication/rate-limit/mailbox
+messages, legacy timeout/citation codes, hostile/unknown reasons, retained input
+and successful retry. Scoped ESLint and whitespace checks passed. These use the
+isolated synthetic browser fixture and do not establish production AI success.
+Evidence: `artifacts/email-assistant-diagnostics/browser.log`; the release PR
+records the production build and remote deployment checks.
 
 The latest compact layout passed 235 distinct browser cases on 29 September
 2026: 39 focused assistant/reference/compact cases and 196 retained mailbox,

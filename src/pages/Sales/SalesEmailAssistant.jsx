@@ -43,6 +43,36 @@ function assistantResult(payload, action) {
   };
 }
 
+// Only trusted, static messages are shown. Provider/server text can contain
+// credentials or source content and must never be rendered as an error.
+const failureReasons = Object.freeze({
+  disabled: "Email AI is disabled on the server. Ask an administrator to enable it.",
+  configuration_missing: "Email AI configuration is incomplete. Ask an administrator to check the server's provider, model and API key.",
+  configuration_invalid: "Email AI settings are invalid. Ask an administrator to check the server configuration.",
+  unsupported_provider: "The configured email AI provider is unsupported. Ask an administrator to check the provider setting.",
+  provider_authentication: "The AI provider rejected the configured API key. Ask an administrator to check the server's AI credentials.",
+  provider_permission: "The AI account does not have permission for this request. Ask an administrator to check model and account access.",
+  provider_rate_limit: "The AI provider's usage or rate limit was reached. Try again later or ask an administrator to check the account.",
+  provider_request: "The AI provider rejected this request. Ask an administrator to check the model and provider account.",
+  provider_dependency_missing: "The server is missing a required AI component. Ask an administrator to check the backend deployment.",
+  provider_unavailable: "The AI provider could not be reached or is unavailable. Try again later.",
+  provider_timeout: "The AI request timed out. Try again.",
+  provider_refused: "The AI provider declined this request. Try a different question about the selected email.",
+  provider_incomplete: "The AI response was incomplete. Try a narrower question about the selected email.",
+  invalid_response: "The AI provider returned an unreadable response. Try again.",
+  input_too_large: "This email conversation is too large for AI review. Review the source or select another email.",
+  output_too_large: "The AI response exceeded the supported size. Try a narrower question.",
+  invalid_input: "The server could not prepare the AI request. Ask an administrator to check the backend deployment.",
+  invalid_schema: "The server could not prepare the AI request. Ask an administrator to check the backend deployment.",
+  invalid_instructions: "The server could not prepare the AI request. Ask an administrator to check the backend deployment.",
+  source_unavailable: "No eligible email text is available for AI review. Refresh the email or select another message.",
+  request_in_progress: "This question is already being reviewed. Wait briefly, then try again.",
+  cache_unavailable: "The email review service is temporarily unavailable. Try again later.",
+  invalid_evidence: "The AI answer could not be verified against this email. Try a more specific question or review the source evidence.",
+  mailbox_unavailable: "The selected email could not be reloaded from Microsoft. Refresh the email and try again.",
+  internal_unavailable: "Ask RADAI is temporarily unavailable. Your question and edits are kept. Please try again.",
+});
+
 function failureMessage(error) {
   const status = error?.response?.status;
   if (status === 401) return "Sign in again to ask about this email.";
@@ -50,7 +80,14 @@ function failureMessage(error) {
   if (status === 404) return "This email is no longer available. Refresh emails.";
   if (status === 409) return "This email has changed. Reload it before asking again.";
   if (status === 429) return "Ask RADAI is busy. Please try again shortly.";
-  if ([502, 503, 504].includes(status)) return "Ask RADAI is unavailable. Check the AI configuration or try again later.";
+  if ([502, 503, 504].includes(status)) {
+    const reason = error?.response?.data?.reason;
+    if (typeof reason === "string" && Object.prototype.hasOwnProperty.call(failureReasons, reason)) return failureReasons[reason];
+    // Older deployments already return these codes, without the additive reason.
+    if (error?.response?.data?.code === "email_assistant_timeout") return failureReasons.provider_timeout;
+    if (error?.response?.data?.code === "email_assistant_invalid_response") return failureReasons.invalid_evidence;
+    return failureReasons.internal_unavailable;
+  }
   return "Ask RADAI could not answer. Your question and edits are kept. Please try again.";
 }
 
