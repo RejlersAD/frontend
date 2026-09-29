@@ -9,6 +9,12 @@ import {
   Paperclip as PaperClipIcon,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  MoreHorizontal,
+  Settings2,
+  Plus,
+  Filter,
+  Sparkles,
 } from "lucide-react";
 import salesService from "../../services/sales.service";
 import SalesEmailBody from "./SalesEmailBody";
@@ -16,8 +22,11 @@ import SalesEmailDetectedInformation from "./SalesEmailDetectedInformation";
 import SalesEmailAnalysis from "./SalesEmailAnalysis";
 import SalesEmailOpportunityForm from "./SalesEmailOpportunityForm";
 import SalesEmailReader from "./SalesEmailReader";
+import SalesEmailPageHeader from "./SalesEmailPageHeader";
+import SalesEmailAssistant from "./SalesEmailAssistant";
 import SalesEmailReview from "./SalesEmailReview";
-import { isOpportunityClassification } from "./salesEmailReviewState";
+import { EMAIL_CLASSIFICATIONS, classificationSuggestion, isOpportunityClassification } from "./salesEmailReviewState";
+import useSalesEmailBatchReview from "./useSalesEmailBatchReview";
 import useSalesEmailClients from "./useSalesEmailClients";
 import useSalesEmailClientChoice from "./useSalesEmailClientChoice";
 import { withoutCustomerMatch } from "./SalesEmailCustomerMatch";
@@ -26,6 +35,10 @@ import SalesEmailThreadRole, { selectedThreadSource, threadRole } from "./SalesE
 const buttonClass =
   "inline-flex items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:cursor-not-allowed disabled:opacity-50";
 const text = (value) => (typeof value === "string" ? value : "");
+const senderInitials = (value) => {
+  const parts = text(value).split(/[\s@._-]+/).filter(Boolean);
+  return /^[A-Z]{2,3}$/.test(parts[0] || "") ? parts[0] : parts.slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "?";
+};
 const directionLabels = { incoming: "Incoming", outgoing: "Outgoing", draft: "Draft", unknown: "Direction unknown" };
 const directionBadge = (record) => {
   const direction = record.is_draft ? "draft" : record.direction;
@@ -121,7 +134,7 @@ const accessError = (status) => {
   return "";
 };
 
-export default function SalesSharedMailboxMessages({ preferredConnectionId = "", onConfigure }) {
+export default function SalesSharedMailboxMessages({ preferredConnectionId = "", onConfigure, onAddMailbox }) {
   const requestId = useRef(0);
   const mounted = useRef(false);
   const [state, setState] = useState({ records: null, loading: true, error: "" });
@@ -188,6 +201,7 @@ export default function SalesSharedMailboxMessages({ preferredConnectionId = "",
   const connection = state.records?.find((record) => record.id === selectedId);
   return (
     <div className="sales-email-view">
+      {!connection && <SalesEmailPageHeader>{onAddMailbox && <button type="button" onClick={onAddMailbox} className="sales-email-button"><Plus aria-hidden="true" />Add shared mailbox</button>}</SalesEmailPageHeader>}
       {state.loading && <p role="status" className="text-sm text-slate-600">Loading shared mailboxes…</p>}
       {state.error && (
         <div className="space-y-3 rounded-md border border-amber-200 bg-amber-50 p-4">
@@ -214,8 +228,7 @@ export default function SalesSharedMailboxMessages({ preferredConnectionId = "",
           </select>
         </label>
       )}
-      {connection && onConfigure && <div className="mb-3 flex justify-end"><button type="button" onClick={() => onConfigure(connection.setup)} className={buttonClass}>Mailbox setup</button></div>}
-      {connection && <MailboxEmails key={connection.id} connection={connection} />}
+      {connection && <MailboxEmails key={connection.id} connection={connection} onConfigure={onConfigure} onAddMailbox={onAddMailbox} />}
     </div>
   );
 }
@@ -223,9 +236,10 @@ export default function SalesSharedMailboxMessages({ preferredConnectionId = "",
 SalesSharedMailboxMessages.propTypes = {
   preferredConnectionId: PropTypes.string,
   onConfigure: PropTypes.func,
+  onAddMailbox: PropTypes.func,
 };
 
-function MailboxEmails({ connection }) {
+function MailboxEmails({ connection, onConfigure, onAddMailbox }) {
   const mounted = useRef(false);
   const pageRequest = useRef(0);
   const detailRequest = useRef(0);
@@ -238,6 +252,8 @@ function MailboxEmails({ connection }) {
   const [detail, setDetail] = useState({ message: null, loading: false, error: "" });
   const [readFilter, setReadFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
+  const [reviewSummaries, setReviewSummaries] = useState({});
   const [showOpportunityForm, setShowOpportunityForm] = useState(false);
   const [confirmedClassification, setConfirmedClassification] = useState("");
   const [conversion, setConversion] = useState(null);
@@ -255,6 +271,7 @@ function MailboxEmails({ connection }) {
     setShowOpportunityForm(false);
     setConversion(null);
     setDetail({ message: null, loading: false, error: "" });
+    setReviewSummaries({});
     setPage({ records: null, loading: true, error: "", cursor, nextCursor: null, history });
     try {
       const payload = await salesService.getMailboxMessages(connection.id, cursor ? { cursor } : {});
@@ -299,8 +316,23 @@ function MailboxEmails({ connection }) {
     if (!target) return;
     const pane = target.closest(".sales-email-source-panel");
     if (pane) pane.scrollTop = 0;
+    const context = target.querySelector(".sales-email-context__scroll");
+    if (context) context.scrollTop = 0;
+    const reader = target.closest(".sales-email-preview")?.querySelector(".sales-email-reading-pane");
+    const stacked = pane && reader && Math.abs(pane.getBoundingClientRect().left - reader.getBoundingClientRect().left) < 2;
     target.focus({ preventScroll: true });
-    (target.querySelector("h3") || target).scrollIntoView({ block: "nearest", inline: "nearest" });
+    const heading = target.querySelector("h3") || target;
+    if (stacked) {
+      let scrollContainer = heading.parentElement;
+      while (scrollContainer && scrollContainer !== document.body) {
+        if (["auto", "scroll"].includes(window.getComputedStyle(scrollContainer).overflowY) && scrollContainer.scrollHeight > scrollContainer.clientHeight) {
+          scrollContainer.scrollTop += heading.getBoundingClientRect().top - scrollContainer.getBoundingClientRect().top;
+          return;
+        }
+        scrollContainer = scrollContainer.parentElement;
+      }
+    }
+    heading.scrollIntoView({ block: stacked ? "start" : "nearest", inline: "nearest" });
   }, []);
 
   useEffect(() => {
@@ -322,9 +354,15 @@ function MailboxEmails({ connection }) {
     try {
       const payload = await salesService.getMailboxMessage(connection.id, record.id);
       if (!active()) return;
+      const message = messageDetail(payload, record.id);
+      const suggestion = classificationSuggestion(message.information);
+      setReviewSummaries((current) => ({ ...current, [record.id]: {
+        status: message.information?.ai_review?.version === 1 && message.information.ai_review.status === "validated" ? "validated" : "rules",
+        classificationCode: suggestion?.status === "classified" ? suggestion.code : "",
+      } }));
       setDetail({
         loading: false, error: "",
-        message: messageDetail(payload, record.id),
+        message,
       });
     } catch (error) {
       if (!active()) return;
@@ -341,6 +379,7 @@ function MailboxEmails({ connection }) {
             : accessError(status),
         });
         setDetail({ message: null, loading: false, error: "" });
+        setReviewSummaries({});
         return;
       }
       setDetail({ message: null, loading: false, error: "Email could not be loaded. Try again." });
@@ -358,16 +397,36 @@ function MailboxEmails({ connection }) {
   };
 
   const selected = page.records?.find((record) => record.id === selectedId);
+  const mailboxUnavailable = () => {
+    setConfirmedClassification("");
+    pageRequest.current += 1;
+    detailRequest.current += 1;
+    setNextStepMessageId(null);
+    setSelectedId(null);
+    setShowOpportunityForm(false);
+    setConversion(null);
+    setReviewSummaries({});
+    setDetail({ message: null, loading: false, error: "" });
+    setPage({ records: null, nextCursor: null, cursor: null, history: [], loading: false, refreshRequired: true, error: "This mailbox or email is no longer available. Refresh emails." });
+  };
+  const batch = useSalesEmailBatchReview({ connectionId: connection.id, records: page.records, pageKey: `${pageRequest.current}:${page.cursor || "first"}`, onUnavailable: mailboxUnavailable,
+    onReviewed: (id, result) => setReviewSummaries((current) => ({ ...current, [id]: result })),
+  });
+  const summaries = reviewSummaries;
+  const unreadEligible = (page.records || []).filter((record) => record.is_read === false && !record.is_draft && record.direction === "incoming").length;
+  const aiReviewedCount = (page.records || []).filter((record) => summaries[record.id]?.status === "validated").length;
   const visibleRecords = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
     return (page.records || []).filter((record) => {
       if (readFilter === "unread" && record.is_read !== false) return false;
       if (readFilter === "read" && record.is_read !== true) return false;
       if (readFilter === "drafts" && !record.is_draft) return false;
+      if (readFilter === "ai" && summaries[record.id]?.status !== "validated") return false;
+      if (readFilter === "needs_review" && (record.direction !== "incoming" || record.is_draft)) return false;
       return !query || [record.subject, record.sender_name, record.sender_email, record.body_preview]
         .some((value) => value.toLocaleLowerCase().includes(query));
     });
-  }, [page.records, readFilter, search]);
+  }, [page.records, readFilter, search, summaries]);
   useEffect(() => {
     if (!page.loading && !page.error && selectedId === null && visibleRecords.length) {
       loadMessage(visibleRecords[0]);
@@ -385,24 +444,21 @@ function MailboxEmails({ connection }) {
     setSearch(nextSearch);
   };
   const readFilters = [
-    ["all", "All mail", page.records?.length],
+    ["all", "Inbox", page.records?.length],
     ["unread", "Unread", page.records?.filter((record) => record.is_read === false).length],
-    ["read", "Read", page.records?.filter((record) => record.is_read === true).length],
+    ["ai", "AI suggestions", aiReviewedCount],
     ["drafts", "Drafts", page.records?.filter((record) => record.is_draft).length],
   ];
-  const mailboxUnavailable = () => {
-    setConfirmedClassification("");
-    pageRequest.current += 1;
-    detailRequest.current += 1;
-    setNextStepMessageId(null);
-    setSelectedId(null);
-    setShowOpportunityForm(false);
-    setConversion(null);
-    setDetail({ message: null, loading: false, error: "" });
-    setPage({ records: null, nextCursor: null, cursor: null, history: [], loading: false, refreshRequired: true, error: "This mailbox or email is no longer available. Refresh emails." });
-  };
   return (
     <section aria-label="Shared mailbox messages" className="sales-email-mailbox">
+      <SalesEmailPageHeader information={detail.message?.information}>
+        <button type="button" className="sales-email-analyze" disabled={page.loading || Boolean(page.error) || (!batch.running && !unreadEligible)} onClick={batch.running ? batch.cancel : batch.analyzeUnread} title="Analyze incoming unread emails on this page"><Sparkles aria-hidden="true" />{batch.running ? `Stop analysis (${batch.completed}/${batch.total})` : `Analyze unread (${unreadEligible})`}</button>
+        <button type="button" className="sales-email-button sales-email-icon-button" title="Refresh emails" aria-label="Refresh emails" onClick={() => loadPage()} disabled={page.loading}><ArrowPathIcon className={page.loading ? "animate-spin motion-reduce:animate-none" : ""} aria-hidden="true" /></button>
+        {(onConfigure || onAddMailbox) && <details className="sales-email-options"><summary className="sales-email-button sales-email-icon-button" aria-label="Mailbox options" title="Mailbox options"><MoreHorizontal aria-hidden="true" /></summary><div>
+          {onConfigure && <button type="button" onClick={() => onConfigure(connection.setup)}><Settings2 aria-hidden="true" />Mailbox setup</button>}
+          {onAddMailbox && <button type="button" onClick={onAddMailbox}><Plus aria-hidden="true" />Add shared mailbox</button>}
+        </div></details>}
+      </SalesEmailPageHeader>
       <div className="sales-email-toolbar">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <nav aria-label="Email read status" aria-description="Filters and counts apply to the current page." className="flex flex-wrap items-center gap-1">
@@ -430,12 +486,11 @@ function MailboxEmails({ connection }) {
             className="w-full rounded-md border border-slate-300 bg-white py-2 pl-9 pr-3 text-[13px] placeholder:text-slate-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
           />
         </label>
-        <button type="button" className={buttonClass} onClick={() => loadPage()} disabled={page.loading}>
-          <ArrowPathIcon className={`h-4 w-4 ${page.loading ? "animate-spin motion-reduce:animate-none" : ""}`} aria-hidden="true" />
-          <span aria-hidden="true">Refresh</span><span className="sr-only">Refresh emails</span>
-        </button>
+        <button type="button" className="sales-email-button sales-email-icon-button" title="Email filters" aria-label="Email filters" aria-expanded={showFilters} onClick={() => setShowFilters((current) => !current)}><Filter aria-hidden="true" /></button>
+        {showFilters && <div className="sales-email-filter-popover"><p>Filters apply to this page.</p>{[...readFilters, ["read", "Read"]].map(([value, label]) => <button key={value} type="button" aria-pressed={readFilter === value} onClick={() => { changeFilter(value); setShowFilters(false); }}>{label}</button>)}</div>}
         </div>
       </div>
+      {batch.total > 0 && <p className="sales-email-batch-status" role="status">{batch.running ? `Reviewing ${batch.completed} of ${batch.total} emails on this page.` : `${batch.completed} of ${batch.total} emails reviewed · ${Object.values(batch.results).filter((result) => result.status === "validated").length} AI results. Saved read states are unchanged.`}{batch.error && <span> {batch.error}</span>}</p>}
       <div className="sales-email-card">
       {page.error && <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 p-4">
         <p role="alert" className="text-sm text-amber-900">{page.error}</p>
@@ -443,7 +498,8 @@ function MailboxEmails({ connection }) {
       </div>}
       <div className="sales-email-grid">
         <aside aria-label="Mailbox emails" className="sales-email-list">
-          <div className="sales-email-list-summary"><h2>Inbox</h2><span>Newest first</span></div>
+          <div className="sales-email-list-summary"><h2>Inbox</h2><span>Newest first <ChevronDown size={14} aria-hidden="true" /></span></div>
+          <nav aria-label="Inbox quick filters" className="sales-email-list-filters">{[["all", "All"], ["unread", "Unread"], ["needs_review", "Needs review"]].map(([value, label]) => <button key={value} type="button" title={value === "needs_review" ? "Incoming non-draft messages; review is required before opportunity creation." : undefined} aria-pressed={readFilter === value} onClick={() => changeFilter(value)}>{label}</button>)}</nav>
           <div className="sr-only" role="status">
             Page {page.history.length + 1}{page.records !== null && ` · ${page.records.length} emails on this page`}
           </div>
@@ -463,12 +519,16 @@ function MailboxEmails({ connection }) {
                 }}
                 className="sales-email-row-open"
               >
+                <span className="sales-email-row-avatar" aria-hidden="true">{senderInitials(record.sender_name || record.sender_email)}</span>
+                <span className="sales-email-row-copy">
                 <span className="flex min-w-0 items-start justify-between gap-3">
                   <span className="min-w-0 truncate font-semibold text-slate-900">{record.sender_name || record.sender_email || "Sender unavailable"}</span>
                   <span className="shrink-0 text-xs text-slate-600">{dateLabel(record.received_at || record.sent_at, false).replace(/ \d{4}$/, "")}</span>
                 </span>
                 <span className={`mt-1 block line-clamp-2 break-words text-slate-800 ${record.is_read === false ? "font-semibold" : "font-medium"}`}>{record.subject || "No subject"}</span>
                 <span className="sales-email-row-snippet">{record.body_preview || "No email preview available."}</span>
+                {summaries[record.id]?.classificationCode && <span className="sales-email-row-suggestion">Suggested: {EMAIL_CLASSIFICATIONS[summaries[record.id].classificationCode]}</span>}
+                </span>
               </button>
               <div className="sales-email-row-status">
                 <span className="sales-email-status">{readState(record)}</span>
@@ -493,7 +553,7 @@ function MailboxEmails({ connection }) {
             {selected && <button type="button" className={buttonClass} onClick={() => loadMessage(selected)}>Retry email</button>}
           </div> : detail.message ? <>
             <header className="sales-email-preview-header">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="sales-email-message-state flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-600">
                 <span className="rounded bg-slate-100 px-2 py-1">{readState(detail.message)}</span>
                 {directionBadge(detail.message)}
@@ -506,17 +566,19 @@ function MailboxEmails({ connection }) {
               <h3 className="sales-email-subject mt-3">{detail.message.subject || "No subject"}</h3>
               <div className="sales-email-sender">
                 <span className="sales-email-avatar" aria-hidden="true">{(detail.message.sender_name || detail.message.sender_email || "?").slice(0, 2).toUpperCase()}</span>
-                <div><strong>{detail.message.sender_name || "Sender unavailable"}</strong><span>{detail.message.sender_email || "Email address unavailable"}</span></div>
+                <div><strong>{detail.message.sender_name || detail.message.sender_email || "Sender unavailable"}</strong><span>{detail.message.sender_email || "Email address unavailable"}</span></div>
                 <time dateTime={detail.message.received_at || undefined}>{dateLabel(detail.message.received_at)}</time>
               </div>
               {conversion && <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900"><p role="status">{conversion.created ? "Opportunity created." : "This email already has an opportunity."}</p><Link to={`/sales/opportunities?record=${encodeURIComponent(conversion.opportunity.id)}`} className="font-semibold underline underline-offset-2">Open opportunity</Link></div>}
             </header>
             <div className="sales-email-detail-grid">
               <section className="sales-email-reading-pane" aria-label="Email content" tabIndex={0}>
-                <SalesEmailReader key={detail.message.id} information={detail.message.information} subject={detail.message.subject} bodyText={detail.message.body || "This email has no text content."} bodyContent={detail.message.bodyContent} />
+                <SalesEmailReader key={detail.message.id} information={detail.message.information} subject={detail.message.subject} bodyText={detail.message.body || "This email has no text content."} bodyContent={detail.message.bodyContent} hasAttachments={detail.message.has_attachments}
+                  assistant={<SalesEmailAssistant source={{ connectionId: connection.id, messageId: detail.message.id }} information={detail.message.information} onUnavailable={mailboxUnavailable} />} />
               </section>
               <aside className="sales-email-source-panel" aria-label="Email review" tabIndex={0}>
                 <SalesEmailReview key={`${detail.message.id}:${detail.message.sourceToken}`} information={detail.message.information} subject={detail.message.subject}
+                  senderName={detail.message.sender_name} senderEmail={detail.message.sender_email} sentAt={detail.message.sent_at || detail.message.received_at}
                   confirmedClassification={confirmedClassification} onConfirmClassification={setConfirmedClassification}
                   onClassificationChange={() => setConfirmedClassification("")} nextStepRef={nextStepRef}
                   canCreateOpportunity={detail.message.canCreateOpportunity} converted={Boolean(conversion)}
@@ -744,7 +806,10 @@ MailboxEmails.propTypes = {
     id: PropTypes.string.isRequired,
     address: PropTypes.string.isRequired,
     name: PropTypes.string,
+    setup: PropTypes.object,
   }).isRequired,
+  onConfigure: PropTypes.func,
+  onAddMailbox: PropTypes.func,
 };
 
 MailboxOpportunityForm.propTypes = {

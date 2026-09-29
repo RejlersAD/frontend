@@ -84,7 +84,7 @@ export default function SalesEmailOpportunityForm({
           <div className="min-w-0 text-sm font-semibold text-slate-700 sm:col-span-2"><label htmlFor={`${formId}-description`}>Scope summary</label><textarea {...fieldProps("description")} name="description" rows="4" defaultValue={extracted.scope_summary || (aiReviewed ? "" : bodyPreview) || ""} className={fieldClass} />{fieldError("description")}</div>
           <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 pt-4 sm:col-span-2">
             <button type="button" onClick={onClose} className="sales-email-button">Cancel</button>
-            <button type="submit" disabled={loadingClients || reloadingEmail || requireSourceReload || Boolean(clientError) || (!clients.some((client) => client.id === clientChoice) && !(clientChoice === "__new__" && newClientName))} className="rounded-md bg-[#c7442d] px-4 py-2 text-sm font-semibold text-white hover:bg-[#ac3825] disabled:cursor-not-allowed disabled:opacity-50">{submitting ? "Creating…" : "Create opportunity"}</button>
+            <button type="submit" disabled={loadingClients || reloadingEmail || requireSourceReload || Boolean(clientError) || (!clients.some((client) => client.id === clientChoice) && !(clientChoice === "__new__" && newClientName))} className="sales-email-opportunity-submit rounded-md px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{submitting ? "Creating…" : "Create opportunity"}</button>
           </div>
         </fieldset>
       </form>

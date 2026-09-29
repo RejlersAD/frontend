@@ -790,6 +790,14 @@ class SalesService {
     ).data;
   }
 
+  async askMailboxEmail(connectionId, payload) {
+    return (await apiClient.post(
+      `${BASE_URL}/mailbox-connections/${encodeURIComponent(connectionId)}/review-assistant/`,
+      payload,
+      EMAIL_REQUEST_OPTIONS,
+    )).data;
+  }
+
   async convertMailboxMessage(connectionId, payload) {
     return (
       await apiClient.post(
@@ -861,6 +869,14 @@ class SalesService {
 
   async getEmailIntake(intakeId) {
     return (await apiClient.get(`${BASE_URL}/email-intakes/${intakeId}/`)).data;
+  }
+
+  async askEmailIntake(intakeId, payload) {
+    return (await apiClient.post(
+      `${BASE_URL}/email-intakes/${encodeURIComponent(intakeId)}/review-assistant/`,
+      payload,
+      EMAIL_REQUEST_OPTIONS,
+    )).data;
   }
 
   async startEmailIntakeReview(intakeId) {

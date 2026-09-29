@@ -17,13 +17,14 @@ import {
   Paperclip as PaperClipIcon,
   User as UserIcon,
   X as XMarkIcon,
-  Plus as PlusIcon,
 } from "lucide-react";
 import salesService from "../../services/sales.service";
 import SalesSharedMailboxMessages from "./SalesSharedMailboxMessages";
 import SalesSharedMailboxSetup from "./SalesSharedMailboxSetup";
 import useSalesMailboxSetupAccess from "./useSalesMailboxSetupAccess";
 import SalesEmailReader from "./SalesEmailReader";
+import SalesEmailPageHeader from "./SalesEmailPageHeader";
+import SalesEmailAssistant from "./SalesEmailAssistant";
 import SalesEmailReview from "./SalesEmailReview";
 import { isOpportunityClassification } from "./salesEmailReviewState";
 import SalesEmailOpportunityForm from "./SalesEmailOpportunityForm";
@@ -154,9 +155,7 @@ function EmailIntakeViews() {
   const view = searchParams.get("view") === "imported" ? "imported" : "shared";
   return (
     <section className="sales-email-workspace" aria-label="Email Intake workspace">
-      <h1 className="sr-only">Email Intake</h1>
-      {view === "shared" && access.canCreate && <div className="sales-email-workspace-actions"><button type="button" onClick={() => setSetup({ connection: null })} className="sales-email-button"><PlusIcon className="h-4 w-4" aria-hidden="true" />Add shared mailbox</button></div>}
-      {view === "shared" ? <SalesSharedMailboxMessages key={mailboxes.revision} preferredConnectionId={mailboxes.selectedId} onConfigure={access.canManage ? (connection) => setSetup({ connection }) : undefined} /> : <ImportedEmailIntakes />}
+      {view === "shared" ? <SalesSharedMailboxMessages key={mailboxes.revision} preferredConnectionId={mailboxes.selectedId} onAddMailbox={access.canCreate ? () => setSetup({ connection: null }) : undefined} onConfigure={access.canManage ? (connection) => setSetup({ connection }) : undefined} /> : <ImportedEmailIntakes />}
       {view === "shared" && setup && access.canManage && (setup.connection || access.canCreate) && <SalesSharedMailboxSetup initialConnection={setup.connection} access={access} onClose={closeSetup} />}
     </section>
   );
@@ -429,6 +428,7 @@ function ImportedEmailIntakes() {
   return (
     <div className="sales-email-view text-slate-950">
       <div className="sales-email-mailbox">
+        <SalesEmailPageHeader information={extracted} imported />
         <header className="sales-email-source-heading">
           <h2 className="text-base font-semibold text-slate-900">Imported enquiries</h2>
           <div className="flex flex-wrap items-center gap-2">
@@ -622,7 +622,8 @@ function ImportedEmailIntakes() {
 
                   <div className="sales-email-detail-grid">
                     <section className="sales-email-reading-pane" aria-label="Email content" tabIndex={0}>
-                      <SalesEmailReader key={selected.id} information={extracted} subject={selected.subject} bodyText={selected.body_preview || "No email preview was supplied."} saved>
+                      <SalesEmailReader key={selected.id} information={extracted} subject={selected.subject} bodyText={selected.body_preview || "No email preview was supplied."} saved hasAttachments={selected.has_attachments}
+                        assistant={<SalesEmailAssistant source={{ intakeId: selected.id }} information={extracted} disabled={reviewBlocked || sourceReloadRequired} onUnavailable={() => { setRecords((current) => current.filter((row) => row.id !== selected.id)); setSelectedId(null); setDialog(null); setError("You do not have access to this saved email."); }} />}>
                       {selected.resolution_note && (
                         <div className="mt-4 rounded-lg border border-slate-200 px-4 py-3">
                           <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
@@ -638,6 +639,7 @@ function ImportedEmailIntakes() {
 
                     <aside className="sales-email-source-panel" aria-label="Email review" tabIndex={0}>
                       <SalesEmailReview key={`${selected.id}:${reviewVersion}`} information={extracted} subject={selected.subject}
+                        senderName={selected.sender_name} senderEmail={selected.sender_email} sentAt={selected.sent_at || selected.received_at}
                         disabled={reviewBlocked || sourceReloadRequired}
                         confirmedClassification={confirmedClassification} onConfirmClassification={setConfirmedClassification}
                         onClassificationChange={() => setConfirmedClassification("")}

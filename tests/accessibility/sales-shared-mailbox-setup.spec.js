@@ -348,6 +348,7 @@ test('a missing deployment secret preserves the saved connection without request
   expect(posts(state, syncPath)).toHaveLength(0)
   await dialog(page).getByRole('button', { name: 'Done', exact: true }).click()
   await expect(page.getByText('No emails in this mailbox.', { exact: true })).toBeVisible()
+  await page.getByLabel('Mailbox options', { exact: true }).click()
   await page.getByRole('button', { name: 'Mailbox setup', exact: true }).click()
   await expect(page.getByRole('dialog').getByLabel('Mailbox address', { exact: true })).toHaveValue(values.mailbox_address)
   expect(posts(state, collection)).toHaveLength(1)
@@ -382,6 +383,7 @@ test('editing a saved unprotected identity preserves failed corrections and retr
 test('existing sync history keeps mailbox identity read-only while offering explicit connection verification', async ({ page }) => {
   const state = await prepare(page, { connections: [connection({ sync: { status: 'paused', enabled: false, saved_count: 4 } })] })
   await expect(page.getByText('No emails in this mailbox.', { exact: true })).toBeVisible()
+  await page.getByLabel('Mailbox options', { exact: true }).click()
   await page.getByRole('button', { name: 'Mailbox setup', exact: true }).click()
   const setup = page.getByRole('dialog', { name: 'Shared mailbox setup', exact: true })
   await expect(setup.getByRole('button', { name: 'Edit details', exact: true })).toHaveCount(0)
