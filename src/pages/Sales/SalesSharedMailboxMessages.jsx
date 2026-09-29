@@ -19,6 +19,7 @@ import SalesEmailReader from "./SalesEmailReader";
 import SalesEmailReview from "./SalesEmailReview";
 import { isOpportunityClassification } from "./salesEmailReviewState";
 import useSalesEmailClients from "./useSalesEmailClients";
+import useSalesEmailClientChoice from "./useSalesEmailClientChoice";
 import { withoutCustomerMatch } from "./SalesEmailCustomerMatch";
 import SalesEmailThreadRole, { selectedThreadSource, threadRole } from "./SalesEmailThreadRole";
 
@@ -108,6 +109,7 @@ const messageDetail = (payload, expectedId) => {
     cc: recipients(payload.cc_recipients),
     information: payload.extracted_information && typeof payload.extracted_information === "object" && !Array.isArray(payload.extracted_information) ? payload.extracted_information : {},
     canCreateOpportunity: payload.can_create_opportunity === true,
+    canCreateClient: payload.can_create_client === true,
     sourceToken: text(payload.source_token),
   };
 };
@@ -566,7 +568,10 @@ function MailboxOpportunityForm({ connection, message, classificationCode, onCla
   const submitting = useRef(false);
   const currentSource = useRef(message);
   const clients = useSalesEmailClients();
-  const [clientChoice, setClientChoice] = useState("");
+  const { clientChoice, newClientName, chooseClient: setClientChoice } = useSalesEmailClientChoice({
+    information: clients.denied ? withoutCustomerMatch(message.information) : message.information,
+    clients, canCreateClient: message.canCreateClient === true, reviewKey: message.id,
+  });
   const [reviewedClassification, setReviewedClassification] = useState(classificationCode);
   const [state, setState] = useState({ submitting: false, error: message.sourceToken ? "" : "Reload email details before creating the opportunity.", fieldErrors: {}, reloadRequired: !message.sourceToken, reloading: false, refreshed: null });
   useEffect(() => {
@@ -587,7 +592,8 @@ function MailboxOpportunityForm({ connection, message, classificationCode, onCla
   const submit = async (event) => {
     event.preventDefault();
     if (submitting.current || clients.loading || clients.error || !clientChoice || state.reloadRequired || state.reloading || !isOpportunityClassification(reviewedClassification)) return;
-    if (!clients.records.some((record) => record.id === clientChoice)) return;
+    const createClient = clientChoice === "__new__";
+    if (createClient ? !newClientName : !clients.records.some((record) => record.id === clientChoice)) return;
     const form = new FormData(event.currentTarget);
     const request = ++actionRequest.current;
     const active = () => mounted.current && request === actionRequest.current;
@@ -601,7 +607,8 @@ function MailboxOpportunityForm({ connection, message, classificationCode, onCla
         classification_code: reviewedClassification,
         classification_confirmed: true,
         deal_name: form.get("deal_name"),
-        client: clientChoice,
+        client: createClient ? undefined : clientChoice,
+        new_client: createClient ? { company_name: newClientName } : undefined,
         client_reference: form.get("client_reference"),
         estimated_value: form.get("estimated_value"),
         currency: form.get("currency"),
@@ -636,6 +643,8 @@ function MailboxOpportunityForm({ connection, message, classificationCode, onCla
         410: "Email review has expired. Reload email details before creating the opportunity.",
       };
       const alreadyConverted = status === 409 && error?.response?.data?.code === "email_already_converted";
+      const duplicateTender = status === 409 && error?.response?.data?.code === "email_tender_already_exists";
+      const customerConflict = status === 409 && error?.response?.data?.code === "email_customer_conflict";
       const tokenInvalid = status === 400 && Boolean(error?.response?.data?.source_token);
       const classificationInvalid = status === 400 && Boolean(error?.response?.data?.classification_code || error?.response?.data?.classification_confirmed);
       if (classificationInvalid) { setReviewedClassification(""); onClassificationChange(""); }
@@ -643,12 +652,14 @@ function MailboxOpportunityForm({ connection, message, classificationCode, onCla
         ...current,
         error: alreadyConverted
           ? "An opportunity already exists for this email with different details. Your entries have been kept."
+          : duplicateTender ? "An opportunity already exists for this tender. Your entries have been kept."
+          : customerConflict ? "The customer cannot be resolved safely. Select an accessible client and try again."
           : classificationInvalid ? "Confirm the email classification before creating an opportunity."
           : tokenInvalid
             ? "Reload email details before creating the opportunity."
             : messages[status] || "Opportunity creation could not be confirmed. Try again.",
         fieldErrors,
-        reloadRequired: (status === 409 && !alreadyConverted) || status === 410 || tokenInvalid,
+        reloadRequired: (status === 409 && !alreadyConverted && !duplicateTender && !customerConflict) || status === 410 || tokenInvalid,
       }));
     } finally {
       submitting.current = false;
@@ -694,6 +705,7 @@ function MailboxOpportunityForm({ connection, message, classificationCode, onCla
     clients={clients.records}
     clientChoice={clientChoice}
     onClientChange={setClientChoice}
+    newClientName={newClientName}
     onSubmit={submit}
     onClose={onClose}
     submitting={state.submitting}
