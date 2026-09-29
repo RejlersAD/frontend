@@ -22,6 +22,10 @@ const hold = () => {
   return { promise, resolve }
 }
 const panel = page => page.getByRole('region', { name: 'Ask RADAI', exact: true })
+const openAssistant = async page => {
+  await page.getByRole('tab', { name: 'Ask AI', exact: true }).click()
+  await expect(panel(page)).toBeVisible()
+}
 const question = page => panel(page).getByRole('textbox', { name: 'Ask about the selected email', exact: true })
 const ask = page => panel(page).getByRole('button', { name: 'Ask RADAI', exact: true })
 const chip = (page, name) => panel(page).getByRole('button', { name, exact: true })
@@ -32,7 +36,7 @@ const ready = async (page, options = {}) => {
   const record = incoming()
   const state = await prepare(page, { messages: listing([record]), details: emailDetail(record), ...options })
   if (options.connections?.results.length > 1) await page.getByRole('combobox', { name: 'Mailbox', exact: true }).selectOption('shared-1')
-  await expect(panel(page)).toBeVisible()
+  await openAssistant(page)
   return state
 }
 const assistantRoute = async (page, handler = () => ({ body: response() })) => {
@@ -152,7 +156,10 @@ for (const change of ['selection', 'mailbox', 'account', 'unmount']) {
     if (change === 'mailbox') await page.getByRole('combobox', { name: 'Mailbox', exact: true }).selectOption('shared-2')
     if (change === 'account') await page.evaluate(() => window.setSalesMailboxMessageActor({ id: 900, user: { id: 22 }, email: 'second-admin@example.test' }))
     if (change === 'unmount') await page.evaluate(() => window.setSalesMailboxMessagesMounted(false))
-    else await expect(question(page)).toHaveValue('')
+    else {
+      await openAssistant(page)
+      await expect(question(page)).toHaveValue('')
+    }
     const arrived = page.waitForResponse(item => item.url().endsWith('/review-assistant/'))
     pending.resolve()
     await arrived
@@ -270,7 +277,7 @@ for (const [batchAI, laterAI] of [[false, true], [true, false]]) {
     await expect(suggestions).toHaveText(new RegExp(`AI suggestions\\s*${batchAI ? 1 : 0}`))
     await row(page, records[1]).click()
     await expect.poll(() => candidateReads).toBe(2)
-    await expect(page.locator('.sales-email-ai-badge')).toHaveText(laterAI ? 'Powered by AI' : 'AI email review')
+    await expect(row(page, records[1])).toHaveAttribute('aria-pressed', 'true')
     await expect(suggestions).toHaveText(new RegExp(`AI suggestions\\s*${laterAI ? 1 : 0}`))
     // The completed batch report describes that run, while the filter follows
     // the latest successful detail read for each email.
@@ -319,7 +326,7 @@ for (const change of ['stop', 'page', 'account']) {
     if (change === 'page') await page.getByRole('button', { name: 'Next page', exact: true }).click()
     if (change === 'account') await page.evaluate(() => window.setSalesMailboxMessageActor({ id: 900, user: { id: 22 }, email: 'second-admin@example.test' }))
     if (change === 'page') await expect(row(page, next)).toBeVisible()
-    if (change === 'account') await expect(panel(page)).toBeVisible()
+    if (change === 'account') await openAssistant(page)
     const arrived = page.waitForResponse(item => item.url().includes('message_id=unread-one'))
     pending.resolve()
     await arrived

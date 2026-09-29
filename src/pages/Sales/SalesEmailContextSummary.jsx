@@ -6,6 +6,7 @@ import {
   classificationSuggestion,
   emailContextReference,
   emailReviewFacts,
+  isKnownClassification,
   reviewObject,
   reviewText,
 } from "./salesEmailReviewState";
@@ -40,9 +41,9 @@ function sentDate(value) {
   return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(parsed);
 }
 
-function SummaryCard({ title, icon: Icon, rows }) {
+function SummaryCard({ title, label, icon: Icon, rows }) {
   return <section className="sales-email-context__card" aria-label={title}>
-    <h5 className="sales-email-context__card-heading"><Icon size={16} aria-hidden="true" />{title}</h5>
+    <h5 className="sales-email-context__card-heading"><Icon size={16} aria-hidden="true" />{label}</h5>
     <dl className="sales-email-context__facts sales-email-review__facts">
       {rows.map(([label, value]) => <div className="sales-email-context__row" key={label}>
         <dt>{label}</dt><dd className="sales-email-context__value">{value}</dd>
@@ -51,21 +52,21 @@ function SummaryCard({ title, icon: Icon, rows }) {
   </section>;
 }
 
-export default function SalesEmailContextSummary({ information, subject, senderName, senderEmail, sentAt, converted }) {
+export default function SalesEmailContextSummary({ information, senderName, senderEmail, sentAt, receivedAt, converted, classificationCode }) {
   const facts = emailReviewFacts(information, converted);
   const suggestion = classificationSuggestion(information);
   const classificationEvidence = Array.isArray(suggestion?.evidence) ? suggestion.evidence : [];
   const supportedEvidence = classificationEvidence.filter((item) => reviewObject(item) &&
     ["subject", "body"].includes(item.location) && reviewText(item.excerpt) && supportedSources(information, [item.source_id]));
-  const detectedType = suggestion?.status === "classified" && supportedEvidence.length ? EMAIL_CLASSIFICATIONS[suggestion.code] : "Not classified";
+  const detectedType = isKnownClassification(classificationCode) ? EMAIL_CLASSIFICATIONS[classificationCode]
+    : suggestion?.status === "classified" && supportedEvidence.length ? EMAIL_CLASSIFICATIONS[suggestion.code] : "Not classified";
   const purpose = information?.ai_review?.version === 1 && information.ai_review.status === "validated" &&
     supportedEvidence.some((item) => item.rule_id === "ai_source_evidence_v1") && Object.hasOwn(purposeLabels, reviewText(information.ai_review.purpose))
     ? purposeLabels[information.ai_review.purpose] : "";
   const selectedSource = selectedThreadSource(information?.analysis);
   const emailRows = [
     ["Sender", reviewText(senderEmail) || reviewText(senderName) || reviewText(selectedSource?.sender_email) || "Not available"],
-    ["Subject", reviewText(subject) || "Not available"],
-    ["Date", sentDate(sentAt || selectedSource?.sent_at)],
+    [receivedAt ? "Received" : "Sent", sentDate(receivedAt || sentAt || selectedSource?.sent_at)],
     ["Type", [detectedType, purpose].filter(Boolean).join(" · ")],
     ["Customer", facts.customer],
   ];
@@ -100,15 +101,15 @@ export default function SalesEmailContextSummary({ information, subject, senderN
   return <div className="sales-email-context__summary">
     <h4 className="sales-email-context__key-heading">Key information</h4>
     <div className="sales-email-context__groups">
-      <SummaryCard title="Email Summary" icon={FileText} rows={emailRows} />
-      <SummaryCard title="Opportunity Details Detected" icon={ListChecks} rows={opportunityRows} />
+      <SummaryCard title="Email Summary" label="Email summary" icon={FileText} rows={emailRows} />
+      <SummaryCard title="Opportunity Details Detected" label="Detected details" icon={ListChecks} rows={opportunityRows} />
     </div>
   </div>;
 }
 
-SummaryCard.propTypes = { title: PropTypes.string.isRequired, icon: PropTypes.elementType.isRequired, rows: PropTypes.array.isRequired };
+SummaryCard.propTypes = { title: PropTypes.string.isRequired, label: PropTypes.string.isRequired, icon: PropTypes.elementType.isRequired, rows: PropTypes.array.isRequired };
 SalesEmailContextSummary.propTypes = {
-  information: PropTypes.object, subject: PropTypes.string, senderName: PropTypes.string,
-  senderEmail: PropTypes.string, sentAt: PropTypes.string, converted: PropTypes.bool,
+  information: PropTypes.object, senderName: PropTypes.string,
+  senderEmail: PropTypes.string, sentAt: PropTypes.string, receivedAt: PropTypes.string, converted: PropTypes.bool, classificationCode: PropTypes.string,
 };
-SalesEmailContextSummary.defaultProps = { information: null, subject: "", senderName: "", senderEmail: "", sentAt: "", converted: false };
+SalesEmailContextSummary.defaultProps = { information: null, senderName: "", senderEmail: "", sentAt: "", receivedAt: "", converted: false, classificationCode: "" };

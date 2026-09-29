@@ -154,7 +154,7 @@ export default function SalesEmailAssistant({ source, disabled = false, informat
       <span>Selected email</span>
     </header>
     <div className="sales-email-assistant-actions" aria-label="Email assistant actions">
-      {actions.map(({ action, label, Icon }) => <button type="button" key={action} onClick={() => ask(action)} disabled={unavailable || currentState.pending}>
+      {actions.map(({ action, label, Icon }) => <button type="button" key={action} data-assistant-action={action} onClick={() => ask(action)} disabled={unavailable || currentState.pending}>
         <Icon aria-hidden="true" /><span>{label}</span>
       </button>)}
     </div>
