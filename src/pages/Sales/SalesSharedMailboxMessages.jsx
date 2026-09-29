@@ -2,18 +2,22 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import { Link } from "react-router-dom";
 import {
-  ArrowPathIcon,
-  ArrowRightIcon,
-  EnvelopeIcon,
-  MagnifyingGlassIcon,
-  PaperClipIcon,
-  PlusIcon,
-} from "@heroicons/react/24/outline";
+  RefreshCw as ArrowPathIcon,
+  ArrowRight as ArrowRightIcon,
+  Mail as EnvelopeIcon,
+  Search as MagnifyingGlassIcon,
+  Paperclip as PaperClipIcon,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import salesService from "../../services/sales.service";
 import SalesEmailBody from "./SalesEmailBody";
 import SalesEmailDetectedInformation from "./SalesEmailDetectedInformation";
 import SalesEmailAnalysis from "./SalesEmailAnalysis";
 import SalesEmailOpportunityForm from "./SalesEmailOpportunityForm";
+import SalesEmailReader from "./SalesEmailReader";
+import SalesEmailReview from "./SalesEmailReview";
+import { isOpportunityClassification } from "./salesEmailReviewState";
 import useSalesEmailClients from "./useSalesEmailClients";
 import { withoutCustomerMatch } from "./SalesEmailCustomerMatch";
 import SalesEmailThreadRole, { selectedThreadSource, threadRole } from "./SalesEmailThreadRole";
@@ -233,12 +237,14 @@ function MailboxEmails({ connection }) {
   const [readFilter, setReadFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [showOpportunityForm, setShowOpportunityForm] = useState(false);
+  const [confirmedClassification, setConfirmedClassification] = useState("");
   const [conversion, setConversion] = useState(null);
   const redactClientMatch = useCallback(() => {
     setDetail((current) => current.message ? { ...current, message: { ...current.message, information: withoutCustomerMatch(current.message.information) } } : current);
   }, []);
 
   const loadPage = useCallback(async (cursor = null, history = []) => {
+    setConfirmedClassification("");
     const currentRequest = ++pageRequest.current;
     const active = () => mounted.current && currentRequest === pageRequest.current;
     detailRequest.current += 1;
@@ -289,8 +295,10 @@ function MailboxEmails({ connection }) {
   const focusNextStep = useCallback(() => {
     const target = nextStepRef.current;
     if (!target) return;
+    const pane = target.closest(".sales-email-source-panel");
+    if (pane) pane.scrollTop = 0;
     target.focus({ preventScroll: true });
-    target.scrollIntoView({ block: "nearest", inline: "nearest" });
+    (target.querySelector("h3") || target).scrollIntoView({ block: "nearest", inline: "nearest" });
   }, []);
 
   useEffect(() => {
@@ -301,6 +309,7 @@ function MailboxEmails({ connection }) {
   }, [detail.message, selectedId, nextStepMessageId, focusNextStep]);
 
   const loadMessage = async (record, openNextStep = false) => {
+    setConfirmedClassification("");
     const currentRequest = ++detailRequest.current;
     const active = () => mounted.current && currentRequest === detailRequest.current;
     setSelectedId(record.id);
@@ -356,6 +365,7 @@ function MailboxEmails({ connection }) {
     });
   }, [page.records, readFilter, search]);
   const changeFilter = (nextFilter, nextSearch = search) => {
+    setConfirmedClassification("");
     detailRequest.current += 1;
     setNextStepMessageId(null);
     setSelectedId(null);
@@ -372,6 +382,7 @@ function MailboxEmails({ connection }) {
     ["drafts", "Drafts", page.records?.filter((record) => record.is_draft).length],
   ];
   const mailboxUnavailable = () => {
+    setConfirmedClassification("");
     pageRequest.current += 1;
     detailRequest.current += 1;
     setNextStepMessageId(null);
@@ -383,7 +394,6 @@ function MailboxEmails({ connection }) {
   };
   return (
     <section aria-label="Shared mailbox messages" className="sales-email-mailbox">
-      <div className="sales-email-card">
       <div className="sales-email-toolbar">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <nav aria-label="Email read status" aria-description="Filters and counts apply to the current page." className="flex flex-wrap items-center gap-1">
@@ -407,22 +417,24 @@ function MailboxEmails({ connection }) {
             type="search"
             value={search}
             onChange={(event) => changeFilter(readFilter, event.target.value)}
-            placeholder="Search this page"
+            placeholder="Search emails…"
             className="w-full rounded-md border border-slate-300 bg-white py-2 pl-9 pr-3 text-[13px] placeholder:text-slate-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
           />
         </label>
         <button type="button" className={buttonClass} onClick={() => loadPage()} disabled={page.loading}>
           <ArrowPathIcon className={`h-4 w-4 ${page.loading ? "animate-spin motion-reduce:animate-none" : ""}`} aria-hidden="true" />
-          Refresh emails
+          <span aria-hidden="true">Refresh</span><span className="sr-only">Refresh emails</span>
         </button>
         </div>
       </div>
+      <div className="sales-email-card">
       {page.error && <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 p-4">
         <p role="alert" className="text-sm text-amber-900">{page.error}</p>
         {!page.refreshRequired && <button type="button" className={buttonClass} onClick={() => loadPage(page.cursor, page.history)}>Try again</button>}
       </div>}
       <div className="sales-email-grid">
         <aside aria-label="Mailbox emails" className="sales-email-list">
+          <div className="sales-email-list-summary"><h2>Inbox</h2><span>Newest first</span></div>
           <div className="sr-only" role="status">
             Page {page.history.length + 1}{page.records !== null && ` · ${page.records.length} emails on this page`}
           </div>
@@ -432,7 +444,7 @@ function MailboxEmails({ connection }) {
           </p>}
           {!page.loading && !page.error && page.records?.length > 0 && visibleRecords.length === 0 && <p className="p-5 text-sm text-slate-600">No matching emails on this page.</p>}
           <ul className="sales-email-list-scroll">
-            {visibleRecords.map((record) => <li key={record.id} className={`sales-email-row sales-email-row-with-actions ${selectedId === record.id ? "sales-email-row-selected" : ""}`}>
+            {visibleRecords.map((record) => <li key={record.id} className={`sales-email-row sales-email-row-with-actions ${record.is_read === false ? "sales-email-row-unread" : ""} ${selectedId === record.id ? "sales-email-row-selected" : ""}`}>
               <button
                 type="button"
                 aria-label={`Open email: ${record.subject || "No subject"}`}
@@ -442,10 +454,10 @@ function MailboxEmails({ connection }) {
               >
                 <span className="flex min-w-0 items-start justify-between gap-3">
                   <span className="min-w-0 truncate font-semibold text-slate-900">{record.sender_name || record.sender_email || "Sender unavailable"}</span>
-                  <span className="shrink-0 text-xs text-slate-600">{dateLabel(record.received_at || record.sent_at, false)}</span>
+                  <span className="shrink-0 text-xs text-slate-600">{dateLabel(record.received_at || record.sent_at, false).replace(/ \d{4}$/, "")}</span>
                 </span>
                 <span className={`mt-1 block line-clamp-2 break-words text-slate-800 ${record.is_read === false ? "font-semibold" : "font-medium"}`}>{record.subject || "No subject"}</span>
-                <span className="mt-1 block line-clamp-2 break-words text-xs leading-4 text-slate-600">{record.body_preview || "No email preview available."}</span>
+                <span className="sales-email-row-snippet">{record.body_preview || "No email preview available."}</span>
               </button>
               <div className="sales-email-row-status">
                 <span className="sales-email-status">{readState(record)}</span>
@@ -458,9 +470,10 @@ function MailboxEmails({ connection }) {
               </div>
             </li>)}
           </ul>
-          <nav aria-label="Email pages" className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 p-3">
-            <button type="button" className={buttonClass} disabled={page.loading || page.history.length === 0} onClick={() => loadPage(page.history.at(-1), page.history.slice(0, -1))}>Previous page</button>
-            <button type="button" className={buttonClass} disabled={page.loading || !page.nextCursor} onClick={() => loadPage(page.nextCursor, [...page.history, page.cursor])}>Next page</button>
+          <nav aria-label="Email pages" className="sales-email-pagination">
+            <button type="button" className={buttonClass} aria-label="Previous page" disabled={page.loading || page.history.length === 0} onClick={() => loadPage(page.history.at(-1), page.history.slice(0, -1))}><ChevronLeft aria-hidden="true" /></button>
+            <span>Page {page.history.length + 1}</span>
+            <button type="button" className={buttonClass} aria-label="Next page" disabled={page.loading || !page.nextCursor} onClick={() => loadPage(page.nextCursor, [...page.history, page.cursor])}><ChevronRight aria-hidden="true" /></button>
           </nav>
         </aside>
         <section aria-label="Email preview" className="sales-email-preview">
@@ -478,25 +491,25 @@ function MailboxEmails({ connection }) {
                 {detail.message.importance === "high" && <span className="rounded bg-amber-50 px-2 py-1 text-amber-900">High importance</span>}
                 {detail.message.has_attachments && <span className="inline-flex items-center gap-1"><PaperClipIcon className="h-3.5 w-3.5" aria-hidden="true" />Has attachments</span>}
               </div>
-              {detail.message.canCreateOpportunity && !conversion && <button type="button" onClick={() => setShowOpportunityForm(true)} className="inline-flex items-center gap-1.5 rounded-md bg-[#c83d25] px-3 py-2 text-sm font-semibold text-white hover:bg-[#ac321e]"><PlusIcon className="h-4 w-4" aria-hidden="true" />Create opportunity</button>}
               </div>
               <h3 className="sales-email-subject mt-3">{detail.message.subject || "No subject"}</h3>
-              <div className="sales-email-preview-meta mt-2">
-                <span><span className="font-semibold">From: </span>{detail.message.sender_name && detail.message.sender_email ? `${detail.message.sender_name} <${detail.message.sender_email}>` : detail.message.sender_name || detail.message.sender_email || "Not available"}</span>
-                <span><span className="font-semibold">Received: </span>{dateLabel(detail.message.received_at)}</span>
+              <div className="sales-email-sender">
+                <span className="sales-email-avatar" aria-hidden="true">{(detail.message.sender_name || detail.message.sender_email || "?").slice(0, 2).toUpperCase()}</span>
+                <div><strong>{detail.message.sender_name || "Sender unavailable"}</strong><span>{detail.message.sender_email || "Email address unavailable"}</span></div>
+                <time dateTime={detail.message.received_at || undefined}>{dateLabel(detail.message.received_at)}</time>
               </div>
               {conversion && <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900"><p role="status">{conversion.created ? "Opportunity created." : "This email already has an opportunity."}</p><Link to={`/sales/opportunities?record=${encodeURIComponent(conversion.opportunity.id)}`} className="font-semibold underline underline-offset-2">Open opportunity</Link></div>}
             </header>
             <div className="sales-email-detail-grid">
               <section className="sales-email-reading-pane" aria-label="Email content" tabIndex={0}>
-                <SalesEmailDetectedInformation information={detail.message.information} subject={detail.message.subject} />
-                <h4 className="mt-6 text-sm font-semibold text-[#102a47]">Email preview</h4>
-                <div className="sales-email-body-panel mt-3">
-                <SalesEmailBody bodyText={detail.message.body || "This email has no text content."} bodyContent={detail.message.bodyContent} />
-                </div>
+                <SalesEmailReader key={detail.message.id} information={detail.message.information} subject={detail.message.subject} bodyText={detail.message.body || "This email has no text content."} bodyContent={detail.message.bodyContent} />
               </section>
-              <aside className="sales-email-source-panel" aria-label="Email analysis" tabIndex={0}>
-                <SalesEmailAnalysis analysis={detail.message.information.analysis} nextStepRef={nextStepRef} />
+              <aside className="sales-email-source-panel" aria-label="Email review" tabIndex={0}>
+                <SalesEmailReview key={`${detail.message.id}:${detail.message.sourceToken}`} information={detail.message.information} subject={detail.message.subject}
+                  confirmedClassification={confirmedClassification} onConfirmClassification={setConfirmedClassification}
+                  onClassificationChange={() => setConfirmedClassification("")} nextStepRef={nextStepRef}
+                  canCreateOpportunity={detail.message.canCreateOpportunity} converted={Boolean(conversion)}
+                  onCreateOpportunity={() => { if (isOpportunityClassification(confirmedClassification)) setShowOpportunityForm(true); }}>
                 <details className="sales-email-analysis-metadata">
                 <summary>Message details</summary>
                 <dl className="mt-3 space-y-3 text-xs">
@@ -512,6 +525,7 @@ function MailboxEmails({ connection }) {
                   </div>)}
                 </dl>
                 </details>
+                </SalesEmailReview>
               </aside>
             </div>
           </> : <div className="py-12 text-center text-slate-500">
@@ -525,9 +539,11 @@ function MailboxEmails({ connection }) {
         key={detail.message.id}
         connection={connection}
         message={detail.message}
+        classificationCode={confirmedClassification}
         onClose={() => setShowOpportunityForm(false)}
         onUnavailable={mailboxUnavailable}
         onSourceReloaded={(message) => setDetail({ message, loading: false, error: "" })}
+        onClassificationChange={setConfirmedClassification}
         onClientAccessDenied={redactClientMatch}
         onCreated={(result) => { setConversion(result); setShowOpportunityForm(false); }}
       />}
@@ -535,13 +551,14 @@ function MailboxEmails({ connection }) {
   );
 }
 
-function MailboxOpportunityForm({ connection, message, onClose, onCreated, onUnavailable, onSourceReloaded, onClientAccessDenied }) {
+function MailboxOpportunityForm({ connection, message, classificationCode, onClassificationChange, onClose, onCreated, onUnavailable, onSourceReloaded, onClientAccessDenied }) {
   const mounted = useRef(false);
   const actionRequest = useRef(0);
   const submitting = useRef(false);
   const currentSource = useRef(message);
   const clients = useSalesEmailClients();
   const [clientChoice, setClientChoice] = useState("");
+  const [reviewedClassification, setReviewedClassification] = useState(classificationCode);
   const [state, setState] = useState({ submitting: false, error: message.sourceToken ? "" : "Reload email details before creating the opportunity.", fieldErrors: {}, reloadRequired: !message.sourceToken, reloading: false, refreshed: null });
   useEffect(() => {
     if (!clients.denied) return;
@@ -560,7 +577,7 @@ function MailboxOpportunityForm({ connection, message, onClose, onCreated, onUna
 
   const submit = async (event) => {
     event.preventDefault();
-    if (submitting.current || clients.loading || clients.error || !clientChoice || state.reloadRequired || state.reloading) return;
+    if (submitting.current || clients.loading || clients.error || !clientChoice || state.reloadRequired || state.reloading || !isOpportunityClassification(reviewedClassification)) return;
     if (!clients.records.some((record) => record.id === clientChoice)) return;
     const form = new FormData(event.currentTarget);
     const request = ++actionRequest.current;
@@ -572,6 +589,8 @@ function MailboxOpportunityForm({ connection, message, onClose, onCreated, onUna
       const result = await salesService.convertMailboxMessage(connection.id, {
         message_id: source.id,
         source_token: source.sourceToken,
+        classification_code: reviewedClassification,
+        classification_confirmed: true,
         deal_name: form.get("deal_name"),
         client: clientChoice,
         client_reference: form.get("client_reference"),
@@ -609,10 +628,13 @@ function MailboxOpportunityForm({ connection, message, onClose, onCreated, onUna
       };
       const alreadyConverted = status === 409 && error?.response?.data?.code === "email_already_converted";
       const tokenInvalid = status === 400 && Boolean(error?.response?.data?.source_token);
+      const classificationInvalid = status === 400 && Boolean(error?.response?.data?.classification_code || error?.response?.data?.classification_confirmed);
+      if (classificationInvalid) { setReviewedClassification(""); onClassificationChange(""); }
       setState((current) => ({
         ...current,
         error: alreadyConverted
           ? "An opportunity already exists for this email with different details. Your entries have been kept."
+          : classificationInvalid ? "Confirm the email classification before creating an opportunity."
           : tokenInvalid
             ? "Reload email details before creating the opportunity."
             : messages[status] || "Opportunity creation could not be confirmed. Try again.",
@@ -643,6 +665,8 @@ function MailboxOpportunityForm({ connection, message, onClose, onCreated, onUna
         return;
       }
       currentSource.current = refreshed;
+      setReviewedClassification("");
+      onClassificationChange("");
       onSourceReloaded(refreshed);
       setState((current) => ({ ...current, reloading: false, reloadRequired: false, error: "", fieldErrors: {}, refreshed }));
     } catch (error) {
@@ -669,10 +693,17 @@ function MailboxOpportunityForm({ connection, message, onClose, onCreated, onUna
     loadingClients={clients.loading}
     clientError={clients.error}
     onRetryClients={clients.load}
-    requireSourceReload={state.reloadRequired}
+    requireSourceReload={state.reloadRequired || !isOpportunityClassification(reviewedClassification)}
     onReloadEmail={state.reloadRequired ? reloadEmail : null}
     reloadingEmail={state.reloading}
-    reviewPanel={state.refreshed && <div className="mb-4 min-w-0 rounded-md border border-blue-200 bg-blue-50 p-3">
+    reviewPanel={<>
+      {(state.refreshed || !isOpportunityClassification(reviewedClassification)) && <SalesEmailReview key={state.refreshed?.sourceToken || message.sourceToken}
+        disabled={state.submitting || state.reloading}
+        information={(state.refreshed || message).information} subject={(state.refreshed || message).subject}
+        confirmedClassification={reviewedClassification} canCreateOpportunity={false}
+        onConfirmClassification={(code) => { setReviewedClassification(code); onClassificationChange(code); }}
+        onClassificationChange={() => { setReviewedClassification(""); onClassificationChange(""); }} />}
+      {state.refreshed && <div className="mb-4 min-w-0 rounded-md border border-blue-200 bg-blue-50 p-3">
       <p role="status" className="text-sm text-blue-900">Email details reloaded. Review the updated email and your entries.</p>
       <details className="mt-2 min-w-0">
         <summary className="w-fit cursor-pointer py-1 text-sm font-semibold text-blue-900">Review refreshed email</summary>
@@ -683,6 +714,7 @@ function MailboxOpportunityForm({ connection, message, onClose, onCreated, onUna
         </div>
       </details>
     </div>}
+    </>}
   />;
 }
 
@@ -697,6 +729,8 @@ MailboxEmails.propTypes = {
 MailboxOpportunityForm.propTypes = {
   connection: MailboxEmails.propTypes.connection,
   message: PropTypes.object.isRequired,
+  classificationCode: PropTypes.string.isRequired,
+  onClassificationChange: PropTypes.func.isRequired,
   onClose: PropTypes.func.isRequired,
   onCreated: PropTypes.func.isRequired,
   onUnavailable: PropTypes.func.isRequired,
