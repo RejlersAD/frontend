@@ -308,7 +308,7 @@ function MailboxEmails({ connection }) {
     }
   }, [detail.message, selectedId, nextStepMessageId, focusNextStep]);
 
-  const loadMessage = async (record, openNextStep = false) => {
+  const loadMessage = useCallback(async (record, openNextStep = false) => {
     setConfirmedClassification("");
     const currentRequest = ++detailRequest.current;
     const active = () => mounted.current && currentRequest === detailRequest.current;
@@ -343,11 +343,13 @@ function MailboxEmails({ connection }) {
       }
       setDetail({ message: null, loading: false, error: "Email could not be loaded. Try again." });
     }
-  };
+  }, [connection.id]);
 
   const openNextStep = (record) => {
     if (detail.message?.id === record.id && !detail.loading) {
       focusNextStep();
+    } else if (selectedId === record.id && detail.loading) {
+      setNextStepMessageId(record.id);
     } else {
       loadMessage(record, true);
     }
@@ -364,6 +366,11 @@ function MailboxEmails({ connection }) {
         .some((value) => value.toLocaleLowerCase().includes(query));
     });
   }, [page.records, readFilter, search]);
+  useEffect(() => {
+    if (!page.loading && !page.error && selectedId === null && visibleRecords.length) {
+      loadMessage(visibleRecords[0]);
+    }
+  }, [page.loading, page.error, selectedId, visibleRecords, loadMessage]);
   const changeFilter = (nextFilter, nextSearch = search) => {
     setConfirmedClassification("");
     detailRequest.current += 1;
@@ -449,7 +456,9 @@ function MailboxEmails({ connection }) {
                 type="button"
                 aria-label={`Open email: ${record.subject || "No subject"}`}
                 aria-pressed={selectedId === record.id}
-                onClick={() => loadMessage(record)}
+                onClick={() => {
+                  if (selectedId !== record.id || (!detail.loading && !detail.message)) loadMessage(record);
+                }}
                 className="sales-email-row-open"
               >
                 <span className="flex min-w-0 items-start justify-between gap-3">

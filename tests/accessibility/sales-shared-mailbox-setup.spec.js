@@ -113,7 +113,7 @@ async function prepare(page, options = {}) {
     return route.fulfill({ status: response.status ?? 200, json: response.body })
   })
   await page.goto('/tests/fixtures/sales-shared-mailbox-setup.html')
-  await expect(page.getByRole('heading', { name: 'Email Intake', exact: true })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Email Intake workspace', exact: true })).toBeVisible()
   return state
 }
 

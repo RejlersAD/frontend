@@ -20,12 +20,7 @@
 .sales-email-workspace :is(button, select, input, summary, [tabindex]):focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
 .sales-email-workspace :is(input:not([type="checkbox"]), select) { height: 36px; min-height: 36px; padding-top: 6px; padding-bottom: 6px; border-radius: 6px; }
 .sales-email-workspace .sales-email-body { font-family: inherit; font-size: 14px; }
-.sales-email-page-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; flex-shrink: 0; margin-bottom: 16px; }
-.sales-email-breadcrumb { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; color: #526681; font-size: 12px; }
-.sales-email-breadcrumb button { border-radius: 3px; }
-.sales-email-breadcrumb button:hover { text-decoration: underline; }
-.sales-email-page-header h1 { color: var(--email-navy); font-size: 28px; line-height: 36px; font-weight: 650; letter-spacing: -.6px; }
-.sales-email-page-header p { color: #526681; font-size: 14px; }
+.sales-email-workspace-actions { display: flex; justify-content: flex-end; flex-shrink: 0; margin-bottom: 16px; }
 .sales-email-view,
 .sales-email-mailbox,
 .sales-email-preview,
