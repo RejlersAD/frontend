@@ -363,6 +363,8 @@ const Sidebar = ({
           description: subFeature.description,
           moduleCode: subFeature.moduleCode,
           badge: subFeature.badge,
+          // SOFT-CODED: propagate enabled:false so hidden features stay hidden even for super admin
+          enabled: subFeature.enabled,
         })),
       })),
     },

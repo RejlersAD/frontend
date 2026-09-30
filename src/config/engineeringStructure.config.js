@@ -84,7 +84,9 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/process/pfd-quality-checker',
         description: 'Deterministic PFD quality checks — equipment tags, streams, title block & safety',
         moduleCode: 'pfd_quality',
-        badge: ''
+        badge: '',
+        // SOFT-CODED: hidden for ALL users (incl. super admin) — parked for now
+        enabled: false
       },
       // SOFT-CODED: PFD Verification disabled — source files preserved
       // {
@@ -105,7 +107,9 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/process/datasheet',
         description: 'Process equipment datasheets',
         moduleCode: 'process_datasheet',
-        badge: ''
+        badge: '',
+        // SOFT-CODED: hidden for ALL users (incl. super admin) — under development
+        enabled: false
       },
       {
         id: 'hmbExtractor',
@@ -222,7 +226,9 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/instrument/datasheet',
         description: 'Instrument specification datasheets',
         moduleCode: 'instrument_datasheet',
-        badge: ''
+        badge: '',
+        // SOFT-CODED: hidden for ALL users (incl. super admin) — under development
+        enabled: false
       }
     ]
   },
@@ -258,7 +264,7 @@ export const ENGINEERING_DISCIPLINES = {
         moduleCode: 'electrical_checklist',
         badge: ''
       },
-      // SOFT-CODED: Electrical Datasheet - RE-ENABLED
+      // SOFT-CODED: Electrical Datasheet hidden for ALL users (incl. super admin) — under development
       {
         id: 'electricalDatasheets',
         name: 'Datasheets',
@@ -267,7 +273,8 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/electrical/datasheet',
         description: '27 electrical engineering initiatives - Datasheets, diagrams, layouts, schedules',
         moduleCode: 'electrical_datasheet',
-        badge: ''
+        badge: '',
+        enabled: false
       }
     ]
   },
