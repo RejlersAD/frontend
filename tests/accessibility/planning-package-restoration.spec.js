@@ -8,7 +8,7 @@ test.setTimeout(60000)
 test.use({ viewport: { width: 1672, height: 941 } })
 const mode = (page, name) => page.getByRole('navigation', { name: 'Schedule workspace', exact: true }).getByRole('button', { name, exact: true })
 const area = (page, name) => page.getByRole('navigation', { name: 'Planning workspace areas', exact: true }).getByRole('button', { name, exact: true })
-const settings = page => page.getByRole('dialog', { name: /^AI Settings \(BYOK\)/ })
+const settings = page => page.getByRole('dialog', { name: /^AI Settings/ })
 const activityName = page => page.getByRole('textbox', { name: 'PIP-014 activity name', exact: true })
 
 async function harness(page, options = {}) {

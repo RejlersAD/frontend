@@ -12,6 +12,7 @@ import useSidebarDrawer from "../../hooks/useSidebarDrawer";
 import "./Sidebar.css";
 import { FEATURE_FLAGS } from "../../config/features.config";
 import { canManageReplica } from "../../services/fileReplica.service";
+import { canManageAIKeys } from "../../services/aiAPIKeys.service";
 import {
   QHSE_MODULE_LABELS,
 } from "../../config/qhseModules.config";
@@ -927,6 +928,13 @@ const Sidebar = ({
           icon: FolderIcon,
           path: "/admin/file-server-replica",
           description: "Server connections, project folders, and synchronization",
+        }] : []),
+        ...(canManageAIKeys(user) ? [{
+          id: "aiAPIKeys",
+          title: "9.8 AI API Keys",
+          icon: ShieldCheckIcon,
+          path: "/admin/ai-api-keys",
+          description: "Central AI provider credentials and connection tests",
         }] : []),
         // SOFT-CODED: Subscription feature disabled for in-house deployment
         // {

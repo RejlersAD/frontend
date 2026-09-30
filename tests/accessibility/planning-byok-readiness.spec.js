@@ -9,7 +9,7 @@ const providers = [
   { value: 'anthropic', label: 'Anthropic (Claude)', default_model: 'fixture-claude', model_choices: [{ value: 'fixture-claude', label: 'Fixture Claude' }] },
   { value: 'gemini', label: 'Google Gemini', default_model: 'fixture-gemini', model_choices: [{ value: 'fixture-gemini', label: 'Fixture Gemini' }, { value: 'fixture-gemini-alternative', label: 'Fixture Gemini alternative' }] },
 ]
-const dialog = page => page.getByRole('dialog', { name: /^AI Settings \(BYOK\)/ })
+const dialog = page => page.getByRole('dialog', { name: /^AI Settings/ })
 const keyInput = settings => settings.locator('input[type="password"]')
 
 function deferred() {
@@ -145,6 +145,8 @@ test('BYOK save persists before testing and keeps the dialog open through both p
 })
 
 test('BYOK denied save retains the typed key and selected model without testing until an explicit successful retry', async ({ page }) => {
+  const logs = []
+  page.on('console', message => logs.push(message.text()))
   const state = await harness(page, { settings: { key_configured: false } })
   state.aiSaveError = { status: 403, body: { detail: 'You do not have permission to update AI settings.' } }
   const settings = await openSettings(page)
@@ -158,6 +160,7 @@ test('BYOK denied save retains the typed key and selected model without testing 
   await expect(settings.getByRole('button', { name: 'Test Connection', exact: true })).toBeDisabled()
   await expect(settings.getByText(ready, { exact: true })).toHaveCount(0)
   expect(state.aiCalls.map(call => call.action)).toEqual(['save'])
+  expect(logs.join('\n')).not.toContain(fixtureKey)
   state.aiSaveError = null
   await settings.getByRole('button', { name: 'Save Settings', exact: true }).click()
   await expectReady(settings)
@@ -198,7 +201,7 @@ test('BYOK readiness is invalidated immediately when model, key, enabled state o
   const settings = await openSettings(page)
   const connection = settings.getByRole('button', { name: 'Test Connection', exact: true })
   const model = settings.getByRole('combobox', { name: 'AI model', exact: true })
-  const enabled = settings.getByRole('checkbox', { name: 'Enable AI BYOK for this project', exact: true })
+  const enabled = settings.getByRole('checkbox', { name: 'Enable AI for this project', exact: true })
   const provider = settings.getByRole('combobox', { name: 'AI provider', exact: true })
   const edits = [
     { apply: () => model.selectOption('fixture-gemini-alternative'), restore: () => model.selectOption('fixture-gemini') },
@@ -224,7 +227,7 @@ test('BYOK readiness is invalidated immediately when model, key, enabled state o
 test('BYOK disabled settings save without a connection test or ready claim and allow idle Escape and backdrop close', async ({ page }) => {
   const state = await harness(page)
   const settings = await openSettings(page)
-  await settings.getByRole('checkbox', { name: 'Enable AI BYOK for this project', exact: true }).uncheck()
+  await settings.getByRole('checkbox', { name: 'Enable AI for this project', exact: true }).uncheck()
   await settings.getByRole('button', { name: 'Save Settings', exact: true }).click()
   await expect(settings.getByRole('status')).toHaveText('Settings saved. AI is disabled for this project.')
   await expect(settings.getByRole('button', { name: 'Test Connection', exact: true })).toBeDisabled()
@@ -250,7 +253,7 @@ test('BYOK removing the stored key clears verified readiness and an enabled save
   await expect(settings.getByRole('button', { name: 'Test Connection', exact: true })).toBeDisabled()
   await expect(settings.getByText(ready, { exact: true })).toHaveCount(0)
   await settings.getByRole('button', { name: 'Save Settings', exact: true }).click()
-  await expect(settings.getByRole('status')).toHaveText('Settings saved. Configure an API key and test the connection before analysis.')
+  await expect(settings.getByRole('status')).toHaveText('Settings saved. Configure a provider connection and test it before analysis.')
   expect(state.aiCalls.map(call => call.action)).toEqual(['test', 'remove', 'save'])
   expect(state.aiSettings.key_configured).toBe(false)
   clean(state)

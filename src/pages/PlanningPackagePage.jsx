@@ -98,6 +98,7 @@ const planningProjectDraft = (enterpriseProject) => ({
   planned_end_date: enterpriseProject?.end_date || '',
 });
 
+const AI_SETTINGS_REQUEST = { sensitiveRequest: true, suppressErrorToast: true };
 const planningAiSettingsForm = (settings) => ({
   enabled: Boolean(settings?.enabled),
   provider: settings?.provider || 'anthropic',
@@ -336,12 +337,13 @@ const PlanningPackagePage = ({ embedded = false, documentWorkflow = false, enter
     model_choices: aiSettings?.model_choices || CLAUDE_MODEL_OPTIONS,
   }];
   const selectedAiProvider = aiProviderChoices.find(provider => provider.value === aiSettingsForm.provider);
+  const aiCentrallyManaged = Boolean(selectedAiProvider?.centrally_managed);
   const savedAiProvider = aiProviderChoices.find(provider => provider.value === (aiSettings?.provider || 'anthropic'));
   const savedAiForm = planningAiSettingsForm(aiSettings);
   const aiProviderChanged = aiSettingsForm.provider !== savedAiForm.provider;
   const aiSettingsDirty = aiProviderChanged || aiSettingsForm.enabled !== savedAiForm.enabled
     || aiSettingsForm.model !== savedAiForm.model || Boolean(aiSettingsForm.apiKey.trim());
-  const aiReplacementKeyRequired = aiProviderChanged && aiSettings?.key_configured && !aiSettingsForm.apiKey.trim();
+  const aiReplacementKeyRequired = aiProviderChanged && aiSettings?.key_configured && !aiSettingsForm.apiKey.trim() && !aiCentrallyManaged;
   const aiSettingsUnavailable = loadingAiSettings || Boolean(aiSettingsLoadError) || aiSettingsProjectId !== selectedProjectId;
   const canTestAiConnection = Boolean(!aiSettingsUnavailable && aiSettings?.enabled && aiSettings?.key_configured && !aiSettingsDirty);
 
@@ -510,7 +512,7 @@ const PlanningPackagePage = ({ embedded = false, documentWorkflow = false, enter
     setAiSettingsForm(planningAiSettingsForm(null));
     setTestResult(null);
     try {
-      const res = await apiClient.get(PLANNING_ENDPOINTS.aiSettings(projectId));
+      const res = await apiClient.get(PLANNING_ENDPOINTS.aiSettings(projectId), AI_SETTINGS_REQUEST);
       if (!isCurrent()) return;
       setAiSettings(res.data);
       setAiSettingsForm(planningAiSettingsForm(res.data));
@@ -1298,14 +1300,15 @@ const PlanningPackagePage = ({ embedded = false, documentWorkflow = false, enter
     setTestingConnection(true);
     setTestResult(null);
     try {
-      const res = await apiClient.post(PLANNING_ENDPOINTS.aiSettingsTest(selectedProjectId));
+      const res = await apiClient.post(PLANNING_ENDPOINTS.aiSettingsTest(selectedProjectId), {}, AI_SETTINGS_REQUEST);
       const success = res.data?.success === true;
       setTestResult({ success, message: success
         ? 'Settings saved. Connection established. AI is ready for analysis.'
-        : res.data?.message || 'Settings are saved, but the connection test failed. Check the key and test again.' });
+        : res.data?.success === false ? res.data?.message || 'Settings are saved, but the connection test failed. Check the provider configuration and test again.'
+          : 'Connection test did not confirm success. Retry the test or ask your administrator to check the provider.' });
     } catch (err) {
       setTestResult({ success: false, message: aiSettingsErrorMessage(err,
-        'Settings are saved, but the connection test failed. Check the key and test again.') });
+        'Settings are saved, but the connection test failed. Check the provider configuration and test again.') });
     } finally {
       setTestingConnection(false);
     }
@@ -1332,7 +1335,7 @@ const PlanningPackagePage = ({ embedded = false, documentWorkflow = false, enter
     try {
       const payload = { enabled: aiSettingsForm.enabled, provider: aiSettingsForm.provider, model: aiSettingsForm.model };
       if (aiSettingsForm.apiKey.trim()) payload.api_key = aiSettingsForm.apiKey.trim();
-      const res = await apiClient.post(PLANNING_ENDPOINTS.aiSettings(selectedProjectId), payload);
+      const res = await apiClient.post(PLANNING_ENDPOINTS.aiSettings(selectedProjectId), payload, AI_SETTINGS_REQUEST);
       setAiSettings(res.data);
       setAiSettingsForm(planningAiSettingsForm(res.data));
       setProjects(prev => prev.map(p => (p.id === selectedProjectId
@@ -1342,8 +1345,9 @@ const PlanningPackagePage = ({ embedded = false, documentWorkflow = false, enter
         setSavingAiSettings(false);
         await testSavedAiConnection();
       } else {
-        setTestResult({ success: false, type: 'info', message: res.data.enabled
-          ? 'Settings saved. Configure an API key and test the connection before analysis.'
+        setTestResult({ success: false, type: 'info', message: res.data.credential_source === 'administrator' && !res.data.key_configured
+          ? 'Settings saved. The administrator-managed connection is unavailable. Ask your administrator to check the provider.'
+          : res.data.enabled ? 'Settings saved. Configure a provider connection and test it before analysis.'
           : 'Settings saved. AI is disabled for this project.' });
       }
     } catch (err) {
@@ -1358,7 +1362,7 @@ const PlanningPackagePage = ({ embedded = false, documentWorkflow = false, enter
     setSavingAiSettings(true);
     setTestResult(null);
     try {
-      const res = await apiClient.delete(PLANNING_ENDPOINTS.aiSettings(selectedProjectId));
+      const res = await apiClient.delete(PLANNING_ENDPOINTS.aiSettings(selectedProjectId), AI_SETTINGS_REQUEST);
       setAiSettings(res.data);
       setAiSettingsForm(planningAiSettingsForm(res.data));
       setTestResult({ success: false, type: 'info', message: 'API key removed. Configure and test a key to use AI analysis.' });
@@ -1566,7 +1570,7 @@ const PlanningPackagePage = ({ embedded = false, documentWorkflow = false, enter
           {aiSettings && (
             <span className={`px-2.5 py-1 rounded-full text-sm font-semibold ${aiSettings.enabled && aiSettings.key_configured ? 'bg-violet-50 text-violet-700 border border-violet-200' : 'bg-slate-50 text-slate-500 border border-slate-200'}`}>
               {aiSettings.enabled && aiSettings.key_configured
-                ? `🤖 ${savedAiProvider?.model_choices?.find(m => m.value === aiSettings.model)?.label.split(' (')[0] || savedAiProvider?.label || 'AI'} BYOK Active`
+                ? `🤖 ${savedAiProvider?.model_choices?.find(m => m.value === aiSettings.model)?.label.split(' (')[0] || savedAiProvider?.label || 'AI'} configured`
                 : '🧮 Deterministic mode'}
             </span>
           )}
@@ -1823,12 +1827,12 @@ const PlanningPackagePage = ({ embedded = false, documentWorkflow = false, enter
         >
           <div className="flex items-center gap-2 mb-1">
             <span className="text-xl">🤖</span>
-            <h2 id="planning-ai-settings-title" className="font-semibold text-slate-800">AI Settings (BYOK) — {selectedProject.name}</h2>
+            <h2 id="planning-ai-settings-title" className="font-semibold text-slate-800">AI Settings — {selectedProject.name}</h2>
           </div>
           <p className="text-sm text-slate-600 mb-4">
-            Bring your own API key to augment document intelligence and narrative
-            generation for this project. Your key is encrypted at rest and never
-            shown again after saving. Leave the key field blank to keep the stored key for the same provider.
+            Choose the provider for document intelligence and planning suggestions.
+            Administrator-managed connections do not require a personal API key.
+            Existing project connections remain available when the provider is not centrally managed.
           </p>
           <p className="text-sm text-slate-600 mb-4">Save Settings saves your configuration and tests the connection. This dialog stays open to show whether AI is ready for analysis.</p>
 
@@ -1844,7 +1848,7 @@ const PlanningPackagePage = ({ embedded = false, documentWorkflow = false, enter
                 disabled={aiSettingsUnavailable || savingAiSettings || testingConnection}
                 onChange={e => { setTestResult(null); setAiSettingsForm(prev => ({ ...prev, enabled: e.target.checked })); }}
               />
-              Enable AI BYOK for this project
+              Enable AI for this project
             </label>
 
             <label className="block text-sm">
@@ -1877,7 +1881,7 @@ const PlanningPackagePage = ({ embedded = false, documentWorkflow = false, enter
               </select>
             </label>
 
-            <label className="block text-sm">
+            {aiCentrallyManaged ? <p role="status" className="text-sm text-slate-600">{selectedAiProvider.central_ready ? 'Connection managed by your administrator.' : 'The administrator-managed connection is unavailable.'}</p> : <label className="block text-sm">
               <span className="block text-sm font-semibold text-slate-600 mb-1">
                 {selectedAiProvider?.label || 'AI'} API Key {aiSettings?.key_configured && !aiProviderChanged && <span className="text-emerald-600 font-normal">(key configured ✓ — leave blank to keep it)</span>}
               </span>
@@ -1891,7 +1895,7 @@ const PlanningPackagePage = ({ embedded = false, documentWorkflow = false, enter
                 onChange={e => { setTestResult(null); setAiSettingsForm(prev => ({ ...prev, apiKey: e.target.value })); }}
               />
               {aiProviderChanged && aiSettings?.key_configured && <span className="mt-1 block text-xs text-amber-700">Enter a new API key for {selectedAiProvider?.label || 'the selected provider'}. Your saved key belongs to {savedAiProvider?.label || 'the previous provider'}.</span>}
-            </label>
+            </label>}
 
             {aiSettingsDirty && <p className="text-xs text-slate-600">Save settings to test the selected provider, model and key. Unsaved changes have not been tested.</p>}
             {testResult && (
@@ -1924,14 +1928,14 @@ const PlanningPackagePage = ({ embedded = false, documentWorkflow = false, enter
 
           <div className="flex flex-wrap gap-2 justify-between mt-6">
             <div className="flex gap-2">
-              <button
+              {aiSettings?.credential_source !== 'administrator' && <button
                 type="button"
                 onClick={handleRemoveAiKey}
                 disabled={aiSettingsUnavailable || savingAiSettings || testingConnection || !aiSettings?.key_configured}
                 className="px-3.5 py-2 text-sm font-medium rounded-xl border-2 border-rose-200 text-rose-600 hover:bg-rose-50 disabled:opacity-40 transition-colors"
               >
                 Remove Key
-              </button>
+              </button>}
               <button
                 type="button"
                 onClick={handleTestAiConnection}

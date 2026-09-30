@@ -1,3 +1,5 @@
+import useAIProviderStatus from '../../../hooks/useAIProviderStatus';
+import PlatformAIStatus from '../../../components/ai/PlatformAIStatus';
 import { radaiAlert } from '../../../services/radaiDialog'
 /**
  * Electrical Check List Page
@@ -105,11 +107,12 @@ const ElectricalCheckList = () => {
 
   // BYOK — user-supplied OpenAI API key (optional). Never sent anywhere except
   // to our own /extract-handwriting/ endpoint; never persisted server-side.
+  const platformAI = useAIProviderStatus('openai');
   const [userApiKey, setUserApiKey] = useState(() => {
     try {
       const cfg = EXTRACTION_CONFIG.handwriting;
       if (cfg?.allowUserApiKey && cfg?.apiKeyStorage === 'session') {
-        return sessionStorage.getItem(cfg.apiKeyStorageKey) || '';
+        return null || '';
       }
     } catch (_) { /* ignore */ }
     return '';
@@ -397,7 +400,7 @@ const ElectricalCheckList = () => {
         if (hwCfg.allowUserApiKey && userApiKey?.trim()) {
           formData.append('openai_api_key', userApiKey.trim());
           if (hwCfg.apiKeyStorage === 'session') {
-            try { sessionStorage.setItem(hwCfg.apiKeyStorageKey, userApiKey.trim()); } catch (_) {}
+            try { undefined; } catch (_) {}
           }
         }
       }
@@ -1302,7 +1305,7 @@ const ElectricalCheckList = () => {
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                         {EXTRACTION_CONFIG.handwriting.modes.map((mode) => {
                           const isSelected = extractionMode === mode.id;
-                          const isDisabled = mode.requiresApiKey && !userApiKey?.trim();
+                          const isDisabled = mode.requiresApiKey && !platformAI.canUseAI;
                           return (
                             <button
                               key={mode.id}
@@ -1345,7 +1348,8 @@ const ElectricalCheckList = () => {
                     </div>
                   )}
 
-                  {/* Inspector attribution + optional user API key (BYOK) */}
+                  {/* Inspector attribution and server-managed AI. */}
+                  <PlatformAIStatus provider="openai" />
                   <div className="mt-4 p-4 border border-gray-200 rounded-xl bg-gray-50 space-y-3">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1372,43 +1376,7 @@ const ElectricalCheckList = () => {
                       />
                     </div>
 
-                    {EXTRACTION_CONFIG.handwriting?.allowUserApiKey && (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center justify-between">
-                          <span>
-                            Your OpenAI API Key <span className="text-gray-400 font-normal">(optional \u2014 BYOK)</span>
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => setShowApiKey(v => !v)}
-                            className="text-xs text-yellow-700 hover:text-yellow-900"
-                          >
-                            {showApiKey ? 'Hide' : 'Show'}
-                          </button>
-                        </label>
-                        <input
-                          type={showApiKey ? 'text' : 'password'}
-                          value={userApiKey}
-                          onChange={(e) => setUserApiKey(e.target.value)}
-                          placeholder="sk-... (leave empty to use platform key)"
-                          autoComplete="off"
-                          spellCheck={false}
-                          className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent text-sm font-mono ${
-                            userApiKey.trim() && !/^sk-[A-Za-z0-9_\-]{18,}$/.test(userApiKey.trim())
-                              ? 'border-red-400 bg-red-50'
-                              : 'border-gray-300'
-                          }`}
-                        />
-                        {userApiKey.trim() && !/^sk-[A-Za-z0-9_\-]{18,}$/.test(userApiKey.trim()) && (
-                          <p className="mt-1 text-xs text-red-600 font-medium">
-                            This does not look like an OpenAI API key. Valid keys start with <code>sk-</code> and are 20+ characters. Your key will be ignored and the platform key will be used instead.
-                          </p>
-                        )}
-                        <p className="mt-1 text-xs text-gray-500">
-                          Your key is used according to the accuracy mode above (Fast = never, Balanced = only if OCR is weak, Deep / Vision-Only = every page). Held in your browser session and never stored on our servers.
-                        </p>
-                      </div>
-                    )}
+
                   </div>
 
                   <div className="mt-4 flex gap-4">

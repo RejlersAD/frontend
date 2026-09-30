@@ -1,3 +1,4 @@
+import useAIProviderStatus from '../../../../hooks/useAIProviderStatus'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'react-toastify'
 import {
@@ -61,7 +62,8 @@ export default function CrossCheckPanel({ tags, activeLineList, provider, apiKey
   const [filter, setFilter] = useState('all')
   const [expanded, setExpanded] = useState(null)
 
-  const canAi = Boolean(provider && apiKey)
+  const centralAI = useAIProviderStatus(provider)
+  const canAi = centralAI.canUseAI
   const hasTags = Array.isArray(tags) && tags.length > 0
   const disabled = loading || !hasTags || !activeLineList
 
@@ -127,7 +129,7 @@ export default function CrossCheckPanel({ tags, activeLineList, provider, apiKey
         </div>
 
         <label
-          title={canAi ? '' : 'Enter a BYOK API key in the extraction panel first'}
+          title={canAi ? '' : 'Ask your administrator to configure the selected AI provider'}
           style={{
             marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6,
             fontSize: 12, color: canAi ? THEME_TEXT : THEME_MUTED,

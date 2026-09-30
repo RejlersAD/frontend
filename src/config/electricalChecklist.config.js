@@ -229,7 +229,7 @@ export const EXTRACTION_CONFIG = {
   // Handwriting extraction pipeline (soft-coded toggle)
   handwriting: {
     enabled: true,                    // Use new handwriting pipeline instead of legacy stub
-    allowUserApiKey: true,            // BYOK — allow user to supply own OpenAI key from UI
+    allowUserApiKey: false,            // BYOK — allow user to supply own OpenAI key from UI
     apiKeyStorage: 'session',         // 'session' | 'none' — where to remember the key in the browser
     apiKeyStorageKey: 'radai_user_openai_key',
     isSynchronous: true,              // New endpoint returns result inline (no polling needed)
@@ -267,7 +267,7 @@ export const EXTRACTION_CONFIG = {
       {
         id: 'vision_only',
         label: 'Vision-Only',
-        tagline: 'Max accuracy · BYOK',
+        tagline: 'AI vision · server configuration',
         description: 'Skip OCR; go straight to multi-pass GPT-4o Vision. Highest accuracy, highest cost. Provide your own OpenAI key.',
         cost: '$$$',
         accuracy: 'Very High',

@@ -39,7 +39,7 @@ const OVERVIEW_PILLARS = [
   {
     icon: '🧠',
     title: 'Understand',
-    text: 'A deterministic rule engine extracts scope, disciplines, deliverables and milestones, then the project’s required BYOK Claude configuration augments the result.',
+    text: 'A rule engine extracts scope, disciplines, deliverables and milestones. The selected AI provider adds reviewable suggestions using the administrator-managed connection or an existing project connection.',
     accent: 'from-violet-500 to-purple-600',
   },
   {
@@ -68,7 +68,7 @@ const TIPS = [
 const FAQ = [
   {
     q: 'Does any of my data leave the platform?',
-    a: 'Yes. Analysis and generation require a project-level Anthropic BYOK configuration. The API key is encrypted with the dedicated server encryption key and is never returned by the API.',
+    a: 'AI analysis sends authorized source content to the selected provider. Administrators can configure shared provider credentials; users do not need to enter a key when that connection is available. Saved credentials are encrypted and never returned by the API.',
   },
   {
     q: 'Can I edit the WBS or activities after generation?',

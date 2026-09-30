@@ -84,6 +84,7 @@ import WrenchIntegration from './pages/WrenchIntegration'
 import AIChampion from './pages/Admin/AIAdoptionDashboard'
 import EnquiryManagement from './pages/Admin/EnquiryManagement'
 import FileServerReplica from './pages/Admin/FileServerReplica'
+import AIAPIKeys from './pages/Admin/AIAPIKeys'
 import EnquiryDetail from './pages/Admin/EnquiryDetail'
 import MyEnquiries from './pages/MyEnquiries'
 import MyEnquiryDetail from './pages/MyEnquiryDetail'
@@ -1610,6 +1611,7 @@ function App() {
           path="admin/file-server-replica"
           element={<ProtectedRoute><FileServerReplica /></ProtectedRoute>}
         />
+        <Route path="admin/ai-api-keys" element={<ProtectedRoute><AIAPIKeys /></ProtectedRoute>} />
         <Route
           path="admin/enquiries/:id"
           element={
