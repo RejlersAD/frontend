@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import {
   NavLink,
@@ -30,6 +30,8 @@ import SalesActionDialog from "./SalesActionDialog";
 import SalesOpportunityHistory from "./SalesOpportunityHistory";
 import SalesOpportunityRegistrationDialog from "./SalesOpportunityRegistrationDialog";
 import { opportunityMoney } from "./salesOpportunityRegistration";
+import SalesOpportunityRegister from "./SalesOpportunityRegister.jsx";
+import { loadOpportunityRegister } from "./salesOpportunityRegister.js";
 
 const AREAS = {
   opportunities: {
@@ -43,7 +45,7 @@ const AREAS = {
       "Proposal work follows minimum qualification",
       "Lost work requires a recorded reason",
     ],
-    load: () => salesService.getDeals({ page_size: 500 }),
+    load: () => loadOpportunityRegister((params) => salesService.getDeals(params)),
     loadCount: () => salesService.getDeals({ page_size: 1 }),
     get: (id) => salesService.getDeal(id),
     update: (id, payload) => salesService.patchDeal(id, payload),
@@ -600,6 +602,8 @@ function RecordDrawer({
   onChange,
   onSave,
   error,
+  loadError = "",
+  onRetry,
   actions,
   onAction,
 }) {
@@ -653,6 +657,11 @@ function RecordDrawer({
             <p className="py-12 text-center text-sm text-slate-500">
               Loading record...
             </p>
+          ) : loadError ? (
+            <div className="space-y-3 py-10 text-center text-sm text-slate-600">
+              <p>The full record is unavailable. Reload it before editing or taking an action.</p>
+              <button type="button" className="rounded-md border border-slate-300 px-4 py-2 font-semibold text-blue-700" onClick={onRetry}>Retry record</button>
+            </div>
           ) : editing ? (
             <form
               id="sales-record-form"
@@ -741,7 +750,7 @@ function RecordDrawer({
               ))}
             </dl>
           )}
-          {!editing && actions.length > 0 && (
+          {!loading && !editing && !loadError && actions.length > 0 && (
             <section className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-4">
               <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">
                 Governed actions
@@ -760,7 +769,7 @@ function RecordDrawer({
               </div>
             </section>
           )}
-          {!editing && config.title === "Opportunity" && (
+          {!loading && !editing && !loadError && config.title === "Opportunity" && (
             <SalesOpportunityHistory events={record?.stage_history} />
           )}
           {!editing && locked && (
@@ -806,7 +815,7 @@ function RecordDrawer({
                 >
                   Close
                 </button>
-                {!locked && (
+                {!locked && !loadError && (
                   <button
                     key="edit-record"
                     type="button"
@@ -836,6 +845,10 @@ export default function SalesLifecycleArea() {
   const [error, setError] = useState("");
   const [record, setRecord] = useState(null);
   const [recordLoading, setRecordLoading] = useState(false);
+  const [recordError, setRecordError] = useState("");
+  const [fullRecordOpen, setFullRecordOpen] = useState(false);
+  const recordRequest = useRef(0);
+  const listRequest = useRef(0);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({});
   const [saving, setSaving] = useState(false);
@@ -846,29 +859,46 @@ export default function SalesLifecycleArea() {
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState("");
 
+  useEffect(() => {
+    ++recordRequest.current;
+    setRecord(null); setRecordError(""); setFullRecordOpen(false);
+    setRows([]); setQuery(""); setError(""); setEditing(false);
+    setRegistrationOpen(false); setActionDialog(null);
+  }, [area]);
+
   const load = useCallback(async () => {
     if (!config) return;
+    const request = ++listRequest.current;
     setLoading(true);
     setError("");
     try {
       const data = await config.load();
+      if (request !== listRequest.current) return;
       setRows(list(data));
       setWorkspaceCounts((current) => ({ ...current, [area]: count(data) }));
+      return list(data);
     } catch (requestError) {
+      if (request !== listRequest.current) return;
+      setRows([]);
+      if (area === "opportunities") { ++recordRequest.current; setRecord(null); setFullRecordOpen(false); }
       setError(
         requestError?.response?.data?.detail ||
+          requestError?.message ||
           `${config.title} records could not be loaded.`,
       );
     } finally {
-      setLoading(false);
+      if (request === listRequest.current) setLoading(false);
     }
   }, [area, config]);
 
   useEffect(() => {
+    const requests = [listRequest, recordRequest];
     load();
+    return () => { requests.forEach((request) => { ++request.current; }); };
   }, [load]);
 
   useEffect(() => {
+    if (area === "opportunities") return undefined;
     let mounted = true;
     Promise.allSettled(
       FLOW.map(async ([id]) => [id, count(await AREAS[id].loadCount())]),
@@ -885,29 +915,50 @@ export default function SalesLifecycleArea() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [area]);
 
   const openRecord = useCallback(
-    async (rowOrId) => {
+    async (rowOrId, showFull = true) => {
       if (!config) return;
       const id = typeof rowOrId === "string" ? rowOrId : rowOrId.id;
+      const request = ++recordRequest.current;
       setRecord(typeof rowOrId === "string" ? { id } : rowOrId);
       setRecordLoading(true);
+      setRecordError("");
+      setFullRecordOpen(showFull);
       setEditing(false);
       setSearchParams({ record: id }, { replace: true });
       try {
-        setRecord(await config.get(id));
+        const detail = await config.get(id);
+        if (request === recordRequest.current) setRecord(detail);
       } catch (requestError) {
-        setError(
+        if (request !== recordRequest.current) return;
+        setRecordError(
           requestError?.response?.data?.detail ||
             `${config.title} record could not be loaded.`,
         );
       } finally {
-        setRecordLoading(false);
+        if (request === recordRequest.current) setRecordLoading(false);
       }
     },
     [config, setSearchParams],
   );
+
+  const selectOpportunity = useCallback((row) => openRecord(row, false), [openRecord]);
+
+  const refreshOpportunities = async () => {
+    const selectedId = record?.id;
+    const request = recordRequest.current;
+    const refreshed = await load();
+    if (!refreshed || !selectedId || request !== recordRequest.current) return;
+    if (refreshed.some((row) => row.id === selectedId)) {
+      await openRecord(selectedId, fullRecordOpen);
+    } else {
+      ++recordRequest.current;
+      setRecord(null); setRecordError(""); setFullRecordOpen(false); setEditing(false);
+      setSearchParams({}, { replace: true });
+    }
+  };
 
   useEffect(() => {
     const recordId = searchParams.get("record");
@@ -915,12 +966,15 @@ export default function SalesLifecycleArea() {
   }, [openRecord, record?.id, searchParams]);
 
   const closeRecord = useCallback(() => {
+    if (area === "opportunities") { setFullRecordOpen(false); setEditing(false); return; }
+    ++recordRequest.current;
     setRecord(null);
     setEditing(false);
     setSearchParams({}, { replace: true });
-  }, [setSearchParams]);
+  }, [area, setSearchParams]);
 
   const beginEdit = () => {
+    if (recordLoading || recordError) return;
     setError("");
     setDraft(
       Object.fromEntries(
@@ -1273,6 +1327,7 @@ export default function SalesLifecycleArea() {
   };
 
   const openLifecycleAction = (actionId) => {
+    if (!record || recordLoading || recordError) return;
     const confirm = (title, description, execute, submitLabel = title) =>
       showAction({ title, description, execute, submitLabel, fields: [] });
     if (actionId === "qualify")
@@ -1567,11 +1622,16 @@ export default function SalesLifecycleArea() {
     event.preventDefault();
     setActionBusy(true);
     setActionError("");
+    const selectedId = record?.id;
+    const request = recordRequest.current;
     try {
       await actionDialog.execute(actionValues);
       setActionDialog(null);
       await load();
-      if (record) setRecord(await config.get(record.id));
+      if (selectedId && request === recordRequest.current) {
+        const updated = await config.get(selectedId);
+        if (request === recordRequest.current) setRecord(updated);
+      }
     } catch (requestError) {
       setActionError(
         apiError(requestError, `${actionDialog.title} could not be completed.`),
@@ -1613,7 +1673,19 @@ export default function SalesLifecycleArea() {
   ).length;
 
   return (
-    <div className="min-h-full bg-slate-100 p-4 text-slate-950 sm:p-5">
+    <div className={area === "opportunities" ? "sales-opportunities-route" : "min-h-full bg-slate-100 p-4 text-slate-950 sm:p-5"}>
+      {area === "opportunities" ? (
+        <SalesOpportunityRegister
+          rows={rows} loading={loading} error={error}
+          record={record} recordLoading={recordLoading} recordError={recordError}
+          onRefresh={refreshOpportunities} onSelect={selectOpportunity}
+          onRetryRecord={() => record && openRecord(record, false)}
+          onOpenFullRecord={(row) => row && openRecord(row, true)}
+          onEdit={() => { setFullRecordOpen(true); beginEdit(); }}
+          onCreate={openCreate} onAction={openLifecycleAction}
+          actions={lifecycleActions(area, record)} locked={!record || config.locked(record)}
+        />
+      ) : <>
       <header className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
         <div className="flex items-start gap-3">
           <Icon
@@ -1802,8 +1874,9 @@ export default function SalesLifecycleArea() {
           </div>
         </aside>
       </div>
+      </>}
       {registrationOpen && <SalesOpportunityRegistrationDialog onClose={() => setRegistrationOpen(false)} onCreated={(created) => { setRegistrationOpen(false); load(); openRecord(created); }} />}
-      {record && (
+      {record && (area !== "opportunities" || fullRecordOpen) && (
         <RecordDrawer
           config={config}
           record={record}
@@ -1818,8 +1891,10 @@ export default function SalesLifecycleArea() {
             setDraft((current) => ({ ...current, [key]: value }))
           }
           onSave={saveRecord}
-          error={error}
-          actions={lifecycleActions(area, record)}
+          error={recordError || error}
+          loadError={recordError}
+          onRetry={() => openRecord(record, true)}
+          actions={recordError ? [] : lifecycleActions(area, record)}
           onAction={openLifecycleAction}
         />
       )}
@@ -1865,6 +1940,8 @@ RecordDrawer.propTypes = {
   onChange: PropTypes.func.isRequired,
   onSave: PropTypes.func.isRequired,
   error: PropTypes.string,
+  loadError: PropTypes.string,
+  onRetry: PropTypes.func,
   actions: PropTypes.arrayOf(
     PropTypes.shape({
       id: PropTypes.string.isRequired,

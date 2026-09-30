@@ -8,4 +8,9 @@ import EnterpriseSalesWorkspace from '../../src/pages/Sales/EnterpriseSalesWorks
 import '../../src/index.css'
 const store = configureStore({ reducer: { auth: () => ({ isAuthenticated: true, user: { id: 11, user: { id: 11 } } }) } })
 const start = new URLSearchParams(window.location.search).get('overview') ? '/sales' : '/sales/opportunities'
-createRoot(document.getElementById('root')).render(<Provider store={store}><MemoryRouter initialEntries={[start]}><Routes><Route path="/sales" element={<EnterpriseSalesWorkspace />} /><Route path="/sales/:area" element={<SalesLifecycleArea />} /></Routes></MemoryRouter></Provider>)
+const rootElement = document.getElementById('root')
+if (start === '/sales/opportunities') {
+  rootElement.style.height = '100vh'
+  rootElement.classList.add('main-content')
+}
+createRoot(rootElement).render(<Provider store={store}><MemoryRouter initialEntries={[start]}><Routes><Route path="/sales" element={<EnterpriseSalesWorkspace />} /><Route path="/sales/:area" element={<SalesLifecycleArea />} /></Routes></MemoryRouter></Provider>)
