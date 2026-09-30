@@ -21,6 +21,7 @@ import SalesEmailBody from "./SalesEmailBody";
 import SalesEmailDetectedInformation from "./SalesEmailDetectedInformation";
 import SalesEmailAnalysis from "./SalesEmailAnalysis";
 import SalesEmailOpportunityForm from "./SalesEmailOpportunityForm";
+import { registrationFields } from "./salesOpportunityRegistration";
 import SalesEmailReader from "./SalesEmailReader";
 import SalesEmailPageHeader from "./SalesEmailPageHeader";
 import SalesEmailMessageHeader from "./SalesEmailMessageHeader";
@@ -680,10 +681,7 @@ function MailboxOpportunityForm({ connection, message, classificationCode, onCla
         client: createClient ? undefined : clientChoice,
         new_client: createClient ? { company_name: newClientName } : undefined,
         client_reference: form.get("client_reference"),
-        estimated_value: form.get("estimated_value"),
-        currency: form.get("currency"),
-        expected_close_date: form.get("expected_close_date"),
-        submission_due_date: form.get("submission_due_date") || null,
+        ...registrationFields(form),
         scope_type: form.get("scope_type"),
         description: form.get("description"),
       });
@@ -699,7 +697,7 @@ function MailboxOpportunityForm({ connection, message, classificationCode, onCla
       }
       const fieldErrors = {};
       if (status === 400) {
-        for (const name of ["deal_name", "client", "client_reference", "estimated_value", "currency", "expected_close_date", "submission_due_date", "scope_type", "description"]) {
+        for (const name of ["opportunity_type", "open_date", "owner", "deal_name", "client", "client_reference", "estimated_value", "currency", "expected_close_date", "submission_due_date", "scope_type", "description"]) {
           const value = error?.response?.data?.[name];
           const first = Array.isArray(value) ? value[0] : value;
           if (typeof first === "string") fieldErrors[name] = first.slice(0, 500);
@@ -771,6 +769,8 @@ function MailboxOpportunityForm({ connection, message, classificationCode, onCla
 
   return <SalesEmailOpportunityForm
     subject={message.subject}
+    receivedAt={message.received_at}
+    classificationCode={reviewedClassification}
     information={clients.denied ? withoutCustomerMatch(message.information) : message.information}
     clients={clients.records}
     clientChoice={clientChoice}

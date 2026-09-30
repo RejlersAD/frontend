@@ -78,7 +78,8 @@ const Layout = () => {
     || /^\/procurement\/requisitions\/[^/]+\/edit$/.test(location.pathname)
   )
   const isPurchaseOrderFormRoute = location.pathname === '/procurement/orders/new'
-  const isViewportWorkspace = ['/dashboard', '/executive', '/approvals', '/notifications', '/admin/enquiries'].includes(location.pathname)
+  const isOpportunityRegister = location.pathname === '/sales/opportunities'
+  const isViewportWorkspace = ['/dashboard', '/executive', '/approvals', '/notifications', '/admin/enquiries'].includes(location.pathname) || isOpportunityRegister
   const isVendorWorkspace = location.pathname === '/procurement/vendors'
   const isFlushWorkspace = ['/profile', '/hr/Employeprofile'].includes(location.pathname)
   const isFinanceCommandWorkspace = ['/finance', '/finance/'].includes(location.pathname)
@@ -114,7 +115,7 @@ const Layout = () => {
             profilePhotoUrl={authenticatedProfilePhoto}
           />
         )}
-        <main className={`main-content min-w-0 flex-1 overflow-x-hidden transition-all duration-300 ${isApplicationShell ? 'min-h-0' : ''} ${isVendorWorkspace ? 'supplier-workspace-main' : ''} ${isProcurementOverview ? 'procurement-overview-main' : ''} ${isViewportWorkspace ? 'overflow-y-hidden' : isApplicationShell ? 'overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : ''} ${showHeader && !isFlushWorkspace && !isFinanceCommandWorkspace && !isProcurementOverview && !isHRDashboard ? 'pt-2 sm:pt-3' : ''}`}>
+        <main className={`main-content min-w-0 flex-1 overflow-x-hidden transition-all duration-300 ${isApplicationShell ? 'min-h-0' : ''} ${isVendorWorkspace ? 'supplier-workspace-main' : ''} ${isProcurementOverview ? 'procurement-overview-main' : ''} ${isOpportunityRegister ? 'overflow-y-auto min-[1001px]:overflow-y-hidden' : isViewportWorkspace ? 'overflow-y-hidden' : isApplicationShell ? 'overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : ''} ${showHeader && !isFlushWorkspace && !isFinanceCommandWorkspace && !isProcurementOverview && !isHRDashboard && !isOpportunityRegister ? 'pt-2 sm:pt-3' : ''}`}>
           <Outlet />
         </main>
         {showFooter && <Footer />}

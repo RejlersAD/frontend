@@ -98,6 +98,8 @@ async function prepare(page, options = {}) {
       response = state.importedDetailHandler
         ? await state.importedDetailHandler({ request, url })
         : record ? { body: structuredClone(record) } : { status: 404, body: { detail: 'Saved email not found.' } }
+    } else if (url.pathname === '/api/v1/sales/deals/registration-options/') {
+      response = state.registrationHandler ? await state.registrationHandler({ request, url }) : { body: { default_owner: 11, owners: [{ id: 11, name: 'Current reviewer' }, { id: 12, name: 'Assigned reviewer' }], opportunity_types: [{ value: 'tender', label: 'Tender' }, { value: 'rfq', label: 'RFQ' }, { value: 'eoi', label: 'EOI' }, { value: 'direct_enquiry', label: 'Direct enquiry' }, { value: 'other', label: 'Other' }] } }
     } else if (url.pathname === '/api/v1/sales/clients/') {
       response = state.clientHandler
         ? await state.clientHandler({ request, url })
