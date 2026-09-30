@@ -2832,27 +2832,29 @@ export default function IOListWorkflowPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-sky-50/55 to-indigo-50/60">
-      <div className="max-w-[1700px] mx-auto px-4 py-6 space-y-4 relative">
-        <div className="pointer-events-none absolute -top-10 -left-10 w-72 h-72 rounded-full bg-cyan-200/30 blur-3xl" aria-hidden />
-        <div className="pointer-events-none absolute top-20 right-0 w-80 h-80 rounded-full bg-indigo-200/35 blur-3xl" aria-hidden />
+    /* SOFT-CODED: page shell aligned with P&ID Verification V1 — same page
+       gradient (T.bg in PIDVerification.jsx) and full-width canvas. */
+    <div className="min-h-screen" style={{ background: 'linear-gradient(135deg, #f8faff 0%, #eef2ff 45%, #f0f9ff 75%, #fffbeb 100%)' }}>
+      <div className="w-full px-2 sm:px-4 lg:px-6 py-6 space-y-4 relative">
+        <div className="pointer-events-none absolute -top-10 -left-10 w-72 h-72 rounded-full blur-3xl" style={{ background: 'rgba(59,130,246,0.12)' }} aria-hidden />
+        <div className="pointer-events-none absolute top-20 right-0 w-80 h-80 rounded-full blur-3xl" style={{ background: 'rgba(99,102,241,0.12)' }} aria-hidden />
 
         {/* Page banner (visible only on list view) */}
         {!activeDoc && (
           <section className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white/85 backdrop-blur shadow-lg">
-            <div className="pointer-events-none absolute -left-20 -top-24 w-72 h-72 rounded-full bg-cyan-200/35 blur-3xl" aria-hidden />
+            <div className="pointer-events-none absolute -left-20 -top-24 w-72 h-72 rounded-full bg-blue-200/35 blur-3xl" aria-hidden />
             <div className="pointer-events-none absolute -right-24 -bottom-20 w-80 h-80 rounded-full bg-indigo-200/30 blur-3xl" aria-hidden />
             <div className="relative px-6 py-6 flex flex-wrap items-center justify-between gap-4">
               <div className="flex items-center gap-4 min-w-0">
-                <div className="w-14 h-14 rounded-xl bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 text-white flex items-center justify-center flex-shrink-0 shadow-md">
+                <div className="w-14 h-14 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 text-white flex items-center justify-center flex-shrink-0 shadow-md">
                   <Table2 className="w-7 h-7" />
                 </div>
                 <div className="min-w-0">
-                  <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full border border-sky-200 bg-white/70 text-xs font-semibold text-sky-700 mb-1">
+                  <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full border border-blue-200 bg-white/70 text-xs font-semibold text-blue-700 mb-1">
                     <Sparkles className="w-3 h-3" /> Engineering · Instrument
                   </div>
                   <h1 className="text-2xl font-bold truncate">
-                    <span className="bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                    <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 bg-clip-text text-transparent">
                       {PAGE_COPY.title}
                     </span>
                   </h1>

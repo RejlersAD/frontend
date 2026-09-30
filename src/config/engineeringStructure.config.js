@@ -5,6 +5,7 @@
  */
 
 import { ROUTES } from './routes.config'
+import envConfig from './environment.config'
 import {
   BeakerIcon,
   WrenchIcon,
@@ -33,6 +34,16 @@ const PID_NAMING_CONFIG = {
 
 // SOFT-CODED: Toggle visibility of Digitization > Datasheets in frontend navigation
 const ENABLE_DIGITIZATION_DATASHEET_FEATURE = false
+
+// SOFT-CODED: hide Non-TEFF Metadata Generator EVERYWHERE (all environments,
+// incl. local development) — application parked. Sidebar entry and Solutions
+// card hidden for all users incl. super admin. Direct URL access unaffected.
+// Flip to `false` to restore; set NON_TEFF_PROD_ONLY = true to hide only in
+// production while keeping local access.
+const HIDE_NON_TEFF_EVERYWHERE = true
+const NON_TEFF_PROD_ONLY = false
+const NON_TEFF_HIDDEN = HIDE_NON_TEFF_EVERYWHERE
+  || (NON_TEFF_PROD_ONLY && envConfig.getEnvironment() === 'production')
 
 /**
  * Engineering Disciplines Configuration
@@ -84,7 +95,9 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/process/pfd-quality-checker',
         description: 'Deterministic PFD quality checks — equipment tags, streams, title block & safety',
         moduleCode: 'pfd_quality',
-        badge: ''
+        badge: '',
+        // SOFT-CODED: hidden for ALL users (incl. super admin) — parked for now
+        enabled: false
       },
       // SOFT-CODED: PFD Verification disabled — source files preserved
       // {
@@ -105,7 +118,9 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/process/datasheet',
         description: 'Process equipment datasheets',
         moduleCode: 'process_datasheet',
-        badge: ''
+        badge: '',
+        // SOFT-CODED: hidden for ALL users (incl. super admin) — under development
+        enabled: false
       },
       {
         id: 'hmbExtractor',
@@ -222,7 +237,9 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/instrument/datasheet',
         description: 'Instrument specification datasheets',
         moduleCode: 'instrument_datasheet',
-        badge: ''
+        badge: '',
+        // SOFT-CODED: hidden for ALL users (incl. super admin) — under development
+        enabled: false
       }
     ]
   },
@@ -258,7 +275,7 @@ export const ENGINEERING_DISCIPLINES = {
         moduleCode: 'electrical_checklist',
         badge: ''
       },
-      // SOFT-CODED: Electrical Datasheet - RE-ENABLED
+      // SOFT-CODED: Electrical Datasheet hidden for ALL users (incl. super admin) — under development
       {
         id: 'electricalDatasheets',
         name: 'Datasheets',
@@ -267,7 +284,8 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/electrical/datasheet',
         description: '27 electrical engineering initiatives - Datasheets, diagrams, layouts, schedules',
         moduleCode: 'electrical_datasheet',
-        badge: ''
+        badge: '',
+        enabled: false
       }
     ]
   },
@@ -348,7 +366,9 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/digitization/non-teff-metadata',
         description: 'Extract metadata from Non-TEFF documents (PDF, Excel, Word, AutoCAD)',
         moduleCode: 'non_teff_metadata',
-        badge: ''
+        badge: '',
+        // SOFT-CODED: hidden in production (env-aware — local unaffected)
+        enabled: !NON_TEFF_HIDDEN
       },
       {
         id: 'smartPlant3D',

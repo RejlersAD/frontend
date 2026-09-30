@@ -177,6 +177,38 @@ const FORMAT_EXAMPLES = [
 // Pure styling constants consumed by the header + feature tiles. Changing any
 // value here only affects looks, never extraction / polling / export behaviour.
 // ---------------------------------------------------------------------------
+
+// HEADER STYLE SWITCH — 'v1' = light card identical to P&ID Verification V1;
+// 'dark' = legacy dark gradient banner. Soft-coded, flip anytime.
+const LL_HEADER_STYLE = 'v1';
+
+// SOFT-CODED: visibility toggles for optional page sections.
+const LL_SHOW_FORMATS_REFERENCE = false;   // "Supported Line Number Formats" card — hidden
+
+// V1-style light header config (mirrors PIDVerification.jsx header constants)
+const LL_HEADER = {
+  icon:         'doc',          // 'doc' | 'layers' — header icon tile
+  title:        'Line List',
+  subtitle:     'AI-powered line extraction from P&ID drawings — line designation, service codes, piping spec and FROM→TO flow, validated against your naming convention.',
+  badgeText:    'Production Ready',
+  badgeColor:   '#10b981',
+  iconSize:     40,
+  // Feature pills under the subtitle (colour-coded like V1)
+  featureBadges: [
+    { label: 'AI-Powered OCR',     color: '#3b82f6' },
+    { label: 'Async Processing',   color: '#6366f1' },
+    { label: '5 Format Profiles',  color: '#8b5cf6' },
+    { label: 'Excel Export',       color: '#f59e0b' },
+    { label: 'Vision FROM→TO',     color: '#06b6d4' },
+  ],
+  // Quick stats shown on the right (values resolved at render)
+  stats: [
+    { key: 'columns', label: 'Columns' },
+    { key: 'formats', label: 'Formats' },
+  ],
+};
+
+// Legacy dark hero banner (kept for rollback via LL_HEADER_STYLE = 'dark')
 const LL_HERO = {
   gradient:    'linear-gradient(135deg, #1e40af 0%, #2563eb 40%, #4f46e5 75%, #7c3aed 100%)',
   accentGlow:  'radial-gradient(circle at 20% 20%, rgba(96,165,250,0.35), transparent 55%), radial-gradient(circle at 80% 30%, rgba(167,139,250,0.3), transparent 50%)',
@@ -246,11 +278,13 @@ const LL_AI_ASSIST_CONFIG = {
 
 // ---------------------------------------------------------------------------
 // Soft-coded layout config — change widths/padding here without touching JSX.
+// FULL CANVAS: mirrors P&ID Verification V1 (w-full + px-2/4/6), so the page
+// uses the entire viewport instead of a centred 1280px column.
 // ---------------------------------------------------------------------------
 const LAYOUT_CONFIG = {
-  // Normal mode: wider canvas usage (max-w-7xl = 80 rem = 1280 px)
-  normalMaxWidth:      '80rem',
-  normalPaddingX:      '1.5rem',   // px-6
+  // Normal mode: full-width canvas like PID Verification V1
+  normalMaxWidth:      '100%',
+  normalPaddingX:      '1.5rem',   // ~px-6 on desktop (inner wrapper also has mx-0)
   normalPaddingY:      '2rem',     // py-8
   // Fullscreen mode: fills the whole viewport
   fullscreenMaxWidth:  '100%',
@@ -669,10 +703,11 @@ const LineList = () => {
         .ll-section { animation: ll-fade-up 0.5s ease both; }
       `}</style>
 
-      {/* Light blue/indigo gradient page — wraps in fixed overlay when fullscreen */}
+      {/* Light blue/indigo gradient page — wraps in fixed overlay when fullscreen
+          SOFT-CODED: background aligned with P&ID Verification V1 (T.bg) */}
       <div
         className={`min-h-screen relative overflow-x-hidden${isFullscreen ? ' ll-fullscreen-wrap' : ''}`}
-        style={{ background: 'linear-gradient(145deg, #eff6ff 0%, #eef2ff 45%, #f0f9ff 100%)' }}
+        style={{ background: 'linear-gradient(135deg, #f8faff 0%, #eef2ff 45%, #f0f9ff 75%, #fffbeb 100%)' }}
       >
 
         {/* Subtle dot grid */}
@@ -699,15 +734,96 @@ const LineList = () => {
         </div>
 
         <div
-          className="relative z-10 mx-auto"
+          className="relative z-10"
           style={{
             maxWidth:  isFullscreen ? LAYOUT_CONFIG.fullscreenMaxWidth : LAYOUT_CONFIG.normalMaxWidth,
             padding:   `${isFullscreen ? LAYOUT_CONFIG.fullscreenPaddingY : LAYOUT_CONFIG.normalPaddingY} ${isFullscreen ? LAYOUT_CONFIG.fullscreenPaddingX : LAYOUT_CONFIG.normalPaddingX}`,
           }}
         >
 
-          {/* ── Page Header — Hero banner (gradient + animated halo + chips) ── */}
+          {/* ── Page Header — V1-style light card (soft-coded; flip LL_HEADER_STYLE to 'dark' for legacy banner) ── */}
           <div className="mb-8 ll-section" style={{ animationDelay: '0s' }}>
+          {LL_HEADER_STYLE === 'v1' ? (
+            /* ═══ V1 LIGHT HEADER — identical layout to P&ID Verification V1 ═══ */
+            <div className="rounded-2xl" style={{
+              background: 'linear-gradient(135deg, rgba(59,130,246,0.03) 0%, rgba(99,102,241,0.06) 100%)',
+              border: '1px solid #e2e8f0',
+              padding: '32px',
+            }}>
+              <div className="flex items-start justify-between gap-6 flex-wrap">
+                {/* Left: Icon + Title + Description + feature pills */}
+                <div className="flex items-start gap-5 flex-1" style={{ minWidth: 0 }}>
+                  {/* Icon tile — V1 blue→indigo gradient */}
+                  <div style={{
+                    width: '40px', height: '40px', borderRadius: '14px', flexShrink: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: 'linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)',
+                    boxShadow: '0 4px 14px rgba(59,130,246,0.3)',
+                  }}>
+                    <DocumentTextIcon className="h-5 w-5 text-white" />
+                  </div>
+
+                  <div className="flex-1" style={{ minWidth: 0 }}>
+                    <div className="flex items-center gap-3 mb-2 flex-wrap">
+                      <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight" style={{ margin: 0, lineHeight: 1.2 }}>
+                        {LL_HEADER.title}
+                      </h1>
+                      {/* Status badge — V1 pattern */}
+                      <span style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '6px',
+                        padding: '4px 12px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 600,
+                        background: `${LL_HEADER.badgeColor}15`, color: LL_HEADER.badgeColor,
+                        border: `1px solid ${LL_HEADER.badgeColor}30`,
+                      }}>
+                        <CheckCircleIcon className="h-3.5 w-3.5" />
+                        {LL_HEADER.badgeText}
+                      </span>
+                    </div>
+                    <p style={{ fontSize: '0.95rem', color: '#64748b', margin: 0, maxWidth: '680px', lineHeight: 1.6 }}>
+                      {LL_HEADER.subtitle}
+                    </p>
+
+                    {/* Feature pills — V1 colour-coded */}
+                    <div className="flex flex-wrap gap-2 mt-4">
+                      {LL_HEADER.featureBadges.map((b) => (
+                        <span key={b.label} style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '6px',
+                          padding: '6px 14px', borderRadius: '20px',
+                          fontSize: '0.75rem', fontWeight: 500,
+                          background: `${b.color}08`, color: b.color, border: `1px solid ${b.color}20`,
+                        }}>
+                          {b.label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right: fullscreen toggle + quick stats — V1 pattern */}
+                <div className="flex items-center gap-6">
+                  <button
+                    onClick={() => setIsFullscreen(fs => !fs)}
+                    title={isFullscreen ? 'Exit fullscreen' : 'Expand to fullscreen'}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 shadow-sm transition-all"
+                  >
+                    {isFullscreen
+                      ? <><ArrowsPointingInIcon className="h-4 w-4" /> Exit</>
+                      : <><ArrowsPointingOutIcon className="h-4 w-4" /> Fullscreen</>}
+                  </button>
+                  <div className="flex gap-6">
+                    <div className="text-center">
+                      <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#3b82f6', lineHeight: 1 }}>{COLUMNS.length}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Columns</div>
+                    </div>
+                    <div className="text-center">
+                      <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#10b981', lineHeight: 1 }}>{FORMAT_OPTIONS.length}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Formats</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
             <div
               className="ll-hero-animated relative overflow-hidden rounded-3xl px-7 py-8 text-white"
               style={{
@@ -791,9 +907,11 @@ const LineList = () => {
                 ))}
               </div>
             </div>
+          )}
           </div>
 
-          {/* ── Supported Formats Reference card ── */}
+          {/* ── Supported Formats Reference card — soft-coded off (LL_SHOW_FORMATS_REFERENCE) ── */}
+          {LL_SHOW_FORMATS_REFERENCE && (
           <div className="rounded-2xl p-5 mb-4 ll-section" style={{
             background: 'rgba(254,243,199,0.65)',
             border: '1px solid rgba(217,119,6,0.2)',
@@ -822,6 +940,7 @@ const LineList = () => {
               ))}
             </div>
           </div>
+          )}
 
           {/* ── Upload + Options Card ── */}
           <div className="rounded-2xl p-6 mb-4 ll-section" style={{

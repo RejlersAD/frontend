@@ -66,9 +66,11 @@ const EXPORT_FILENAME_SELECTED = 'Equipment_list_selected.xlsx';
 
 // ---------------------------------------------------------------------------
 // Soft-coded layout config — change widths/padding here without touching JSX.
+// FULL CANVAS: mirrors P&ID Verification V1 (w-full), so the page uses the
+// entire viewport instead of a centred 1280px column.
 // ---------------------------------------------------------------------------
 const LAYOUT_CONFIG = {
-  normalMaxWidth:     '80rem',    // max-w-7xl = 1280 px
+  normalMaxWidth:     '100%',     // full-width canvas like PID Verification V1
   normalPaddingX:     '1.5rem',
   normalPaddingY:     '2rem',
   fullscreenMaxWidth: '100%',
@@ -236,9 +238,9 @@ function renderNozzleBadges(nozzles) {
           key={i}
           title={nozzle}
           style={{
-            background:   'rgba(5,150,105,0.07)',
+            background:   'rgba(59,130,246,0.07)',
             color:        '#065f46',
-            border:       '1px solid rgba(5,150,105,0.20)',
+            border:       '1px solid rgba(59,130,246,0.20)',
             borderRadius: '4px',
             padding:      '1px 6px',
             fontSize:     '0.67rem',
@@ -284,7 +286,7 @@ function renderConditionValue(display) {
           style={{
             fontSize: '0.6rem',
             fontWeight: 700,
-            color: '#6ee7b7',
+            color: '#a5b4fc',
             letterSpacing: '-0.5px',
             userSelect: 'none',
           }}
@@ -360,8 +362,8 @@ const EQ_KEYFRAMES = `
   }
   /* ── Node glow for KPI cards ── */
   @keyframes eqNodeGlow {
-    0%, 100% { box-shadow: 0 0 10px rgba(5,150,105,0.12), 0 4px 16px rgba(5,150,105,0.07); }
-    50%       { box-shadow: 0 0 26px rgba(5,150,105,0.26), 0 4px 22px rgba(5,150,105,0.13); }
+    0%, 100% { box-shadow: 0 0 10px rgba(59,130,246,0.12), 0 4px 16px rgba(59,130,246,0.07); }
+    50%       { box-shadow: 0 0 26px rgba(59,130,246,0.26), 0 4px 22px rgba(59,130,246,0.13); }
   }
   /* ── Badge / chip pop entrance ── */
   @keyframes eqChipPop {
@@ -399,8 +401,8 @@ const EQ_KEYFRAMES = `
     50%       { transform: translateY(-18px) scale(1.25); opacity: 0.42; }
   }
   @keyframes eq-glow-light {
-    0%, 100% { box-shadow: 0 0 6px  rgba(5,150,105,0.18); }
-    50%       { box-shadow: 0 0 18px rgba(5,150,105,0.38), 0 0 36px rgba(5,150,105,0.1); }
+    0%, 100% { box-shadow: 0 0 6px  rgba(59,130,246,0.18); }
+    50%       { box-shadow: 0 0 18px rgba(59,130,246,0.38), 0 0 36px rgba(59,130,246,0.1); }
   }
   @keyframes eq-shimmer {
     0%   { transform: translateX(-100%); }
@@ -420,7 +422,7 @@ const EQ_KEYFRAMES = `
   }
   @keyframes eq-bar-glow {
     0%, 100% { filter: brightness(1); }
-    50%       { filter: brightness(1.2) drop-shadow(0 0 5px rgba(5,150,105,0.5)); }
+    50%       { filter: brightness(1.2) drop-shadow(0 0 5px rgba(59,130,246,0.5)); }
   }
   @keyframes eq-dot-wave {
     0%, 100% { transform: scaleY(0.5); opacity: 0.4; }
@@ -446,40 +448,41 @@ const EQ_KEYFRAMES = `
   /* ── CSS utility classes ── */
   .eq-scan-line {
     position: absolute; left: 0; right: 0; height: 2px;
-    background: linear-gradient(90deg, transparent, rgba(5,150,105,0.45), transparent);
+    background: linear-gradient(90deg, transparent, rgba(59,130,246,0.45), transparent);
     animation: eq-scan-line 3s ease-in-out infinite;
     pointer-events: none;
   }
   .eq-particle {
     position: absolute; border-radius: 50%;
-    background: rgba(5,150,105,0.30);
+    background: rgba(59,130,246,0.30);
     animation: eq-float ease-in-out infinite;
   }
   .eq-row-animate       { animation: eq-row-in 0.3s ease forwards; opacity: 0; }
   .eq-section           { animation: eq-fade-up 0.5s ease both; }
   .eq-filter-input::placeholder { color: #94a3b8; }
   .eq-th-sticky         { position: sticky; top: 0; z-index: 10; }
-  .eq-upload-zone:hover { border-color: rgba(5,150,105,0.55) !important; background: rgba(5,150,105,0.06) !important; }
-  .eq-action-btn:hover:not(:disabled) { box-shadow: 0 6px 24px rgba(5,150,105,0.42) !important; transform: translateY(-1px); }
-  .eq-export-btn:hover  { background: rgba(5,150,105,0.14) !important; border-color: rgba(5,150,105,0.4) !important; }
+  .eq-upload-zone:hover { border-color: rgba(59,130,246,0.55) !important; background: rgba(59,130,246,0.06) !important; }
+  .eq-action-btn:hover:not(:disabled) { box-shadow: 0 6px 24px rgba(59,130,246,0.42) !important; transform: translateY(-1px); }
+  .eq-export-btn:hover  { background: rgba(59,130,246,0.14) !important; border-color: rgba(59,130,246,0.4) !important; }
   .eq-kpi-card          { animation: eq-kpi-count 0.45s ease both; }
-  .eq-info-card:hover   { border-color: rgba(5,150,105,0.28) !important; background: rgba(5,150,105,0.03) !important; }
+  .eq-info-card:hover   { border-color: rgba(59,130,246,0.28) !important; background: rgba(59,130,246,0.03) !important; }
   .eq-chip              { animation: eqChipPop 0.4s ease both; }
   .eq-kpi-node          { animation: eqNodeGlow 2.6s ease infinite; }
 `;
 
 // SOFT-CODED: visual theme constants for EquipmentList — colours, gradients, decoration
+// Aligned with P&ID Verification V1 (blue/indigo/violet palette; T.bg/blob set identical).
 const EQ_T = {
-  bg:      'linear-gradient(145deg, #f0fdf4 0%, #ecfdf5 40%, #f1f5f9 100%)',
-  gridDot: 'radial-gradient(circle, rgba(5,150,105,0.06) 1px, transparent 1px)',
-  gradBar: 'linear-gradient(90deg,#059669,#047857,#10b981,#34d399,#059669)',
+  bg:      'linear-gradient(135deg, #f8faff 0%, #eef2ff 45%, #f0f9ff 75%, #fffbeb 100%)',
+  gridDot: 'radial-gradient(circle, rgba(99,102,241,0.055) 1px, transparent 1px)',
+  gradBar: 'linear-gradient(90deg,#3b82f6,#6366f1,#f59e0b,#3b82f6)',
   blobs: [
-    { color:'rgba(5,150,105,0.09)',  size:'560px', top:'-80px',    left:'10%',    anim:'eqFloatA 14s ease-in-out infinite'     },
-    { color:'rgba(5,150,105,0.06)',  size:'440px', top:'30%',      right:'-60px', anim:'eqFloatB 17s ease-in-out infinite'     },
-    { color:'rgba(16,185,129,0.07)', size:'380px', bottom:'-60px', left:'35%',    anim:'eqFloatC 12s ease-in-out infinite'     },
-    { color:'rgba(5,150,105,0.05)',  size:'300px', top:'55%',      left:'-50px',  anim:'eqFloatA 10s ease-in-out infinite 3s'  },
+    { color:'rgba(59,130,246,0.09)',  size:'520px', top:'-80px',    left:'18%',    anim:'eqFloatA 14s ease-in-out infinite'     },
+    { color:'rgba(168,85,247,0.07)',  size:'430px', top:'28%',      right:'-60px', anim:'eqFloatB 17s ease-in-out infinite'     },
+    { color:'rgba(245,158,11,0.07)',  size:'380px', bottom:'-60px', left:'32%',    anim:'eqFloatC 12s ease-in-out infinite'     },
+    { color:'rgba(6,182,212,0.06)',   size:'300px', top:'62%',      left:'-40px',  anim:'eqFloatA 10s ease-in-out infinite 3s'  },
   ],
-  electrons: ['#059669', '#10b981', '#6ee7b7'],  // A / B / C orbit colours
+  electrons: ['#3b82f6', '#6366f1', '#a855f7'],  // A / B / C orbit colours
   // Capability chips in hero section
   chips: [
     { icon:'🏷️', label:'Equipment Tags'     },
@@ -491,11 +494,11 @@ const EQ_T = {
   ],
   // Stream dots for right-side SVG decoration
   streamDots: [
-    { top:'22%', delay:'0s',   dur:'3.0s', color:'#059669' },
-    { top:'22%', delay:'1.0s', dur:'3.0s', color:'#10b981' },
-    { top:'22%', delay:'2.0s', dur:'3.0s', color:'#6ee7b7' },
-    { top:'62%', delay:'0.5s', dur:'2.7s', color:'#047857' },
-    { top:'62%', delay:'1.5s', dur:'2.7s', color:'#059669' },
+    { top:'22%', delay:'0s',   dur:'3.0s', color:'#3b82f6' },
+    { top:'22%', delay:'1.0s', dur:'3.0s', color:'#6366f1' },
+    { top:'22%', delay:'2.0s', dur:'3.0s', color:'#a855f7' },
+    { top:'62%', delay:'0.5s', dur:'2.7s', color:'#f59e0b' },
+    { top:'62%', delay:'1.5s', dur:'2.7s', color:'#3b82f6' },
   ],
 };
 
@@ -883,20 +886,20 @@ const EquipmentList = () => {
         <div className="absolute right-0 top-0 bottom-0 w-52 pointer-events-none overflow-hidden opacity-25 hidden xl:block">
           <svg width="208" height="100%" viewBox="0 0 208 800" preserveAspectRatio="none"
             fill="none" xmlns="http://www.w3.org/2000/svg">
-            <line x1="0" y1="176" x2="208" y2="176" stroke="#059669" strokeWidth="2.5"
+            <line x1="0" y1="176" x2="208" y2="176" stroke="#3b82f6" strokeWidth="2.5"
               strokeDasharray="12 8" style={{ animation:'eqPipeFlow 2.4s linear infinite' }} />
-            <line x1="0" y1="496" x2="208" y2="496" stroke="#047857" strokeWidth="2.5"
+            <line x1="0" y1="496" x2="208" y2="496" stroke="#2563eb" strokeWidth="2.5"
               strokeDasharray="12 8" style={{ animation:'eqPipeFlow 2.8s linear infinite 0.4s' }} />
-            <line x1="104" y1="176" x2="104" y2="496" stroke="#10b981" strokeWidth="1.5"
+            <line x1="104" y1="176" x2="104" y2="496" stroke="#6366f1" strokeWidth="1.5"
               strokeDasharray="8 10" style={{ animation:'eqPipeFlow 3.2s linear infinite 0.8s' }} />
-            <rect x="32"  y="154" width="40" height="44" rx="5" fill="rgba(5,150,105,0.12)" stroke="#059669" strokeWidth="1.5"/>
-            <rect x="136" y="154" width="40" height="44" rx="5" fill="rgba(4,120,87,0.10)"  stroke="#047857" strokeWidth="1.5"/>
-            <rect x="84"  y="474" width="40" height="44" rx="5" fill="rgba(16,185,129,0.10)" stroke="#10b981" strokeWidth="1.5"/>
-            <text x="43"  y="180" fill="#059669" fontSize="8" fontFamily="monospace" fontWeight="700">V-101</text>
-            <text x="147" y="180" fill="#047857" fontSize="8" fontFamily="monospace" fontWeight="700">E-201</text>
-            <text x="91"  y="500" fill="#10b981" fontSize="8" fontFamily="monospace" fontWeight="700">P-301</text>
-            <text x="4"   y="170" fill="#059669" fontSize="7" fontFamily="monospace" opacity="0.65">S-01</text>
-            <text x="4"   y="490" fill="#047857" fontSize="7" fontFamily="monospace" opacity="0.65">S-03</text>
+            <rect x="32"  y="154" width="40" height="44" rx="5" fill="rgba(59,130,246,0.12)" stroke="#3b82f6" strokeWidth="1.5"/>
+            <rect x="136" y="154" width="40" height="44" rx="5" fill="rgba(37,99,235,0.10)"  stroke="#2563eb" strokeWidth="1.5"/>
+            <rect x="84"  y="474" width="40" height="44" rx="5" fill="rgba(99,102,241,0.10)" stroke="#6366f1" strokeWidth="1.5"/>
+            <text x="43"  y="180" fill="#3b82f6" fontSize="8" fontFamily="monospace" fontWeight="700">V-101</text>
+            <text x="147" y="180" fill="#2563eb" fontSize="8" fontFamily="monospace" fontWeight="700">E-201</text>
+            <text x="91"  y="500" fill="#6366f1" fontSize="8" fontFamily="monospace" fontWeight="700">P-301</text>
+            <text x="4"   y="170" fill="#3b82f6" fontSize="7" fontFamily="monospace" opacity="0.65">S-01</text>
+            <text x="4"   y="490" fill="#2563eb" fontSize="7" fontFamily="monospace" opacity="0.65">S-03</text>
           </svg>
           {EQ_T.streamDots.map((d, i) => (
             <div key={i} className="absolute w-2 h-2 rounded-full pointer-events-none"
@@ -911,9 +914,8 @@ const EquipmentList = () => {
 
         <div className="relative z-10">
 
-          {/* ── Centered content wrapper ── */}
+          {/* ── Full-width content wrapper (V1 canvas) ── */}
           <div
-            className="mx-auto"
             style={{
               maxWidth: isFullscreen ? LAYOUT_CONFIG.fullscreenMaxWidth : LAYOUT_CONFIG.normalMaxWidth,
               padding:  `${isFullscreen ? LAYOUT_CONFIG.fullscreenPaddingY : LAYOUT_CONFIG.normalPaddingY} ${isFullscreen ? LAYOUT_CONFIG.fullscreenPaddingX : LAYOUT_CONFIG.normalPaddingX}`,
@@ -934,14 +936,14 @@ const EquipmentList = () => {
                   const ang = (i * 30 * Math.PI) / 180;
                   const x = 86 + 76 * Math.cos(ang);
                   const y = 86 + 76 * Math.sin(ang);
-                  return <circle key={i} cx={x} cy={y} r="2.5" fill="#059669" opacity="0.8" />;
+                  return <circle key={i} cx={x} cy={y} r="2.5" fill="#3b82f6" opacity="0.8" />;
                 })}
                 <defs>
                   <linearGradient id="eqRingGradOuter" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor="#059669" /><stop offset="100%" stopColor="#10b981" />
+                    <stop offset="0%" stopColor="#3b82f6" /><stop offset="100%" stopColor="#6366f1" />
                   </linearGradient>
                   <linearGradient id="eqRingGradInner" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor="#047857" /><stop offset="100%" stopColor="#34d399" />
+                    <stop offset="0%" stopColor="#2563eb" /><stop offset="100%" stopColor="#818cf8" />
                   </linearGradient>
                 </defs>
               </svg>
@@ -949,25 +951,25 @@ const EquipmentList = () => {
 
             {/* Badge pill */}
             <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full mb-4 eq-chip" style={{
-              background: 'rgba(5,150,105,0.08)', border: '1px solid rgba(5,150,105,0.22)', animationDelay: '0.04s',
+              background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.22)', animationDelay: '0.04s',
             }}>
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" style={{ animation: 'eq-pulse-badge 2s ease infinite' }} />
-              <span className="text-emerald-700 text-xs font-semibold tracking-widest uppercase">AI-Powered · P&amp;ID Analysis</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500" style={{ animation: 'eq-pulse-badge 2s ease infinite' }} />
+              <span className="text-blue-700 text-xs font-semibold tracking-widest uppercase">AI-Powered · P&amp;ID Analysis</span>
             </div>
 
             {/* Title + Fullscreen toggle */}
             <div className="flex items-center justify-between gap-4">
               <h1 className="text-4xl font-bold text-slate-900 flex items-center gap-4 mb-3">
                 <div className="p-2.5 rounded-xl relative overflow-hidden flex-shrink-0" style={{
-                  background: 'linear-gradient(135deg, rgba(5,150,105,0.12) 0%, rgba(16,185,129,0.07) 100%)',
-                  border: '1px solid rgba(5,150,105,0.22)',
+                  background: 'linear-gradient(135deg, rgba(59,130,246,0.12) 0%, rgba(99,102,241,0.07) 100%)',
+                  border: '1px solid rgba(59,130,246,0.22)',
                   animation: 'eq-glow-light 3s ease infinite',
                 }}>
-                  <Boxes className="h-7 w-7 text-emerald-600" />
+                  <Boxes className="h-7 w-7 text-blue-600" />
                 </div>
                 Equipment&nbsp;
                 <span style={{
-                  background: 'linear-gradient(135deg, #059669 0%, #047857 60%, #10b981 100%)',
+                  background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 60%, #6366f1 100%)',
                   WebkitBackgroundClip: 'text',
                   WebkitTextFillColor: 'transparent',
                 }}>List</span>
@@ -979,8 +981,8 @@ const EquipmentList = () => {
                 title={isFullscreen ? 'Exit fullscreen' : 'Expand to fullscreen'}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold flex-shrink-0"
                 style={{
-                  background: isFullscreen ? 'rgba(5,150,105,0.14)' : 'rgba(5,150,105,0.07)',
-                  border: '1px solid rgba(5,150,105,0.22)',
+                  background: isFullscreen ? 'rgba(59,130,246,0.14)' : 'rgba(59,130,246,0.07)',
+                  border: '1px solid rgba(59,130,246,0.22)',
                   color: '#065f46',
                   transition: 'all 0.2s',
                 }}
@@ -1002,7 +1004,7 @@ const EquipmentList = () => {
               {EQ_T.chips.map((chip, i) => (
                 <span key={chip.label} className="eq-chip inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold"
                   style={{
-                    background: 'rgba(5,150,105,0.06)', border: '1px solid rgba(5,150,105,0.18)',
+                    background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.18)',
                     color: '#065f46', animationDelay: `${0.08 + i * 0.06}s`,
                   }}>
                   <span>{chip.icon}</span><span>{chip.label}</span>
@@ -1021,12 +1023,12 @@ const EquipmentList = () => {
                 <div key={step.n} className="eq-chip flex items-center gap-2.5 px-4 py-2.5 rounded-xl"
                   style={{
                     background: 'white',
-                    border: '1px solid rgba(5,150,105,0.12)',
-                    boxShadow: '0 1px 4px rgba(5,150,105,0.06)',
+                    border: '1px solid rgba(59,130,246,0.12)',
+                    boxShadow: '0 1px 4px rgba(59,130,246,0.06)',
                     animationDelay: `${0.45 + i * 0.07}s`,
                   }}>
                   <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold text-white"
-                    style={{ background: 'linear-gradient(135deg,#059669,#047857)' }}>
+                    style={{ background: 'linear-gradient(135deg,#3b82f6,#2563eb)' }}>
                     {step.n}
                   </div>
                   <div>
@@ -1041,14 +1043,14 @@ const EquipmentList = () => {
           {/* ── Upload Card ── */}
           <div className="rounded-2xl p-6 mb-4 eq-section" style={{
             background: 'white',
-            border: '1px solid rgba(5,150,105,0.15)',
-            boxShadow: '0 4px 28px rgba(5,150,105,0.09), 0 1px 4px rgba(0,0,0,0.04)',
+            border: '1px solid rgba(59,130,246,0.15)',
+            boxShadow: '0 4px 28px rgba(59,130,246,0.09), 0 1px 4px rgba(0,0,0,0.04)',
             animationDelay: '0.08s',
           }}>
             <div className="flex items-center gap-2.5 mb-5">
               <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{
-                background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
-                boxShadow: '0 2px 8px rgba(5,150,105,0.35)',
+                background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                boxShadow: '0 2px 8px rgba(59,130,246,0.35)',
               }}>1</div>
               <h2 className="text-sm font-semibold text-slate-700 tracking-wide">Upload P&amp;ID Document</h2>
               <span className="ml-auto text-xs text-slate-400 font-medium px-2.5 py-1 rounded-full" style={{
@@ -1086,8 +1088,8 @@ const EquipmentList = () => {
             <div
               className="eq-upload-zone relative rounded-xl cursor-pointer overflow-hidden"
               style={{
-                border: isDragging ? '2px solid rgba(5,150,105,0.75)' : files.length ? '2px solid rgba(5,150,105,0.5)' : '2px dashed rgba(5,150,105,0.25)',
-                background: isDragging ? 'rgba(5,150,105,0.08)' : files.length ? 'rgba(5,150,105,0.04)' : 'rgba(5,150,105,0.015)',
+                border: isDragging ? '2px solid rgba(59,130,246,0.75)' : files.length ? '2px solid rgba(59,130,246,0.5)' : '2px dashed rgba(59,130,246,0.25)',
+                background: isDragging ? 'rgba(59,130,246,0.08)' : files.length ? 'rgba(59,130,246,0.04)' : 'rgba(59,130,246,0.015)',
                 minHeight: 148,
                 transition: 'border-color 0.25s, background 0.25s, box-shadow 0.25s',
               }}
@@ -1099,16 +1101,16 @@ const EquipmentList = () => {
             >
               {/* Circuit trace border — top edge */}
               <div className="absolute top-0 left-0 right-0 h-[2px] pointer-events-none"
-                style={{ background: 'rgba(5,150,105,0.55)', animation: 'eqTraceH 2.8s ease-in-out infinite' }} />
+                style={{ background: 'rgba(59,130,246,0.55)', animation: 'eqTraceH 2.8s ease-in-out infinite' }} />
               {/* Circuit trace border — bottom edge (offset) */}
               <div className="absolute bottom-0 left-0 right-0 h-[2px] pointer-events-none"
-                style={{ background: 'rgba(5,150,105,0.40)', animation: 'eqTraceH 2.8s ease-in-out infinite 1.4s' }} />
+                style={{ background: 'rgba(59,130,246,0.40)', animation: 'eqTraceH 2.8s ease-in-out infinite 1.4s' }} />
               {/* Circuit trace border — left edge */}
               <div className="absolute top-0 bottom-0 left-0 w-[2px] pointer-events-none"
-                style={{ background: 'rgba(5,150,105,0.45)', animation: 'eqTraceV 2.8s ease-in-out infinite 0.7s' }} />
+                style={{ background: 'rgba(59,130,246,0.45)', animation: 'eqTraceV 2.8s ease-in-out infinite 0.7s' }} />
               {/* Circuit trace border — right edge (offset) */}
               <div className="absolute top-0 bottom-0 right-0 w-[2px] pointer-events-none"
-                style={{ background: 'rgba(5,150,105,0.35)', animation: 'eqTraceV 2.8s ease-in-out infinite 2.1s' }} />
+                style={{ background: 'rgba(59,130,246,0.35)', animation: 'eqTraceV 2.8s ease-in-out infinite 2.1s' }} />
 
               {/* Corner brackets */}
               {[
@@ -1118,7 +1120,7 @@ const EquipmentList = () => {
                 'bottom-0 right-0 border-b-2 border-r-2',
               ].map((cls, i) => (
                 <div key={i} className={`absolute ${cls} w-5 h-5 pointer-events-none`}
-                  style={{ borderColor: 'rgba(5,150,105,0.45)' }} />
+                  style={{ borderColor: 'rgba(59,130,246,0.45)' }} />
               ))}
 
               {/* Scan line (idle only) */}
@@ -1130,11 +1132,11 @@ const EquipmentList = () => {
                 {files.length > 0 ? (
                   <>
                     <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{
-                      background: 'linear-gradient(135deg, rgba(5,150,105,0.15), rgba(5,150,105,0.08))',
-                      border: '2px solid rgba(5,150,105,0.4)',
+                      background: 'linear-gradient(135deg, rgba(59,130,246,0.15), rgba(59,130,246,0.08))',
+                      border: '2px solid rgba(59,130,246,0.4)',
                       animation: 'eq-glow-light 2.2s ease infinite',
                     }}>
-                      <CheckCircleIcon className="h-8 w-8 text-emerald-600" />
+                      <CheckCircleIcon className="h-8 w-8 text-blue-600" />
                     </div>
                     <div className="text-center">
                       {files.length === 1 ? (
@@ -1154,10 +1156,10 @@ const EquipmentList = () => {
                       )}
                     </div>
                     <div className="flex items-center gap-2">
-                      <div className="px-3 py-1 rounded-full text-xs font-semibold text-emerald-700 flex items-center gap-1.5" style={{
-                        background: 'rgba(5,150,105,0.08)', border: '1px solid rgba(5,150,105,0.2)',
+                      <div className="px-3 py-1 rounded-full text-xs font-semibold text-blue-700 flex items-center gap-1.5" style={{
+                        background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)',
                       }}>
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block"
                           style={{ animation: 'eq-pulse-badge 1.6s ease infinite' }} />
                         {files.length === 1 ? 'PDF Loaded' : `${files.length} PDFs Loaded`}
                       </div>
@@ -1173,13 +1175,13 @@ const EquipmentList = () => {
                 ) : (
                   <>
                     <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{
-                      background: 'linear-gradient(135deg, rgba(5,150,105,0.10), rgba(5,150,105,0.04))',
-                      border: '1.5px solid rgba(5,150,105,0.20)',
+                      background: 'linear-gradient(135deg, rgba(59,130,246,0.10), rgba(59,130,246,0.04))',
+                      border: '1.5px solid rgba(59,130,246,0.20)',
                     }}>
-                      <CloudArrowUpIcon className="h-9 w-9 text-emerald-500" />
+                      <CloudArrowUpIcon className="h-9 w-9 text-blue-500" />
                     </div>
                     <div className="text-center">
-                      <p className="text-slate-700 font-semibold text-sm">Drop a P&amp;ID PDF here <span className="text-slate-400 font-normal">or</span> <span className="text-emerald-600 font-semibold">click to browse</span></p>
+                      <p className="text-slate-700 font-semibold text-sm">Drop a P&amp;ID PDF here <span className="text-slate-400 font-normal">or</span> <span className="text-blue-600 font-semibold">click to browse</span></p>
                       <p className="text-slate-400 text-xs mt-1.5">Equipment List registers &amp; P&amp;ID drawings · Auto-detects mode · Multi-angle OCR (0°/90°/180°/270°)</p>
                     </div>
                   </>
@@ -1191,8 +1193,8 @@ const EquipmentList = () => {
           {/* ── Manual Observation Panel ── */}
           <div className="rounded-2xl mb-4 eq-section overflow-hidden" style={{
             background: 'white',
-            border: '1px solid rgba(5,150,105,0.15)',
-            boxShadow: '0 4px 24px rgba(5,150,105,0.08), 0 1px 4px rgba(0,0,0,0.04)',
+            border: '1px solid rgba(59,130,246,0.15)',
+            boxShadow: '0 4px 24px rgba(59,130,246,0.08), 0 1px 4px rgba(0,0,0,0.04)',
             animationDelay: '0.12s',
           }}>
             {/* Collapsible header */}
@@ -1202,13 +1204,13 @@ const EquipmentList = () => {
               style={{ background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
             >
               <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{
-                background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
               }}>2</div>
               <h2 className="text-sm font-semibold text-slate-700 tracking-wide flex-1">
                 Manual Observations
                 {manualObs.some(r => r.tag?.trim()) && (
-                  <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold text-emerald-700"
-                    style={{ background: 'rgba(5,150,105,0.1)', border: '1px solid rgba(5,150,105,0.2)' }}>
+                  <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold text-blue-700"
+                    style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)' }}>
                     {manualObs.filter(r => r.tag?.trim()).length} pending
                   </span>
                 )}
@@ -1218,11 +1220,11 @@ const EquipmentList = () => {
             </button>
 
             {showManualForm && (
-              <div className="px-6 pb-5" style={{ borderTop: '1px solid rgba(5,150,105,0.08)' }}>
+              <div className="px-6 pb-5" style={{ borderTop: '1px solid rgba(59,130,246,0.08)' }}>
                 {manualObs.map((row, rowIdx) => {
                   const hint = resolveQuantityHint(row.tag);
                   return (
-                    <div key={rowIdx} className="mb-5 pt-4" style={{ borderTop: rowIdx > 0 ? '1px dashed rgba(5,150,105,0.15)' : 'none' }}>
+                    <div key={rowIdx} className="mb-5 pt-4" style={{ borderTop: rowIdx > 0 ? '1px dashed rgba(59,130,246,0.15)' : 'none' }}>
                       {rowIdx > 0 && (
                         <div className="flex justify-between items-center mb-3">
                           <span className="text-xs font-semibold text-slate-500">Entry #{rowIdx + 1}</span>
@@ -1254,7 +1256,7 @@ const EquipmentList = () => {
                                 fontFamily: mono ? 'ui-monospace, SFMono-Regular, monospace' : undefined,
                                 transition: 'border-color 0.2s, box-shadow 0.2s',
                               }}
-                              onFocus={e => { e.target.style.borderColor='rgba(5,150,105,0.45)'; e.target.style.boxShadow='0 0 0 3px rgba(5,150,105,0.1)'; }}
+                              onFocus={e => { e.target.style.borderColor='rgba(59,130,246,0.45)'; e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,0.1)'; }}
                               onBlur={e => { e.target.style.borderColor='#e2e8f0'; e.target.style.boxShadow='none'; }}
                             />
                           </div>
@@ -1267,8 +1269,8 @@ const EquipmentList = () => {
                           <label className="block text-xs font-semibold text-slate-600 mb-1">
                             Quantity Required
                             {hint && (
-                              <span className="ml-1.5 px-1.5 py-0.5 rounded text-xs font-medium text-emerald-700"
-                                style={{ background: 'rgba(5,150,105,0.08)', border: '1px solid rgba(5,150,105,0.18)' }}>
+                              <span className="ml-1.5 px-1.5 py-0.5 rounded text-xs font-medium text-blue-700"
+                                style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.18)' }}>
                                 {hint.label}
                               </span>
                             )}
@@ -1280,7 +1282,7 @@ const EquipmentList = () => {
                             placeholder={hint ? hint.placeholder : 'e.g. 327 M³'}
                             className="w-full px-3 py-2 text-sm rounded-lg outline-none"
                             style={{ background: '#f8fafc', border: '1px solid #e2e8f0', color: '#334155', transition: 'border-color 0.2s, box-shadow 0.2s' }}
-                            onFocus={e => { e.target.style.borderColor='rgba(5,150,105,0.45)'; e.target.style.boxShadow='0 0 0 3px rgba(5,150,105,0.1)'; }}
+                            onFocus={e => { e.target.style.borderColor='rgba(59,130,246,0.45)'; e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,0.1)'; }}
                             onBlur={e => { e.target.style.borderColor='#e2e8f0'; e.target.style.boxShadow='none'; }}
                           />
                         </div>
@@ -1297,7 +1299,7 @@ const EquipmentList = () => {
                               placeholder={placeholder}
                               className="w-full px-3 py-2 text-sm rounded-lg outline-none"
                               style={{ background: '#f8fafc', border: '1px solid #e2e8f0', color: '#334155', transition: 'border-color 0.2s, box-shadow 0.2s' }}
-                              onFocus={e => { e.target.style.borderColor='rgba(5,150,105,0.45)'; e.target.style.boxShadow='0 0 0 3px rgba(5,150,105,0.1)'; }}
+                              onFocus={e => { e.target.style.borderColor='rgba(59,130,246,0.45)'; e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,0.1)'; }}
                               onBlur={e => { e.target.style.borderColor='#e2e8f0'; e.target.style.boxShadow='none'; }}
                             />
                           </div>
@@ -1317,7 +1319,7 @@ const EquipmentList = () => {
                             <input type="text" value={row[field]} onChange={e => handleManualFieldChange(rowIdx, field, e.target.value)}
                               placeholder={placeholder} className="w-full px-3 py-2 text-sm rounded-lg outline-none"
                               style={{ background: '#f8fafc', border: '1px solid #e2e8f0', color: '#334155', transition: 'border-color 0.2s, box-shadow 0.2s' }}
-                              onFocus={e => { e.target.style.borderColor='rgba(5,150,105,0.45)'; e.target.style.boxShadow='0 0 0 3px rgba(5,150,105,0.1)'; }}
+                              onFocus={e => { e.target.style.borderColor='rgba(59,130,246,0.45)'; e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,0.1)'; }}
                               onBlur={e => { e.target.style.borderColor='#e2e8f0'; e.target.style.boxShadow='none'; }}
                             />
                           </div>
@@ -1337,7 +1339,7 @@ const EquipmentList = () => {
                             <input type="text" value={row[field]} onChange={e => handleManualFieldChange(rowIdx, field, e.target.value)}
                               placeholder={placeholder} className="w-full px-3 py-2 text-sm rounded-lg outline-none"
                               style={{ background: '#f8fafc', border: '1px solid #e2e8f0', color: '#334155', transition: 'border-color 0.2s, box-shadow 0.2s' }}
-                              onFocus={e => { e.target.style.borderColor='rgba(5,150,105,0.45)'; e.target.style.boxShadow='0 0 0 3px rgba(5,150,105,0.1)'; }}
+                              onFocus={e => { e.target.style.borderColor='rgba(59,130,246,0.45)'; e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,0.1)'; }}
                               onBlur={e => { e.target.style.borderColor='#e2e8f0'; e.target.style.boxShadow='none'; }}
                             />
                           </div>
@@ -1357,7 +1359,7 @@ const EquipmentList = () => {
                             <input type="text" value={row[field]} onChange={e => handleManualFieldChange(rowIdx, field, e.target.value)}
                               placeholder={placeholder} className="w-full px-3 py-2 text-sm rounded-lg outline-none"
                               style={{ background: '#f8fafc', border: '1px solid #e2e8f0', color: '#334155', transition: 'border-color 0.2s, box-shadow 0.2s' }}
-                              onFocus={e => { e.target.style.borderColor='rgba(5,150,105,0.45)'; e.target.style.boxShadow='0 0 0 3px rgba(5,150,105,0.1)'; }}
+                              onFocus={e => { e.target.style.borderColor='rgba(59,130,246,0.45)'; e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,0.1)'; }}
                               onBlur={e => { e.target.style.borderColor='#e2e8f0'; e.target.style.boxShadow='none'; }}
                             />
                           </div>
@@ -1368,10 +1370,10 @@ const EquipmentList = () => {
                 })}
 
                 {/* Form action buttons */}
-                <div className="flex items-center gap-3 mt-4 pt-4" style={{ borderTop: '1px solid rgba(5,150,105,0.1)' }}>
+                <div className="flex items-center gap-3 mt-4 pt-4" style={{ borderTop: '1px solid rgba(59,130,246,0.1)' }}>
                   <button onClick={handleAddManualRow}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-emerald-700"
-                    style={{ background: 'rgba(5,150,105,0.06)', border: '1px solid rgba(5,150,105,0.2)', cursor: 'pointer' }}>
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-blue-700"
+                    style={{ background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.2)', cursor: 'pointer' }}>
                     + Add Another Entry
                   </button>
                   <button
@@ -1379,9 +1381,9 @@ const EquipmentList = () => {
                     disabled={!manualObs.some(r => r.tag?.trim())}
                     className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold text-white"
                     style={manualObs.some(r => r.tag?.trim()) ? {
-                      background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                      background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
                       border: 'none', cursor: 'pointer',
-                      boxShadow: '0 4px 14px rgba(5,150,105,0.32)',
+                      boxShadow: '0 4px 14px rgba(59,130,246,0.32)',
                     } : {
                       background: '#f1f5f9', color: '#94a3b8', border: '1px solid #e2e8f0', cursor: 'not-allowed',
                     }}
@@ -1411,10 +1413,10 @@ const EquipmentList = () => {
                 border: '1px solid #e2e8f0',
                 transition: 'all 0.25s',
               } : {
-                background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
                 color: 'white',
                 border: 'none',
-                boxShadow: '0 4px 18px rgba(5,150,105,0.32)',
+                boxShadow: '0 4px 18px rgba(59,130,246,0.32)',
                 transition: 'all 0.25s',
                 cursor: 'pointer',
               }}
@@ -1428,7 +1430,7 @@ const EquipmentList = () => {
               )}
               {isProcessing ? (
                 <span className="flex items-center justify-center gap-2.5">
-                  <svg className="h-5 w-5 text-emerald-600" viewBox="0 0 24 24"
+                  <svg className="h-5 w-5 text-blue-600" viewBox="0 0 24 24"
                     style={{ animation: 'eq-spin-slow 1.2s linear infinite' }}>
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
@@ -1439,7 +1441,7 @@ const EquipmentList = () => {
                 <span className="flex items-center justify-center gap-2 relative z-10">
                   <span className="text-base">⚡</span>
                   <span>Extract Equipment List</span>
-                  {files.length > 0 && <span className="ml-1 text-emerald-200 text-xs font-normal opacity-80">→ AI-powered</span>}
+                  {files.length > 0 && <span className="ml-1 text-blue-200 text-xs font-normal opacity-80">→ AI-powered</span>}
                 </span>
               )}
             </button>
@@ -1451,10 +1453,10 @@ const EquipmentList = () => {
                     onClick={handleExportSelected}
                     className="eq-export-btn flex items-center gap-2 px-5 py-3.5 rounded-xl font-semibold text-sm"
                     style={{
-                      background: 'rgba(5,150,105,0.12)',
+                      background: 'rgba(59,130,246,0.12)',
                       color: '#065f46',
-                      border: '1px solid rgba(5,150,105,0.35)',
-                      boxShadow: '0 2px 8px rgba(5,150,105,0.12)',
+                      border: '1px solid rgba(59,130,246,0.35)',
+                      boxShadow: '0 2px 8px rgba(59,130,246,0.12)',
                       transition: 'all 0.2s',
                       cursor: 'pointer',
                     }}
@@ -1462,7 +1464,7 @@ const EquipmentList = () => {
                     <ArrowDownTrayIcon className="h-4 w-4" />
                     Download Selected
                     <span className="ml-1 inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold text-white"
-                      style={{ background: '#059669' }}>
+                      style={{ background: '#3b82f6' }}>
                       {selectedRows.size}
                     </span>
                   </button>
@@ -1471,10 +1473,10 @@ const EquipmentList = () => {
                   onClick={handleExport}
                   className="eq-export-btn flex items-center gap-2 px-5 py-3.5 rounded-xl font-semibold text-sm"
                   style={{
-                    background: 'rgba(5,150,105,0.07)',
+                    background: 'rgba(59,130,246,0.07)',
                     color: '#065f46',
-                    border: '1px solid rgba(5,150,105,0.22)',
-                    boxShadow: '0 2px 8px rgba(5,150,105,0.08)',
+                    border: '1px solid rgba(59,130,246,0.22)',
+                    boxShadow: '0 2px 8px rgba(59,130,246,0.08)',
                     transition: 'all 0.2s',
                     cursor: 'pointer',
                   }}
@@ -1490,8 +1492,8 @@ const EquipmentList = () => {
           {isProcessing && (
             <div className="rounded-2xl overflow-hidden mb-4" style={{
               background: 'white',
-              border: '1px solid rgba(5,150,105,0.20)',
-              boxShadow: '0 4px 24px rgba(5,150,105,0.10)',
+              border: '1px solid rgba(59,130,246,0.20)',
+              boxShadow: '0 4px 24px rgba(59,130,246,0.10)',
               animation: 'eq-fade-up 0.35s ease forwards',
             }}>
               {/* Gradient top strip */}
@@ -1506,11 +1508,11 @@ const EquipmentList = () => {
                   <div className="relative flex-shrink-0 w-14 h-14" style={{ marginTop: '2px' }}>
                     {/* Orbit ring */}
                     <div className="absolute inset-0 rounded-full border border-dashed pointer-events-none"
-                      style={{ borderColor: 'rgba(5,150,105,0.18)' }} />
+                      style={{ borderColor: 'rgba(59,130,246,0.18)' }} />
                     {/* Core glow */}
                     <div className="absolute inset-[14px] rounded-full flex items-center justify-center"
-                      style={{ background: 'rgba(5,150,105,0.09)', animation: 'eq-glow-light 1.8s ease infinite' }}>
-                      <svg className="w-5 h-5 text-emerald-600" viewBox="0 0 24 24" fill="none"
+                      style={{ background: 'rgba(59,130,246,0.09)', animation: 'eq-glow-light 1.8s ease infinite' }}>
+                      <svg className="w-5 h-5 text-blue-600" viewBox="0 0 24 24" fill="none"
                         stroke="currentColor" strokeWidth="1.5" style={{ animation: 'eq-spin-slow 6s linear infinite' }}>
                         <path d="M12 2a10 10 0 1 0 10 10" strokeLinecap="round"/>
                         <path d="M12 6v6l3 3" strokeLinecap="round"/>
@@ -1533,14 +1535,14 @@ const EquipmentList = () => {
                       <span className="text-sm font-semibold text-slate-700">{statusMessage || 'AI Processing…'}</span>
                       <div className="flex items-center gap-2.5">
                         <span className="text-xs text-slate-400 tabular-nums font-mono">⏱ {formatElapsed(elapsedSeconds)}</span>
-                        <span className="text-sm font-bold text-emerald-600 tabular-nums">{progress}%</span>
+                        <span className="text-sm font-bold text-blue-600 tabular-nums">{progress}%</span>
                       </div>
                     </div>
                     {/* Progress bar */}
                     <div className="relative w-full rounded-full h-2.5 overflow-hidden" style={{ background: '#f1f5f9' }}>
                       <div className="h-full rounded-full relative overflow-hidden" style={{
                         width: `${Math.max(5, progress)}%`,
-                        background: 'linear-gradient(90deg, #047857, #059669, #34d399)',
+                        background: 'linear-gradient(90deg, #2563eb, #3b82f6, #818cf8)',
                         animation: 'eq-bar-glow 1.6s ease infinite',
                         transition: 'width 0.7s ease',
                       }}>
@@ -1560,13 +1562,13 @@ const EquipmentList = () => {
                       ].map(stage => (
                         <div key={stage.label} className="flex items-center gap-1.5 text-[11px]">
                           <div className="w-3 h-3 rounded-full border flex items-center justify-center" style={{
-                            background: stage.done ? '#059669' : 'transparent',
-                            borderColor: stage.done ? '#059669' : '#e2e8f0',
+                            background: stage.done ? '#3b82f6' : 'transparent',
+                            borderColor: stage.done ? '#3b82f6' : '#e2e8f0',
                             transition: 'all 0.4s ease',
                           }}>
                             {stage.done && <span className="text-white font-bold" style={{ fontSize:'7px' }}>✓</span>}
                           </div>
-                          <span style={{ color: stage.done ? '#059669' : '#94a3b8', fontWeight: stage.done ? 600 : 400 }}>
+                          <span style={{ color: stage.done ? '#3b82f6' : '#94a3b8', fontWeight: stage.done ? 600 : 400 }}>
                             {stage.label}
                           </span>
                         </div>
@@ -1580,7 +1582,7 @@ const EquipmentList = () => {
                     {elapsedSeconds > 20 ? 'OCR scanning P&ID drawing — large drawings may take 1–3 min' : 'AI scanning document for equipment registers and tag numbers'}
                   </span>
                   {[0, 1, 2].map(i => (
-                    <div key={i} className="w-1.5 h-4 rounded-full bg-emerald-400 flex-shrink-0" style={{
+                    <div key={i} className="w-1.5 h-4 rounded-full bg-blue-400 flex-shrink-0" style={{
                       animation: 'eq-dot-wave 1.1s ease infinite',
                       animationDelay: `${i * 0.18}s`,
                     }} />
@@ -1673,28 +1675,28 @@ const EquipmentList = () => {
 
           {/* ── KPI Summary Bar (after extraction) ── */}
           {kpiStats && (
-            <div className="max-w-7xl mx-auto px-6 mb-6">
+            <div className="px-6 mb-6" style={{ maxWidth: LAYOUT_CONFIG.normalMaxWidth }}>
               {/* Section label */}
               <div className="flex items-center gap-2 mb-3">
-                <div className="h-px flex-1" style={{ background: 'linear-gradient(90deg, transparent, rgba(5,150,105,0.2))' }} />
-                <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-widest px-3 py-1 rounded-full eq-chip"
-                  style={{ background:'rgba(5,150,105,0.06)', border:'1px solid rgba(5,150,105,0.16)', animationDelay:'0s' }}>
+                <div className="h-px flex-1" style={{ background: 'linear-gradient(90deg, transparent, rgba(59,130,246,0.2))' }} />
+                <span className="text-[11px] font-bold text-blue-700 uppercase tracking-widest px-3 py-1 rounded-full eq-chip"
+                  style={{ background:'rgba(59,130,246,0.06)', border:'1px solid rgba(59,130,246,0.16)', animationDelay:'0s' }}>
                   Extraction Summary
                 </span>
-                <div className="h-px flex-1" style={{ background: 'linear-gradient(270deg, transparent, rgba(5,150,105,0.2))' }} />
+                <div className="h-px flex-1" style={{ background: 'linear-gradient(270deg, transparent, rgba(59,130,246,0.2))' }} />
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
                 {[
-                  { label: 'P&ID Drawings',   value: kpiStats.drawings, icon: '📋', color: '#047857', delay: '0s'    },
-                  { label: 'Items Extracted', value: kpiStats.total,    icon: '🏷️', color: '#059669', delay: '0.05s' },
-                  { label: 'Equipment Types', value: kpiStats.types,    icon: '🗂️', color: '#047857', delay: '0.1s'  },
+                  { label: 'P&ID Drawings',   value: kpiStats.drawings, icon: '📋', color: '#2563eb', delay: '0s'    },
+                  { label: 'Items Extracted', value: kpiStats.total,    icon: '🏷️', color: '#3b82f6', delay: '0.05s' },
+                  { label: 'Equipment Types', value: kpiStats.types,    icon: '🗂️', color: '#2563eb', delay: '0.1s'  },
                   { label: 'With MOC',        value: kpiStats.withMoc,  icon: '🧱', color: '#065f46', delay: '0.15s' },
-                  { label: 'With Dimensions', value: kpiStats.withDim,  icon: '📐', color: '#059669', delay: '0.2s'  },
-                  { label: 'With Motor',      value: kpiStats.withMtr,  icon: '⚡', color: '#047857', delay: '0.25s' },
+                  { label: 'With Dimensions', value: kpiStats.withDim,  icon: '📐', color: '#3b82f6', delay: '0.2s'  },
+                  { label: 'With Motor',      value: kpiStats.withMtr,  icon: '⚡', color: '#2563eb', delay: '0.25s' },
                 ].map(({ label, value, icon, color, delay }) => (
                   <div key={label} className="eq-kpi-card eq-kpi-node rounded-2xl px-4 py-4 flex items-center gap-3" style={{
                     background: 'white',
-                    border: '1px solid rgba(5,150,105,0.13)',
+                    border: '1px solid rgba(59,130,246,0.13)',
                     animationDelay: delay,
                   }}>
                     <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-xl" style={{
@@ -1715,17 +1717,17 @@ const EquipmentList = () => {
 
           {/* ── Visual divider before table ── */}
           {results && (
-            <div className="max-w-7xl mx-auto px-6 mb-4">
+            <div className="px-6 mb-4" style={{ maxWidth: LAYOUT_CONFIG.normalMaxWidth }}>
               <div className="flex items-center gap-3">
-                <div className="flex-1 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(5,150,105,0.25), transparent)' }} />
-                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold text-emerald-700" style={{
-                  background: 'rgba(5,150,105,0.07)', border: '1px solid rgba(5,150,105,0.18)',
+                <div className="flex-1 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(59,130,246,0.25), transparent)' }} />
+                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold text-blue-700" style={{
+                  background: 'rgba(59,130,246,0.07)', border: '1px solid rgba(59,130,246,0.18)',
                 }}>
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500"
                     style={{ animation: 'eq-pulse-badge 2s ease infinite' }} />
                   Extraction Results
                 </div>
-                <div className="flex-1 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(5,150,105,0.25), transparent)' }} />
+                <div className="flex-1 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(59,130,246,0.25), transparent)' }} />
               </div>
             </div>
           )}
@@ -1735,25 +1737,25 @@ const EquipmentList = () => {
             <div className="px-4 mt-4">
             <div className="rounded-2xl overflow-hidden eq-section" style={{
               background: 'white',
-              border: '1px solid rgba(5,150,105,0.12)',
-              boxShadow: '0 4px 24px rgba(5,150,105,0.07)',
+              border: '1px solid rgba(59,130,246,0.12)',
+              boxShadow: '0 4px 24px rgba(59,130,246,0.07)',
               animationDelay: '0s',
             }}>
               {/* Results header */}
               <div className="px-6 py-4 flex flex-wrap items-center justify-between gap-3" style={{
-                background: 'linear-gradient(90deg, rgba(5,150,105,0.05), rgba(5,150,105,0.02))',
-                borderBottom: '1px solid rgba(5,150,105,0.1)',
+                background: 'linear-gradient(90deg, rgba(59,130,246,0.05), rgba(59,130,246,0.02))',
+                borderBottom: '1px solid rgba(59,130,246,0.1)',
               }}>
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-lg" style={{
-                    background: 'rgba(5,150,105,0.08)',
-                    border: '1px solid rgba(5,150,105,0.18)',
+                    background: 'rgba(59,130,246,0.08)',
+                    border: '1px solid rgba(59,130,246,0.18)',
                   }}>
-                    <Boxes className="h-5 w-5 text-emerald-600" />
+                    <Boxes className="h-5 w-5 text-blue-600" />
                   </div>
                   <div>
                     <h2 className="text-slate-800 font-semibold text-base">
-                      <span className="text-emerald-600 text-xl font-bold">{results.total}</span>
+                      <span className="text-blue-600 text-xl font-bold">{results.total}</span>
                       {' '}Equipment Item{results.total !== 1 ? 's' : ''} Extracted
                     </h2>
                     {results.drawing_ref && (
@@ -1781,8 +1783,8 @@ const EquipmentList = () => {
                       transition: 'border-color 0.2s, box-shadow 0.2s',
                     }}
                     onFocus={e => {
-                      e.target.style.borderColor = 'rgba(5,150,105,0.45)';
-                      e.target.style.boxShadow   = '0 0 0 3px rgba(5,150,105,0.1)';
+                      e.target.style.borderColor = 'rgba(59,130,246,0.45)';
+                      e.target.style.boxShadow   = '0 0 0 3px rgba(59,130,246,0.1)';
                     }}
                     onBlur={e => {
                       e.target.style.borderColor = '#e2e8f0';
@@ -1802,14 +1804,14 @@ const EquipmentList = () => {
                 <div className="overflow-x-auto">
                   <table className="min-w-full">
                     <thead className="eq-th-sticky">
-                      <tr style={{ background: 'linear-gradient(90deg, #065f46, #047857)' }}>
+                      <tr style={{ background: 'linear-gradient(90deg, #065f46, #2563eb)' }}>
                         <th className="px-3 py-3.5 text-center" style={{ width: '40px' }}>
                           <input
                             type="checkbox"
                             checked={selectedRows.size === displayRows.length && displayRows.length > 0}
                             onChange={handleSelectAll}
                             title="Select / deselect all"
-                            style={{ cursor: 'pointer', accentColor: '#10b981', width: '15px', height: '15px' }}
+                            style={{ cursor: 'pointer', accentColor: '#6366f1', width: '15px', height: '15px' }}
                           />
                         </th>
                         {COLUMNS.map(col => (
@@ -1824,7 +1826,7 @@ const EquipmentList = () => {
                             <span className="flex items-center gap-1">
                               {col.label}
                               {sortCol === col.key && (
-                                <span className="text-emerald-200">{sortAsc ? ' ↑' : ' ↓'}</span>
+                                <span className="text-blue-200">{sortAsc ? ' ↑' : ' ↓'}</span>
                               )}
                             </span>
                           </th>
@@ -1841,20 +1843,20 @@ const EquipmentList = () => {
                           className="eq-row-animate"
                           style={{
                             animationDelay: `${Math.min(idx * 0.035, 0.5)}s`,
-                            background: isSelected ? 'rgba(5,150,105,0.08)' : idx % 2 === 0 ? 'white' : '#f0fdf4',
+                            background: isSelected ? 'rgba(59,130,246,0.08)' : idx % 2 === 0 ? 'white' : '#eff6ff',
                             borderBottom: '1px solid #f1f5f9',
                             transition: 'background 0.15s',
-                            outline: isSelected ? '1px solid rgba(5,150,105,0.25)' : 'none',
+                            outline: isSelected ? '1px solid rgba(59,130,246,0.25)' : 'none',
                           }}
-                          onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(5,150,105,0.05)'; }}
-                          onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = idx % 2 === 0 ? 'white' : '#f0fdf4'; }}
+                          onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(59,130,246,0.05)'; }}
+                          onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = idx % 2 === 0 ? 'white' : '#eff6ff'; }}
                         >
                           <td className="px-3 py-3 text-center" style={{ width: '40px' }}>
                             <input
                               type="checkbox"
                               checked={isSelected}
                               onChange={() => handleSelectRow(rowKey)}
-                              style={{ cursor: 'pointer', accentColor: '#059669', width: '15px', height: '15px' }}
+                              style={{ cursor: 'pointer', accentColor: '#3b82f6', width: '15px', height: '15px' }}
                             />
                           </td>
                           {COLUMNS.map(col => {
@@ -1878,7 +1880,7 @@ const EquipmentList = () => {
                               >
                                 {col.key === 'tag' ? (
                                   <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-mono font-bold"
-                                    style={{ background: 'rgba(5,150,105,0.08)', color: '#065f46', border: '1px solid rgba(5,150,105,0.15)' }}>
+                                    style={{ background: 'rgba(59,130,246,0.08)', color: '#065f46', border: '1px solid rgba(59,130,246,0.15)' }}>
                                     {display}
                                   </span>
                                 ) : col.key === 'quality_required' ? (
@@ -1888,7 +1890,7 @@ const EquipmentList = () => {
                                       const h = resolveQuantityHint(row.tag);
                                       return h ? (
                                         <span className="text-xs font-medium px-1.5 py-0.5 rounded self-start"
-                                          style={{ background: 'rgba(5,150,105,0.07)', color: '#059669', border: '1px solid rgba(5,150,105,0.15)' }}
+                                          style={{ background: 'rgba(59,130,246,0.07)', color: '#3b82f6', border: '1px solid rgba(59,130,246,0.15)' }}
                                           title={`Expected: ${h.label} (${h.placeholder})`}>
                                           {h.label}
                                         </span>
@@ -1916,10 +1918,10 @@ const EquipmentList = () => {
 
               <div className="px-6 py-3 flex items-center justify-between text-xs" style={{
                 borderTop: '1px solid #f1f5f9',
-                background: 'linear-gradient(90deg, #f8fafc, rgba(5,150,105,0.02))',
+                background: 'linear-gradient(90deg, #f8fafc, rgba(59,130,246,0.02))',
               }}>
                 <div className="flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500"
                     style={{ animation: 'eq-pulse-badge 2s ease infinite' }} />
                   <span className="text-slate-400 font-medium">
                     {filterText ? `${displayRows.length} of ${results.total} shown` : `${results.total} equipment items`}
@@ -1932,12 +1934,12 @@ const EquipmentList = () => {
           )}
 
           {/* ── Info Panel (idle) ── */}
-          <div className="max-w-7xl mx-auto px-6">
+          <div className="px-6" style={{ maxWidth: LAYOUT_CONFIG.normalMaxWidth }}>
           {!results && !isProcessing && (
             <div className="rounded-2xl overflow-hidden mt-4 eq-section" style={{
               background: 'white',
-              border: '1px solid rgba(5,150,105,0.12)',
-              boxShadow: '0 4px 24px rgba(5,150,105,0.07)',
+              border: '1px solid rgba(59,130,246,0.12)',
+              boxShadow: '0 4px 24px rgba(59,130,246,0.07)',
               animationDelay: '0.25s',
             }}>
               {/* Gradient top strip */}
@@ -1949,41 +1951,41 @@ const EquipmentList = () => {
               <div className="p-6">
                 <div className="flex items-center gap-3 mb-5">
                   <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{
-                    background: 'linear-gradient(135deg, rgba(5,150,105,0.12), rgba(16,185,129,0.06))',
-                    border: '1px solid rgba(5,150,105,0.20)',
+                    background: 'linear-gradient(135deg, rgba(59,130,246,0.12), rgba(99,102,241,0.06))',
+                    border: '1px solid rgba(59,130,246,0.20)',
                   }}>
-                    <span className="text-emerald-600 text-sm">📋</span>
+                    <span className="text-blue-600 text-sm">📋</span>
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-slate-800">What Gets Extracted</h3>
                     <p className="text-xs text-slate-400">18-field engineering register · P&ID + Equipment List modes</p>
                   </div>
                   <div className="ml-auto flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500"
                       style={{ animation: 'eq-pulse-badge 2s ease infinite' }} />
-                    <span className="text-xs font-semibold text-emerald-600">AI-Ready</span>
+                    <span className="text-xs font-semibold text-blue-600">AI-Ready</span>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {[
-                    ['🔢', 'SL No. & Revision',           'Row serial number and document revision extracted from the register table',       '#059669'],
-                    ['🏷️', 'Equipment Tag No.',            'ISA/project-style tag (V-101, P-201A, E-302…) from tag column',                  '#047857'],
+                    ['🔢', 'SL No. & Revision',           'Row serial number and document revision extracted from the register table',       '#3b82f6'],
+                    ['🏷️', 'Equipment Tag No.',            'ISA/project-style tag (V-101, P-201A, E-302…) from tag column',                  '#2563eb'],
                     ['📝', 'Description',                  'Equipment description as listed in the register',                                  '#065f46'],
-                    ['💧', 'Design Flowrate / Duty',       'Design flow rate, duty, or volume capacity from the process column',              '#059669'],
-                    ['🌡️', 'Operating Pressure (PSIG)',    'Normal operating pressure extracted from oper. press. column',                    '#047857'],
+                    ['💧', 'Design Flowrate / Duty',       'Design flow rate, duty, or volume capacity from the process column',              '#3b82f6'],
+                    ['🌡️', 'Operating Pressure (PSIG)',    'Normal operating pressure extracted from oper. press. column',                    '#2563eb'],
                     ['🔥', 'Operating Temperature (°F)',   'Normal operating temperature from oper. temp. column',                            '#065f46'],
-                    ['⬆️', 'Design/Set Press. Min & Max',  'Minimum and maximum design or set pressure from the two PSIG columns',           '#059669'],
-                    ['⬆️', 'Design Temp. Min & Max (°F)',  'Minimum and maximum design temperature from the two Deg F columns',              '#047857'],
+                    ['⬆️', 'Design/Set Press. Min & Max',  'Minimum and maximum design or set pressure from the two PSIG columns',           '#3b82f6'],
+                    ['⬆️', 'Design Temp. Min & Max (°F)',  'Minimum and maximum design temperature from the two Deg F columns',              '#2563eb'],
                     ['🧱', 'MOC',                          'Material of Construction — shell, body or wetted-parts material',                 '#065f46'],
-                    ['🧊', 'Insulation',                   'Insulation type or code (PERS, PITS, ICS, CONS, HOT, COLD…)',                    '#059669'],
-                    ['📐', 'Length / Height (mm)',          'Tangent-to-tangent length or overall height from the dimension column',           '#047857'],
+                    ['🧊', 'Insulation',                   'Insulation type or code (PERS, PITS, ICS, CONS, HOT, COLD…)',                    '#3b82f6'],
+                    ['📐', 'Length / Height (mm)',          'Tangent-to-tangent length or overall height from the dimension column',           '#2563eb'],
                     ['⭕', 'Diameter / Width (mm)',         'Outside diameter or width from the dimension column',                             '#065f46'],
-                    ['⚡', 'Motor Rating (kW)',             'Installed motor or driver power rating from the KW column',                      '#059669'],
-                    ['📋', 'P&ID No.',                     'P&ID reference number cross-linked to this equipment item',                      '#047857'],
+                    ['⚡', 'Motor Rating (kW)',             'Installed motor or driver power rating from the KW column',                      '#3b82f6'],
+                    ['📋', 'P&ID No.',                     'P&ID reference number cross-linked to this equipment item',                      '#2563eb'],
                     ['✅', 'Quantity Required',             'Volume / Flow Rate / Duty — resolved dynamically from equipment tag prefix',      '#065f46'],
-                    ['🔄', 'Phase',                        'Process fluid phase (Gas, Liquid, Mixed, Vapour…)',                               '#059669'],
-                    ['💬', 'Remarks',                      'Notes, holds, TBD items or other remarks from the last column',                   '#047857'],
+                    ['🔄', 'Phase',                        'Process fluid phase (Gas, Liquid, Mixed, Vapour…)',                               '#3b82f6'],
+                    ['💬', 'Remarks',                      'Notes, holds, TBD items or other remarks from the last column',                   '#2563eb'],
                     ['🔀', 'Multi-Angle OCR',              'Extracts at 0°, 90°, 180°, 270° — handles landscape CAD title blocks',           '#065f46'],
                   ].map(([icon, title, desc, color]) => (
                     <div key={title} className="eq-info-card flex items-start gap-3 p-3.5 rounded-xl" style={{

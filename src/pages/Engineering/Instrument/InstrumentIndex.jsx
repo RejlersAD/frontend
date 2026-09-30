@@ -64,27 +64,27 @@ import WrenchAiDocAssist from '../../../components/Engineering/WrenchAiDocAssist
 // ═════════════════════════════════════════════════════════════════════════════
 
 const T_INST = {
-  // Page background — soft indigo/violet sky for the instrument suite
-  bg: 'linear-gradient(145deg, #f5f3ff 0%, #eef2ff 30%, #f0f9ff 65%, #f5f3ff 100%)',
+  // Page background — ALIGNED with P&ID Verification V1 (T.bg in PIDVerification.jsx)
+  bg: 'linear-gradient(135deg, #f8faff 0%, #eef2ff 45%, #f0f9ff 75%, #fffbeb 100%)',
 
   blobs: [
-    { color: 'rgba(139,92,246,0.10)', size: '580px', top: '-100px',  left: '15%',    anim: 'instFloatA 14s ease-in-out infinite' },
-    { color: 'rgba(99,102,241,0.08)', size: '460px', top: '25%',     right: '-80px', anim: 'instFloatB 17s ease-in-out infinite' },
-    { color: 'rgba(168,85,247,0.07)', size: '400px', bottom: '-80px', left: '30%',    anim: 'instFloatC 12s ease-in-out infinite' },
-    { color: 'rgba(14,165,233,0.07)', size: '320px', top: '60%',     left: '-60px',  anim: 'instFloatA 10s ease-in-out infinite 3s' },
+    { color: 'rgba(59,130,246,0.09)', size: '520px', top: '-80px',   left: '18%',   anim: 'instFloatA 14s ease-in-out infinite' },
+    { color: 'rgba(168,85,247,0.07)', size: '430px', top: '28%',     right: '-60px', anim: 'instFloatB 17s ease-in-out infinite' },
+    { color: 'rgba(245,158,11,0.07)', size: '380px', bottom: '-60px', left: '32%',   anim: 'instFloatC 12s ease-in-out infinite' },
+    { color: 'rgba(6,182,212,0.06)',  size: '300px', top: '62%',     left: '-40px', anim: 'instFloatA 10s ease-in-out infinite 3s' },
   ],
 
-  card:  { background: '#ffffff', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.06),0 4px 16px rgba(0,0,0,0.04)' },
-  cardH: { boxShadow: '0 12px 40px rgba(99,102,241,0.16),0 2px 8px rgba(0,0,0,0.05)', borderColor: '#a5b4fc', transform: 'translateY(-2px)' },
-  panel: { background: 'rgba(255,255,255,0.92)', border: '1px solid #e0e7ff', backdropFilter: 'blur(16px)', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' },
+  card:  { background: '#ffffff', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.06),0 4px 12px rgba(0,0,0,0.04)' },
+  cardH: { boxShadow: '0 10px 30px rgba(0,0,0,0.10),0 2px 8px rgba(0,0,0,0.05)', borderColor: '#93c5fd', transform: 'translateY(-2px)' },
+  panel: { background: 'rgba(255,255,255,0.85)', border: '1px solid #e8edf5', backdropFilter: 'blur(12px)', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' },
 
-  accent:        'linear-gradient(135deg,#7c3aed,#4f46e5)',
-  accentHex:     '#6366f1',
+  accent:        'linear-gradient(135deg,#3b82f6,#6366f1)',
+  accentHex:     '#3b82f6',
   accentShadow:  '0 4px 18px rgba(99,102,241,0.38)',
   accentShadowLg:'0 8px 28px rgba(99,102,241,0.42)',
 
-  gradBar: 'linear-gradient(90deg,#a78bfa,#6366f1,#3b82f6,#8b5cf6,#a78bfa)',
-  gridDot: 'radial-gradient(circle, rgba(139,92,246,0.07) 1px, transparent 1px)',
+  gradBar: 'linear-gradient(90deg,#3b82f6,#6366f1,#f59e0b,#3b82f6)',
+  gridDot: 'radial-gradient(circle, rgba(99,102,241,0.055) 1px, transparent 1px)',
 };
 
 const KEYFRAMES_INST = `
@@ -113,7 +113,7 @@ const KEYFRAMES_INST = `
 
 // Soft-coded hero capability badges (instrument flavor)
 const INST_HERO_BADGES = [
-  { label: 'ISA 5.1 compliant',   icon: '🏷️', cls: 'bg-violet-50 text-violet-700 border-violet-200' },
+  { label: 'ISA 5.1 compliant',   icon: '🏷️', cls: 'bg-blue-50 text-blue-700 border-blue-200' },
   { label: 'AI Vision multi-pass', icon: '🤖', cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
   { label: 'Legend cross-check',   icon: '🔍', cls: 'bg-blue-50 text-blue-700 border-blue-200' },
   { label: 'Excel export',         icon: '📊', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
@@ -126,7 +126,7 @@ const INST_HOW_IT_WORKS = [
     title: 'Upload P&ID PDF',
     desc:  'Drop your P&ID drawing. Single or multi-page supported, with optional legend sheet for symbol cross-verification.',
     icon:  CloudArrowUpIcon,
-    accent: '#7c3aed',
+    accent: '#3b82f6',
     border: '#ddd6fe',
     bg: 'linear-gradient(135deg,#faf5ff,#f5f3ff)',
   },
@@ -135,7 +135,7 @@ const INST_HOW_IT_WORKS = [
     title: 'AI Vision Multi-Pass Scan',
     desc:  '7-pass scan: standard + 90°/270° rotations + 4 quadrant tiles. Catches every instrument bubble, no matter the orientation.',
     icon:  CpuChipIcon,
-    accent: '#4f46e5',
+    accent: '#6366f1',
     border: '#c7d2fe',
     bg: 'linear-gradient(135deg,#eef2ff,#e0e7ff)',
   },
@@ -424,7 +424,7 @@ const INST_RELATED_TOOLS = [
 // pages.  `enabled: false` hides the toggle button entirely.
 const INST_LAYOUT_CONFIG = {
   enabled:             true,
-  normalMaxWidth:      '96rem',   // tailwind max-w-screen-2xl ≈ 1536 px
+  normalMaxWidth:      '100%',    // full-width canvas like PID Verification V1
   normalPaddingX:      '1.5rem',
   normalPaddingY:      '2rem',
   fullscreenMaxWidth:  '100%',
@@ -594,7 +594,7 @@ function EditInstrumentModal({ open, draft, fields, onChange, onClose, onSave })
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden"
            onClick={e => e.stopPropagation()}>
         {/* Header */}
-        <div className="px-5 py-4 border-b border-slate-200 bg-gradient-to-r from-indigo-50 to-violet-50 flex items-center justify-between">
+        <div className="px-5 py-4 border-b border-slate-200 bg-gradient-to-r from-indigo-50 to-blue-50 flex items-center justify-between">
           <div>
             <h2 className="text-base font-bold text-slate-800">Edit Instrument</h2>
             <p className="text-xs text-slate-500 font-mono mt-0.5">{tag}</p>
@@ -667,7 +667,7 @@ function EditInstrumentModal({ open, draft, fields, onChange, onClose, onSave })
             Cancel
           </button>
           <button onClick={onSave}
-                  className="px-3.5 py-1.5 text-xs font-semibold rounded-md bg-gradient-to-r from-indigo-500 to-violet-600 text-white hover:from-indigo-600 hover:to-violet-700 shadow-sm transition">
+                  className="px-3.5 py-1.5 text-xs font-semibold rounded-md bg-gradient-to-r from-indigo-500 to-blue-600 text-white hover:from-indigo-600 hover:to-blue-700 shadow-sm transition">
             Save Changes
           </button>
         </div>
@@ -1216,18 +1216,19 @@ const InstrumentIndex = () => {
   if (!activeProject) {
     return (
       <InstBg>
-        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        {/* Full-width canvas — aligned with PID Verification V1 (w-full px-2/4/6) */}
+        <div className="w-full px-2 sm:px-4 lg:px-6 py-10">
 
           {/* ── Hero ── */}
           <div className="mb-10 flex flex-col lg:flex-row lg:items-center gap-8" style={{ animation: 'instFadeUp 0.6s ease-out both' }}>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 mb-2">
-                <div className="w-1 h-7 rounded-full" style={{ background: 'linear-gradient(180deg,#7c3aed,#4f46e5)' }} />
+                <div className="w-1 h-7 rounded-full" style={{ background: 'linear-gradient(180deg,#3b82f6,#6366f1)' }} />
                 <span className="text-indigo-600 text-xs font-bold tracking-[0.3em] uppercase">AIFlow · Instrument Engineering</span>
               </div>
               <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-slate-900 tracking-tight leading-tight mb-3 whitespace-nowrap">
                 Instrument{' '}
-                <span style={{ background: 'linear-gradient(90deg,#7c3aed,#4f46e5)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
+                <span style={{ background: 'linear-gradient(90deg,#3b82f6,#6366f1)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
                   Index Extractor
                 </span>
               </h1>
@@ -1269,7 +1270,7 @@ const InstrumentIndex = () => {
                   const rad = (deg - 90) * Math.PI / 180;
                   const x1 = 88 + 80 * Math.cos(rad), y1 = 88 + 80 * Math.sin(rad);
                   const x2 = 88 + 72 * Math.cos(rad), y2 = 88 + 72 * Math.sin(rad);
-                  return <line key={deg} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#7c3aed" strokeWidth="1.5" strokeLinecap="round" />;
+                  return <line key={deg} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" />;
                 })}
               </svg>
               <svg className="absolute inset-0" width="176" height="176" viewBox="0 0 176 176"
@@ -1279,7 +1280,7 @@ const InstrumentIndex = () => {
                   const rad = (deg - 90) * Math.PI / 180;
                   const x1 = 88 + 58 * Math.cos(rad), y1 = 88 + 58 * Math.sin(rad);
                   const x2 = 88 + 50 * Math.cos(rad), y2 = 88 + 50 * Math.sin(rad);
-                  return <line key={deg} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#4f46e5" strokeWidth="1.5" strokeLinecap="round" />;
+                  return <line key={deg} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#6366f1" strokeWidth="1.5" strokeLinecap="round" />;
                 })}
               </svg>
               <div className="relative z-10 w-20 h-20 rounded-2xl flex flex-col items-center justify-center"
@@ -1442,7 +1443,7 @@ const InstrumentIndex = () => {
   return (
     <InstBg fullscreen={isFullscreen}>
       <div
-        className="mx-auto px-4 sm:px-6 lg:px-8"
+        className="w-full px-2 sm:px-4 lg:px-6"
         style={{
           maxWidth: isFullscreen ? INST_LAYOUT_CONFIG.fullscreenMaxWidth : INST_LAYOUT_CONFIG.normalMaxWidth,
           paddingTop:    isFullscreen ? INST_LAYOUT_CONFIG.fullscreenPaddingY : INST_LAYOUT_CONFIG.normalPaddingY,
@@ -1552,7 +1553,7 @@ const InstrumentIndex = () => {
             className={`border-2 border-dashed rounded-xl p-8 transition-all cursor-pointer mb-4 ${
               pidFile
                 ? 'border-green-300 bg-gradient-to-br from-green-50 to-emerald-50'
-                : 'border-indigo-200 bg-gradient-to-br from-indigo-50/40 to-violet-50/40 hover:border-indigo-400 hover:from-indigo-50 hover:to-violet-50 hover:shadow-inner'
+                : 'border-indigo-200 bg-gradient-to-br from-indigo-50/40 to-blue-50/40 hover:border-indigo-400 hover:from-indigo-50 hover:to-blue-50 hover:shadow-inner'
             }`}
             onClick={() => fileInputRef.current?.click()}
           >
@@ -2647,7 +2648,7 @@ const InstrumentIndex = () => {
                                       </span>
                                     )}
                                     {inst.equipment_number && (
-                                      <span className="text-[9px] bg-violet-50 text-violet-700 px-1.5 py-0.5 rounded border border-violet-100 font-mono">
+                                      <span className="text-[9px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-100 font-mono">
                                         Equip: {inst.equipment_number}
                                       </span>
                                     )}

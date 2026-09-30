@@ -104,6 +104,8 @@ function buildEngineeringSolutions() {
     .sort((a, b) => (a.order ?? 99) - (b.order ?? 99))
     .forEach(discipline => {
       ;(discipline.subFeatures || []).forEach(feature => {
+        // SOFT-CODED: skip features explicitly disabled (under development) — hidden for everyone
+        if (feature.enabled === false) return
         const isAI = _isAI(feature)
         solutions.push({
           id:               feature.id,
