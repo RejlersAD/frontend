@@ -27,8 +27,10 @@ Commercial details are optional at registration. Missing amount and expected
 award date are sent as null, currency and scope as blank. Supported extracted
 facts still prefill the commercial disclosure and remain editable. Amount,
 currency, scope, summary and award date can be completed in the existing record
-editor before qualification. Existing governed lifecycle commands remain in
-place; `lead` is presented as Open, without collapsing Award pending, No Bid or
+editor before qualification. Clearing the optional next-action date sends null
+rather than an empty string so that completing commercial details on a new
+registration does not fail backend date validation. Existing lifecycle commands
+remain in place; `lead` is presented as Open, without collapsing Award pending, No Bid or
 Cancelled into a different outcome.
 
 The register displays both VF code and title, client, open date, submission

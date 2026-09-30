@@ -51,6 +51,7 @@ async function prepareRegister(page, configuration = {}) {
   const state = {
     records: sampleRows(), requests: [], exports: [], pageErrors: [],
     listStatus: 200, listPageStatuses: {}, exportStatus: 200, detailStatuses: {}, detailHolds: {},
+    patchStatuses: {}, patchHolds: {},
     ...configuration,
   }
   page.on('pageerror', error => state.pageErrors.push(error.message))
@@ -83,6 +84,14 @@ async function prepareRegister(page, configuration = {}) {
       } })
     }
     const detail = url.pathname.match(/\/deals\/(opportunity-\d+)\/$/)
+    if (detail && request.method() === 'PATCH') {
+      const identifier = detail[1]
+      if (state.patchHolds[identifier]) await state.patchHolds[identifier]
+      const status = state.patchStatuses[identifier] || 200
+      const index = state.records.findIndex(item => item.id === identifier)
+      if (status === 200) state.records[index] = { ...state.records[index], ...body }
+      return route.fulfill({ status, json: status === 200 ? state.records[index] : { detail: 'The previous opportunity save failed.' } })
+    }
     if (detail && request.method() === 'GET') {
       const identifier = detail[1]
       if (state.detailHolds[identifier]) await state.detailHolds[identifier]
@@ -298,6 +307,41 @@ test('full record detail failure blocks edits and recovers through its retry', a
   await dialog.getByRole('button', { name: 'Retry record', exact: true }).click()
   await expect(dialog).toContainText('Seawater intake engineering study')
   await expect(dialog.getByRole('button', { name: 'Edit', exact: true })).toBeEnabled()
+  expect(state.pageErrors).toEqual([])
+})
+
+for (const status of [200, 503]) test(`a late ${status} save cannot replace or invalidate another opportunity edit`, async ({ page }) => {
+  let release
+  const held = new Promise(resolve => { release = resolve })
+  const state = await prepareRegister(page, {
+    patchHolds: { 'opportunity-0': held }, patchStatuses: { 'opportunity-0': status },
+  })
+  await vf(page, 0).click()
+  await expect(rail(page)).toContainText('Seawater intake engineering study')
+  await rail(page).getByRole('button', { name: 'Edit', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Opportunity record', exact: true })
+  await dialog.getByLabel('Opportunity name', { exact: true }).fill('First opportunity pending save')
+  await dialog.getByRole('button', { name: 'Save changes', exact: true }).click()
+  await expect.poll(() => state.requests.some(item => item.method === 'PATCH' && item.path.endsWith('/deals/opportunity-0/'))).toBe(true)
+  await dialog.getByRole('button', { name: 'Close record', exact: true }).click()
+  await vf(page, 1).click()
+  await expect(rail(page)).toContainText('Compressor replacement FEED')
+  await rail(page).getByRole('button', { name: 'Edit', exact: true }).click()
+  const input = dialog.getByLabel('Opportunity name', { exact: true })
+  await input.fill('Retained second opportunity draft')
+  await expect(dialog.getByRole('button', { name: 'Save changes', exact: true })).toBeEnabled()
+  const completed = page.waitForResponse(response => response.request().method() === 'PATCH' && response.url().endsWith('/deals/opportunity-0/'))
+  release()
+  const response = await completed
+  expect(response.status()).toBe(status)
+  await response.finished()
+  // Allow the completed request and the following React paint to settle before
+  // asserting that neither the obsolete success nor error touched this draft.
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  await expect(input).toHaveValue('Retained second opportunity draft')
+  await expect(dialog).toContainText('Q-102102')
+  await expect(dialog).not.toContainText('The previous opportunity save failed.')
+  await expect(dialog.getByRole('button', { name: 'Save changes', exact: true })).toBeEnabled()
   expect(state.pageErrors).toEqual([])
 })
 

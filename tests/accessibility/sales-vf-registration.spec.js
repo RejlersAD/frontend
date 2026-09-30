@@ -103,7 +103,7 @@ test('register shows VF and title, unknown value, and allows completing commerci
   await drawer.getByLabel('Expected award date', { exact: true }).fill('2026-12-01')
   await drawer.getByRole('button', { name: 'Save changes', exact: true }).click()
   await expect(drawer.getByRole('button', { name: 'Edit', exact: true })).toBeVisible()
-  expect(state.requests.find(item => item.method === 'PATCH').body).toMatchObject({ estimated_value: '50000', currency: 'OMR', expected_close_date: '2026-12-01' })
+  expect(state.requests.find(item => item.method === 'PATCH').body).toMatchObject({ estimated_value: '50000', currency: 'OMR', expected_close_date: '2026-12-01', next_action_date: null })
 })
 for (const mode of ['live', 'saved']) test(`${mode} minimal email registration preserves source review, Dubai open date and missing commercial values`, async ({ page }) => {
   const receivedAt = '2026-09-29T22:30:00Z'

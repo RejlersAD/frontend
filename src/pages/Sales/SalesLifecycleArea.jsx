@@ -862,7 +862,7 @@ export default function SalesLifecycleArea() {
   useEffect(() => {
     ++recordRequest.current;
     setRecord(null); setRecordError(""); setFullRecordOpen(false);
-    setRows([]); setQuery(""); setError(""); setEditing(false);
+    setRows([]); setQuery(""); setError(""); setEditing(false); setSaving(false);
     setRegistrationOpen(false); setActionDialog(null);
   }, [area]);
 
@@ -927,6 +927,7 @@ export default function SalesLifecycleArea() {
       setRecordError("");
       setFullRecordOpen(showFull);
       setEditing(false);
+      setSaving(false);
       setSearchParams({ record: id }, { replace: true });
       try {
         const detail = await config.get(id);
@@ -986,18 +987,21 @@ export default function SalesLifecycleArea() {
 
   const saveRecord = async (event) => {
     event.preventDefault();
+    const request = recordRequest.current;
+    const selectedId = record.id;
     setSaving(true);
     setError("");
     try {
-      const payload = area === "opportunities" ? { ...draft, estimated_value: draft.estimated_value === "" ? null : draft.estimated_value, expected_close_date: draft.expected_close_date || null, submission_due_date: draft.submission_due_date || null, open_date: draft.open_date || null } : draft;
-      const updated = await config.update(record.id, payload);
+      const payload = area === "opportunities" ? { ...draft, estimated_value: draft.estimated_value === "" ? null : draft.estimated_value, expected_close_date: draft.expected_close_date || null, submission_due_date: draft.submission_due_date || null, open_date: draft.open_date || null, next_action_date: draft.next_action_date || null } : draft;
+      const updated = await config.update(selectedId, payload);
+      if (request !== recordRequest.current) return;
       setRecord(updated);
       setEditing(false);
       await load();
     } catch (requestError) {
-      setError(apiError(requestError, `${config.title} could not be updated.`));
+      if (request === recordRequest.current) setError(apiError(requestError, `${config.title} could not be updated.`));
     } finally {
-      setSaving(false);
+      if (request === recordRequest.current) setSaving(false);
     }
   };
 

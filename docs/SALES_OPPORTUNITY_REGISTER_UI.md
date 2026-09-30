@@ -39,6 +39,9 @@ stays inside its own region.
   states the number missing a value or currency. No exchange rate is inferred.
 - All scoped API pages load before metrics/search/filters. Duplicate IDs or
   changed/incomplete counts fail visibly. Rapid selections ignore late responses.
+  Late edit-save success or failure also cannot replace a newly selected record
+  or clear its edit state. Changing the record or Sales area resets the prior
+  save indicator without cancelling an already requested server update.
 - CSV downloads use the backend read+export-authorized endpoint and explicit
   filtered/checked IDs; failure retains the selection for retry. Max 10,000 rows
   per export. Column visibility/density are presentation controls; CSV uses its
@@ -83,3 +86,11 @@ widths. Font values and fixed row heights remain correct; final screenshots were
 inspected.
 The final Vite/PWA production build passed with existing nonfatal bundle-size and
 Browserslist warnings. This update is served locally and has not been deployed.
+
+Release verification on 30 September 2026: fetched origin/main and development
+are ancestors of the prepared source, with no conflicts. Changed-file lint,
+19 register browser cases (including delayed save success/failure), 46 combined
+VF/email/history cases and 16 helper tests passed. The optional-date edit case
+also passed independently on the final corrected source. Browser tests use
+synthetic API fixtures. Release the matching backend and apply Sales0011 first;
+the coordinated backend release is https://github.com/RejlersAD/backend/pull/211.
