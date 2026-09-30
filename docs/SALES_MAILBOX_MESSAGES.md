@@ -4,8 +4,9 @@
 was removed at the user's request; `?view=imported` retains
 the existing local intake review, rejection, duplicate and conversion workflow.
 Live mailbox messages are not represented as imported enquiries or given intake review
-states. The overview's separate Shared mailbox status card still reads saved
-connection status only.
+states. The overview's Shared mailbox status card was removed on 30 September
+2026 at the user's request; Email Intake continues to browse the configured
+mailbox through the existing scoped services.
 
 ## Data and access
 
