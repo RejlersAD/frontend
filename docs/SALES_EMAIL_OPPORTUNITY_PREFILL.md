@@ -1,5 +1,11 @@
 # Email opportunity prefill
 
+The 30 September VF registration update supersedes initial commercial-field
+requirements below: value, currency, scope and expected award date may remain
+unknown at registration. Type, owner and source-received open date are now
+reviewed in the shared form; qualification remains separately governed. See
+[VF registration](SALES_VF_REGISTRATION.md) for the current contract.
+
 Implementation contract, 29 September 2026. Applies to live shared-mailbox and
 saved email intake. The existing review panel, classification confirmation and
 Create opportunity dialog are retained; reading an email creates no records.

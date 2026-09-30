@@ -790,6 +790,11 @@ class SalesService {
     ).data;
   }
 
+  async getRegistrationOptions() {
+    const response = await apiClient.get(`${BASE_URL}/deals/registration-options/`);
+    return response.data;
+  }
+
   async askMailboxEmail(connectionId, payload) {
     return (await apiClient.post(
       `${BASE_URL}/mailbox-connections/${encodeURIComponent(connectionId)}/review-assistant/`,

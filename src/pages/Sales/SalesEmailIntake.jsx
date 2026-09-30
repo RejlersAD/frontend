@@ -26,6 +26,7 @@ import SalesEmailAssistant from "./SalesEmailAssistant";
 import SalesEmailReview from "./SalesEmailReview";
 import { isOpportunityClassification } from "./salesEmailReviewState";
 import SalesEmailOpportunityForm from "./SalesEmailOpportunityForm";
+import { registrationFields } from "./salesOpportunityRegistration";
 import { withoutCustomerMatch } from "./SalesEmailCustomerMatch";
 import useSalesEmailClients from "./useSalesEmailClients";
 import useSalesEmailClientChoice from "./useSalesEmailClientChoice";
@@ -178,6 +179,8 @@ function ImportedEmailIntakes() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [dialog, setDialog] = useState(null);
+  const [conversionFieldErrors, setConversionFieldErrors] = useState({});
+  useEffect(() => { setConversionFieldErrors({}); }, [dialog, selectedId]);
   const [confirmedClassification, setConfirmedClassification] = useState("");
   const [reviewVersion, setReviewVersion] = useState(0);
   const [classificationReviewRequired, setClassificationReviewRequired] = useState(false);
@@ -373,6 +376,7 @@ function ImportedEmailIntakes() {
     }
     if (!createClient && !clients.records.some((client) => client.id === clientChoice)) return;
     setSaving(true);
+    setConversionFieldErrors({});
     setError("");
     try {
       const result = await salesService.convertEmailIntake(selected.id, {
@@ -387,10 +391,7 @@ function ImportedEmailIntakes() {
               }
             : undefined,
         deal_name: form.get("deal_name"),
-        estimated_value: form.get("estimated_value"),
-        currency: form.get("currency"),
-        expected_close_date: form.get("expected_close_date"),
-        submission_due_date: form.get("submission_due_date") || null,
+        ...registrationFields(form),
         scope_type: form.get("scope_type"),
         location: form.get("location"),
         client_reference: form.get("client_reference"),
@@ -415,9 +416,11 @@ function ImportedEmailIntakes() {
         const first = Array.isArray(value) ? value[0] : value;
         return typeof first === "string" ? first : "";
       };
+      const registrationErrors = Object.fromEntries(["opportunity_type", "open_date", "owner", "deal_name", "client", "client_reference", "estimated_value", "currency", "expected_close_date", "submission_due_date", "scope_type", "description"].map((name) => [name, fieldError(name)]).filter(([, value]) => value));
+      setConversionFieldErrors(registrationErrors);
       setError(
         fieldError("classification_code") || fieldError("classification_confirmed") || fieldError("client") ||
-          fieldError("expected_close_date") || fieldError("estimated_value") || fieldError("status") ||
+          Object.values(registrationErrors)[0] || fieldError("status") ||
           (sourceChanged ? "Reload email details and confirm the classification. Your entries have been kept." : typeof data?.detail === "string" ? data.detail : "") ||
           "The opportunity could not be created.",
       );
@@ -706,6 +709,8 @@ function ImportedEmailIntakes() {
             confirmedClassification={confirmedClassification} onConfirmClassification={setConfirmedClassification}
             onClassificationChange={() => setConfirmedClassification("")} />}
           subject={selected.subject}
+          receivedAt={selected.received_at}
+          classificationCode={confirmedClassification}
           information={extracted}
           bodyPreview={selected.body_preview}
           clients={clients.records}
@@ -719,6 +724,7 @@ function ImportedEmailIntakes() {
           onClose={() => setDialog(null)}
           submitting={saving}
           error={error}
+          fieldErrors={conversionFieldErrors}
           showLocation
         />
       )}

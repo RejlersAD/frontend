@@ -28,6 +28,8 @@ import {
 import salesService from "../../services/sales.service";
 import SalesActionDialog from "./SalesActionDialog";
 import SalesOpportunityHistory from "./SalesOpportunityHistory";
+import SalesOpportunityRegistrationDialog from "./SalesOpportunityRegistrationDialog";
+import { opportunityMoney } from "./salesOpportunityRegistration";
 
 const AREAS = {
   opportunities: {
@@ -52,6 +54,14 @@ const AREAS = {
     details: [
       "deal_code",
       "deal_name",
+      "opportunity_type",
+      "client_name",
+      "open_date",
+      "owner_name",
+      "created_by_name",
+      "created_at",
+      "client_reference",
+      "description",
       "stage",
       "probability",
       "estimated_value",
@@ -64,6 +74,13 @@ const AREAS = {
     ],
     editFields: [
       ["deal_name", "Opportunity name"],
+      ["opportunity_type", "Opportunity type", "select", ["", "tender", "rfq", "eoi", "direct_enquiry", "other"]],
+      ["open_date", "Open date", "date"],
+      ["client_reference", "Client reference"],
+      ["estimated_value", "Estimated value", "number"],
+      ["currency", "Currency", "select", ["", "AED", "USD", "EUR", "GBP", "SAR", "QAR", "OMR"]],
+      ["scope_type", "Scope type", "select", ["", "conceptual", "pre_feed", "feed", "basic_engineering", "detailed_engineering", "epcm", "epc", "pmc", "owner_engineer", "feasibility", "other"]],
+      ["description", "Scope summary", "textarea"],
       ["next_action", "Next action"],
       ["next_action_date", "Next-action date", "date"],
       ["submission_due_date", "Proposal deadline", "date"],
@@ -77,19 +94,25 @@ const AREAS = {
       ],
     ],
     columns: [
-      "Opportunity",
+      "VF code",
+      "Title",
       "Client",
+      "Open date",
+      "Submission deadline",
       "Stage",
       "Owner",
       "Value",
       "Next action",
     ],
     cells: (row) => [
-      row.deal_code || row.deal_name,
+      row.deal_code || "Not provided",
+      row.deal_name,
       row.client_name,
-      row.stage_display || row.stage,
+      dateLabel(row.open_date),
+      dateLabel(row.submission_due_date),
+      row.stage === "lead" ? "Open" : row.stage_display || row.stage,
       row.owner_name || "Unassigned",
-      money(row.estimated_value, row.currency),
+      opportunityMoney(row.estimated_value, row.currency),
       row.next_action || dateLabel(row.next_action_date),
     ],
   },
@@ -448,7 +471,7 @@ function Metric({ label: metricLabel, value, tone = "blue" }) {
   );
 }
 
-const fieldLabel = (key) => label(key);
+const fieldLabel = (key) => ({ deal_code: "VF code", deal_name: "Title", client_name: "Client", owner_name: "Owner", created_by_name: "Created by", created_at: "Created date", submission_due_date: "Submission deadline", expected_close_date: "Expected award date", description: "Scope summary" })[key] || label(key);
 const displayValue = (value) => {
   if (value === null || value === undefined || value === "") return "Not set";
   if (typeof value === "boolean") return value ? "Yes" : "No";
@@ -678,7 +701,7 @@ function RecordDrawer({
                             }
                             className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
                           >
-                            {options.map((option) => (
+                            {[...new Set([...(draft[key] ? [draft[key]] : []), ...options])].map((option) => (
                               <option key={option} value={option}>
                                 {label(option)}
                               </option>
@@ -712,7 +735,7 @@ function RecordDrawer({
                     {fieldLabel(key)}
                   </dt>
                   <dd className="min-w-0 whitespace-pre-wrap text-sm leading-6 text-slate-900 [overflow-wrap:anywhere]">
-                    {displayValue(record?.[key])}
+                    {key === "stage" && record?.stage === "lead" ? "Open" : key === "estimated_value" ? opportunityMoney(record?.estimated_value, record?.currency) : displayValue(record?.[key])}
                   </dd>
                 </div>
               ))}
@@ -817,6 +840,7 @@ export default function SalesLifecycleArea() {
   const [draft, setDraft] = useState({});
   const [saving, setSaving] = useState(false);
   const [workspaceCounts, setWorkspaceCounts] = useState({});
+  const [registrationOpen, setRegistrationOpen] = useState(false);
   const [actionDialog, setActionDialog] = useState(null);
   const [actionValues, setActionValues] = useState({});
   const [actionBusy, setActionBusy] = useState(false);
@@ -911,7 +935,8 @@ export default function SalesLifecycleArea() {
     setSaving(true);
     setError("");
     try {
-      const updated = await config.update(record.id, draft);
+      const payload = area === "opportunities" ? { ...draft, estimated_value: draft.estimated_value === "" ? null : draft.estimated_value, expected_close_date: draft.expected_close_date || null, submission_due_date: draft.submission_due_date || null, open_date: draft.open_date || null } : draft;
+      const updated = await config.update(record.id, payload);
       setRecord(updated);
       setEditing(false);
       await load();
@@ -990,7 +1015,8 @@ export default function SalesLifecycleArea() {
         return;
       }
 
-      if (area === "frameworks" || area === "opportunities") {
+      if (area === "opportunities") { setRegistrationOpen(true); return; }
+      if (area === "frameworks") {
         const clients = list(
           await salesService.getClients({ status: "active", page_size: 500 }),
         );
@@ -1069,117 +1095,6 @@ export default function SalesLifecycleArea() {
           );
           return;
         }
-        const frameworks = list(
-          await salesService.getFrameworks({
-            status: "active",
-            page_size: 500,
-          }),
-        );
-        showAction(
-          {
-            title: "Register opportunity",
-            submitLabel: "Create opportunity",
-            description:
-              "Capture the lead first; qualification and bid/no-bid are separate governed decisions.",
-            fields: [
-              {
-                name: "deal_name",
-                label: "Opportunity name",
-                required: true,
-                full: true,
-              },
-              {
-                name: "client",
-                label: "Client",
-                type: "select",
-                required: true,
-                options: clientOptions,
-              },
-              {
-                name: "framework",
-                label: "Framework (optional)",
-                type: "select",
-                options: frameworks.map((item) => ({
-                  value: item.id,
-                  label: `${item.framework_number} - ${item.client_name}`,
-                })),
-              },
-              {
-                name: "scope_type",
-                label: "Scope type",
-                type: "select",
-                required: true,
-                options: [
-                  "conceptual",
-                  "pre_feed",
-                  "feed",
-                  "basic_engineering",
-                  "detailed_engineering",
-                  "epcm",
-                  "pmc",
-                  "owner_engineer",
-                  "feasibility",
-                  "other",
-                ],
-              },
-              {
-                name: "estimated_value",
-                label: "Estimated value",
-                type: "number",
-                min: 0,
-                required: true,
-              },
-              {
-                name: "currency",
-                label: "Currency",
-                type: "select",
-                required: true,
-                options: ["AED", "USD", "EUR", "GBP", "SAR", "QAR"],
-              },
-              {
-                name: "submission_due_date",
-                label: "Proposal deadline",
-                type: "date",
-                required: true,
-              },
-              {
-                name: "expected_close_date",
-                label: "Expected award date",
-                type: "date",
-                required: true,
-              },
-              {
-                name: "estimated_hours",
-                label: "Estimated hours",
-                type: "number",
-                min: 0,
-              },
-              {
-                name: "project_duration_months",
-                label: "Duration in months",
-                type: "number",
-                min: 1,
-              },
-              {
-                name: "description",
-                label: "Scope summary",
-                type: "textarea",
-                full: true,
-              },
-            ],
-            execute: (values) =>
-              salesService.createDeal({
-                ...values,
-                framework: values.framework || null,
-                estimated_hours: values.estimated_hours || null,
-                project_duration_months: values.project_duration_months || null,
-                priority: "medium",
-                risk_level: "medium",
-              }),
-          },
-          { currency: "AED", scope_type: "detailed_engineering" },
-        );
-        return;
       }
 
       if (area === "proposals") {
@@ -1887,6 +1802,7 @@ export default function SalesLifecycleArea() {
           </div>
         </aside>
       </div>
+      {registrationOpen && <SalesOpportunityRegistrationDialog onClose={() => setRegistrationOpen(false)} onCreated={(created) => { setRegistrationOpen(false); load(); openRecord(created); }} />}
       {record && (
         <RecordDrawer
           config={config}
