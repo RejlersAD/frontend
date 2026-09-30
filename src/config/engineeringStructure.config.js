@@ -5,6 +5,7 @@
  */
 
 import { ROUTES } from './routes.config'
+import envConfig from './environment.config'
 import {
   BeakerIcon,
   WrenchIcon,
@@ -33,6 +34,16 @@ const PID_NAMING_CONFIG = {
 
 // SOFT-CODED: Toggle visibility of Digitization > Datasheets in frontend navigation
 const ENABLE_DIGITIZATION_DATASHEET_FEATURE = false
+
+// SOFT-CODED: hide Non-TEFF Metadata Generator EVERYWHERE (all environments,
+// incl. local development) — application parked. Sidebar entry and Solutions
+// card hidden for all users incl. super admin. Direct URL access unaffected.
+// Flip to `false` to restore; set NON_TEFF_PROD_ONLY = true to hide only in
+// production while keeping local access.
+const HIDE_NON_TEFF_EVERYWHERE = true
+const NON_TEFF_PROD_ONLY = false
+const NON_TEFF_HIDDEN = HIDE_NON_TEFF_EVERYWHERE
+  || (NON_TEFF_PROD_ONLY && envConfig.getEnvironment() === 'production')
 
 /**
  * Engineering Disciplines Configuration
@@ -355,7 +366,9 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/digitization/non-teff-metadata',
         description: 'Extract metadata from Non-TEFF documents (PDF, Excel, Word, AutoCAD)',
         moduleCode: 'non_teff_metadata',
-        badge: ''
+        badge: '',
+        // SOFT-CODED: hidden in production (env-aware — local unaffected)
+        enabled: !NON_TEFF_HIDDEN
       },
       {
         id: 'smartPlant3D',
