@@ -204,24 +204,28 @@ test('unmount discards late responses and stops following their next page', asyn
   assertReadOnly(state)
 })
 
-test('real Sales workspace clears mailbox metadata when nested account identity changes or signs out', async ({ page }, testInfo) => {
-  const hold = deferred()
-  const state = await prepare(page, { mode: 'page', handler: ({ request }) => request.headers().authorization === 'Bearer mailbox-fixture-user-11'
-    ? { body: paginated([shared({ sync: sync({ saved_count: 891 }) })]) }
-    : { body: paginated([shared({ mailbox_address: 'new-account@example.test', sync: sync({ saved_count: 23 }) })]), hold },
-  })
-  await expect(region(page).getByText('sales@example.test')).toBeVisible()
-  await page.screenshot({ path: testInfo.outputPath('sales-shared-mailbox-integrated.png'), fullPage: true })
-  await page.evaluate(() => window.setSalesMailboxFixtureActor({ id: 900, user: { id: 22 }, email: 'second-admin@example.test' }))
-  await expect(region(page).getByText(/Loading shared mailbox status/)).toBeVisible()
-  await expect(region(page).getByText('sales@example.test')).toHaveCount(0)
-  await expect(region(page).locator('dl')).toHaveCount(0)
-  await expect.poll(() => state.calls).toBe(2)
-  hold.resolve()
-  await expect(region(page).getByText('new-account@example.test')).toBeVisible()
-  await expect(metric(region(page), 'Saved emails')).toHaveText('23')
-  await page.evaluate(() => window.setSalesMailboxFixtureActor(null))
+test('Sales dashboard omits shared mailbox status while retaining KPIs and email actions', async ({ page }, testInfo) => {
+  const state = await prepare(page, { mode: 'page' })
+  await expect(page.getByRole('heading', { name: 'Sales & Proposals', exact: true })).toBeVisible()
+  await expect.poll(() => state.requests.some(request => request.path === '/api/v1/sales/deals/')).toBe(true)
+  for (const label of ['Weighted pipeline', 'Proposals due', 'Expected wins', 'At-risk opportunities']) {
+    await expect(page.getByRole('button', { name: new RegExp(label) })).toBeVisible()
+  }
+  await expect(page.getByRole('button', { name: 'New opportunity', exact: true })).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'Connect Outlook', exact: true })).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'Email intake', exact: true })).toHaveCount(2)
   await expect(region(page)).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Refresh mailbox status', exact: true })).toHaveCount(0)
+  expect(state.calls).toBe(0)
+  await page.screenshot({ path: testInfo.outputPath('sales-dashboard-without-mailbox-status.png'), fullPage: true })
+  await page.evaluate(() => window.setSalesMailboxFixtureActor({ id: 900, user: { id: 22 }, email: 'second-admin@example.test' }))
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  await expect(region(page)).toHaveCount(0)
+  expect(state.calls).toBe(0)
+  await page.evaluate(() => window.setSalesMailboxFixtureActor(null))
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  await expect(region(page)).toHaveCount(0)
+  expect(state.calls).toBe(0)
   assertReadOnly(state)
 })
 
@@ -260,7 +264,7 @@ for (const status of ['queued', 'running', 'up_to_date']) {
 }
 
 test('completed sync shows actual saved counts and a separate successful timestamp through read-only refresh', async ({ page }, testInfo) => {
-  const state = await prepare(page, { mode: 'page', response: paginated([shared({
+  const state = await prepare(page, { response: paginated([shared({
     enabled: true, sync: sync({ status: 'up_to_date', initial_sync_complete: true,
       saved_count: 1284, pending_count: 0, failed_count: 0, last_successful_sync_at: syncedAt }),
   })]) })
@@ -351,24 +355,5 @@ test('paused and blocked sync retain partial saved counts without displaying act
   await expect(metric(region(page), 'Saved emails')).toHaveText('12')
   await expect(region(page).getByText('Email sync is blocked by an access restriction.')).toBeVisible()
   await expect(region(page)).not.toContainText(/Initial import in progress|Up to date/)
-  assertReadOnly(state)
-})
-
-test('late previous-account sync results cannot replace the current account counts or successful date', async ({ page }) => {
-  const hold = deferred()
-  const state = await prepare(page, { mode: 'page', handler: ({ request }) => request.headers().authorization === 'Bearer mailbox-fixture-user-11'
-    ? { body: paginated([shared({ sync: sync({ saved_count: 891, last_successful_sync_at: syncedAt }) })]), hold }
-    : { body: paginated([shared({ mailbox_address: 'new-account@example.test', sync: sync({ saved_count: 23 }) })]) },
-  })
-  await expect.poll(() => state.calls).toBe(1)
-  await page.evaluate(() => window.setSalesMailboxFixtureActor({ id: 900, user: { id: 22 }, email: 'second-admin@example.test' }))
-  await expect(metric(region(page), 'Saved emails')).toHaveText('23')
-  const lateResponse = page.waitForResponse(response => new URL(response.url()).pathname === mailboxPath && response.request().headers().authorization === 'Bearer mailbox-fixture-user-11')
-  hold.resolve()
-  await lateResponse
-  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
-  await expect(metric(region(page), 'Saved emails')).toHaveText('23')
-  await expect(metric(region(page), 'Last successful sync')).toHaveText('Not yet')
-  await expect(region(page)).not.toContainText(/891|sales@example.test/)
   assertReadOnly(state)
 })

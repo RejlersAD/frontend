@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import PropTypes from "prop-types";
-import { useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowDownTrayIcon,
@@ -19,7 +18,6 @@ import {
 } from "@heroicons/react/24/outline";
 import salesService from "../../services/sales.service";
 import SalesMailboxConnectionDialog from "./SalesMailboxConnectionDialog";
-import SalesSharedMailboxStatus from "./SalesSharedMailboxStatus";
 import SalesOpportunityRegistrationDialog from "./SalesOpportunityRegistrationDialog";
 import { opportunityTotal } from "./salesOpportunityRegistration";
 
@@ -102,7 +100,6 @@ Initials.defaultProps = { name: "Unassigned" };
 
 export default function EnterpriseSalesWorkspace() {
   const navigate = useNavigate();
-  const { user, isAuthenticated } = useSelector((state) => state.auth);
   const [opportunities, setOpportunities] = useState([]);
   const [quotes, setQuotes] = useState([]);
   const [modal, setModal] = useState(false);
@@ -369,9 +366,6 @@ export default function EnterpriseSalesWorkspace() {
               </button>
             </div>
           </header>
-          {isAuthenticated && (
-            <SalesSharedMailboxStatus key={user?.user?.id ?? user?.id ?? ""} />
-          )}
           {error && (
             <div className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
               {error}
