@@ -19,6 +19,7 @@ import PlannerWorkspacePage from '../../pages/PlannerWorkspacePage'
 import './SimplePlanningWorkspace.css'
 
 const list = response => response.data?.results ?? response.data ?? []
+const AI_SETTINGS_REQUEST = { sensitiveRequest: true, suppressErrorToast: true }
 const errorText = error => {
   const flatten = value => typeof value === 'string' ? value : Array.isArray(value) ? value.map(flatten).join(' ') : value && typeof value === 'object' ? Object.values(value).map(flatten).join(' ') : ''
   const body = error?.response?.data
@@ -53,6 +54,7 @@ function ProjectAISettings({ projectId }) {
   const [enabled, setEnabled] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('')
   const providerChoices = settings?.provider_choices || [{ value: 'anthropic', label: 'Anthropic (Claude)', default_model: DEFAULT_CLAUDE_MODEL, model_choices: settings?.model_choices || CLAUDE_MODEL_OPTIONS }]
   const selectedProvider = providerChoices.find(option => option.value === provider) || providerChoices[0]
+  const centrallyManaged = Boolean(selectedProvider.centrally_managed)
   const modelChoices = selectedProvider.model_choices || []
   const savedProvider = settings?.provider || 'anthropic'
   const providerChanged = Boolean(settings) && provider !== savedProvider
@@ -67,32 +69,33 @@ function ProjectAISettings({ projectId }) {
   }
   useEffect(() => {
     let active = true
-    apiClient.get(PLANNING_ENDPOINTS.aiSettings(projectId)).then(({ data }) => { if (active) { setSettings(data); setProvider(data.provider || 'anthropic'); setModel(data.model || DEFAULT_CLAUDE_MODEL); setEnabled(Boolean(data.enabled)) } }).catch(reason => { if (active) setError(errorText(reason)) })
+    apiClient.get(PLANNING_ENDPOINTS.aiSettings(projectId), AI_SETTINGS_REQUEST).then(({ data }) => { if (active) { setSettings(data); setProvider(data.provider || 'anthropic'); setModel(data.model || DEFAULT_CLAUDE_MODEL); setEnabled(Boolean(data.enabled)) } }).catch(reason => { if (active) setError(errorText(reason)) })
     return () => { active = false }
   }, [projectId])
   const act = async action => {
     setBusy(true); setError(''); setNotice('')
     try {
       if (action === 'test') {
-        const { data } = await apiClientLongTimeout.post(PLANNING_ENDPOINTS.aiSettingsTest(projectId))
-        if (data.success === false) setError(data.message || 'Connection test failed.'); else setNotice(data.message || 'Connection verified.')
+        const { data } = await apiClientLongTimeout.post(PLANNING_ENDPOINTS.aiSettingsTest(projectId), {}, AI_SETTINGS_REQUEST)
+        if (data?.success === true) setNotice(data.message || 'Connection verified.')
+        else setError(data?.success === false ? data.message || 'Connection test failed.' : 'Connection test did not confirm success. Retry the test or ask your administrator to check the provider.')
       } else {
-        const { data } = action === 'remove' ? await apiClient.delete(PLANNING_ENDPOINTS.aiSettings(projectId)) : await apiClient.post(PLANNING_ENDPOINTS.aiSettings(projectId), { provider, enabled, model, ...(key.trim() ? { api_key: key.trim() } : {}) })
+        const { data } = action === 'remove' ? await apiClient.delete(PLANNING_ENDPOINTS.aiSettings(projectId), AI_SETTINGS_REQUEST) : await apiClient.post(PLANNING_ENDPOINTS.aiSettings(projectId), { provider, enabled, model, ...(key.trim() ? { api_key: key.trim() } : {}) }, AI_SETTINGS_REQUEST)
         setSettings(data); setProvider(data.provider || 'anthropic'); setModel(data.model || DEFAULT_CLAUDE_MODEL); setEnabled(Boolean(data.enabled)); setKey(''); setNotice(action === 'remove' ? 'Saved key removed.' : 'AI settings saved.')
       }
     } catch (reason) { setError(errorText(reason)) }
     finally { setBusy(false) }
   }
   return <form className="ssd-settings" onSubmit={event => { event.preventDefault(); act('save') }}>
-    <p>Connect an AI provider for document analysis. Register extraction and manual scheduling do not require a key.</p>
+    <p>Choose the AI provider for document analysis. Administrator-managed connections do not require a personal key.</p>
     {error && <p className="ssd-error" role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
     <label><input type="checkbox" checked={enabled} disabled={!settings || busy} onChange={update(setEnabled)} /> Use AI for document analysis</label>
     <label>Provider<select value={provider} disabled={!settings || busy} onChange={changeProvider}>{providerChoices.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
     <label>Model<select value={model} disabled={!settings || busy} onChange={update(setModel)}>{modelChoices.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-    <label>{keyProviderLabel} API key<input type="password" autoComplete="new-password" value={key} disabled={!settings || busy} onChange={update(setKey)} required={providerChanged} placeholder={savedKeyForProvider ? 'Key saved — enter to replace' : `Enter ${keyProviderLabel} API key`} /></label>
-    {providerChanged && <p>Enter a {keyProviderLabel} API key to switch providers.{settings.key_configured && ` The saved key belongs to ${providerChoices.find(option => option.value === savedProvider)?.label || savedProvider}.`}</p>}
+    {centrallyManaged ? <p role="status">{selectedProvider.central_ready ? 'Connection managed by your administrator.' : 'The administrator-managed connection is unavailable.'}</p> : <label>{keyProviderLabel} API key<input type="password" autoComplete="new-password" value={key} disabled={!settings || busy} onChange={update(setKey)} required={providerChanged} placeholder={savedKeyForProvider ? 'Key saved — enter to replace' : `Enter ${keyProviderLabel} API key`} /></label>}
+    {providerChanged && !centrallyManaged && <p>Enter a {keyProviderLabel} API key to switch providers.{settings.key_configured && ` The saved key belongs to ${providerChoices.find(option => option.value === savedProvider)?.label || savedProvider}.`}</p>}
     {unsaved && settings && <p>Save your changes before testing the connection.</p>}
-    <div className="ssd-actions"><button type="submit" disabled={!settings || busy || (providerChanged && !key.trim())}>Save settings</button><button type="button" disabled={!settings?.enabled || !savedKeyForProvider || busy || unsaved} onClick={() => act('test')}>Test connection</button>{settings?.key_configured && <button type="button" disabled={busy} onClick={() => act('remove')}>Remove key</button>}</div>
+    <div className="ssd-actions"><button type="submit" disabled={!settings || busy || (providerChanged && !key.trim() && !centrallyManaged)}>Save settings</button><button type="button" disabled={!settings?.enabled || !savedKeyForProvider || busy || unsaved} onClick={() => act('test')}>Test connection</button>{settings?.key_configured && settings.credential_source !== 'administrator' && <button type="button" disabled={busy} onClick={() => act('remove')}>Remove key</button>}</div>
   </form>
 }
 

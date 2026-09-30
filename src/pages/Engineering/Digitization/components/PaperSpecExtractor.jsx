@@ -1,4 +1,5 @@
-﻿/**
+import PlatformAIStatus from '../../../../components/ai/PlatformAIStatus';
+/**
  * PaperSpecExtractor
  * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
  * Self-contained extractor panel: upload PDF â†’ poll job â†’ display
@@ -700,7 +701,7 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
   const uploadStartRef                      = useRef(0);
   const lastTickRef                         = useRef({ t: 0, loaded: 0 });
 
-  // BYOK (Bring Your Own Key) â€” optional user-supplied fields for attribution and custom AI usage.
+  // BYOK (Server AI configuration) â€” optional user-supplied fields for attribution and custom AI usage.
   const [documentName, setDocumentName]     = useState('');
   const [engineerName, setEngineerName]     = useState('');
   const [aiProvider, setAiProvider]         = useState(() => {
@@ -717,9 +718,9 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
     try {
       const provider = sessionStorage.getItem('radai_spec_ai_provider') || '';
       if (provider === 'openai') {
-        return sessionStorage.getItem('radai_spec_user_openai_key') || '';
+        return null || '';
       } else if (provider === 'claude') {
-        return sessionStorage.getItem('radai_spec_user_claude_key') || '';
+        return null || '';
       }
       return '';
     } catch (_) { return ''; }
@@ -1260,7 +1261,7 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
                 className="hidden"
               />
 
-              {/* BYOK (Bring Your Own Key) â€” optional attribution & custom API key fields */}
+              {/* BYOK (Server AI configuration) â€” optional attribution & custom API key fields */}
               {file && (
                 <div className="mt-4 p-4 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-900/50 space-y-3">
                   <div>
@@ -1293,13 +1294,13 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
                     <div className="space-y-3 p-4 bg-gradient-to-br from-purple-50 to-blue-50 dark:from-slate-900/20 dark:to-blue-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
                       <div className="flex items-center gap-2 text-sm font-semibold text-purple-900 dark:text-purple-200">
                         <SparklesIcon className="w-4 h-4" />
-                        <span>Bring Your Own AI Key (BYOK)</span>
-                        <span className="text-xs font-normal text-purple-600 dark:text-purple-400">(Optional â€” use your own API)</span>
+                        <span>AI provider configuration</span>
+                        <span className="text-xs font-normal text-purple-600 dark:text-purple-400">(Optional provider preference)</span>
                       </div>
 
                       {projectByok?.enabled && projectByok?.keyConfigured && (
                         <div className="text-xs rounded-md bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 px-2.5 py-2 text-emerald-700 dark:text-emerald-300">
-                          Project BYOK is active ({projectByok.provider || 'provider'} Â· {projectByok.model || 'default model'}). You can leave API key empty to use the saved project key.
+                          Project preference: {projectByok.provider || 'provider'} / {projectByok.model || 'default model'}. Credentials are resolved securely on the server.
                         </div>
                       )}
                       
@@ -1383,56 +1384,12 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
 
                       {/* API Key Input */}
                       {aiProvider && (
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
-                            <span>
-                              {byokConfig.provider_labels[aiProvider]}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => setShowApiKey(v => !v)}
-                              className="text-xs text-purple-700 dark:text-purple-300 hover:text-purple-900 dark:hover:text-purple-100"
-                            >
-                              {showApiKey ? 'Hide' : 'Show'}
-                            </button>
-                          </label>
-                          <input
-                            type={showApiKey ? 'text' : 'password'}
-                            value={userApiKey}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setUserApiKey(val);
-                              try {
-                                const storageKey = aiProvider === 'openai' ? 'radai_spec_user_openai_key' : 'radai_spec_user_claude_key';
-                                if (val) sessionStorage.setItem(storageKey, val);
-                                else sessionStorage.removeItem(storageKey);
-                              } catch (_) { /* Session storage is optional. */ }
-                            }}
-                            placeholder={aiProvider === 'openai' ? 'sk-... (leave empty to use platform)' : 'sk-ant-... (leave empty to use platform)'}
-                            autoComplete="off"
-                            spellCheck={false}
-                            className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm font-mono ${
-                              userApiKey.trim() && !byokConfig.api_key_patterns[aiProvider].test(userApiKey.trim())
-                                ? 'border-red-400 bg-red-50 dark:bg-red-900/20'
-                                : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 dark:text-white'
-                            }`}
-                          />
-                          {userApiKey.trim() && !byokConfig.api_key_patterns[aiProvider].test(userApiKey.trim()) && (
-                            <p className="mt-1 text-xs text-red-600 dark:text-red-400 font-medium">
-                              Invalid {aiProvider === 'openai' ? 'OpenAI' : 'Claude'} API key format. 
-                              {aiProvider === 'openai' ? ' Keys start with sk- (20+ chars)' : ' Keys start with sk-ant- (25+ chars)'}
-                            </p>
-                          )}
-                          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                            Your key is used for {aiProvider === 'openai' ? 'OpenAI GPT-4o' : 'Claude'} Vision calls. 
-                            Held in browser session and wiped from servers after extraction.
-                          </p>
-                        </div>
+                        <PlatformAIStatus provider={aiProvider || "openai"} />
                       )}
 
                       {!aiProvider && (
                         <p className="text-xs text-slate-600 dark:text-slate-400 italic">
-                          ðŸ‘† Select a provider above to use your own API key, or leave empty to use the platform&apos;s key.
+                          ðŸ‘† Select a supported provider above, or retain the server default. Credentials are managed by your administrator.
                         </p>
                       )}
                     </div>

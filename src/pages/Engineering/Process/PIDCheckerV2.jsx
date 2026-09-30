@@ -1,3 +1,4 @@
+import useAIProviderStatus from '../../../hooks/useAIProviderStatus'
 import { radaiConfirm } from '../../../services/radaiDialog'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -128,7 +129,8 @@ export default function PIDCheckerV2() {
   const [visionClaudeModel, setVisionClaudeModel] = useState(
     () => sessionStorage.getItem(SS_KEY_CLAUDE_MODEL) || CLAUDE_VISION_MODELS[0].id
   )
-  const [apiKey, setApiKey] = useState(() => sessionStorage.getItem(SS_KEY_APIKEY) || '')
+  const [apiKey, setApiKey] = useState('')
+  const centralAI = useAIProviderStatus(visionProvider)
   const [showKey, setShowKey] = useState(false)
   const [rememberKey, setRememberKey] = useState(
     () => sessionStorage.getItem(SS_KEY_REMEMBER) === '1'
@@ -174,7 +176,7 @@ export default function PIDCheckerV2() {
     const scope = selectedProject?.project_id || 'none'
     setVisionProvider(sessionStorage.getItem(`${SS_KEY_PROVIDER}::${scope}`) || VISION_PROVIDERS[0].id)
     setVisionClaudeModel(sessionStorage.getItem(`${SS_KEY_CLAUDE_MODEL}::${scope}`) || CLAUDE_VISION_MODELS[0].id)
-    setApiKey(sessionStorage.getItem(`${SS_KEY_APIKEY}::${scope}`) || '')
+    setApiKey(null || '')
     setRememberKey(sessionStorage.getItem(`${SS_KEY_REMEMBER}::${scope}`) === '1')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProject?.project_id])
@@ -446,8 +448,8 @@ export default function PIDCheckerV2() {
       toast.warn('Choose a PDF first')
       return
     }
-    if (mode === MODE_VISION && !apiKey.trim()) {
-      toast.warn('Paste your AI API key to use Vision mode')
+    if (mode === MODE_VISION && !centralAI.canUseAI) {
+      toast.warn('Ask your administrator to configure the selected AI provider.')
       return
     }
     // Persist / clear BYOK preference (sessionStorage only — cleared on tab
@@ -457,7 +459,7 @@ export default function PIDCheckerV2() {
     if (mode === MODE_VISION && rememberKey) {
       sessionStorage.setItem(`${SS_KEY_PROVIDER}::${byokScope}`, visionProvider)
       sessionStorage.setItem(`${SS_KEY_CLAUDE_MODEL}::${byokScope}`, visionClaudeModel)
-      sessionStorage.setItem(`${SS_KEY_APIKEY}::${byokScope}`, apiKey)
+      undefined
       sessionStorage.setItem(`${SS_KEY_REMEMBER}::${byokScope}`, '1')
     } else {
       sessionStorage.removeItem(`${SS_KEY_APIKEY}::${byokScope}`)
@@ -487,7 +489,7 @@ export default function PIDCheckerV2() {
     } finally {
       setLoading(false)
     }
-  }, [file, mode, forceOcr, visionProvider, visionClaudeModel, apiKey, rememberKey, refreshHistory, selectedProject])
+  }, [file, mode, forceOcr, visionProvider, visionClaudeModel, apiKey, rememberKey, refreshHistory, selectedProject, centralAI.canUseAI])
 
   const onReset = useCallback(() => {
     setFile(null)

@@ -1,3 +1,5 @@
+import useAIProviderStatus from '../../../../hooks/useAIProviderStatus'
+import PlatformAIStatus from '../../../../components/ai/PlatformAIStatus'
 import React from 'react'
 import {
   Upload, FileText, Sparkles, Key, Eye, EyeOff, Loader2, BookOpen, FileSpreadsheet, Zap, Boxes, Gauge,
@@ -55,8 +57,9 @@ export default function InputsPanel({
   // Read-only status
   activeLegend, effectiveLegend,
 }) {
+  const centralAI = useAIProviderStatus(visionProvider)
   const canSubmit = Boolean(file) && !loading
-    && (mode !== MODE_VISION || (visionProvider && apiKey))
+    && (mode !== MODE_VISION || centralAI.canUseAI)
 
   return (
     <div style={{
@@ -168,7 +171,7 @@ export default function InputsPanel({
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {[
             { id: MODE_OCR,    label: 'OCR (offline)',    icon: <FileText size={13} /> },
-            { id: MODE_VISION, label: 'AI Vision (BYOK)', icon: <Sparkles size={13} /> },
+            { id: MODE_VISION, label: 'AI Vision', icon: <Sparkles size={13} /> },
           ].map((m) => {
             const active = mode === m.id
             return (
@@ -211,10 +214,10 @@ export default function InputsPanel({
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
             <Sparkles size={13} color={THEME_PRIMARY} />
             <span style={{ fontWeight: 600, color: THEME_TEXT, fontSize: 12 }}>
-              Bring Your Own Key
+              AI provider
             </span>
             <span style={{ marginLeft: 'auto', fontSize: 10, color: THEME_MUTED }}>
-              per-request only
+              Managed on the server
             </span>
           </div>
           <div style={{ display: 'grid', gap: 8 }}>
@@ -248,75 +251,7 @@ export default function InputsPanel({
               </select>
             )}
 
-            <div style={{ position: 'relative' }}>
-              <Key size={12} style={{
-                position: 'absolute', top: '50%', left: 10, transform: 'translateY(-50%)',
-                color: THEME_MUTED,
-              }} />
-              <input
-                type={showKey ? 'text' : 'password'}
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder={`${VISION_PROVIDERS.find(p => p.id === visionProvider)?.keyPrefix || ''}...`}
-                disabled={loading}
-                autoComplete="off"
-                style={{
-                  width: '100%', padding: '8px 36px 8px 30px',
-                  borderRadius: 8, fontSize: 12, boxSizing: 'border-box',
-                  border: `1px solid ${THEME_BORDER}`, color: THEME_TEXT,
-                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-                }}
-              />
-              <button
-                type="button" onClick={() => setShowKey(v => !v)}
-                style={{
-                  position: 'absolute', top: '50%', right: 8, transform: 'translateY(-50%)',
-                  background: 'none', border: 'none', cursor: 'pointer', color: THEME_MUTED,
-                  display: 'flex', alignItems: 'center', padding: 4,
-                }}
-                aria-label={showKey ? 'Hide key' : 'Show key'}
-              >
-                {showKey ? <EyeOff size={12} /> : <Eye size={12} />}
-              </button>
-            </div>
-
-            {onTestConnection && (
-              <div>
-                <button
-                  type="button"
-                  onClick={onTestConnection}
-                  disabled={testingConnection || !apiKey.trim() || loading}
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 6,
-                    padding: '6px 10px', borderRadius: 8, fontSize: 11, fontWeight: 600,
-                    border: `1px solid ${THEME_PRIMARY}`, background: '#fff', color: THEME_PRIMARY,
-                    cursor: (testingConnection || !apiKey.trim() || loading) ? 'not-allowed' : 'pointer',
-                    opacity: (testingConnection || !apiKey.trim() || loading) ? 0.5 : 1,
-                  }}
-                >
-                  {testingConnection
-                    ? <><Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> Testing…</>
-                    : <><Zap size={12} /> Test Connection</>}
-                </button>
-                {connectionTestResult && (
-                  <div style={{
-                    marginTop: 6, fontSize: 11, fontWeight: 600,
-                    color: connectionTestResult.valid ? '#16a34a' : '#dc2626',
-                  }}>
-                    {connectionTestResult.valid ? '✅ ' : '❌ '}{connectionTestResult.message}
-                  </div>
-                )}
-              </div>
-            )}
-
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: THEME_MUTED }}>
-              <input
-                type="checkbox" checked={rememberKey}
-                onChange={(e) => setRememberKey(e.target.checked)}
-                disabled={loading}
-              />
-              Remember for this session
-            </label>
+            <PlatformAIStatus provider={visionProvider} />
           </div>
         </div>
       )}

@@ -1,3 +1,4 @@
+import PlatformAIStatus from '../../../../components/ai/PlatformAIStatus'
 import { radaiConfirm } from '../../../../services/radaiDialog'
 /**
  * Instrument IO List Workflow — CRS-style multi-revision page.
@@ -754,7 +755,7 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
     () => sessionStorage.getItem(visionProviderStorageKey) || PID_VISION_CONFIG.defaultProvider,
   )
   const [visionApiKey, setVisionApiKey] = useState(
-    () => sessionStorage.getItem(visionApiKeyStorageKey) || '',
+    () => null || '',
   )
   const [thoroughScan, setThoroughScan] = useState(
     () => sessionStorage.getItem(thoroughScanStorageKey) === 'true',
@@ -800,10 +801,6 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
     // Friendly speed bump, not a wall — see showNoKeyConfirm's own
     // comment. Only asks once per click; "Continue with Basic OCR" in the
     // dialog calls doUpload() directly, bypassing this gate.
-    if (showPidOptions && !visionApiKey.trim()) {
-      setShowNoKeyConfirm(true)
-      return
-    }
     doUpload()
   }
 
@@ -822,12 +819,12 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
       // "P&ID options" section is open, since detection happens server-side
       // after upload (the user may not know in advance which kind of PDF
       // they're dropping in).
-      if (visionApiKey.trim()) {
+      if (visionProvider) {
         uploadMeta.vision_provider = visionProvider
-        uploadMeta.vision_api_key = visionApiKey.trim()
+        // The server resolves the provider credential.
         uploadMeta.thorough = thoroughScan ? 'true' : 'false'
         sessionStorage.setItem(visionProviderStorageKey, visionProvider)
-        sessionStorage.setItem(visionApiKeyStorageKey, visionApiKey.trim())
+        undefined
         sessionStorage.setItem(thoroughScanStorageKey, thoroughScan ? 'true' : 'false')
       }
       const result = await ioListWorkflowService.uploadDocument({
@@ -843,7 +840,7 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
       // while this document is still extracting, before its own
       // document_type is known (that's only decided once extraction
       // finishes — see orchestrator._detect_document_type).
-      onUploaded({ ...result, _usingVision: Boolean(visionApiKey.trim()), _thorough: thoroughScan })
+      onUploaded({ ...result, _usingVision: false, _thorough: thoroughScan })
       reset()
     } catch (err) {
       setError(err.response?.data?.detail || err.response?.data?.error || err.message || 'Upload failed')
@@ -908,7 +905,7 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
           >
             <span className="flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5 text-violet-500" /> P&ID Drawing options
-              {visionApiKey.trim() && <Badge tone="emerald">Key set</Badge>}
+
             </span>
             <span className="text-slate-400">{showPidOptions ? '▲' : '▼'}</span>
           </button>
@@ -919,15 +916,7 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
                   optional (basic OCR is a real, working fallback, not a
                   dead end), this just makes the trade-off pleasant to
                   understand up front rather than a surprise later. */}
-              {!visionApiKey.trim() && (
-                <p className="text-[11px] text-violet-700 bg-violet-50 border border-violet-100 rounded-lg px-2.5 py-2 flex items-start gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 flex-shrink-0 mt-px text-violet-500" />
-                  <span>
-                    For best results, add your Claude API key above! Without it,
-                    we&apos;ll use basic OCR, which may miss many tags.
-                  </span>
-                </p>
-              )}
+
               <div className="flex gap-2">
                 <select
                   value={visionProvider}
@@ -948,25 +937,8 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
                     <option key={p.value} value={p.value}>{p.label}</option>
                   ))}
                 </select>
-                <input
-                  ref={apiKeyInputRef}
-                  type="password"
-                  value={visionApiKey}
-                  onChange={(e) => {
-                    setVisionApiKey(e.target.value); setTestResult(null)
-                    sessionStorage.setItem(visionApiKeyStorageKey, e.target.value)
-                  }}
-                  placeholder="API key (optional)"
-                  className="flex-1 min-w-0 text-xs border border-slate-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={handleTestConnection}
-                  disabled={testingKey || !visionApiKey.trim()}
-                  className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-40 flex items-center gap-1 flex-shrink-0"
-                >
-                  {testingKey ? <Loader2 className="w-3 h-3 animate-spin" /> : null} Test
-                </button>
+                <PlatformAIStatus provider={visionProvider} />
+
               </div>
               {testResult && (
                 <p className={`text-[11px] ${testResult.valid ? 'text-emerald-600' : 'text-red-600'}`}>
@@ -1111,9 +1083,7 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
                   className="px-5 py-2 text-sm font-semibold bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-lg hover:from-indigo-700 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
             {busy
               ? <><Loader2 className="w-4 h-4 animate-spin" /> Extracting…</>
-              : showPidOptions && !visionApiKey.trim()
-                ? <>Extract with Basic OCR ⚠️</>
-                : <><Upload className="w-4 h-4" /> Upload & Extract</>}
+              : <><Upload className="w-4 h-4" /> Upload & Extract</>}
           </button>
         </div>
       </form>
@@ -1122,49 +1092,7 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
           user has opened P&ID options and left the key blank, right when
           they click the button. Never a hard stop: "Continue with Basic
           OCR" always works. */}
-      {showNoKeyConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={() => setShowNoKeyConfirm(false)}>
-          <div
-            className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-full bg-violet-100 flex items-center justify-center flex-shrink-0">
-                <Sparkles className="w-5 h-5 text-violet-500" />
-              </div>
-              <div>
-                <h4 className="text-sm font-bold text-slate-900">Are you sure?</h4>
-                <p className="text-sm text-slate-600 mt-1">
-                  Without an API key, accuracy will be significantly lower.
-                  Add a key for much better results!
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowNoKeyConfirm(false)
-                  // Nice touch, not load-bearing — the field is already
-                  // visible (P&ID options is open, or this dialog
-                  // couldn't have appeared), just puts the cursor there.
-                  apiKeyInputRef.current?.focus()
-                }}
-                className="flex-1 px-4 py-2 text-sm font-semibold bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-lg hover:from-indigo-700 hover:to-blue-700"
-              >
-                Add API Key
-              </button>
-              <button
-                type="button"
-                onClick={() => { setShowNoKeyConfirm(false); doUpload() }}
-                className="flex-1 px-4 py-2 text-sm font-semibold border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50"
-              >
-                Continue with Basic OCR
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+
     </div>
   )
 }
@@ -2739,11 +2667,9 @@ export default function IOListWorkflowPage() {
   // filter happens to be active right now.
   const getPersistedVisionMeta = (projectId) => {
     const scope = projectId || 'unassigned'
-    const apiKey = sessionStorage.getItem(`${PID_VISION_CONFIG.sessionStorageApiKeyKey}::${scope}`) || ''
-    if (!apiKey.trim()) return {}
     const provider = sessionStorage.getItem(`${PID_VISION_CONFIG.sessionStorageProviderKey}::${scope}`) || PID_VISION_CONFIG.defaultProvider
     const thorough = sessionStorage.getItem(`${PID_VISION_CONFIG.sessionStorageThoroughKey}::${scope}`) === 'true'
-    return { vision_provider: provider, vision_api_key: apiKey.trim(), thorough: thorough ? 'true' : 'false' }
+    return { vision_provider: provider, thorough: thorough ? 'true' : 'false' }
   }
 
   const handleReExtract = async () => {
@@ -2760,7 +2686,7 @@ export default function IOListWorkflowPage() {
       // alone wasn't enough.
       if (result.processing) {
         setProcessingDoc(result.document)
-        setProcessingMeta({ usingVision: Boolean(visionMeta.vision_api_key), thorough: visionMeta.thorough === 'true' })
+        setProcessingMeta({ usingVision: false, thorough: visionMeta.thorough === 'true' })
         setAutoOpenDocId(result.document.id)
         setAutoOpenTab('iolist')
       } else {

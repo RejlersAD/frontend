@@ -11,7 +11,7 @@ const mode = (page, name) => page.getByRole('navigation', { name: 'Schedule work
 const workspace = page => page.getByRole('region', { name: 'Document analysis workspace', exact: true })
 const sourceTable = page => page.getByRole('table', { name: 'Activity source evidence', exact: true })
 const coverage = page => page.getByRole('region', { name: 'Extraction coverage', exact: true })
-const settings = page => page.getByRole('dialog', { name: /^AI Settings \(BYOK\)/ })
+const settings = page => page.getByRole('dialog', { name: /^AI Settings/ })
 const completeAi = { status: 'complete', chunks_total: 2, chunks_processed: 2, chunks_failed: 0,
   chunks_remaining: 0, chunks_skipped: 0, rejected_claim_count: 0, semantic_coverage_verified: false }
 const completeText = { status: 'complete', file_count: 1, analyzed_file_count: 1, complete_file_count: 1,
