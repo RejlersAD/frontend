@@ -1,5 +1,9 @@
 # Email Intake review workspace
 
+The later [reference UX and AI actions](SALES_EMAIL_REFERENCE_UX.md) supersede
+the hidden heading and compact visual presentation described below. Automatic
+selection, source safeguards and classification confirmation remain in force.
+
 Email Intake now uses compact inbox rows, a default Email reader with an Extracted
 details tab, and a concise review pane with expandable evidence. The existing
 sidebar and application shell remain unchanged. Administrator mailbox setup from

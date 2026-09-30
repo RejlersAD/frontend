@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import PropTypes from "prop-types";
-import { useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowDownTrayIcon,
@@ -16,11 +15,11 @@ import {
   ExclamationTriangleIcon,
   PlusIcon,
   TrophyIcon,
-  XMarkIcon,
 } from "@heroicons/react/24/outline";
 import salesService from "../../services/sales.service";
 import SalesMailboxConnectionDialog from "./SalesMailboxConnectionDialog";
-import SalesSharedMailboxStatus from "./SalesSharedMailboxStatus";
+import SalesOpportunityRegistrationDialog from "./SalesOpportunityRegistrationDialog";
+import { opportunityTotal } from "./salesOpportunityRegistration";
 
 const PIPELINE = [
   ["qualified", "Qualified", "from-sky-200 to-sky-300 text-slate-900"],
@@ -51,17 +50,8 @@ const KPI_TONES = {
     value: "text-rose-950",
   },
 };
-const fieldClass =
-  "mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100";
 const list = (data) =>
   Array.isArray(data) ? data : (data?.results ?? data?.clients ?? []);
-const money = (value, code = "AED") =>
-  new Intl.NumberFormat("en-AE", {
-    style: "currency",
-    currency: code,
-    notation: Number(value || 0) >= 1e6 ? "compact" : "standard",
-    maximumFractionDigits: 1,
-  }).format(Number(value || 0));
 const dueDays = (value) =>
   value
     ? Math.ceil((new Date(`${value}T23:59:59`) - new Date()) / 86400000)
@@ -99,30 +89,6 @@ function Initials({ name }) {
     </span>
   );
 }
-function Modal({ onClose, children }) {
-  return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/40 p-4">
-      <div
-        role="dialog"
-        aria-modal="true"
-        className="w-full max-w-2xl rounded-lg border border-slate-200 bg-white"
-      >
-        <header className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-          <h2 className="text-lg font-bold">New opportunity</h2>
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            className="rounded p-1 hover:bg-slate-100"
-          >
-            <XMarkIcon className="h-5 w-5" />
-          </button>
-        </header>
-        {children}
-      </div>
-    </div>
-  );
-}
-
 Panel.propTypes = {
   title: PropTypes.string.isRequired,
   action: PropTypes.node,
@@ -131,20 +97,13 @@ Panel.propTypes = {
 Panel.defaultProps = { action: null };
 Initials.propTypes = { name: PropTypes.string };
 Initials.defaultProps = { name: "Unassigned" };
-Modal.propTypes = {
-  onClose: PropTypes.func.isRequired,
-  children: PropTypes.node.isRequired,
-};
 
 export default function EnterpriseSalesWorkspace() {
   const navigate = useNavigate();
-  const { user, isAuthenticated } = useSelector((state) => state.auth);
   const [opportunities, setOpportunities] = useState([]);
-  const [clients, setClients] = useState([]);
   const [quotes, setQuotes] = useState([]);
   const [modal, setModal] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [mailboxDialogOpen, setMailboxDialogOpen] = useState(() =>
     new URLSearchParams(window.location.search).has("outlook"),
   );
@@ -154,13 +113,11 @@ export default function EnterpriseSalesWorkspace() {
     setLoading(true);
     setError("");
     try {
-      const [deals, accounts, proposals] = await Promise.all([
+      const [deals, proposals] = await Promise.all([
         salesService.getDeals({ page_size: 500 }),
-        salesService.getClients({ page_size: 500 }),
         salesService.getQuotes({ page_size: 500 }),
       ]);
       setOpportunities(list(deals));
-      setClients(list(accounts));
       setQuotes(list(proposals));
     } catch (requestError) {
       setError(
@@ -184,10 +141,7 @@ export default function EnterpriseSalesWorkspace() {
       row.stage,
     ),
   );
-  const weighted = active.reduce(
-    (sum, row) => sum + Number(row.weighted_value || 0),
-    0,
-  );
+  const weighted = opportunityTotal(active, (row) => row.weighted_value);
   const proposalDue = active.filter((row) => {
     const days = dueDays(row.submission_due_date);
     return days !== null && days >= 0 && days <= 7;
@@ -202,11 +156,7 @@ export default function EnterpriseSalesWorkspace() {
         closed.getFullYear() === new Date().getFullYear() &&
         Math.floor(closed.getMonth() / 3) === quarter
       );
-    })
-    .reduce(
-      (sum, row) => sum + Number(row.award_value || row.actual_value || 0),
-      0,
-    );
+    });
 
   const exceptions = useMemo(() => {
     const result = [];
@@ -281,10 +231,6 @@ export default function EnterpriseSalesWorkspace() {
       label,
       classes,
       rows,
-      value: rows.reduce(
-        (sum, row) => sum + Number(row.weighted_value || 0),
-        0,
-      ),
     };
   });
   const deadlines = active
@@ -363,37 +309,6 @@ export default function EnterpriseSalesWorkspace() {
     link.click();
     URL.revokeObjectURL(url);
   };
-  const createOpportunity = async (event) => {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    setSaving(true);
-    setError("");
-    try {
-      await salesService.createDeal({
-        deal_name: form.get("title"),
-        client: form.get("client"),
-        client_reference: form.get("reference"),
-        scope_type: form.get("scope"),
-        estimated_value: form.get("value"),
-        currency: form.get("currency"),
-        submission_due_date: form.get("deadline"),
-        expected_close_date: form.get("award"),
-        project_duration_months: form.get("duration") || null,
-        description: form.get("description"),
-        priority: "medium",
-      });
-      setModal(false);
-      await load();
-    } catch (requestError) {
-      setError(
-        JSON.stringify(
-          requestError?.response?.data || "Opportunity could not be created.",
-        ),
-      );
-    } finally {
-      setSaving(false);
-    }
-  };
 
   return (
     <div className="min-h-full bg-slate-100 text-slate-950">
@@ -451,9 +366,6 @@ export default function EnterpriseSalesWorkspace() {
               </button>
             </div>
           </header>
-          {isAuthenticated && (
-            <SalesSharedMailboxStatus key={user?.user?.id ?? user?.id ?? ""} />
-          )}
           {error && (
             <div className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
               {error}
@@ -464,7 +376,7 @@ export default function EnterpriseSalesWorkspace() {
               [
                 ChartBarIcon,
                 "Weighted pipeline",
-                money(weighted),
+                weighted,
                 `${active.length} active opportunities`,
                 "blue",
                 "/sales/opportunities",
@@ -480,7 +392,7 @@ export default function EnterpriseSalesWorkspace() {
               [
                 TrophyIcon,
                 "Expected wins",
-                money(wins),
+                opportunityTotal(wins, (row) => row.award_value ?? row.actual_value),
                 "This quarter",
                 "emerald",
                 "/sales/opportunities",
@@ -635,7 +547,7 @@ export default function EnterpriseSalesWorkspace() {
                   {stages.map((stage) => (
                     <div key={stage.id} className="py-3">
                       <p className="text-base font-bold text-[#102a47]">
-                        {money(stage.value)}
+                        {opportunityTotal(stage.rows, (row) => row.weighted_value)}
                       </p>
                       <p className="text-[13px] text-slate-500">
                         {stage.rows.length} opps
@@ -647,7 +559,7 @@ export default function EnterpriseSalesWorkspace() {
                   <span>Total weighted pipeline</span>
                   <span className="text-right">
                     <b className="block text-xl text-[#102a47]">
-                      {money(weighted)}
+                      {weighted}
                     </b>
                     <small>{active.length} opportunities</small>
                   </span>
@@ -700,7 +612,7 @@ export default function EnterpriseSalesWorkspace() {
                             <ClockIcon className="h-4 w-4 text-blue-600" />
                             {row.stage === "proposal"
                               ? "In preparation"
-                              : row.stage_display}
+                              : row.stage === "lead" ? "Open" : row.stage_display}
                           </span>
                         </td>
                       </tr>
@@ -762,101 +674,7 @@ export default function EnterpriseSalesWorkspace() {
           </nav>
         </div>
       </main>
-      {modal && (
-        <Modal onClose={() => setModal(false)}>
-          <form
-            onSubmit={createOpportunity}
-            className="grid max-h-[75vh] gap-4 overflow-y-auto p-5 sm:grid-cols-2"
-          >
-            {!clients.length && (
-              <div className="sm:col-span-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                A client account must be created before this opportunity can be
-                saved.
-              </div>
-            )}
-            {[
-              ["title", "Opportunity title", "text"],
-              ["reference", "Client RFQ / ITT reference", "text"],
-              ["value", "Estimated value", "number"],
-              ["deadline", "Proposal deadline", "date"],
-              ["award", "Expected award", "date"],
-              ["duration", "Duration (months)", "number"],
-            ].map(([name, label, type]) => (
-              <label key={name} className="text-sm font-medium text-slate-700">
-                {label}
-                <input
-                  name={name}
-                  type={type}
-                  required={!["reference", "duration"].includes(name)}
-                  min={type === "number" ? "0" : undefined}
-                  className={fieldClass}
-                />
-              </label>
-            ))}
-            <label className="text-sm font-medium">
-              Client
-              <select name="client" required className={fieldClass}>
-                <option value="">
-                  {clients.length
-                    ? "Select client"
-                    : "No client accounts available"}
-                </option>
-                {clients.map((client) => (
-                  <option key={client.id} value={client.id}>
-                    {client.company_name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="text-sm font-medium">
-              Scope type
-              <select name="scope" required className={fieldClass}>
-                <option value="">Select scope</option>
-                {[
-                  "conceptual",
-                  "pre_feed",
-                  "feed",
-                  "basic_engineering",
-                  "detailed_engineering",
-                  "epcm",
-                  "epc",
-                  "pmc",
-                  "owner_engineer",
-                  "procurement",
-                  "construction",
-                  "commissioning",
-                  "feasibility",
-                  "other",
-                ].map((value) => (
-                  <option key={value} value={value}>
-                    {value.replaceAll("_", " ")}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="text-sm font-medium">
-              Currency
-              <select name="currency" className={fieldClass}>
-                {["AED", "USD", "EUR", "GBP", "SAR", "QAR"].map((value) => (
-                  <option key={value}>{value}</option>
-                ))}
-              </select>
-            </label>
-            <label className="text-sm font-medium">
-              Scope summary
-              <textarea name="description" rows="3" className={fieldClass} />
-            </label>
-            <div className="flex items-end justify-end">
-              <button
-                disabled={saving || !clients.length}
-                className="rounded-md bg-[#f04b2f] px-5 py-2 text-sm font-semibold text-white disabled:opacity-50"
-              >
-                Create opportunity
-              </button>
-            </div>
-          </form>
-        </Modal>
-      )}
+      {modal && <SalesOpportunityRegistrationDialog onClose={() => setModal(false)} onCreated={(record) => { setModal(false); navigate(`/sales/opportunities?record=${encodeURIComponent(record.id)}`); }} />}
       <SalesMailboxConnectionDialog
         open={mailboxDialogOpen}
         onClose={() => setMailboxDialogOpen(false)}

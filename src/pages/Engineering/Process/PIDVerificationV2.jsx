@@ -1,3 +1,4 @@
+import { PlatformAIStatusDialog } from '../../../components/ai/PlatformAIStatus';
 import { radaiConfirm } from '../../../services/radaiDialog'
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -2199,12 +2200,17 @@ const PIDVerificationV2 = () => {
 
   const fetchReferenceData = async (projectId, epoch = projectEpochRef.current) => {
     if (!projectId) return;
+    console.log('fetchReferenceData called for projectId:', projectId, 'epoch:', epoch, 'currentEpoch:', projectEpochRef.current);
     try {
       const res = await axios.get(
         `${API_PREFIX}/projects/${projectId}/reference-data/`,
         { headers: authHeader() }
       );
-      if (epoch !== projectEpochRef.current) return; // stale — user switched project mid-request
+      console.log('fetchReferenceData RAW RESPONSE for projectId:', projectId, res.data);
+      if (epoch !== projectEpochRef.current) {
+        console.log('fetchReferenceData DISCARDED as stale — epoch', epoch, '!==', projectEpochRef.current);
+        return; // stale — user switched project mid-request
+      }
       const allData = res.data.reference_data || [];
 
       // Soft-coded: split by data_type
@@ -2267,14 +2273,15 @@ const PIDVerificationV2 = () => {
     if (!projectId) return;
     try {
       const res = await axios.get(
-        `${API_PREFIX}/projects/${projectId}/api-keys/`,
+        `${API_BASE_URL}/rbac/ai-provider-status/`,
         { headers: authHeader() }
       );
       if (epoch !== projectEpochRef.current) return; // stale — user switched project mid-request
-      const keys = res.data.api_keys || {};
+      const providers = res.data.providers || [];
+      const configured = provider => providers.some(item => item.provider === provider && (!item.managed || item.ready));
       setApiKeyStatus({
-        openai: keys.openai_key ? 'active' : 'not_set',
-        claude: keys.claude_key ? 'active' : 'not_set',
+        openai: configured('openai') ? 'active' : 'not_set',
+        claude: configured('anthropic') ? 'active' : 'not_set',
       });
       // Don't set actual keys in state for security - only show status
     } catch (err) {
@@ -2343,6 +2350,8 @@ const PIDVerificationV2 = () => {
       setShowCreateModal(false);
       setNewProjectName(''); setNewProjectDesc('');
       flash('success', `Project "${p.project_name}" created`);
+      console.log('NEW PROJECT CREATED:', p.project_id);
+      console.log('Calling handleSelectProject');
       // Navigate straight into the new project instead of leaving
       // selectedProject pointing at whatever was open before — otherwise
       // the screen right after creating still shows the PREVIOUS project's
@@ -2391,6 +2400,7 @@ const PIDVerificationV2 = () => {
   };
 
   const handleSelectProject = (p) => {
+    console.log('PROJECT SWITCHED - clearing lists', p.project_id);
     setSelectedProject(p);
     resetUpload();
     setResults(null);
@@ -2404,6 +2414,7 @@ const PIDVerificationV2 = () => {
     // these fetches has a catch block that swallows the error with no state
     // reset). Clearing everything to its empty default HERE, synchronously,
     // before any fetch starts, closes that window for the common case.
+    console.log('setLineListFiles([]) called');
     setLineListFiles([]);
     setEquipmentListFiles([]);
     setInstrumentIndexFiles([]);
@@ -6023,7 +6034,7 @@ const PIDVerificationV2 = () => {
             {/* BYOK AI Deep Extraction */}
             <button onClick={() => setShowBYOKPanel(true)}
               className="flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white border border-purple-400 rounded-xl transition-all text-sm shadow-lg shadow-purple-200 flex-shrink-0 font-semibold">
-              <Sparkles className="w-4 h-4" />BYOK — AI Deep Extraction
+              <Sparkles className="w-4 h-4" />AI provider status
             </button>
             {/* History */}
             <button onClick={() => fetchHistory(selectedProject.project_id)}
@@ -18299,245 +18310,7 @@ const PIDVerificationV2 = () => {
       ══════════════════════════════════════════════════════════════════════ */}
 
       {/* ── BYOK AI Deep Extraction Panel ──────────────────────────────────────── */}
-      {showBYOKPanel && (
-        <div 
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-          onClick={() => setShowBYOKPanel(false)}
-        >
-          <div 
-            className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 overflow-hidden"
-            style={{ animation: 'fadeUp 0.3s ease-out' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-6 text-white">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
-                    <Sparkles className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-black tracking-tight">BYOK — AI Deep Extraction</h2>
-                    <p className="text-purple-100 text-sm mt-1">Bring Your Own Key for Advanced AI Processing</p>
-                  </div>
-                </div>
-                <button 
-                  onClick={() => setShowBYOKPanel(false)}
-                  className="w-10 h-10 rounded-lg bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-center"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Content */}
-            <div className="p-6 max-h-[70vh] overflow-y-auto">
-              {/* Feature Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                <div className="bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-200 rounded-xl p-5">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
-                      <Brain className="w-5 h-5 text-purple-600" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-slate-900 mb-1">Multi-Model Support</h3>
-                      <p className="text-sm text-slate-600">GPT-4o, Claude 3.5 Sonnet, and Gemini Pro for maximum accuracy</p>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="bg-gradient-to-br from-blue-50 to-cyan-50 border border-blue-200 rounded-xl p-5">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
-                      <Shield className="w-5 h-5 text-blue-600" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-slate-900 mb-1">Secure & Private</h3>
-                      <p className="text-sm text-slate-600">Your API keys are encrypted and never stored permanently</p>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl p-5">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                      <Zap className="w-5 h-5 text-emerald-600" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-slate-900 mb-1">Deep Extraction</h3>
-                      <p className="text-sm text-slate-600">Advanced symbol recognition, tag extraction, and context analysis</p>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-5">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
-                      <Database className="w-5 h-5 text-amber-600" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-slate-900 mb-1">Project-Scoped</h3>
-                      <p className="text-sm text-slate-600">Keys are linked to your project for consistent processing</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Info Panel */}
-              <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-r-lg mb-6">
-                <div className="flex items-start gap-3">
-                  <Lightbulb className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <h4 className="font-bold text-blue-900 mb-1">How BYOK Works</h4>
-                    <ul className="text-sm text-blue-800 space-y-1">
-                      <li>• Configure your own API keys for OpenAI, Claude, or Gemini</li>
-                      <li>• Keys are encrypted using AES-256 and stored per-project</li>
-                      <li>• AI models process your P&IDs with enhanced accuracy</li>
-                      <li>• You maintain full control and can revoke access anytime</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-
-              {/* API Key Configuration Section */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                  <Settings className="w-5 h-5 text-purple-600" />
-                  Configure API Keys
-                </h3>
-                
-                {/* OpenAI */}
-                <div className="border border-slate-200 rounded-xl p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
-                        <Brain className="w-4 h-4 text-emerald-600" />
-                      </div>
-                      <div>
-                        <p className="font-bold text-slate-900">OpenAI (GPT-4o)</p>
-                        <p className="text-xs text-slate-500">Industry-leading vision and reasoning</p>
-                      </div>
-                    </div>
-                    {apiKeyStatus.openai === 'active' ? (
-                      <span className="px-3 py-1 bg-emerald-50 text-emerald-700 text-xs font-semibold rounded-full flex items-center gap-1">
-                        <CheckCircle className="w-3 h-3" />Active
-                      </span>
-                    ) : (
-                      <span className="px-3 py-1 bg-emerald-50 text-emerald-700 text-xs font-semibold rounded-full">
-                        Recommended
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input 
-                      type="password"
-                      value={apiKeys.openai}
-                      onChange={(e) => setApiKeys(prev => ({ ...prev, openai: e.target.value }))}
-                      placeholder={apiKeyStatus.openai === 'active' ? '•••••••••••••••••••• (key saved — enter a new key to replace)' : 'sk-proj-...'}
-                      className="flex-1 px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    />
-                    {apiKeyStatus.openai === 'active' && (
-                      <button
-                        onClick={() => deleteApiKey('openai')}
-                        className="px-3 py-2.5 border border-slate-300 text-slate-500 rounded-lg hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
-                        title="Remove key"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Claude */}
-                <div className="border border-slate-200 rounded-xl p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
-                        <Cpu className="w-4 h-4 text-blue-600" />
-                      </div>
-                      <div>
-                        <p className="font-bold text-slate-900">Anthropic Claude (3.5 Sonnet)</p>
-                        <p className="text-xs text-slate-500">Superior technical document understanding</p>
-                      </div>
-                    </div>
-                    {apiKeyStatus.claude === 'active' && (
-                      <span className="px-3 py-1 bg-blue-50 text-blue-700 text-xs font-semibold rounded-full flex items-center gap-1">
-                        <CheckCircle className="w-3 h-3" />Active
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input 
-                      type="password"
-                      value={apiKeys.claude}
-                      onChange={(e) => setApiKeys(prev => ({ ...prev, claude: e.target.value }))}
-                      placeholder={apiKeyStatus.claude === 'active' ? '•••••••••••••••••••• (key saved — enter a new key to replace)' : 'sk-ant-...'}
-                      className="flex-1 px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    />
-                    {apiKeyStatus.claude === 'active' && (
-                      <button
-                        onClick={() => deleteApiKey('claude')}
-                        className="px-3 py-2.5 border border-slate-300 text-slate-500 rounded-lg hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
-                        title="Remove key"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Gemini — not yet supported by the analysis backend */}
-                <div className="border border-slate-200 rounded-xl p-4 opacity-60">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center">
-                        <Sparkles className="w-4 h-4 text-purple-600" />
-                      </div>
-                      <div>
-                        <p className="font-bold text-slate-900">Google Gemini (Pro Vision)</p>
-                        <p className="text-xs text-slate-500">Advanced multimodal processing</p>
-                      </div>
-                    </div>
-                    <span className="px-3 py-1 bg-slate-100 text-slate-500 text-xs font-semibold rounded-full">
-                      Coming soon
-                    </span>
-                  </div>
-                  <input 
-                    type="password"
-                    placeholder="AIza..."
-                    disabled
-                    className="w-full px-4 py-2.5 border border-slate-200 bg-slate-50 rounded-lg text-sm cursor-not-allowed"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Footer Actions */}
-            <div className="bg-slate-50 px-6 py-4 border-t border-slate-200 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm text-slate-600">
-                <Shield className="w-4 h-4" />
-                <span>Keys are encrypted with AES-256</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <button 
-                  onClick={() => setShowBYOKPanel(false)}
-                  className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-white transition-colors font-medium"
-                >
-                  Cancel
-                </button>
-                <button 
-                  onClick={async () => { await saveApiKeys(); setShowBYOKPanel(false); }}
-                  disabled={savingApiKeys || (!apiKeys.openai && !apiKeys.claude)}
-                  className="px-6 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all shadow-lg shadow-purple-200 font-semibold flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {savingApiKeys ? <Loader className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                  {savingApiKeys ? 'Saving...' : 'Save Configuration'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {showBYOKPanel && <PlatformAIStatusDialog onClose={() => setShowBYOKPanel(false)} />}
 
       {/* ── Fullscreen Workflow Modal ──────────────────────────────────────── */}
       {workflowFullscreen && (

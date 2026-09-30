@@ -52,8 +52,8 @@ const SystemHealthDashboard = () => {
 
   useEffect(() => {
     fetchHealthData();
-    // Auto-refresh every 30 seconds
-    const interval = setInterval(fetchHealthData, 30000);
+    // Auto-refresh every 5 minutes (was 30s)
+    const interval = setInterval(fetchHealthData, 300000);
     return () => clearInterval(interval);
   }, []);
 

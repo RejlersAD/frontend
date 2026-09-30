@@ -8,7 +8,7 @@ import { FEATURE_FLAGS } from './features.config'
 
 // Polling & timing
 export const PERSONAL_DASHBOARD_CONFIG = {
-  pollIntervalMs:   60000,
+  pollIntervalMs:   300000, // was 60s
   insightPollMs:    0,
   staggerMs:        60,
   fadeInMs:         480,

@@ -790,6 +790,24 @@ class SalesService {
     ).data;
   }
 
+  async getRegistrationOptions() {
+    const response = await apiClient.get(`${BASE_URL}/deals/registration-options/`);
+    return response.data;
+  }
+
+  async exportDeals(ids) {
+    const response = await apiClient.post(`${BASE_URL}/deals/export/`, { ids: ids.join(',') }, { responseType: 'blob' });
+    return response.data;
+  }
+
+  async askMailboxEmail(connectionId, payload) {
+    return (await apiClient.post(
+      `${BASE_URL}/mailbox-connections/${encodeURIComponent(connectionId)}/review-assistant/`,
+      payload,
+      EMAIL_REQUEST_OPTIONS,
+    )).data;
+  }
+
   async convertMailboxMessage(connectionId, payload) {
     return (
       await apiClient.post(
@@ -861,6 +879,14 @@ class SalesService {
 
   async getEmailIntake(intakeId) {
     return (await apiClient.get(`${BASE_URL}/email-intakes/${intakeId}/`)).data;
+  }
+
+  async askEmailIntake(intakeId, payload) {
+    return (await apiClient.post(
+      `${BASE_URL}/email-intakes/${encodeURIComponent(intakeId)}/review-assistant/`,
+      payload,
+      EMAIL_REQUEST_OPTIONS,
+    )).data;
   }
 
   async startEmailIntakeReview(intakeId) {

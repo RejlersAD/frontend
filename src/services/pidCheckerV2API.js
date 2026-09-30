@@ -276,7 +276,7 @@ export async function validateLineTags(payload) {
   if (payload.legendId) body.legend_id = payload.legendId
   if (payload.useAi) {
     body.vision_provider = payload.provider
-    body.vision_api_key = payload.apiKey
+    if (payload.apiKey) body.vision_api_key = payload.apiKey
   }
   const res = await apiClient.post(VALIDATE_ENDPOINT, body, { timeout: REQUEST_TIMEOUT_MS })
   return res.data
@@ -340,7 +340,7 @@ export async function crossCheck(payload) {
   if (payload.projectId) body.project_id = payload.projectId
   if (payload.useAi) {
     body.vision_provider = payload.provider
-    body.vision_api_key = payload.apiKey
+    if (payload.apiKey) body.vision_api_key = payload.apiKey
   }
   const res = await apiClient.post(CROSS_CHECK_ENDPOINT, body, { timeout: REQUEST_TIMEOUT_MS })
   return res.data
@@ -429,7 +429,7 @@ export async function equipmentCrossCheck(payload) {
     && Object.keys(payload.equipmentAttributes).length > 0
   if (payload.useAi || hasAttrs) {
     body.vision_provider = payload.provider
-    body.vision_api_key = payload.apiKey
+    if (payload.apiKey) body.vision_api_key = payload.apiKey
   }
   if (hasAttrs) {
     body.equipment_attributes = payload.equipmentAttributes
@@ -521,7 +521,7 @@ export async function instrumentCrossCheck(payload) {
     && Object.keys(payload.instrumentAttributes).length > 0
   if (payload.useAi || hasAttrs) {
     body.vision_provider = payload.provider
-    body.vision_api_key = payload.apiKey
+    if (payload.apiKey) body.vision_api_key = payload.apiKey
   }
   if (hasAttrs) {
     body.instrument_attributes = payload.instrumentAttributes
@@ -541,7 +541,7 @@ export async function extractEquipmentTagsFromPid(file, { provider, apiKey } = {
   const form = new FormData()
   form.append(UPLOAD_FIELD, file)
   form.append('provider', provider || '')
-  form.append('api_key', apiKey || '')
+  if (apiKey) form.append('api_key', apiKey)
   const res = await apiClient.post(EXTRACT_EQUIPMENT_TAGS_ENDPOINT, form, {
     timeout: REQUEST_TIMEOUT_MS,
     headers: { 'Content-Type': 'multipart/form-data' },
@@ -564,7 +564,7 @@ export async function extractInstrumentTagsFromPid(file, { provider, apiKey, onP
   const form = new FormData()
   form.append(UPLOAD_FIELD, file)
   form.append('provider', provider || '')
-  form.append('api_key', apiKey || '')
+  if (apiKey) form.append('api_key', apiKey)
   const dispatch = await apiClient.post(EXTRACT_INSTRUMENT_TAGS_ENDPOINT, form, {
     timeout: REQUEST_TIMEOUT_MS,
     headers: { 'Content-Type': 'multipart/form-data' },

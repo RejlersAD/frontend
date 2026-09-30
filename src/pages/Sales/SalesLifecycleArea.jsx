@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import {
   NavLink,
@@ -27,6 +27,11 @@ import {
 
 import salesService from "../../services/sales.service";
 import SalesActionDialog from "./SalesActionDialog";
+import SalesOpportunityHistory from "./SalesOpportunityHistory";
+import SalesOpportunityRegistrationDialog from "./SalesOpportunityRegistrationDialog";
+import { opportunityMoney } from "./salesOpportunityRegistration";
+import SalesOpportunityRegister from "./SalesOpportunityRegister.jsx";
+import { loadOpportunityRegister } from "./salesOpportunityRegister.js";
 
 const AREAS = {
   opportunities: {
@@ -40,7 +45,7 @@ const AREAS = {
       "Proposal work follows minimum qualification",
       "Lost work requires a recorded reason",
     ],
-    load: () => salesService.getDeals({ page_size: 500 }),
+    load: () => loadOpportunityRegister((params) => salesService.getDeals(params)),
     loadCount: () => salesService.getDeals({ page_size: 1 }),
     get: (id) => salesService.getDeal(id),
     update: (id, payload) => salesService.patchDeal(id, payload),
@@ -51,6 +56,14 @@ const AREAS = {
     details: [
       "deal_code",
       "deal_name",
+      "opportunity_type",
+      "client_name",
+      "open_date",
+      "owner_name",
+      "created_by_name",
+      "created_at",
+      "client_reference",
+      "description",
       "stage",
       "probability",
       "estimated_value",
@@ -63,6 +76,13 @@ const AREAS = {
     ],
     editFields: [
       ["deal_name", "Opportunity name"],
+      ["opportunity_type", "Opportunity type", "select", ["", "tender", "rfq", "eoi", "direct_enquiry", "other"]],
+      ["open_date", "Open date", "date"],
+      ["client_reference", "Client reference"],
+      ["estimated_value", "Estimated value", "number"],
+      ["currency", "Currency", "select", ["", "AED", "USD", "EUR", "GBP", "SAR", "QAR", "OMR"]],
+      ["scope_type", "Scope type", "select", ["", "conceptual", "pre_feed", "feed", "basic_engineering", "detailed_engineering", "epcm", "epc", "pmc", "owner_engineer", "feasibility", "other"]],
+      ["description", "Scope summary", "textarea"],
       ["next_action", "Next action"],
       ["next_action_date", "Next-action date", "date"],
       ["submission_due_date", "Proposal deadline", "date"],
@@ -76,19 +96,25 @@ const AREAS = {
       ],
     ],
     columns: [
-      "Opportunity",
+      "VF code",
+      "Title",
       "Client",
+      "Open date",
+      "Submission deadline",
       "Stage",
       "Owner",
       "Value",
       "Next action",
     ],
     cells: (row) => [
-      row.deal_code || row.deal_name,
+      row.deal_code || "Not provided",
+      row.deal_name,
       row.client_name,
-      row.stage_display || row.stage,
+      dateLabel(row.open_date),
+      dateLabel(row.submission_due_date),
+      row.stage === "lead" ? "Open" : row.stage_display || row.stage,
       row.owner_name || "Unassigned",
-      money(row.estimated_value, row.currency),
+      opportunityMoney(row.estimated_value, row.currency),
       row.next_action || dateLabel(row.next_action_date),
     ],
   },
@@ -428,40 +454,6 @@ const money = (value, currency = "AED") =>
         maximumFractionDigits: 0,
       }).format(Number(value || 0));
 
-const auditEventLabel = (value) =>
-  ({
-    opportunity_created: "Opportunity created",
-    opportunity_created_from_email: "Opportunity created from incoming email",
-    qualification_submitted: "Qualification submitted",
-    bid_decision: "Bid decision recorded",
-    proposal_revision_created: "Proposal revision created",
-    proposal_revision_approved: "Proposal revision approved",
-    proposal_revision_issued: "Proposal revision issued to client",
-    negotiation_entered: "Negotiation started",
-    award_submitted: "Award submitted for approval",
-    award_approved: "Award approved",
-    award_rejected: "Award rejected",
-    handover_submitted: "Project handover submitted",
-    handover_accepted: "Project handover accepted",
-    handover_returned: "Project handover returned",
-    project_converted: "Converted to project",
-    opportunity_closed: "Opportunity closed",
-  })[value] || label(value);
-
-const auditTimestamp = (value) =>
-  value
-    ? new Intl.DateTimeFormat("en-GB", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        timeZone: "Asia/Dubai",
-        timeZoneName: "short",
-      }).format(new Date(value))
-    : "Time unavailable";
-
 function Metric({ label: metricLabel, value, tone = "blue" }) {
   const tones =
     tone === "amber"
@@ -481,7 +473,7 @@ function Metric({ label: metricLabel, value, tone = "blue" }) {
   );
 }
 
-const fieldLabel = (key) => label(key);
+const fieldLabel = (key) => ({ deal_code: "VF code", deal_name: "Title", client_name: "Client", owner_name: "Owner", created_by_name: "Created by", created_at: "Created date", submission_due_date: "Submission deadline", expected_close_date: "Expected award date", description: "Scope summary" })[key] || label(key);
 const displayValue = (value) => {
   if (value === null || value === undefined || value === "") return "Not set";
   if (typeof value === "boolean") return value ? "Yes" : "No";
@@ -610,6 +602,8 @@ function RecordDrawer({
   onChange,
   onSave,
   error,
+  loadError = "",
+  onRetry,
   actions,
   onAction,
 }) {
@@ -632,14 +626,14 @@ function RecordDrawer({
         role="dialog"
         aria-modal="true"
         aria-label={`${config.title} record`}
-        className="flex h-full w-full max-w-xl flex-col border-l border-slate-200 bg-white"
+        className="flex h-full w-full min-w-0 max-w-xl flex-col border-l border-slate-200 bg-white"
       >
-        <header className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-          <div>
+        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
+          <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
               {config.title} record
             </p>
-            <h2 className="text-xl font-bold text-[#102a47]">
+            <h2 className="text-xl font-bold text-[#102a47] [overflow-wrap:anywhere]">
               {record ? displayValue(record[config.details[0]]) : "Loading..."}
             </h2>
           </div>
@@ -647,13 +641,13 @@ function RecordDrawer({
             type="button"
             onClick={onClose}
             aria-label="Close record"
-            className="rounded-md p-2 text-slate-500 hover:bg-slate-100"
+            className="shrink-0 rounded-md p-2 text-slate-500 hover:bg-slate-100"
           >
             <XMarkIcon className="h-5 w-5" />
           </button>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-5">
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-5">
           {error && (
             <div className="mb-4 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
               {error}
@@ -663,6 +657,11 @@ function RecordDrawer({
             <p className="py-12 text-center text-sm text-slate-500">
               Loading record...
             </p>
+          ) : loadError ? (
+            <div className="space-y-3 py-10 text-center text-sm text-slate-600">
+              <p>The full record is unavailable. Reload it before editing or taking an action.</p>
+              <button type="button" className="rounded-md border border-slate-300 px-4 py-2 font-semibold text-blue-700" onClick={onRetry}>Retry record</button>
+            </div>
           ) : editing ? (
             <form
               id="sales-record-form"
@@ -711,7 +710,7 @@ function RecordDrawer({
                             }
                             className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
                           >
-                            {options.map((option) => (
+                            {[...new Set([...(draft[key] ? [draft[key]] : []), ...options])].map((option) => (
                               <option key={option} value={option}>
                                 {label(option)}
                               </option>
@@ -739,19 +738,19 @@ function RecordDrawer({
               {config.details.map((key) => (
                 <div
                   key={key}
-                  className="grid gap-1 px-4 py-3 sm:grid-cols-[10rem_1fr]"
+                  className="grid min-w-0 gap-1 px-4 py-3 sm:grid-cols-[10rem_minmax(0,1fr)]"
                 >
                   <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                     {fieldLabel(key)}
                   </dt>
-                  <dd className="whitespace-pre-wrap break-words text-sm text-slate-900">
-                    {displayValue(record?.[key])}
+                  <dd className="min-w-0 whitespace-pre-wrap text-sm leading-6 text-slate-900 [overflow-wrap:anywhere]">
+                    {key === "stage" && record?.stage === "lead" ? "Open" : key === "estimated_value" ? opportunityMoney(record?.estimated_value, record?.currency) : displayValue(record?.[key])}
                   </dd>
                 </div>
               ))}
             </dl>
           )}
-          {!editing && actions.length > 0 && (
+          {!loading && !editing && !loadError && actions.length > 0 && (
             <section className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-4">
               <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">
                 Governed actions
@@ -770,58 +769,9 @@ function RecordDrawer({
               </div>
             </section>
           )}
-          {!editing &&
-            config.title === "Opportunity" &&
-            record?.stage_history?.length > 0 && (
-              <section className="mt-4 rounded-md border border-slate-200 bg-white p-4">
-                <h3 className="text-sm font-bold text-[#102a47]">
-                  Action history
-                </h3>
-                <p className="mt-1 text-xs text-slate-500">
-                  Incoming source and lifecycle actions · newest first
-                </p>
-                <ol className="mt-4 space-y-4 border-l-2 border-blue-100 pl-4">
-                  {record.stage_history.map((event) => (
-                    <li key={event.id} className="relative">
-                      <span className="absolute -left-[1.31rem] top-1 h-2.5 w-2.5 rounded-full border-2 border-white bg-blue-600" />
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <p className="text-sm font-semibold text-slate-900">
-                          {auditEventLabel(event.event_type)}
-                        </p>
-                        <time className="text-xs font-medium text-slate-500">
-                          {auditTimestamp(event.occurred_at)}
-                        </time>
-                      </div>
-                      <p className="mt-1 text-xs text-slate-600">
-                        By {event.actor_name || "System"}
-                        {event.from_stage || event.to_stage
-                          ? ` · ${event.from_stage ? label(event.from_stage) : "Created"} → ${event.to_stage ? label(event.to_stage) : "No stage change"}`
-                          : ""}
-                      </p>
-                      {event.reason && (
-                        <p className="mt-1 whitespace-pre-wrap text-xs text-slate-700">
-                          {event.reason}
-                        </p>
-                      )}
-                      {event.data && Object.keys(event.data).length > 0 && (
-                        <dl className="mt-2 grid gap-x-3 gap-y-1 rounded bg-slate-50 p-2 text-xs sm:grid-cols-[9rem_1fr]">
-                          {Object.entries(event.data).map(([key, value]) => (
-                            <div key={key} className="contents">
-                              <dt className="font-semibold text-slate-500">
-                                {fieldLabel(key)}
-                              </dt>
-                              <dd className="break-all text-slate-700">
-                                {displayValue(value)}
-                              </dd>
-                            </div>
-                          ))}
-                        </dl>
-                      )}
-                    </li>
-                  ))}
-                </ol>
-              </section>
-            )}
+          {!loading && !editing && !loadError && config.title === "Opportunity" && (
+            <SalesOpportunityHistory events={record?.stage_history} />
+          )}
           {!editing && locked && (
             <div className="mt-4 flex gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
               <LockClosedIcon className="h-5 w-5 shrink-0" />
@@ -834,10 +784,11 @@ function RecordDrawer({
         </div>
 
         {!loading && (
-          <footer className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4">
+          <footer className="flex shrink-0 justify-end gap-2 border-t border-slate-200 px-5 py-4">
             {editing ? (
               <>
                 <button
+                  key="cancel-edit"
                   type="button"
                   onClick={onCancelEdit}
                   className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold"
@@ -845,6 +796,7 @@ function RecordDrawer({
                   Cancel
                 </button>
                 <button
+                  key="save-record"
                   type="submit"
                   form="sales-record-form"
                   disabled={saving}
@@ -856,14 +808,16 @@ function RecordDrawer({
             ) : (
               <>
                 <button
+                  key="close-record"
                   type="button"
                   onClick={onClose}
                   className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold"
                 >
                   Close
                 </button>
-                {!locked && (
+                {!locked && !loadError && (
                   <button
+                    key="edit-record"
                     type="button"
                     onClick={onEdit}
                     className="inline-flex items-center gap-2 rounded-md bg-blue-700 px-4 py-2 text-sm font-semibold text-white"
@@ -891,38 +845,60 @@ export default function SalesLifecycleArea() {
   const [error, setError] = useState("");
   const [record, setRecord] = useState(null);
   const [recordLoading, setRecordLoading] = useState(false);
+  const [recordError, setRecordError] = useState("");
+  const [fullRecordOpen, setFullRecordOpen] = useState(false);
+  const recordRequest = useRef(0);
+  const listRequest = useRef(0);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({});
   const [saving, setSaving] = useState(false);
   const [workspaceCounts, setWorkspaceCounts] = useState({});
+  const [registrationOpen, setRegistrationOpen] = useState(false);
   const [actionDialog, setActionDialog] = useState(null);
   const [actionValues, setActionValues] = useState({});
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState("");
 
+  useEffect(() => {
+    ++recordRequest.current;
+    setRecord(null); setRecordError(""); setFullRecordOpen(false);
+    setRows([]); setQuery(""); setError(""); setEditing(false); setSaving(false);
+    setRegistrationOpen(false); setActionDialog(null);
+  }, [area]);
+
   const load = useCallback(async () => {
     if (!config) return;
+    const request = ++listRequest.current;
     setLoading(true);
     setError("");
     try {
       const data = await config.load();
+      if (request !== listRequest.current) return;
       setRows(list(data));
       setWorkspaceCounts((current) => ({ ...current, [area]: count(data) }));
+      return list(data);
     } catch (requestError) {
+      if (request !== listRequest.current) return;
+      setRows([]);
+      if (area === "opportunities") { ++recordRequest.current; setRecord(null); setFullRecordOpen(false); }
       setError(
         requestError?.response?.data?.detail ||
+          requestError?.message ||
           `${config.title} records could not be loaded.`,
       );
     } finally {
-      setLoading(false);
+      if (request === listRequest.current) setLoading(false);
     }
   }, [area, config]);
 
   useEffect(() => {
+    const requests = [listRequest, recordRequest];
     load();
+    return () => { requests.forEach((request) => { ++request.current; }); };
   }, [load]);
 
   useEffect(() => {
+    if (area === "opportunities") return undefined;
     let mounted = true;
     Promise.allSettled(
       FLOW.map(async ([id]) => [id, count(await AREAS[id].loadCount())]),
@@ -939,29 +915,51 @@ export default function SalesLifecycleArea() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [area]);
 
   const openRecord = useCallback(
-    async (rowOrId) => {
+    async (rowOrId, showFull = true) => {
       if (!config) return;
       const id = typeof rowOrId === "string" ? rowOrId : rowOrId.id;
+      const request = ++recordRequest.current;
       setRecord(typeof rowOrId === "string" ? { id } : rowOrId);
       setRecordLoading(true);
+      setRecordError("");
+      setFullRecordOpen(showFull);
       setEditing(false);
+      setSaving(false);
       setSearchParams({ record: id }, { replace: true });
       try {
-        setRecord(await config.get(id));
+        const detail = await config.get(id);
+        if (request === recordRequest.current) setRecord(detail);
       } catch (requestError) {
-        setError(
+        if (request !== recordRequest.current) return;
+        setRecordError(
           requestError?.response?.data?.detail ||
             `${config.title} record could not be loaded.`,
         );
       } finally {
-        setRecordLoading(false);
+        if (request === recordRequest.current) setRecordLoading(false);
       }
     },
     [config, setSearchParams],
   );
+
+  const selectOpportunity = useCallback((row) => openRecord(row, false), [openRecord]);
+
+  const refreshOpportunities = async () => {
+    const selectedId = record?.id;
+    const request = recordRequest.current;
+    const refreshed = await load();
+    if (!refreshed || !selectedId || request !== recordRequest.current) return;
+    if (refreshed.some((row) => row.id === selectedId)) {
+      await openRecord(selectedId, fullRecordOpen);
+    } else {
+      ++recordRequest.current;
+      setRecord(null); setRecordError(""); setFullRecordOpen(false); setEditing(false);
+      setSearchParams({}, { replace: true });
+    }
+  };
 
   useEffect(() => {
     const recordId = searchParams.get("record");
@@ -969,12 +967,15 @@ export default function SalesLifecycleArea() {
   }, [openRecord, record?.id, searchParams]);
 
   const closeRecord = useCallback(() => {
+    if (area === "opportunities") { setFullRecordOpen(false); setEditing(false); return; }
+    ++recordRequest.current;
     setRecord(null);
     setEditing(false);
     setSearchParams({}, { replace: true });
-  }, [setSearchParams]);
+  }, [area, setSearchParams]);
 
   const beginEdit = () => {
+    if (recordLoading || recordError) return;
     setError("");
     setDraft(
       Object.fromEntries(
@@ -986,17 +987,21 @@ export default function SalesLifecycleArea() {
 
   const saveRecord = async (event) => {
     event.preventDefault();
+    const request = recordRequest.current;
+    const selectedId = record.id;
     setSaving(true);
     setError("");
     try {
-      const updated = await config.update(record.id, draft);
+      const payload = area === "opportunities" ? { ...draft, estimated_value: draft.estimated_value === "" ? null : draft.estimated_value, expected_close_date: draft.expected_close_date || null, submission_due_date: draft.submission_due_date || null, open_date: draft.open_date || null, next_action_date: draft.next_action_date || null } : draft;
+      const updated = await config.update(selectedId, payload);
+      if (request !== recordRequest.current) return;
       setRecord(updated);
       setEditing(false);
       await load();
     } catch (requestError) {
-      setError(apiError(requestError, `${config.title} could not be updated.`));
+      if (request === recordRequest.current) setError(apiError(requestError, `${config.title} could not be updated.`));
     } finally {
-      setSaving(false);
+      if (request === recordRequest.current) setSaving(false);
     }
   };
 
@@ -1068,7 +1073,8 @@ export default function SalesLifecycleArea() {
         return;
       }
 
-      if (area === "frameworks" || area === "opportunities") {
+      if (area === "opportunities") { setRegistrationOpen(true); return; }
+      if (area === "frameworks") {
         const clients = list(
           await salesService.getClients({ status: "active", page_size: 500 }),
         );
@@ -1147,117 +1153,6 @@ export default function SalesLifecycleArea() {
           );
           return;
         }
-        const frameworks = list(
-          await salesService.getFrameworks({
-            status: "active",
-            page_size: 500,
-          }),
-        );
-        showAction(
-          {
-            title: "Register opportunity",
-            submitLabel: "Create opportunity",
-            description:
-              "Capture the lead first; qualification and bid/no-bid are separate governed decisions.",
-            fields: [
-              {
-                name: "deal_name",
-                label: "Opportunity name",
-                required: true,
-                full: true,
-              },
-              {
-                name: "client",
-                label: "Client",
-                type: "select",
-                required: true,
-                options: clientOptions,
-              },
-              {
-                name: "framework",
-                label: "Framework (optional)",
-                type: "select",
-                options: frameworks.map((item) => ({
-                  value: item.id,
-                  label: `${item.framework_number} - ${item.client_name}`,
-                })),
-              },
-              {
-                name: "scope_type",
-                label: "Scope type",
-                type: "select",
-                required: true,
-                options: [
-                  "conceptual",
-                  "pre_feed",
-                  "feed",
-                  "basic_engineering",
-                  "detailed_engineering",
-                  "epcm",
-                  "pmc",
-                  "owner_engineer",
-                  "feasibility",
-                  "other",
-                ],
-              },
-              {
-                name: "estimated_value",
-                label: "Estimated value",
-                type: "number",
-                min: 0,
-                required: true,
-              },
-              {
-                name: "currency",
-                label: "Currency",
-                type: "select",
-                required: true,
-                options: ["AED", "USD", "EUR", "GBP", "SAR", "QAR"],
-              },
-              {
-                name: "submission_due_date",
-                label: "Proposal deadline",
-                type: "date",
-                required: true,
-              },
-              {
-                name: "expected_close_date",
-                label: "Expected award date",
-                type: "date",
-                required: true,
-              },
-              {
-                name: "estimated_hours",
-                label: "Estimated hours",
-                type: "number",
-                min: 0,
-              },
-              {
-                name: "project_duration_months",
-                label: "Duration in months",
-                type: "number",
-                min: 1,
-              },
-              {
-                name: "description",
-                label: "Scope summary",
-                type: "textarea",
-                full: true,
-              },
-            ],
-            execute: (values) =>
-              salesService.createDeal({
-                ...values,
-                framework: values.framework || null,
-                estimated_hours: values.estimated_hours || null,
-                project_duration_months: values.project_duration_months || null,
-                priority: "medium",
-                risk_level: "medium",
-              }),
-          },
-          { currency: "AED", scope_type: "detailed_engineering" },
-        );
-        return;
       }
 
       if (area === "proposals") {
@@ -1436,6 +1331,7 @@ export default function SalesLifecycleArea() {
   };
 
   const openLifecycleAction = (actionId) => {
+    if (!record || recordLoading || recordError) return;
     const confirm = (title, description, execute, submitLabel = title) =>
       showAction({ title, description, execute, submitLabel, fields: [] });
     if (actionId === "qualify")
@@ -1730,11 +1626,16 @@ export default function SalesLifecycleArea() {
     event.preventDefault();
     setActionBusy(true);
     setActionError("");
+    const selectedId = record?.id;
+    const request = recordRequest.current;
     try {
       await actionDialog.execute(actionValues);
       setActionDialog(null);
       await load();
-      if (record) setRecord(await config.get(record.id));
+      if (selectedId && request === recordRequest.current) {
+        const updated = await config.get(selectedId);
+        if (request === recordRequest.current) setRecord(updated);
+      }
     } catch (requestError) {
       setActionError(
         apiError(requestError, `${actionDialog.title} could not be completed.`),
@@ -1776,7 +1677,19 @@ export default function SalesLifecycleArea() {
   ).length;
 
   return (
-    <div className="min-h-full bg-slate-100 p-4 text-slate-950 sm:p-5">
+    <div className={area === "opportunities" ? "sales-opportunities-route" : "min-h-full bg-slate-100 p-4 text-slate-950 sm:p-5"}>
+      {area === "opportunities" ? (
+        <SalesOpportunityRegister
+          rows={rows} loading={loading} error={error}
+          record={record} recordLoading={recordLoading} recordError={recordError}
+          onRefresh={refreshOpportunities} onSelect={selectOpportunity}
+          onRetryRecord={() => record && openRecord(record, false)}
+          onOpenFullRecord={(row) => row && openRecord(row, true)}
+          onEdit={() => { setFullRecordOpen(true); beginEdit(); }}
+          onCreate={openCreate} onAction={openLifecycleAction}
+          actions={lifecycleActions(area, record)} locked={!record || config.locked(record)}
+        />
+      ) : <>
       <header className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
         <div className="flex items-start gap-3">
           <Icon
@@ -1965,7 +1878,9 @@ export default function SalesLifecycleArea() {
           </div>
         </aside>
       </div>
-      {record && (
+      </>}
+      {registrationOpen && <SalesOpportunityRegistrationDialog onClose={() => setRegistrationOpen(false)} onCreated={(created) => { setRegistrationOpen(false); load(); openRecord(created); }} />}
+      {record && (area !== "opportunities" || fullRecordOpen) && (
         <RecordDrawer
           config={config}
           record={record}
@@ -1980,8 +1895,10 @@ export default function SalesLifecycleArea() {
             setDraft((current) => ({ ...current, [key]: value }))
           }
           onSave={saveRecord}
-          error={error}
-          actions={lifecycleActions(area, record)}
+          error={recordError || error}
+          loadError={recordError}
+          onRetry={() => openRecord(record, true)}
+          actions={recordError ? [] : lifecycleActions(area, record)}
           onAction={openLifecycleAction}
         />
       )}
@@ -2027,6 +1944,8 @@ RecordDrawer.propTypes = {
   onChange: PropTypes.func.isRequired,
   onSave: PropTypes.func.isRequired,
   error: PropTypes.string,
+  loadError: PropTypes.string,
+  onRetry: PropTypes.func,
   actions: PropTypes.arrayOf(
     PropTypes.shape({
       id: PropTypes.string.isRequired,

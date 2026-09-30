@@ -1,3 +1,4 @@
+import useAIProviderStatus from '../../../../hooks/useAIProviderStatus'
 import React, { useCallback, useMemo, useState } from 'react'
 import { toast } from 'react-toastify'
 import {
@@ -54,7 +55,8 @@ export default function LegendValidationPanel({ tags, activeLegend, provider, ap
   const [filter, setFilter] = useState('all')
   const [expandedTag, setExpandedTag] = useState(null)
 
-  const canAi = Boolean(provider && apiKey)
+  const centralAI = useAIProviderStatus(provider)
+  const canAi = centralAI.canUseAI
   const hasTags = Array.isArray(tags) && tags.length > 0
   // Smart mode: even without an activated legend, the backend falls back
   // to the user's latest legend or the built-in default. So the button
@@ -111,7 +113,7 @@ export default function LegendValidationPanel({ tags, activeLegend, provider, ap
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
           <label
-            title={canAi ? 'Use AI to explain each failure' : 'Enter your BYOK Vision key to enable AI diagnosis'}
+            title={canAi ? 'Use AI to explain each failure' : 'Ask your administrator to configure the selected AI provider'}
             style={{
               display: 'flex', alignItems: 'center', gap: 6, fontSize: 12,
               color: canAi ? THEME_TEXT : THEME_MUTED,

@@ -135,6 +135,26 @@ const ioListWorkflowService = {
     return { ...data, processing: status === 202 }
   },
 
+  /**
+   * Force a genuinely fresh Vision run — unlike reExtract() above, this
+   * NEVER reuses a cached result (Vision extraction isn't fully
+   * deterministic run-to-run on the same file/scan-mode; reExtract() is
+   * deliberately the fast, consistent action that prefers the cache).
+   * The backend compares this run's result against whatever's already
+   * cached and keeps whichever is better — the document ends up showing
+   * the winner either way, and extraction_stats.warnings carries a
+   * message saying which one won ("Better result found!..." or "Cached
+   * result is better..."). Same meta/timeout shape as reExtract().
+   */
+  async forceFreshExtract(id, meta = {}) {
+    const { data, status } = await apiClientLongTimeout.post(
+      IO_LIST_WORKFLOW_API.forceFreshExtract(id),
+      meta,
+      { timeout: IO_LIST_VISION_UPLOAD_TIMEOUT_MS },
+    )
+    return { ...data, processing: status === 202 }
+  },
+
   /** Fetch the original PDF as a Blob for an in-app preview. */
   async getOriginalPdf(id) {
     const { data } = await apiClient.get(IO_LIST_WORKFLOW_API.originalPdf(id), {

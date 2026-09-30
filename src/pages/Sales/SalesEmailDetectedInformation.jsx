@@ -1,4 +1,5 @@
 import PropTypes from "prop-types";
+import { emailActionDeadline, emailContextReference } from "./salesEmailReviewState";
 import { SalesEmailSourceEvidence } from "./SalesEmailAnalysis";
 import SalesEmailCustomerMatch from "./SalesEmailCustomerMatch";
 import SalesEmailIntelligence, { intelligenceField } from "./SalesEmailIntelligence";
@@ -40,7 +41,7 @@ function SuggestedClassification({ classification, sources }) {
     <p><span className="font-semibold">Confidence: </span>Unavailable</p>
   </section>;
   const confidence = objectValue(supplied.confidence);
-  const supportedConfidence = confidence?.method === "rule_evidence_v1" && typeof confidence.level === "string" && Object.hasOwn(confidenceLabels, confidence.level);
+  const supportedConfidence = ["rule_evidence_v1", "ai_evidence_v1"].includes(confidence?.method) && typeof confidence.level === "string" && Object.hasOwn(confidenceLabels, confidence.level);
   const label = supplied.status === "classified" ? classificationLabels[supplied.code]
     : supplied.status === "ambiguous" ? "Needs review"
       : supplied.status === "draft" ? "Draft (not classified)" : "Not classified";
@@ -71,18 +72,25 @@ export default function SalesEmailDetectedInformation({ information, subject }) 
   const domain = versionTwo ? intelligenceField(detected, "customer_domain") : null;
   const sentDate = versionTwo ? intelligenceField(detected, "submission_date") : null;
   const requestCode = valueText(detected.request_type_code);
+  const agreementReference = emailContextReference(detected, "agreement_reference");
+  const correspondenceReference = emailContextReference(detected, "correspondence_reference");
+  const actionDeadline = emailActionDeadline(detected);
   const fields = [
     ["title", "Title (Subject)", valueText(detected.title) || subject],
     ["customer_name", "Customer Name", !versionTwo || customer?.status === "detected" ? valueText(detected.customer_name) : ""],
     ["submission_date", "Submission Date", !versionTwo || sentDate?.status === "detected" ? valueText(detected.submission_date) : ""],
     ["due_date", "Due Date", valueText(detected.due_date)],
     ["request_type_code", "Type of Request", ["EOI", "EIO", "RFT", "RFQ", "RFP", "ITT"].includes(requestCode) ? requestCode : ""],
+    ...(agreementReference ? [["agreement_reference", "WO agreement reference", agreementReference.value]] : []),
+    ...(correspondenceReference ? [["correspondence_reference", "Correspondence reference", `${correspondenceReference.value} · Requires review`]] : []),
+    ...(actionDeadline ? [["action_deadline", "Action deadline", actionDeadline.value]] : []),
   ];
   const evidenceFields = versionTwo ? [...fields, ["customer_domain", "Customer domain", domain?.status === "detected" ? valueText(detected.customer_domain) : ""]] : fields;
   const evidence = evidenceFields.map(([key, label, value]) => {
     const status = key === "customer_name" ? customer : key === "customer_domain" ? domain : key === "submission_date" ? sentDate : null;
     return [label, valueText(detected.evidence?.[key]), detected.field_sources?.[key] || status?.source_ids, valueText(status?.reason), key === "customer_domain" ? value : ""];
   }).filter(([, value, sources, reason, domainValue]) => value || reason || domainValue || (Array.isArray(sources) && sources.length));
+  if (actionDeadline) evidence.push(...actionDeadline.evidence.map((entry) => ["Agreement return deadline", entry.excerpt, entry.sourceIds, "Agreement/document-return deadline. Verify whether this action remains outstanding.", ""]));
   const warnings = Array.isArray(detected.warnings) ? detected.warnings.filter((value) => typeof value === "string" && value.trim()) : [];
   return <section aria-label="Detected information" className="min-w-0">
     <dl className="grid min-w-0 gap-3 sm:grid-cols-2">
@@ -97,7 +105,7 @@ export default function SalesEmailDetectedInformation({ information, subject }) 
     {(evidence.length > 0 || warnings.length > 0) && <details className="mt-3 min-w-0 text-xs text-slate-600">
       <summary className="w-fit cursor-pointer rounded py-1 font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600">Source evidence</summary>
       {evidence.length > 0 && <dl className="mt-2 space-y-2">
-        {evidence.map(([label, value, sourceIds, reason, domainValue]) => <div key={label}><dt className="font-semibold">{label}</dt><dd className="mt-0.5 leading-5 [overflow-wrap:anywhere]">{domainValue && <p className="whitespace-pre-wrap">{domainValue}</p>}{value && <p className="whitespace-pre-wrap">{value}</p>}{reason && <p className="whitespace-pre-wrap">{reason}</p>}<SalesEmailSourceEvidence sourceIds={Array.isArray(sourceIds) ? sourceIds : null} sources={Array.isArray(detected.analysis?.sources) ? detected.analysis.sources : null} /></dd></div>)}
+        {evidence.map(([label, value, sourceIds, reason, domainValue], index) => <div key={`${label}-${index}`}><dt className="font-semibold">{label}</dt><dd className="mt-0.5 leading-5 [overflow-wrap:anywhere]">{domainValue && <p className="whitespace-pre-wrap">{domainValue}</p>}{value && <p className="whitespace-pre-wrap">{value}</p>}{reason && <p className="whitespace-pre-wrap">{reason}</p>}<SalesEmailSourceEvidence sourceIds={Array.isArray(sourceIds) ? sourceIds : null} sources={Array.isArray(detected.analysis?.sources) ? detected.analysis.sources : null} /></dd></div>)}
       </dl>}
       {warnings.length > 0 && <ul className="mt-2 list-disc space-y-1 pl-4 leading-5">{warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
     </details>}

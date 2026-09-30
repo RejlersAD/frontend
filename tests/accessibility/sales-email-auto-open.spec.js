@@ -20,7 +20,7 @@ const bodyFor = record => detail(record, { body_text: `Source body for ${record.
 const records = [message(), secondMessage(), message({ id: 'draft-three', subject: 'Draft engineering response', is_draft: true, is_read: true })]
 const detailsFor = ({ url }) => ({ body: bodyFor(records.find(record => record.id === url.searchParams.get('message_id'))) })
 
-test('the first email opens automatically without moving focus and the visible introduction is removed', async ({ page }, testInfo) => {
+test('the first email opens automatically without moving focus beneath the compact toolbar heading', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1672, height: 941 })
   const hold = deferred()
   const state = await prepare(page, { shell: true, messageHold: hold, details: opportunityDetails() })
@@ -33,10 +33,11 @@ test('the first email opens automatically without moving focus and the visible i
   await expect(search(page)).toBeFocused()
   await expect(review(page).getByRole('button', { name: 'Create opportunity', exact: true })).toBeDisabled()
   const heading = await page.getByRole('heading', { name: 'Email Intake', exact: true }).boundingBox()
-  expect(heading.width).toBeLessThanOrEqual(1)
-  expect(heading.height).toBeLessThanOrEqual(1)
+  expect(heading.width).toBeGreaterThan(60)
+  expect(heading.height).toBeLessThanOrEqual(28)
+  expect((await page.locator('.sales-email-page-header').boundingBox()).height).toBeLessThanOrEqual(64)
   await expect(page.getByRole('navigation', { name: 'Breadcrumb', exact: true })).toHaveCount(0)
-  await expect(page.getByText('Review shared emails and turn qualified enquiries into opportunities.', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('Understand every email. Review the next action.', { exact: true })).toHaveCount(0)
   expect(requestedIds(state)).toEqual([message().id])
   expect(await sidebar.evaluate(node => node.outerHTML)).toBe(sidebarMarkup)
   await page.screenshot({ path: testInfo.outputPath('email-auto-open-desktop.png') })
@@ -80,7 +81,8 @@ test('read filters and search open the first visible result and empty results cl
   await search(page).fill('')
   await expect(row(page)).toHaveAttribute('aria-pressed', 'true')
   await expect.poll(() => requests(state).length).toBe(count + 1)
-  await page.getByRole('navigation', { name: 'Email read status', exact: true }).getByRole('button', { name: /^Read\b/ }).click()
+  await page.getByRole('button', { name: 'Email filters', exact: true }).click()
+  await page.locator('.sales-email-filter-popover').getByRole('button', { name: 'Read', exact: true }).click()
   await expect(row(page, secondMessage())).toHaveAttribute('aria-pressed', 'true')
   await expect(preview(page)).toContainText('Source body for Site access update')
   expect(state.requests.filter(request => request.path.endsWith('/messages/'))).toHaveLength(1)
@@ -197,7 +199,7 @@ test('View original reveals and selects an imported original hidden by the dupli
 })
 
 test('an unavailable imported original leaves the duplicate selected with an honest notice', async ({ page }) => {
-  const unrelated = { ...message(), status: 'received', extracted_information: detected(), attachments: [] }
+  const unrelated = { ...message({ id: 'saved-unrelated' }), status: 'received', extracted_information: detected(), attachments: [] }
   const duplicate = { ...secondMessage(), status: 'duplicate', duplicate_of: 'not-in-loaded-enquiries', duplicate_of_subject: 'Unavailable original', extracted_information: detected(), attachments: [] }
   const state = await prepare(page, { view: 'imported', imported: paginated([unrelated, duplicate]) })
   const filters = page.getByRole('navigation', { name: 'Email intake status', exact: true })
@@ -213,7 +215,7 @@ test('an unavailable imported original leaves the duplicate selected with an hon
 })
 
 test('imported search and status filters replace hidden selections and clear empty readers', async ({ page }) => {
-  const saved = records.slice(0, 2).map((record, index) => ({ ...record, status: index ? 'under_review' : 'received', can_create_opportunity: true, extracted_information: detected(), attachments: [] }))
+  const saved = records.slice(0, 2).map((record, index) => ({ ...record, id: `saved-filter-${index}`, status: index ? 'under_review' : 'received', can_create_opportunity: true, extracted_information: detected(), attachments: [] }))
   const state = await prepare(page, { view: 'imported', imported: paginated(saved) })
   const reader = page.locator('.sales-email-preview-header')
   await expect(reader).toContainText(message().subject)

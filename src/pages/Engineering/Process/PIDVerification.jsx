@@ -1,4 +1,6 @@
-﻿import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import useAIProviderStatus from '../../../hooks/useAIProviderStatus';
+import PlatformAIStatus from '../../../components/ai/PlatformAIStatus';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { API_BASE_URL } from '../../../config/api.config';
@@ -1502,9 +1504,10 @@ const PIDVerification = () => {
     () => sessionStorage.getItem(SS_KEY_CLAUDE_MODEL) || CLAUDE_VISION_MODELS[0].id
   );
   const [visionApiKey, setVisionApiKey] = useState(
-    () => sessionStorage.getItem(SS_KEY_APIKEY) || ''
+    () => null || ''
   );
   const [showApiKey, setShowApiKey] = useState(false);
+  const centralAI = useAIProviderStatus(visionProvider);
   // 2026-09-08: "Remember Key" checkbox removed — a successfully-tested
   // key is now ALWAYS auto-saved per project (see handleTestConnection
   // below), no manual opt-in step needed. SS_KEY_REMEMBER/rememberKey
@@ -1543,7 +1546,7 @@ const PIDVerification = () => {
     if (storedProvider) setVisionProvider(storedProvider);
     const storedModel = sessionStorage.getItem(SS_KEY_CLAUDE_MODEL);
     if (storedModel) setVisionClaudeModel(storedModel);
-    const storedKey = sessionStorage.getItem(SS_KEY_APIKEY);
+    const storedKey = null;
     if (storedKey) setVisionApiKey(storedKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProject?.project_id]);
@@ -1562,7 +1565,7 @@ const PIDVerification = () => {
       // the project-switch effect above). An untested or failed key is
       // never persisted — only ever a confirmed-working one.
       if (res?.valid) {
-        sessionStorage.setItem(SS_KEY_APIKEY, visionApiKey.trim());
+        undefined;
       }
     } catch (err) {
       setConnectionTestResult({ valid: false, message: err?.response?.data?.message || 'Connection test failed. Please try again.' });
@@ -2351,8 +2354,8 @@ const PIDVerification = () => {
     if (!file) { setError('Please select a P&ID file first.'); return; }
     
     // SOFT-CODED: Validation for AI Vision mode requiring API key
-    if (extractionMode === MODE_VISION && !visionApiKey.trim()) {
-      setError('Please provide your API key for AI Vision analysis.');
+    if (extractionMode === MODE_VISION && !centralAI.canUseAI) {
+      setError('Ask your administrator to configure the selected AI provider.');
       return;
     }
     
@@ -2390,13 +2393,13 @@ const PIDVerification = () => {
     // of which mode toggle is selected — "I typed a working key" is a
     // clearer signal of intent than a separate, easy-to-miss toggle click.
     // extractionMode still governs the true OCR-only case: no key entered.
-    if (visionApiKey.trim()) {
+    if (extractionMode === MODE_VISION) {
       if (visionProvider === 'openai') {
         fd.append('analysis_mode', 'enhanced_openai');
-        fd.append('openai_api_key', visionApiKey.trim());
+        if (visionApiKey.trim()) fd.append('openai_api_key', visionApiKey.trim());
       } else if (visionProvider === 'claude') {
         fd.append('analysis_mode', 'deep_claude');
-        fd.append('claude_api_key', visionApiKey.trim());
+        if (visionApiKey.trim()) fd.append('claude_api_key', visionApiKey.trim());
       }
     } else {
       // No key provided — standard OCR mode, no AI enhancement.
@@ -2451,14 +2454,14 @@ const PIDVerification = () => {
   // extraction.
   const handleIdentifySymbols = async () => {
     if (!documentId) { setSymbolsError('Upload and analyze a P&ID first.'); return; }
-    if (!visionApiKey.trim()) { setSymbolsError('Provide your API key below to identify symbols.'); return; }
+    if (!centralAI.canUseAI) { setSymbolsError('Ask your administrator to configure the selected AI provider.'); return; }
 
     setSymbolsError(''); setIdentifyingSymbols(true); setSymbolsResult(null);
     const fd = new FormData();
     fd.append('pid_document_id', documentId);
     fd.append('provider', visionProvider);
     if (visionProvider === 'claude') fd.append('model', visionClaudeModel);
-    fd.append('api_key', visionApiKey.trim());
+    if (visionApiKey.trim()) fd.append('api_key', visionApiKey.trim());
     fd.append('thorough', thoroughScan ? 'true' : 'false');
 
     try {
@@ -2608,13 +2611,13 @@ const PIDVerification = () => {
       // Tesseract OR add a Claude API key" failure on Re-check as on a
       // fresh upload. A present key is used regardless of that toggle.
       const reprocessBody = {};
-      if (visionApiKey.trim()) {
+      if (extractionMode === MODE_VISION) {
         if (visionProvider === 'openai') {
           reprocessBody.analysis_mode = 'enhanced_openai';
-          reprocessBody.openai_api_key = visionApiKey.trim();
+          if (visionApiKey.trim()) reprocessBody.openai_api_key = visionApiKey.trim();
         } else if (visionProvider === 'claude') {
           reprocessBody.analysis_mode = 'deep_claude';
-          reprocessBody.claude_api_key = visionApiKey.trim();
+          if (visionApiKey.trim()) reprocessBody.claude_api_key = visionApiKey.trim();
         }
       } else {
         reprocessBody.analysis_mode = 'standard';
@@ -5734,13 +5737,13 @@ const PIDVerification = () => {
                 {[
                   { num: 1, label: 'Upload Drawing', icon: UploadIcon, active: !file },
                   { num: 2, label: 'Choose Engine', icon: Zap, active: file && !extractionMode },
-                  { num: 3, label: 'Start Analysis', icon: PlayCircle, active: file && extractionMode && (extractionMode === MODE_OCR || visionApiKey) }
+                  { num: 3, label: 'Start Analysis', icon: PlayCircle, active: file && extractionMode && (extractionMode === MODE_OCR || centralAI.canUseAI) }
                 ].map((step, idx) => (
                   <div key={step.num} className="flex flex-col items-center flex-1 relative z-10">
                     <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm transition-all duration-500 ${
                       step.active 
                         ? 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-lg shadow-blue-500/50 scale-110' 
-                        : (file && step.num === 1) || (file && extractionMode && step.num === 2) || (file && extractionMode && (extractionMode === MODE_OCR || visionApiKey) && step.num === 3)
+                        : (file && step.num === 1) || (file && extractionMode && step.num === 2) || (file && extractionMode && (extractionMode === MODE_OCR || centralAI.canUseAI) && step.num === 3)
                           ? 'bg-emerald-500 text-white shadow-md' 
                           : 'bg-slate-200 text-slate-400'
                     }`}>
@@ -5951,7 +5954,7 @@ const PIDVerification = () => {
                         style={{ animation:'fadeUp 0.3s ease-out both' }}>
                         <div className="flex items-center gap-2 pb-2 border-b border-purple-200">
                           <Key className="w-4 h-4 text-purple-600" />
-                          <span className="text-xs font-bold text-purple-700 uppercase tracking-wide">API Configuration</span>
+                          <span className="text-xs font-bold text-purple-700 uppercase tracking-wide">Server AI configuration</span>
                         </div>
 
                         <div>
@@ -5980,48 +5983,7 @@ const PIDVerification = () => {
                           </div>
                         )}
 
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-700 mb-2">API Key</label>
-                          <div className="relative">
-                            <input
-                              type={showApiKey ? 'text' : 'password'}
-                              value={visionApiKey}
-                              onChange={(e) => { setVisionApiKey(e.target.value); setConnectionTestResult(null); }}
-                              placeholder="sk-proj-..."
-                              className="w-full px-3 py-2.5 pr-10 text-sm border-2 border-purple-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setShowApiKey(v => !v)}
-                              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
-                              {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                            </button>
-                          </div>
-
-                          {/* Test Connection — quick BYOK ping, independent of the main analysis */}
-                          <button
-                            type="button"
-                            onClick={handleTestConnection}
-                            disabled={testingConnection || !visionApiKey.trim()}
-                            className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-purple-300 bg-white text-xs font-semibold text-purple-700 hover:bg-purple-50 disabled:opacity-50 disabled:cursor-not-allowed">
-                            {testingConnection
-                              ? <><Loader className="w-3.5 h-3.5 animate-spin" /> Testing…</>
-                              : <><Zap className="w-3.5 h-3.5" /> Test Connection</>}
-                          </button>
-                          {connectionTestResult && (
-                            <p className={`mt-1.5 text-xs font-medium ${connectionTestResult.valid ? 'text-emerald-600' : 'text-red-600'}`}>
-                              {connectionTestResult.valid ? '✅ ' : '❌ '}{connectionTestResult.message}
-                            </p>
-                          )}
-
-                          {/* 2026-09-08: "Remember Key" checkbox removed — a
-                              successfully-tested key is now auto-saved for
-                              this project automatically (handleTestConnection),
-                              no manual opt-in needed. */}
-                          <p className="text-xs text-purple-600 mt-2 flex items-center gap-1">
-                            <Shield className="w-3 h-3" /> A verified key is saved automatically for this project — cleared when the tab closes
-                          </p>
-                        </div>
+                        <PlatformAIStatus provider={visionProvider} />
 
                         {/* AI Vision Recommendations */}
                         <div className="mt-4 pt-4 border-t border-purple-200">
@@ -6071,7 +6033,7 @@ const PIDVerification = () => {
             )}
 
             {/* ========== STEP 3: START ANALYSIS (CTA) ========== */}
-            {file && extractionMode && (extractionMode === MODE_OCR || visionApiKey) && (
+            {file && extractionMode && (extractionMode === MODE_OCR || centralAI.canUseAI) && (
               <div className="mt-8 text-center" style={{ animation:'fadeUp 0.5s ease-out 0.3s both' }}>
                 <button
                   onClick={handleUpload}
@@ -16551,7 +16513,7 @@ const PIDVerification = () => {
                   {/* Compact BYOK key field — this feature needs a key regardless of
                       which mode (OCR/Vision) was picked for the main P&ID analysis
                       above, so it carries its own field here instead of depending on
-                      the Processing Engine card's API Configuration box (which only
+                      the Processing Engine card's Server AI configuration box (which only
                       shows in AI Vision mode). Shares the same visionApiKey/visionProvider
                       state, so filling it in here or there is the same value everywhere. */}
                   <div className="p-3 rounded-xl border border-purple-200 bg-purple-50/50 space-y-2">
@@ -16578,24 +16540,10 @@ const PIDVerification = () => {
                           ))}
                         </select>
                       )}
-                      <div className="relative flex-1 min-w-[180px]">
-                        <input
-                          type={showApiKey ? 'text' : 'password'}
-                          value={visionApiKey}
-                          onChange={(e) => setVisionApiKey(e.target.value)}
-                          placeholder="sk-proj-..."
-                          className="w-full px-3 py-2 pr-9 text-xs border-2 border-purple-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowApiKey(v => !v)}
-                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
-                          {showApiKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                        </button>
-                      </div>
+                      <PlatformAIStatus provider={visionProvider} />
                     </div>
                     <p className="text-[11px] text-purple-600 flex items-center gap-1">
-                      <Shield className="w-3 h-3" /> A verified key is saved automatically for this project — cleared when the tab closes
+                      <Shield className="w-3 h-3" /> AI credentials are managed on the server by your administrator
                     </p>
                   </div>
 

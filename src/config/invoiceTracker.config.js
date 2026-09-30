@@ -7,7 +7,7 @@
 // API & polling
 export const TRACKER_API_CONFIG = {
   baseUrl:    '/invoice-tracker',
-  refreshMs:  60_000,
+  refreshMs:  300_000,
   pageSize:   100,
 }
 
