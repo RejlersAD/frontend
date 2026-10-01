@@ -62,7 +62,17 @@ import LegendSheetsModal from '../Process/components/LegendSheetsModal';
 // auto-activate Valve MTO's 5 relevant sections before opening the
 // modal (see handleOpenLegends below), never to duplicate the modal's
 // own CRUD UI.
-import { listLegends, createLegend, activateLegend } from '../../../services/pidCheckerV2API';
+// STEP 4 (complete legend-system isolation): uses Valve MTO's OWN
+// isolated legend table/endpoints (apps.valve_mto.models.ValveMTOLegend,
+// services/valveMtoLegendService.js) — NOT apps.pid_checker_v2's shared
+// one (pidCheckerV2API.js), which P&ID Verification V1/V2 also reads.
+// See that service's own module docstring for the full "why": the
+// shared table had only ONE active legend per (user, section), with no
+// per-module dimension, so activating a Valve-MTO default there kept
+// becoming the active legend in P&ID V1/V2 too — confirmed real,
+// repeatedly reported. This removes the shared state entirely.
+import { listLegends, createLegend, activateLegend } from '../../../services/valveMtoLegendService';
+import * as valveMtoLegendService from '../../../services/valveMtoLegendService';
 import apiClient from '../../../services/api.service';
 // BUG FIX: LegendSheetsModal's own "Upload valve symbol image" feature
 // keys its pictures off a apps.pid_verification PIDVProject id (see
@@ -844,23 +854,20 @@ const ValveMTOPage = () => {
         if (!defaults.length) return;
         const defaultNames = new Set(defaults.map((d) => d.name));
         const ownExisting = list.filter((l) => defaultNames.has(l.name));
-        // PidCheckerV2LegendSheet has exactly ONE active legend per
-        // (user, section) — no per-module dimension at all. Valve MTO's
-        // own extraction needs ITS defaults active to feed the Vision
-        // prompt (see _build_legend_context server-side), so this always
-        // creates+activates them, even over a DIFFERENT already-active
-        // legend. That used to visibly leak into P&ID V1/V2 and I/O
-        // List's "Manage Legends" (an MTO legend would show there as the
-        // active one) — now fixed at the source: LegendSheetsModal's own
-        // `filterOutMTOLegends` prop (passed =true from PIDVerification.jsx
-        // /PIDVerificationV2.jsx) hides any legend named with "MTO" from
-        // both their legend list AND their active-legend reporting, so
-        // activating our own default here can no longer surface there —
-        // this file is the only caller that needs it active, and the
-        // other callers now never see it regardless of what's active
-        // server-side. (I/O List's own LegendSheetsModal is a fully
-        // separate component/backend table — never shares this data at
-        // all, so it was never actually affected either way.)
+        // Safe to always create+activate our own defaults here, even
+        // over a different already-active legend: `listLegends`/
+        // `createLegend`/`activateLegend` (imported above from
+        // services/valveMtoLegendService) now hit Valve MTO's OWN,
+        // fully isolated backend table (apps.valve_mto.models.
+        // ValveMTOLegend) — architecturally separate from apps.
+        // pid_checker_v2's PidCheckerV2LegendSheet that P&ID V1/V2
+        // reads, so activating a legend here can no longer affect what's
+        // active there, by construction. (Earlier in this session, before
+        // this table existed, Valve MTO wrote into the SAME shared
+        // pid_checker_v2 table P&ID V1/V2 uses, which had only one
+        // active legend per (user, section) with no per-module dimension
+        // — that's what caused the real, repeatedly-reported leak this
+        // isolation fixes at the root.)
         if (ownExisting.length) {
           if (!ownExisting.some((l) => l.is_active)) {
             await activateLegend(ownExisting[0].legend_id);
@@ -2163,6 +2170,7 @@ const ValveMTOPage = () => {
         // activation from an already-active legend in a shared section).
         isValveMTO
         filterOutMTOLegends={false}
+        legendApi={valveMtoLegendService}
       />
     </div>
   );

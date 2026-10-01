@@ -6,8 +6,9 @@ import * as XLSX from 'xlsx'
 import { BookOpen, Plus, Save, Trash2, CheckCircle2, X, Download, Upload, Loader2, LayoutList, Braces, GripVertical, FileSpreadsheet, FileText, ImageOff, Pencil, Folder } from 'lucide-react'
 
 import {
-  listLegends, createLegend, updateLegend, deleteLegend,
-  activateLegend, getLegendDefaultTemplate, getSymbolImages,
+  listLegends as pidListLegends, createLegend as pidCreateLegend,
+  updateLegend as pidUpdateLegend, deleteLegend as pidDeleteLegend,
+  activateLegend as pidActivateLegend, getLegendDefaultTemplate, getSymbolImages,
   getDefaultSymbolImages, uploadSymbolImage, deleteSymbolImage,
   deleteLegendLookupEntry, LEGEND_SECTIONS,
 } from '../../../../services/pidCheckerV2API'
@@ -147,7 +148,20 @@ const DEFAULT_SYNC_TEXT = 'Legends are shared between V1 (P&ID Verification) and
 export default function LegendSheetsModal({
   open, onClose, section = DEFAULT_SECTION, onActiveChange, projectId: projectIdProp,
   title, description, syncTitle, syncText, filterOutMTOLegends = false,
+  legendApi,
 }) {
+  // STEP 5 (complete legend-system isolation for Valve MTO): when a
+  // caller passes `legendApi` ({listLegends, createLegend, updateLegend,
+  // deleteLegend, activateLegend}, e.g. from services/valveMtoLegendService.js),
+  // this modal talks to THAT backend instead of the default
+  // apps.pid_checker_v2 one. ValveMTO.jsx passes it; P&ID V1/V2 and every
+  // other existing caller omit it and keep using pid_checker_v2
+  // unchanged — fully backward compatible.
+  const listLegendsApi = legendApi?.listLegends || pidListLegends
+  const createLegendApi = legendApi?.createLegend || pidCreateLegend
+  const updateLegendApi = legendApi?.updateLegend || pidUpdateLegend
+  const deleteLegendApi = legendApi?.deleteLegend || pidDeleteLegend
+  const activateLegendApi = legendApi?.activateLegend || pidActivateLegend
   const [activeSection, setActiveSection] = useState(section || DEFAULT_SECTION)
 
   // ── Project scope — soft-coded selector in the header. When the parent
@@ -220,7 +234,7 @@ export default function LegendSheetsModal({
   const refresh = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
     try {
-      const rows = await listLegends(activeSection, projectId || undefined)
+      const rows = await listLegendsApi(activeSection, projectId || undefined)
       const allRows = Array.isArray(rows) ? rows : []
       // When opened from a non-Valve-MTO caller (P&ID V1/V2), hide
       // Valve-MTO-specific auto-created legends (name contains "MTO")
@@ -250,7 +264,7 @@ export default function LegendSheetsModal({
         if (activeIsMTO && filteredRows.length) {
           const restoreTarget = filteredRows[0]
           try {
-            await activateLegend(restoreTarget.legend_id)
+            await activateLegendApi(restoreTarget.legend_id)
             filteredRows = filteredRows.map((l) =>
               l.legend_id === restoreTarget.legend_id ? { ...l, is_active: true } : l
             )
@@ -283,7 +297,7 @@ export default function LegendSheetsModal({
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [activeSection, section, onActiveChange, projectId, filterOutMTOLegends])
+  }, [activeSection, section, onActiveChange, projectId, filterOutMTOLegends, listLegendsApi, activateLegendApi])
 
   useEffect(() => { if (open) refresh() }, [open, refresh])
 
@@ -375,14 +389,17 @@ export default function LegendSheetsModal({
         description: draftDesc,
         definition: JSON.parse(draftDefinition),
       }
-      if (projectId) payload.project = projectId
+      // ValveMTOLegend has no 'project' field at all (not project-scoped
+      // — see its own model docstring), unlike PidCheckerV2LegendSheet.
+      // Only send it on the default (pid_checker_v2) path.
+      if (projectId && !legendApi) payload.project = projectId
       if (selectedId) {
-        const updated = await updateLegend(selectedId, payload)
+        const updated = await updateLegendApi(selectedId, payload)
         toast.success('Legend updated')
         setLegends(prev => prev.map(l => l.legend_id === updated.legend_id ? updated : l))
         emitLegendSync(LEGEND_SYNC_ACTIONS.UPDATED, { legend_id: updated.legend_id, section: updated.section })
       } else {
-        const created = await createLegend(payload)
+        const created = await createLegendApi(payload)
         toast.success(`Legend created in ${LEGEND_SECTIONS.find(s => s.id === activeSection)?.label || activeSection}`)
         setLegends(prev => [created, ...prev])
         setSelectedId(created.legend_id)
@@ -405,11 +422,11 @@ export default function LegendSheetsModal({
     } finally {
       setSaving(false)
     }
-  }, [draftName, draftDesc, draftDefinition, activeSection, selectedId, validateDefinition, projectId])
+  }, [draftName, draftDesc, draftDefinition, activeSection, selectedId, validateDefinition, projectId, legendApi, createLegendApi, updateLegendApi])
 
   const onActivate = useCallback(async (legendId) => {
     try {
-      const activated = await activateLegend(legendId)
+      const activated = await activateLegendApi(legendId)
       toast.success(`Activated: ${activated.name}`)
       // Update local list: only one active per section
       setLegends(prev => prev.map(l => ({
@@ -421,12 +438,12 @@ export default function LegendSheetsModal({
     } catch (err) {
       toast.error('Failed to activate')
     }
-  }, [onActiveChange, section])
+  }, [onActiveChange, section, activateLegendApi])
 
   const onDelete = useCallback(async (legendId) => {
     if (!(await radaiConfirm('Delete this legend? This cannot be undone.'))) return
     try {
-      await deleteLegend(legendId)
+      await deleteLegendApi(legendId)
       const wasActive = legends.find(l => l.legend_id === legendId)?.is_active
       const deletedSection = legends.find(l => l.legend_id === legendId)?.section
       setLegends(prev => prev.filter(l => l.legend_id !== legendId))
@@ -437,7 +454,7 @@ export default function LegendSheetsModal({
     } catch (err) {
       toast.error('Delete failed')
     }
-  }, [selectedId, legends, onActiveChange, section])
+  }, [selectedId, legends, onActiveChange, section, deleteLegendApi])
 
   const safeFilenameBase = useCallback(() => {
     const base = (draftName || activeSection || 'legend').trim().replace(/[^a-zA-Z0-9._-]+/g, '_')
