@@ -39,6 +39,7 @@ import apiClient from '../../../services/api.service';
 import { PROJECT_ORGANIZER_CONFIG } from '../../../config/projectOrganizer.config';
 import projectOrganizerService from '../../../services/projectOrganizerService';
 import { ProjectCard, ProjectFormModal, ProjectSwitcher, useActiveProject } from '../../../components/ProjectOrganizer';
+import HMBWorkflowDocs from './components/HMBWorkflowDocs';
 
 const ACTIVE_PROJECT_STORAGE_KEY = 'hmbExtractorActiveProject';
 
@@ -94,6 +95,8 @@ const CASE_UPLOAD_CFG = {
 const HMB_UI_CFG = {
   showSmartWorkflowManager: false,
   showUpdateCrossCheck: false,
+  // HMB Extractor Workflow diagram + Smart Documentation split-screen panel.
+  showWorkflowDocs: true,
 };
 
 // Soft-coded default template selection strategy.
@@ -1203,6 +1206,10 @@ const HMBExtractorPage = () => {
           Select or create a project before opening the extractor workspace.
         </p>
 
+        {/* ═══ HMB EXTRACTOR WORKFLOW + SMART DOCUMENTATION (guidance on the gate) ═══
+            Soft-coded: components/HMBWorkflowDocs.jsx (HMB_DOCS_CONFIG) */}
+        {HMB_UI_CFG.showWorkflowDocs && <HMBWorkflowDocs />}
+
         {activeProject && (
           <div style={{
             marginBottom: 14,
@@ -1381,6 +1388,10 @@ const HMBExtractorPage = () => {
             })}
           </div>
         </div>
+
+        {/* ═══ HMB EXTRACTOR WORKFLOW + SMART DOCUMENTATION — V1 split-screen ═══
+            Soft-coded: components/HMBWorkflowDocs.jsx (HMB_DOCS_CONFIG) */}
+        {HMB_UI_CFG.showWorkflowDocs && <HMBWorkflowDocs />}
 
         <div
           style={{

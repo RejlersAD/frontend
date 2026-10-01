@@ -34,6 +34,7 @@ import ioListWorkflowProjectsService from '../../../../services/ioListWorkflowPr
 import { listLegends as listIoLegends } from '../../../../services/ioListLegendService'
 import LegendSheetsModal from './components/LegendSheetsModal'
 import AddToLegendModal from './components/AddToLegendModal'
+import IOListWorkflowDocs from './components/IOListWorkflowDocs'
 import {
   IO_LIST_WORKFLOW_API,
   THEME, PAGE_COPY,
@@ -2872,6 +2873,10 @@ export default function IOListWorkflowPage() {
             </div>
           </section>
         )}
+
+        {/* ═══ IO LIST WORKFLOW + SMART DOCUMENTATION — V1 split-screen (list view) ═══
+            Soft-coded: components/IOListWorkflowDocs.jsx (IO_DOCS_CONFIG) */}
+        {!activeDoc && <IOListWorkflowDocs />}
 
         {/* Inline error */}
         {pageError && (
