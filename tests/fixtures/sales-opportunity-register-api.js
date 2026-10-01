@@ -110,7 +110,7 @@ export async function prepareRegister(page, configuration = {}) {
     return route.fulfill({ status: 400, json: { detail: 'Unexpected synthetic test request.' } })
   })
   const fixturePage = configuration.realShell ? 'sales-workspace-shell' : 'sales-vf-registration'
-  await page.goto(`/tests/fixtures/${fixturePage}.html${configuration.entry ? `?entry=${encodeURIComponent(configuration.entry)}` : ''}`, configuration.realShell ? { waitUntil: 'domcontentloaded' } : undefined)
+  await page.goto(`/tests/fixtures/${fixturePage}.html${configuration.entry ? `?entry=${encodeURIComponent(configuration.entry)}` : ''}`, { waitUntil: 'domcontentloaded' })
   if (configuration.entry) { await expect(page.getByRole('button', { name: 'Back to register', exact: true })).toBeVisible({ timeout: configuration.realShell ? 60000 : 5000 }); return state }
   const pageSize = page.getByRole('combobox', { name: 'Rows per page', exact: true })
   await expect.poll(async () => state.pageErrors.length > 0 || await pageSize.count() > 0, { timeout: 40000 }).toBe(true)

@@ -30,15 +30,37 @@ export function validateWorkspace(value, opportunityId) {
   }
   const folders = WORKSPACE_FOLDERS.map(template => {
     const item = value.folders.find(folder => folder?.key === template.key);
-    return { ...template, item_count: Number.isSafeInteger(item?.item_count) && item.item_count >= 0 ? item.item_count : null, web_url: sharePointUrl(item?.web_url) };
+    return { ...template, tag: typeof item?.tag === 'string' ? item.tag : '', tag_token: typeof item?.tag_token === 'string' ? item.tag_token : '', item_count: Number.isSafeInteger(item?.item_count) && item.item_count >= 0 ? item.item_count : null, web_url: sharePointUrl(item?.web_url) };
   });
   let radaiStorage;
   if (value.radai_storage != null) {
     const local = value.radai_storage;
     if (!['ready', 'unavailable'].includes(local.status) || !Array.isArray(local.folders) || (local.status === 'ready' && WORKSPACE_FOLDERS.some(template => local.folders.filter(folder => folder?.key === template.key && Number.isSafeInteger(folder.item_count) && folder.item_count >= 0).length !== 1))) throw new Error('RADAI file storage could not be verified. Refresh the workspace.');
-    radaiStorage = { status: local.status, can_upload: local.can_upload === true, message: typeof local.message === 'string' ? local.message : '', max_upload_bytes: Number.isSafeInteger(local.max_upload_bytes) && local.max_upload_bytes > 0 ? local.max_upload_bytes : null, folders: WORKSPACE_FOLDERS.map(template => { const item = local.folders.find(folder => folder?.key === template.key); return { ...template, item_count: Number.isSafeInteger(item?.item_count) && item.item_count >= 0 ? item.item_count : null, web_url: '' }; }) };
+    radaiStorage = { status: local.status, can_upload: local.can_upload === true, message: typeof local.message === 'string' ? local.message : '', max_upload_bytes: Number.isSafeInteger(local.max_upload_bytes) && local.max_upload_bytes > 0 ? local.max_upload_bytes : null, automatic_compression: local.automatic_compression === 'lossless_if_smaller' ? local.automatic_compression : null, folders: WORKSPACE_FOLDERS.map(template => { const item = local.folders.find(folder => folder?.key === template.key); return { ...template, item_count: Number.isSafeInteger(item?.item_count) && item.item_count >= 0 ? item.item_count : null, web_url: '' }; }) };
   }
-  return { ...value, folders, radai_storage: radaiStorage, web_url: sharePointUrl(value.web_url), can_manage: value.can_manage === true, can_upload: value.can_upload === true };
+  if (radaiStorage) radaiStorage.folders = radaiStorage.folders.map(folder => {
+    const canonical = folders.find(item => item.key === folder.key);
+    return { ...folder, tag: canonical.tag, tag_token: canonical.tag_token };
+  });
+  return { ...value, folders, radai_storage: radaiStorage, max_upload_bytes: Number.isSafeInteger(value.max_upload_bytes) && value.max_upload_bytes > 0 ? value.max_upload_bytes : null, web_url: sharePointUrl(value.web_url), can_manage: value.can_manage === true, can_upload: value.can_upload === true, can_edit_tags: value.can_edit_tags === true };
+}
+
+export function queuedUploadFiles(files, createId = () => crypto.randomUUID()) {
+  return Array.from(files, file => ({ id: createId(), requestId: createId(), file, status: 'pending', progress: null, error: '' }));
+}
+
+export function retargetUploadQueue(queue, createId = () => crypto.randomUUID()) {
+  return queue.map(item => item.status === 'succeeded' ? item : { ...item, requestId: createId(), status: 'pending', progress: null, error: '' });
+}
+
+export function uploadFileError(file, limit) {
+  if (!Number.isSafeInteger(file?.size) || file.size <= 0) return 'Choose a nonempty file.';
+  return Number.isSafeInteger(limit) && limit > 0 && file.size > limit ? `This file exceeds the maximum file size of ${fileSize(limit)}.` : '';
+}
+
+export function uploadTransferPercent(event) {
+  return Number.isFinite(event?.loaded) && event.loaded >= 0 && Number.isFinite(event.total) && event.total > 0
+    ? Math.min(100, Math.floor(event.loaded / event.total * 100)) : null;
 }
 
 export function workspaceError(error, fallback) {

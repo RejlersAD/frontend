@@ -79,7 +79,7 @@ function StatusBadge({ label, color, health = false, reason }) {
 }
 StatusBadge.propTypes = { label: PropTypes.string, color: PropTypes.string, health: PropTypes.bool, reason: PropTypes.string }
 
-export default function ProjectPortfolio({ projects = [], loading = false, error, onCreate, onOpen, onRefresh, onImport }) {
+export default function ProjectPortfolio({ projects = [], loading = false, error, onCreate, onOpen, onRefresh, onImport, onSharedRecords }) {
   const rows = useMemo(() => buildPortfolioRows(projects), [projects])
   const summary = useMemo(() => getPortfolioSummary(rows), [rows])
   const unavailable = Boolean((loading || error) && !rows.length)
@@ -136,7 +136,7 @@ export default function ProjectPortfolio({ projects = [], loading = false, error
   return <section className="project-portfolio" aria-label="Project portfolio">
     <nav className="pf-breadcrumb" aria-label="Breadcrumb"><span>Project Control</span><span aria-hidden="true">/</span><span aria-current="page">Portfolio</span></nav>
     <header className="pf-page-heading"><div><h1>Project Portfolio</h1><p>Monitor project health, baselines and ownership</p></div>
-      <div className="pf-page-actions"><button type="button" className="pf-button pf-primary" onClick={onCreate} disabled={!onCreate}><Plus size={16} />Create project</button><button type="button" className="pf-button" aria-label="Export projects" disabled={loading || !filtered.length} onClick={() => exportRows(sorted)}><Download size={15} />Export</button>
+      <div className="pf-page-actions">{onSharedRecords && <button type="button" className="pf-button" onClick={onSharedRecords}>Shared records</button>}<button type="button" className="pf-button pf-primary" onClick={onCreate} disabled={!onCreate}><Plus size={16} />Create project</button><button type="button" className="pf-button" aria-label="Export projects" disabled={loading || !filtered.length} onClick={() => exportRows(sorted)}><Download size={15} />Export</button>
         <PortfolioMenu label="More portfolio actions" icon={<MoreHorizontal size={17} />}><button type="button" data-close-menu disabled={loading || !onRefresh} onClick={onRefresh}><RefreshCw size={15} />Refresh projects</button><button type="button" data-close-menu disabled={!onImport} onClick={onImport}><Upload size={15} />Import projects</button></PortfolioMenu>
       </div>
     </header>
@@ -166,5 +166,5 @@ export default function ProjectPortfolio({ projects = [], loading = false, error
 
 ProjectPortfolio.propTypes = {
   projects: PropTypes.array, loading: PropTypes.bool, error: PropTypes.oneOfType([PropTypes.string, PropTypes.object]),
-  onCreate: PropTypes.func, onOpen: PropTypes.func.isRequired, onRefresh: PropTypes.func, onImport: PropTypes.func,
+  onCreate: PropTypes.func, onOpen: PropTypes.func.isRequired, onRefresh: PropTypes.func, onImport: PropTypes.func, onSharedRecords: PropTypes.func,
 }

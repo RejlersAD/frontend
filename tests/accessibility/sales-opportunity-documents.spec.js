@@ -31,28 +31,40 @@ async function setup(page, configuration = {}) {
     if (path.endsWith('/upload/')) { state.uploads.push(route.request().postDataBuffer().toString()); return route.fulfill({ status: state.uploadStatus, json: state.uploadStatus < 300 ? files[0] : { detail: 'Provider temporarily unavailable.' } }); }
     return route.fulfill({ status: 400, json: { detail: 'Unexpected test action.' } });
   } });
-  if (!configuration.entry) { await page.getByRole('button', { name: 'Filters and table settings' }).click(); await page.locator('summary').filter({ hasText: /^\s*More\s*$/ }).click(); await page.getByRole('button', { name: 'Hide register summary' }).click(); await row(page).getByRole('button', { name: 'Q-102101', exact: true }).click(); }
+  if (!configuration.entry) {
+    await page.getByRole('button', { name: 'Filters and table settings' }).click(); await page.locator('summary').filter({ hasText: /^\s*More\s*$/ }).click(); await page.getByRole('button', { name: 'Hide register summary' }).click();
+    const opportunity = row(page).getByRole('button', { name: 'Q-102101', exact: true });
+    if (configuration.stayRegister) await opportunity.click(); else await opportunity.dblclick();
+  }
   return { state, fixture };
 }
 async function openProposal(page) { await region(page).getByRole('button', { name: 'Open Proposal', exact: true }).click(); await expect(region(page).getByRole('table', { name: 'Uploaded files' })).toBeVisible(); }
 
 test('double click opens full workspace and Back preserves register filters and selection', async ({ page }) => {
-  const { fixture } = await setup(page);
+  const { fixture } = await setup(page, { stayRegister: true });
   await page.getByRole('textbox', { name: 'Search opportunities' }).fill('FEED');
   await page.getByRole('tab', { name: 'Overview', exact: true }).click();
   await row(page).getByRole('cell').nth(2).dblclick();
   await expect(page.getByRole('button', { name: 'Back to register', exact: true })).toBeVisible();
-  await expect(page.getByRole('tab', { name: 'Workspace', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tablist', { name: 'Opportunity detail view', exact: true })).toHaveCount(0);
+  await expect(region(page).getByRole('table', { name: 'Uploaded files', exact: true })).toBeVisible();
+  await expect(region(page).getByRole('button', { name: 'Open Correspondence', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(region(page).getByRole('button', { name: 'Workspace overview', exact: true })).toHaveCount(0);
   await expect(page.getByRole('region', { name: 'Opportunity register', exact: true })).not.toBeVisible();
   await page.getByRole('button', { name: 'Back to register', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Search opportunities' })).toHaveValue('FEED');
   await expect(row(page)).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tablist', { name: 'Opportunity detail view', exact: true }).getByRole('tab')).toHaveText(['Overview', 'Activity']);
   expect(fixture.pageErrors).toEqual([]);
 });
 
-test('Workspace click opens explorer; Proposal shows real metadata and version details', async ({ page }) => {
-  await setup(page);
-  await page.getByRole('tab', { name: 'Workspace', exact: true }).click();
+test('keyboard Open workspace action opens files directly; Proposal keeps metadata and versions', async ({ page }) => {
+  await setup(page, { stayRegister: true });
+  await page.getByLabel('More opportunity actions').click();
+  await page.getByRole('button', { name: 'Open workspace', exact: true }).press('Enter');
+  await expect(page.getByRole('tablist', { name: 'Opportunity detail view', exact: true })).toHaveCount(0);
+  await expect(region(page).getByRole('table', { name: 'Uploaded files', exact: true })).toBeVisible();
+  await expect(region(page).getByRole('button', { name: 'Open Correspondence', exact: true })).toHaveAttribute('aria-current', 'page');
   await openProposal(page);
   await region(page).getByRole('button', { name: 'Technical_Proposal.docx', exact: true }).click();
   await expect(detailPanel(page)).toContainText('Proposal contributor');
@@ -67,9 +79,13 @@ test('Workspace click opens explorer; Proposal shows real metadata and version d
   await expect(detailPanel(page)).toContainText('Select a document');
 });
 
-test('direct workspace link opens selected folder and back remains usable on denial', async ({ page }) => {
-  await setup(page, { entry: '/sales/opportunities?record=opportunity-0&workspace=1&folder=proposal' });
-  await expect(region(page).getByRole('button', { name: 'Technical_Proposal.docx', exact: true })).toBeVisible();
+for (const [folder, name] of [['proposal', 'Proposal'], ['', 'Correspondence']]) test(`direct workspace link opens ${name} files without an intermediate page`, async ({ page }) => {
+  await setup(page, { entry: `/sales/opportunities?record=opportunity-0&workspace=1${folder ? `&folder=${folder}` : ''}` });
+  await expect(region(page).getByRole('button', { name: `Open ${name}`, exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(region(page).getByRole('table', { name: 'Uploaded files', exact: true })).toBeVisible();
+  await expect(region(page).getByRole('table', { name: 'Workspace folders', exact: true })).toHaveCount(0);
+  if (folder) await expect(region(page).getByRole('button', { name: 'Technical_Proposal.docx', exact: true })).toBeVisible();
+  await expect(page.getByRole('tablist', { name: 'Opportunity detail view', exact: true })).toHaveCount(0);
   await expect(page.getByRole('dialog', { name: 'Opportunity record', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Back to register', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Search opportunities' })).toBeVisible();
@@ -177,9 +193,15 @@ test('upload retry retains original file UUID and target folder inside explorer'
   await expect(region(page)).toContainText('review.pdf uploaded to Proposal in SharePoint.');
 });
 
-test('workspace overview restores six folders without losing opportunity selection', async ({ page }) => {
-  await setup(page); await openProposal(page); await region(page).getByRole('button', { name: 'Workspace overview' }).click();
-  await expect(region(page).getByRole('table', { name: 'Workspace folders' })).toBeVisible();
+test('six folders navigate directly without an intermediate workspace overview', async ({ page }) => {
+  await setup(page); await openProposal(page);
+  await expect(region(page).getByRole('button', { name: 'Workspace overview', exact: true })).toHaveCount(0);
+  for (const folder of WORKSPACE_FOLDERS) {
+    await region(page).getByRole('button', { name: `Open ${folder.name}`, exact: true }).click();
+    await expect(region(page).getByRole('button', { name: `Open ${folder.name}`, exact: true })).toHaveAttribute('aria-current', 'page');
+    await expect(region(page).getByRole('table', { name: 'Uploaded files', exact: true })).toBeVisible();
+    await expect(region(page).getByRole('table', { name: 'Workspace folders', exact: true })).toHaveCount(0);
+  }
   await expect(row(page)).toHaveAttribute('aria-selected', 'true');
 });
 

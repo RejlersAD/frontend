@@ -1181,6 +1181,8 @@ async function revealAnalysis(page) {
 
 async function reviewedForm(page) {
   const dialog = await openOpportunityForm(page)
+  const opportunityType = dialog.getByRole('combobox', { name: 'Opportunity type', exact: true })
+  if (!await opportunityType.inputValue()) await opportunityType.selectOption('rfq')
   await dialog.getByRole('combobox', { name: 'Client', exact: true }).selectOption('client-one')
   await dialog.getByLabel('Opportunity name', { exact: true }).fill('Reviewed pump package')
   await dialog.getByLabel('Estimated value', { exact: true }).fill('275000.25')
@@ -1192,7 +1194,7 @@ async function reviewedForm(page) {
 test('Email Intake opens actual shared mail and automatically loads the first plain-text preview', async ({ page }, testInfo) => {
   const state = await prepare(page)
   await expect(page.getByRole('navigation', { name: 'Email views' })).toHaveCount(0)
-  await expect(region(page)).toContainText('Inbox')
+  await expect(region(page)).toContainText('All mail')
   await expect(row(page)).toBeVisible()
   await expect(row(page, 'Site access update')).toBeVisible()
   await expect(region(page)).toContainText('Ava Khan')
@@ -1332,7 +1334,7 @@ for (const reset of ['search', 'mailbox', 'account']) {
     let firstDetail = true
     const state = await prepare(page, {
       ...(reset === 'mailbox' ? { connections: paginated([mailbox(), mailbox({ id: 'shared-2', mailbox_address: 'projects@example.test' })]) } : {}),
-      messageHandler: ({ url }) => ({ body: listing([message(), secondMessage()], null, url.pathname === messagesPath('shared-2') ? 'projects@example.test' : 'sales@example.test') }),
+      messageHandler: ({ url }) => ({ body: listing(url.searchParams.get('search') ? [secondMessage()] : [message(), secondMessage()], null, url.pathname === messagesPath('shared-2') ? 'projects@example.test' : 'sales@example.test') }),
       detailHandler: ({ url }) => {
         const record = url.searchParams.get('message_id') === secondMessage().id ? secondMessage() : message()
         if (firstDetail) {
@@ -1345,7 +1347,7 @@ for (const reset of ['search', 'mailbox', 'account']) {
     if (reset === 'mailbox') await page.getByRole('combobox', { name: 'Mailbox', exact: true }).selectOption('shared-1')
     await nextStep(page).click()
     await expect.poll(() => state.requests.filter(request => request.path === detailPath('shared-1')).length).toBe(1)
-    if (reset === 'search') await page.getByRole('searchbox', { name: 'Search emails on this page', exact: true }).fill('Site access')
+    if (reset === 'search') await page.getByRole('searchbox', { name: 'Search all mail', exact: true }).fill('Site access')
     if (reset === 'mailbox') {
       await page.getByRole('combobox', { name: 'Mailbox', exact: true }).selectOption('shared-2')
       await expect.poll(() => state.requests.some(request => request.path === messagesPath('shared-2'))).toBe(true)
@@ -1656,16 +1658,16 @@ test('the compact mailbox layout keeps one small page heading and a wider three-
   expect(heading.height).toBeLessThanOrEqual(28)
   await expect(page.locator('.sales-email-page-header')).toBeVisible()
   await expect(page.getByRole('navigation', { name: 'Email views' })).toHaveCount(0)
-  await expect(region(page).getByRole('heading', { name: 'All mail', exact: true })).toHaveCount(0)
+  await expect(region(page).getByRole('heading', { name: 'All mail', exact: true })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Detected information', exact: true })).toHaveCount(0)
   await expect(page.getByText('Suggestions from the email. Review them before creating an opportunity.', { exact: true })).toHaveCount(0)
   await expect(page.getByText('This page', { exact: true })).toHaveCount(0)
   const summary = page.getByRole('complementary', { name: 'Mailbox emails', exact: true }).getByRole('status')
   await expect(summary).toContainText('Page 1')
   const summaryBounds = await summary.boundingBox()
-  expect(summaryBounds.height).toBeLessThanOrEqual(1)
-  expect(summaryBounds.width).toBeLessThanOrEqual(1)
-  const inboxHeading = await page.getByRole('heading', { name: 'Inbox', exact: true }).boundingBox()
+  expect(summaryBounds.height).toBeGreaterThan(1)
+  expect(summaryBounds.width).toBeGreaterThan(1)
+  const inboxHeading = await page.getByRole('heading', { name: 'All mail', exact: true }).boundingBox()
   expect((await row(page).boundingBox()).y).toBeGreaterThan(inboxHeading.y + inboxHeading.height)
   const gridWidth = (await page.locator('.sales-email-grid').boundingBox()).width
   expect(mailboxList.width / gridWidth).toBeGreaterThan(0.22)
@@ -1675,9 +1677,10 @@ test('the compact mailbox layout keeps one small page heading and a wider three-
   assertReadOnly(state)
 })
 
-test('live read filters and search affect only the current page and keep actual counts', async ({ page }) => {
+test('live read filters retain page counts while search requests matching mail from the server', async ({ page }) => {
   const records = [message(), secondMessage(), message({ id: 'draft-message', subject: 'Draft commercial response', sender_name: 'Draft owner', is_draft: true, is_read: true })]
-  const state = await prepare(page, { messages: listing(records, 'another-mail-page'),
+  const state = await prepare(page, {
+    messageHandler: ({ url }) => ({ body: listing(records.filter(record => [record.subject, record.sender_name].some(value => value.toLowerCase().includes((url.searchParams.get('search') || '').toLowerCase()))), url.searchParams.get('search') ? null : 'another-mail-page') }),
     detailHandler: ({ url }) => ({ body: detail(records.find(record => record.id === url.searchParams.get('message_id'))) }),
   })
   await expect(row(page)).toBeVisible()
@@ -1685,7 +1688,7 @@ test('live read filters and search affect only the current page and keep actual 
   const unread = filters.getByRole('button', { name: /^Unread\b/ })
   const read = page.locator('.sales-email-filter-popover').getByRole('button', { name: 'Read', exact: true })
   const drafts = filters.getByRole('button', { name: /^Drafts\b/ })
-  const all = filters.getByRole('button', { name: /^Inbox\b/ })
+  const all = filters.getByRole('button', { name: /^All mail\b/ })
   await expect(all).toContainText('3')
   await expect(unread).toContainText('1')
   await expect(drafts).toContainText('1')
@@ -1701,17 +1704,18 @@ test('live read filters and search affect only the current page and keep actual 
   await expect(row(page, 'Draft commercial response')).toBeVisible()
   await expect(row(page, 'Site access update')).toHaveCount(0)
   await all.click()
-  const search = page.getByRole('searchbox', { name: 'Search emails on this page', exact: true })
+  const search = page.getByRole('searchbox', { name: 'Search all mail', exact: true })
   await search.fill('Noah')
   await expect(row(page, 'Site access update')).toBeVisible()
   await expect(row(page)).toHaveCount(0)
   await search.fill('No matching synthetic sender')
   await expect(search).toHaveValue('No matching synthetic sender')
+  await expect(region(page)).toContainText('No matching emails found.')
   await expect(region(page)).not.toContainText('No emails in this mailbox.')
-  await expect(region(page).getByRole('button', { name: 'Next page', exact: true })).toBeEnabled()
+  await expect(region(page).getByRole('button', { name: 'Next page', exact: true })).toBeDisabled()
   await search.fill('')
   await expect(row(page)).toBeVisible()
-  expect(state.requests.filter(request => request.path.endsWith('/messages/'))).toHaveLength(1)
+  expect(state.requests.filter(request => request.path.endsWith('/messages/'))).toHaveLength(4)
   assertReadOnly(state)
 })
 
@@ -2159,6 +2163,7 @@ test('confirmed opportunity creation sends reviewed decimal and date fields with
   expect(conversionRequests(state)[0].body).toEqual({
     message_id: message().id, source_token: 'synthetic-source-token-1',
     classification_code: 'rfq', classification_confirmed: true,
+    opportunity_type: 'rfq', owner: '11', open_date: '2026-09-28',
     deal_name: 'Reviewed pump package', client: 'client-one', client_reference: 'RFT-2026-1015',
     estimated_value: '275000.25', currency: 'USD', expected_close_date: '2026-12-15',
     submission_due_date: '2026-10-20', scope_type: 'detailed_engineering', description: 'Reviewed engineering package scope.',
@@ -2280,7 +2285,7 @@ test('missing clients and denied client options do not invent a customer or hide
   assertReadOnly(state)
 })
 
-test('unknown amount and award date require reviewer input and do not default to fabricated values', async ({ page }) => {
+test('unknown commercial facts remain blank and explicit registration sends absent values without fabrication', async ({ page }) => {
   const state = await prepare(page, { details: opportunityDetails({ extracted_information: detected({ estimated_value: '', expected_award_date: '', deadline_date: '', due_date: '', scope_summary: '' }) }), clients: paginated([canonicalClient()]), allowConversion: true })
   const dialog = await openOpportunityForm(page)
   await dialog.getByRole('combobox', { name: 'Client', exact: true }).selectOption('client-one')
@@ -2289,9 +2294,10 @@ test('unknown amount and award date require reviewer input and do not default to
   await expect(dialog.getByLabel('Proposal deadline', { exact: true })).toHaveValue('')
   await expect(dialog.getByLabel('Scope summary', { exact: true })).toHaveValue('')
   await dialog.getByRole('button', { name: 'Create opportunity', exact: true }).click()
-  expect(conversionRequests(state)).toHaveLength(0)
-  await expect(dialog).toBeVisible()
-  assertReadOnly(state)
+  await expect(dialog).toHaveCount(0)
+  expect(conversionRequests(state)).toHaveLength(1)
+  expect(conversionRequests(state)[0].body).toMatchObject({ estimated_value: null, expected_close_date: null, submission_due_date: null, description: '' })
+  assertExplicitConversionOnly(state)
 })
 
 test('a pending creation prevents duplicate submission and an account switch ignores its late response', async ({ page }) => {

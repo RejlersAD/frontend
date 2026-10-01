@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import PropTypes from 'prop-types'
 import { Pencil } from 'lucide-react'
 
 import planningIntelligenceService from '../../services/planningIntelligence.service'
@@ -167,12 +168,14 @@ const ProposalPreview = ({ proposal }) => {
   )
 }
 
-const FinalProposalStudio = ({ projectId, project, onNotice }) => {
+const FinalProposalStudio = ({ projectId, project, initialProposalId = null, onNotice }) => {
   const [proposals, setProposals] = useState([])
   const [selectedId, setSelectedId] = useState(null)
   const [draft, setDraft] = useState(null)
   const [activeSection, setActiveSection] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const loadRequest = useRef(0)
   const [busy, setBusy] = useState('')
   const [previewOpen, setPreviewOpen] = useState(false)
   const [previewUrl, setPreviewUrl] = useState('')
@@ -186,22 +189,34 @@ const FinalProposalStudio = ({ projectId, project, onNotice }) => {
   const notify = useCallback((type, message) => onNotice?.(type, message), [onNotice])
   const load = useCallback(async (preferredId = null) => {
     if (!projectId) return
+    const request = ++loadRequest.current
     setLoading(true)
+    setLoadError('')
     try {
-      const rows = await planningIntelligenceService.listTechnicalProposals(projectId)
+      let rows = await planningIntelligenceService.listTechnicalProposals(projectId)
+      if (request !== loadRequest.current) return
+      const requestedId = preferredId || selectedId || initialProposalId
+      let selected = rows.find(row => String(row.id) === String(requestedId)) || (!requestedId ? rows[0] : null) || null
+      if (requestedId && !selected) {
+        try {
+          const exact = await planningIntelligenceService.getTechnicalProposal(requestedId)
+          if (String(exact?.id) === String(requestedId) && String(exact?.project?.id ?? exact?.project) === String(projectId)) { selected = exact; rows = [...rows, exact] }
+        } catch { /* Keep unavailable exact revisions distinct from the default list selection. */ }
+        if (request !== loadRequest.current) return
+      }
+      if (requestedId && !selected) throw new Error('The requested technical revision is unavailable in this Planning workspace.')
       setProposals(rows)
-      const selected = rows.find(row => row.id === (preferredId || selectedId)) || rows[0] || null
       setSelectedId(selected?.id || null)
       setDraft(selected ? JSON.parse(JSON.stringify(selected)) : null)
       setActiveSection(0)
     } catch (error) {
-      notify('error', errorMessage(error, 'Failed to load technical proposals.'))
+      if (request === loadRequest.current) setLoadError(errorMessage(error, 'Failed to load technical proposals.'))
     } finally {
-      setLoading(false)
+      if (request === loadRequest.current) setLoading(false)
     }
-  }, [notify, projectId, selectedId])
+  }, [projectId, selectedId, initialProposalId])
 
-  useEffect(() => { load() }, [projectId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { const request = loadRequest; load(); return () => { ++request.current } }, [projectId]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => {
     if (previewUrl) URL.revokeObjectURL(previewUrl)
   }, [previewUrl])
@@ -241,7 +256,6 @@ const FinalProposalStudio = ({ projectId, project, onNotice }) => {
       const created = await planningIntelligenceService.createTechnicalProposal({
         project: projectId,
         title: `Technical Proposal – ${project?.name || 'Project'}`,
-        client_name: project?.client || '',
       })
       notify('success', `Proposal ${created.proposal_number} revision ${created.revision} created from the latest controlled schedule.`)
       await load(created.id)
@@ -409,13 +423,15 @@ const FinalProposalStudio = ({ projectId, project, onNotice }) => {
   }
 
   const selectProposal = id => {
-    const selected = proposals.find(item => item.id === Number(id))
+    const selected = proposals.find(item => String(item.id) === String(id))
     setSelectedId(selected?.id || null)
     setDraft(selected ? JSON.parse(JSON.stringify(selected)) : null)
     setActiveSection(0)
   }
 
   if (loading) return <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center text-slate-500">Loading Proposal Studio…</div>
+
+  if (loadError) return <div className="rounded-2xl border border-rose-200 bg-white p-8"><p role="alert" className="text-rose-800">{loadError}</p><button type="button" className="mt-4 rounded-lg border border-slate-300 px-4 py-2" onClick={() => load()}>Retry technical revisions</button></div>
 
   if (!draft) return (
     <div className="rounded-2xl border border-slate-200 bg-white px-8 py-16 text-center shadow-sm">
@@ -480,11 +496,11 @@ const FinalProposalStudio = ({ projectId, project, onNotice }) => {
           {section?.key === 'cover' && <>
           <div className="grid gap-4 md:grid-cols-2">
             <label className="text-xs font-semibold text-slate-600">Proposal title<input disabled={!editable} value={draft.title} onChange={event => updateField('title', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-50" /></label>
-            <label className="text-xs font-semibold text-slate-600">Client<input disabled={!editable} value={draft.client_name || ''} onChange={event => updateField('client_name', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-50" /></label>
-            <label className="text-xs font-semibold text-slate-600">Opportunity reference<input disabled={!editable} value={draft.opportunity_reference || ''} onChange={event => updateField('opportunity_reference', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-50" /></label>
+            <label className="text-xs font-semibold text-slate-600">Client<input disabled={!editable || draft.sales_preparation_bound} value={draft.client_name || ''} onChange={event => updateField('client_name', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-50" /></label>
+            <label className="text-xs font-semibold text-slate-600">Opportunity reference<input disabled={!editable || draft.sales_preparation_bound} value={draft.opportunity_reference || ''} onChange={event => updateField('opportunity_reference', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-50" /></label>
             <label className="text-xs font-semibold text-slate-600">Validity date<input type="date" disabled={!editable} value={draft.validity_date || ''} onChange={event => updateField('validity_date', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-50" /></label>
             <label className="text-xs font-semibold text-slate-600">Tender title<input disabled={!editable} value={draft.tender_title || ''} onChange={event => updateField('tender_title', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-50" /></label>
-            <label className="text-xs font-semibold text-slate-600">Client reference<input disabled={!editable} value={draft.client_reference || ''} onChange={event => updateField('client_reference', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-50" /></label>
+            <label className="text-xs font-semibold text-slate-600">Client reference<input disabled={!editable || draft.sales_preparation_bound} value={draft.client_reference || ''} onChange={event => updateField('client_reference', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-50" /></label>
             <label className="text-xs font-semibold text-slate-600">Submission date<input type="date" disabled={!editable} value={draft.submission_date || ''} onChange={event => updateField('submission_date', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-50" /></label>
             <label className="text-xs font-semibold text-slate-600">Validity (days)<input type="number" min="1" disabled={!editable} value={draft.validity_days || 120} onChange={event => updateField('validity_days', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-50" /></label>
           </div>
@@ -616,4 +632,5 @@ const FinalProposalStudio = ({ projectId, project, onNotice }) => {
   )
 }
 
+FinalProposalStudio.propTypes = { projectId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]).isRequired, project: PropTypes.object, initialProposalId: PropTypes.string, onNotice: PropTypes.func }
 export default FinalProposalStudio

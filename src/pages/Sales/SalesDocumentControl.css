@@ -1,0 +1,46 @@
+.sod-table-scroll table { min-width: 900px; }
+.sod-table-scroll th.sod-column-name { width: 23%; }
+.sod-column-document_type { width: 20%; }
+.sod-column-custom_tag { width: 18%; }
+.sod-column-version { width: 7%; }
+.sod-column-publication_level { width: 10%; }
+.sod-column-modified_at { width: 12%; }
+.sod-column-size { width: 7%; }
+.sod-column-actions { width: 3%; }
+.sdc-type-cell { display: grid; justify-items: start; gap: 5px; }
+.sdc-badge { display: inline-block; max-width: 100%; padding: 4px 8px; border: 1px solid transparent; border-radius: 5px; font-size: 12px; font-weight: 500; line-height: 1.45; text-align: left; overflow-wrap: anywhere; }
+button.sdc-badge { cursor: pointer; }
+button.sdc-badge:hover { box-shadow: 0 0 0 1px currentColor; }
+.sdc-badge-blue, .sdc-badge-indigo { color: #1d4699; background: #eaf0ff; border-color: #cbd9fa; }
+.sdc-badge-purple { color: #62329b; background: #f2eaff; border-color: #e1cff5; }
+.sdc-badge-green { color: #12603e; background: #e0f3e9; border-color: #bbdfcb; }
+.sdc-badge-amber, .sdc-badge-orange { color: #85500b; background: #fff1d2; border-color: #f0d69e; }
+.sdc-badge-red, .sdc-badge-pink { color: #99384d; background: #fce9ed; border-color: #f0c9d2; }
+.sdc-badge-teal, .sdc-badge-cyan { color: #126573; background: #e0f5f7; border-color: #b3dfe5; }
+.sdc-badge-gray, .sdc-badge-slate { color: #475569; background: #eef2f6; border-color: #d7dfe9; }
+.sdc-type-state { color: #526582; font-size: 11px; line-height: 1.4; }
+.sdc-type-actions { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.sdc-ai-button { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 5px; border: 1px solid #dcd2ff; border-radius: 5px; background: #f5f1ff; color: #5932bb; cursor: pointer; }
+.sdc-ai-button:disabled { color: #69758a; border-color: #d5ddeb; background: #f1f4f8; cursor: default; }
+.sdc-custom-tag { color: #4c3787; background: #f3effb; border-color: #dcd2ed; }
+.sdc-tag-editor { position: relative; display: grid; gap: 5px; width: 100%; min-width: 0; }
+.sdc-tag-editor input { display: block; width: 100%; min-width: 0; max-width: none; padding: 6px 7px; border: 1px solid #ad98e6; border-radius: 5px; background: #fff; color: #152344; font: inherit; font-size: 12px; }
+.sdc-tag-actions { display: flex; gap: 5px; }
+.sdc-tag-actions button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 5px; color: #5932bb; background: #f5f1ff; border: 1px solid #dcd2ff; border-radius: 4px; }
+.sdc-tag-actions button:disabled { color: #69758a; border-color: #d5ddeb; background: #f1f4f8; }
+.sdc-inline-error { margin: 0; color: #a12d40; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.sdc-inline-notice { color: #526582; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.sdc-inline-refresh { padding: 2px 0; border: 0; background: transparent; color: #5431ac; text-align: left; font: inherit; font-size: 11px; text-decoration: underline; }
+.sdc-spin { animation: sdc-rotate 1.2s linear infinite; }
+@keyframes sdc-rotate { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .sdc-spin { animation: none; } }
+.sdc-version-dialog { max-width: 560px; }
+.sdc-version-dialog textarea { width: 100%; min-width: 0; padding: 9px; border: 1px solid #d1dbeb; border-radius: 5px; font: inherit; resize: vertical; color: #152344; background: #fff; }
+.sdc-version-dialog footer { margin-top: 20px; }
+.sdc-version-dialog .sod-primary { background: #4b16ff; color: #fff; border-color: #4b16ff; }
+.sdc-version-dialog .sod-primary:disabled { background: #f3f4f8; color: #5b6578; border-color: #ccd3df; }
+.sdc-version-actions { display: flex; flex-wrap: wrap; gap: 14px; padding: 5px 0; }
+.sdc-version-actions button { font-size: 12px; }
+.sdc-revision-note { margin: 4px 0; white-space: pre-wrap; font-size: 12px; }
+.sdc-version-dialog progress { width: 100%; accent-color: #4b16ff; }
+.sdc-badge:focus-visible, .sdc-ai-button:focus-visible, .sdc-tag-editor :is(button, input):focus-visible, .sdc-inline-refresh:focus-visible, .sdc-version-dialog :is(button, input, textarea):focus-visible { outline: 2px solid #6744ff; outline-offset: 3px; }
