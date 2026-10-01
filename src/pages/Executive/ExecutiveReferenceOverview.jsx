@@ -1,5 +1,5 @@
 /* eslint-disable react/prop-types */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRightIcon, ChartBarIcon, ChevronDownIcon, ChevronUpIcon, ClockIcon, Cog6ToothIcon, CircleStackIcon, CreditCardIcon, DocumentChartBarIcon, DocumentTextIcon, ExclamationTriangleIcon, InformationCircleIcon, RectangleStackIcon, UserIcon, UsersIcon } from '@heroicons/react/24/outline';
 import financeService from '../../services/finance.service';
 import { formatDate, formatNumber } from './executivePresentation';
@@ -7,6 +7,7 @@ import { RouteLink } from './ExecutivePrimitives';
 import { CompanyPerformanceChart, PortfolioDonut, RevenueForecastChart } from './OverviewCharts';
 import { overviewModel, overviewMoney } from './overviewPresentation';
 import { invoiceMonthLabel } from './invoicePerformancePresentation';
+import { financeSource } from './financeSourcePresentation';
 import PortfolioKpiGraphic from './PortfolioKpiGraphic';
 
 const CARD_ICONS = [ChartBarIcon, DocumentTextIcon, CreditCardIcon, ClockIcon, RectangleStackIcon];
@@ -176,7 +177,7 @@ function Decisions({ decisions, printing, onExplain }) {
   </Panel>;
 }
 
-export default function ExecutiveReferenceOverview({ report, currency, refreshKey, printing, onExplain, onNavigate, onCurrencies }) {
+export default function ExecutiveReferenceOverview({ report, currency, refreshKey, printing, onExplain, onNavigate, onCurrencies, onSnapshotChange }) {
   const [finance, setFinance] = useState(null);
   const [loading, setLoading] = useState(true);
   const [financeError, setFinanceError] = useState('');
@@ -194,9 +195,15 @@ export default function ExecutiveReferenceOverview({ report, currency, refreshKe
     return () => { active = false; };
   }, [currency, refreshKey, onCurrencies]);
   const model = useMemo(() => overviewModel(report, currency, finance?.currency === currency ? finance : null, mode, month), [report, currency, finance, mode, month]);
+  const source = financeSource(finance);
+  useLayoutEffect(() => {
+    onSnapshotChange?.({ receivables: finance?.currency === currency ? finance : null, loading, error: financeError,
+      reporting_period: { mode, month: model.performance.selectedMonth }, source_description: financeSource(finance).label });
+  }, [finance, currency, loading, financeError, mode, model.performance.selectedMonth, onSnapshotChange]);
   return <div className="eov-board" aria-busy={loading}>
     <Kpis cards={model.cards} performance={model.performance} currency={currency} onExplain={onExplain} loading={loading} mode={mode} onMode={setMode} />
     {financeError && <p className="eov-finance-error" role="status"><InformationCircleIcon />{financeError}</p>}
+    {!loading && finance && <p className="eov-finance-error">{source.label} · {source.timestampLabel}: {source.timestamp ? formatDate(source.timestamp, true) : 'not recorded'}. <RouteLink route={source.route}>View Finance source</RouteLink></p>}
     <div className="eov-primary-row"><CompanyPerformance performance={model.performance} currency={currency} mode={mode} onMode={setMode} onMonth={setMonth} onExplain={onExplain} /><PortfolioHealth portfolio={model.portfolio} onNavigate={onNavigate} /></div>
     <div className="eov-secondary-row"><Commercial commercial={model.commercial} forecast={model.forecast} currency={currency} onExplain={onExplain} /><Workforce workforce={model.workforce} onExplain={onExplain} onNavigate={onNavigate} printing={printing} /></div>
     <div className="eov-tables-row"><Projects projects={model.projects} printing={printing} onNavigate={onNavigate} /><Decisions decisions={model.decisions} printing={printing} onExplain={onExplain} /></div>
