@@ -201,6 +201,9 @@ const WorkflowDiagram = ({ cfg }) => {
     <div style={{
       background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px',
       boxShadow: '0 1px 3px rgba(0,0,0,0.08)', overflow: 'hidden', marginBottom: '16px',
+      display: 'flex', flexDirection: 'column',
+      // Fill the grid cell so the workflow card matches the docs panel height.
+      height: '100%',
     }}>
       {/* Header bar — dark gradient */}
       <div style={{
@@ -545,7 +548,9 @@ const ValveMTOWorkflowDocs = () => {
       background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px',
       boxShadow: '0 1px 3px rgba(0,0,0,0.08)', overflow: 'hidden',
       display: 'flex', flexDirection: 'column',
-      maxHeight: cfg.splitScreen.enabled ? '600px' : undefined,
+      // Match the workflow card height (stretch to the grid row).
+      height: '100%',
+      maxHeight: cfg.splitScreen.enabled ? 'none' : undefined,
     }}>
       {/* Header */}
       <div style={{
@@ -618,12 +623,13 @@ const ValveMTOWorkflowDocs = () => {
         gridTemplateColumns: `${cfg.splitScreen.workflowWidthPct}% ${cfg.splitScreen.docsWidthPct}%`,
         gap: cfg.splitScreen.gap,
         marginBottom: '24px',
+        alignItems: 'stretch',
       }}>
         <style>{`@media (max-width: ${cfg.splitScreen.responsiveMinWidth - 1}px) {
           .vmto-workflow-split { display: block !important; grid-template-columns: 1fr !important; }
           .vmto-workflow-split > * { margin-bottom: 16px; }
         }`}</style>
-        <div>{wfCfg && <WorkflowDiagram cfg={wfCfg} />}</div>
+        <div style={{ minHeight: 0, display: 'flex', flexDirection: 'column' }}>{wfCfg && <WorkflowDiagram cfg={wfCfg} />}</div>
         {docsPanel}
       </div>
     );

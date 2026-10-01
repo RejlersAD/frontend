@@ -179,6 +179,9 @@ const WorkflowDiagram = ({ cfg }) => {
     <div style={{
       background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px',
       boxShadow: '0 1px 3px rgba(0,0,0,0.08)', overflow: 'hidden', marginBottom: '16px',
+      display: 'flex', flexDirection: 'column',
+      // Fill the grid cell so the workflow card matches the docs panel height.
+      height: '100%',
     }}>
       <div style={{
         display: 'flex', alignItems: 'center', gap: '10px', padding: '16px 20px',
@@ -522,7 +525,9 @@ const EquipmentListWorkflowDocs = () => {
       background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px',
       boxShadow: '0 1px 3px rgba(0,0,0,0.08)', overflow: 'hidden',
       display: 'flex', flexDirection: 'column',
-      maxHeight: cfg.splitScreen.enabled ? '600px' : undefined,
+      // Match the workflow card height (stretch to the grid row).
+      height: '100%',
+      maxHeight: cfg.splitScreen.enabled ? 'none' : undefined,
     }}>
       <div style={{
         padding: '14px 20px',
@@ -591,13 +596,14 @@ const EquipmentListWorkflowDocs = () => {
         gridTemplateColumns: `${cfg.splitScreen.workflowWidthPct}% ${cfg.splitScreen.docsWidthPct}%`,
         gap: cfg.splitScreen.gap,
         marginBottom: '24px',
+        alignItems: 'stretch',
         animation: 'eq-fade-up 0.5s ease-out 0.08s both',
       }}>
         <style>{`@media (max-width: ${cfg.splitScreen.responsiveMinWidth - 1}px) {
           .eq-workflow-split { display: block !important; grid-template-columns: 1fr !important; }
           .eq-workflow-split > * { margin-bottom: 16px; }
         }`}</style>
-        <div>{wfCfg && <WorkflowDiagram cfg={wfCfg} />}</div>
+        <div style={{ minHeight: 0, display: 'flex', flexDirection: 'column' }}>{wfCfg && <WorkflowDiagram cfg={wfCfg} />}</div>
         {docsPanel}
       </div>
     );
