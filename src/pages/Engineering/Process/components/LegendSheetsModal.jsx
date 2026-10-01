@@ -6,8 +6,9 @@ import * as XLSX from 'xlsx'
 import { BookOpen, Plus, Save, Trash2, CheckCircle2, X, Download, Upload, Loader2, LayoutList, Braces, GripVertical, FileSpreadsheet, FileText, ImageOff, Pencil, Folder } from 'lucide-react'
 
 import {
-  listLegends, createLegend, updateLegend, deleteLegend,
-  activateLegend, getLegendDefaultTemplate, getSymbolImages,
+  listLegends as pidListLegends, createLegend as pidCreateLegend,
+  updateLegend as pidUpdateLegend, deleteLegend as pidDeleteLegend,
+  activateLegend as pidActivateLegend, getLegendDefaultTemplate, getSymbolImages,
   getDefaultSymbolImages, uploadSymbolImage, deleteSymbolImage,
   deleteLegendLookupEntry, LEGEND_SECTIONS,
 } from '../../../../services/pidCheckerV2API'
@@ -115,6 +116,15 @@ function newBlankField() {
   return { key: '', label: '', regex: '[A-Z0-9]+', suffix: '', optional: false, notes: '', lookup: null }
 }
 
+// Defaults preserve the exact text every existing caller (P&ID
+// Verification V1/V2) already shows — only a caller that explicitly
+// passes title/description/syncTitle/syncText (currently just
+// ValveMTO.jsx) sees anything different.
+const DEFAULT_TITLE = 'Legend Sheets'
+const DEFAULT_DESCRIPTION_PREFIX = 'Define custom extraction rules — switch section to view or create legends for '
+const DEFAULT_SYNC_TITLE = 'Synchronized Across Versions'
+const DEFAULT_SYNC_TEXT = 'Legends are shared between V1 (P&ID Verification) and V2 (Line List Extractor). Create once, use everywhere.'
+
 /**
  * LegendSheetsModal — full legend-sheet manager.
  *
@@ -124,8 +134,34 @@ function newBlankField() {
  *   onActiveChange   — callback(activeLegendOrNull) fired whenever the active
  *                      legend for the CURRENT section changes; parent uses it
  *                      to refresh the "Active Legend" badge.
+ *   title            — optional header title override (default: "Legend Sheets")
+ *   description      — optional header subtitle override (default: the
+ *                      "Define custom extraction rules…" sentence, which
+ *                      lists every registered section)
+ *   syncTitle        — optional Sync Info Banner heading override (default:
+ *                      "Synchronized Across Versions")
+ *   syncText         — optional Sync Info Banner body override (default:
+ *                      the V1/V2-sharing sentence). Passing either sync
+ *                      prop also hides the "V1 ↔ V2" pills, since those
+ *                      specifically illustrate the default V1/V2 framing.
  */
-export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SECTION, onActiveChange, projectId: projectIdProp }) {
+export default function LegendSheetsModal({
+  open, onClose, section = DEFAULT_SECTION, onActiveChange, projectId: projectIdProp,
+  title, description, syncTitle, syncText, filterOutMTOLegends = false,
+  legendApi,
+}) {
+  // STEP 5 (complete legend-system isolation for Valve MTO): when a
+  // caller passes `legendApi` ({listLegends, createLegend, updateLegend,
+  // deleteLegend, activateLegend}, e.g. from services/valveMtoLegendService.js),
+  // this modal talks to THAT backend instead of the default
+  // apps.pid_checker_v2 one. ValveMTO.jsx passes it; P&ID V1/V2 and every
+  // other existing caller omit it and keep using pid_checker_v2
+  // unchanged — fully backward compatible.
+  const listLegendsApi = legendApi?.listLegends || pidListLegends
+  const createLegendApi = legendApi?.createLegend || pidCreateLegend
+  const updateLegendApi = legendApi?.updateLegend || pidUpdateLegend
+  const deleteLegendApi = legendApi?.deleteLegend || pidDeleteLegend
+  const activateLegendApi = legendApi?.activateLegend || pidActivateLegend
   const [activeSection, setActiveSection] = useState(section || DEFAULT_SECTION)
 
   // ── Project scope — soft-coded selector in the header. When the parent
@@ -198,8 +234,47 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
   const refresh = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
     try {
-      const rows = await listLegends(activeSection, projectId || undefined)
-      setLegends(Array.isArray(rows) ? rows : [])
+      const rows = await listLegendsApi(activeSection, projectId || undefined)
+      const allRows = Array.isArray(rows) ? rows : []
+      // When opened from a non-Valve-MTO caller (P&ID V1/V2), hide
+      // Valve-MTO-specific auto-created legends (name contains "MTO")
+      // from the list entirely — this only affects what's DISPLAYED
+      // here, so another module's "Manage Legends" view isn't cluttered
+      // with legends it didn't create and has no use for.
+      let filteredRows = filterOutMTOLegends
+        ? allRows.filter((l) => !String(l?.name || '').includes('MTO'))
+        : allRows
+      // SELF-HEAL (confirmed real on production): Valve MTO's own
+      // auto-create can activate an MTO-named legend for a section this
+      // user also uses in P&ID V1/V2 — PidCheckerV2LegendSheet has only
+      // ONE active legend per (user, section), no per-module dimension,
+      // so that activation is real server-side state, not just a display
+      // issue. Hiding it from the list (above) stops it being SHOWN as
+      // active, but P&ID's own tag-validation still reads the real
+      // active row — so if the genuinely active legend for this section
+      // turns out to be one of ours, restore whichever non-MTO legend
+      // this user most recently had active/edited instead (listLegends
+      // orders by -updated_at, so filteredRows[0] is exactly that one).
+      // Best-effort and non-destructive: if this user has NO non-MTO
+      // legend at all for this section, there's nothing to restore —
+      // never fabricate one, same rule as everywhere else in this file.
+      if (filterOutMTOLegends) {
+        const activeRaw = allRows.find((l) => l.is_active)
+        const activeIsMTO = activeRaw && String(activeRaw.name || '').includes('MTO')
+        if (activeIsMTO && filteredRows.length) {
+          const restoreTarget = filteredRows[0]
+          try {
+            await activateLegendApi(restoreTarget.legend_id)
+            filteredRows = filteredRows.map((l) =>
+              l.legend_id === restoreTarget.legend_id ? { ...l, is_active: true } : l
+            )
+          } catch {
+            // Best-effort — if this fails, the MTO legend just stays
+            // hidden-but-technically-active; still never shown here.
+          }
+        }
+      }
+      setLegends(filteredRows)
       // Clear selection when switching sections so the editor doesn't show a
       // stale legend belonging to a different section. Only do this for a
       // user-driven load (tab click / modal open) — a silent background
@@ -211,7 +286,10 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
       // notify parent about active state (only when viewing the section the
       // parent originally opened us with)
       if (onActiveChange && activeSection === section) {
-        const active = (rows || []).find(l => l.is_active) || null
+        // Uses filteredRows, not rows: a parent that hides MTO legends
+        // from display should also never be told one is "active" (e.g.
+        // for a status badge) — stays consistent with what's on screen.
+        const active = filteredRows.find(l => l.is_active) || null
         onActiveChange(active)
       }
     } catch (err) {
@@ -219,7 +297,7 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [activeSection, section, onActiveChange, projectId])
+  }, [activeSection, section, onActiveChange, projectId, filterOutMTOLegends, listLegendsApi, activateLegendApi])
 
   useEffect(() => { if (open) refresh() }, [open, refresh])
 
@@ -311,14 +389,17 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
         description: draftDesc,
         definition: JSON.parse(draftDefinition),
       }
-      if (projectId) payload.project = projectId
+      // ValveMTOLegend has no 'project' field at all (not project-scoped
+      // — see its own model docstring), unlike PidCheckerV2LegendSheet.
+      // Only send it on the default (pid_checker_v2) path.
+      if (projectId && !legendApi) payload.project = projectId
       if (selectedId) {
-        const updated = await updateLegend(selectedId, payload)
+        const updated = await updateLegendApi(selectedId, payload)
         toast.success('Legend updated')
         setLegends(prev => prev.map(l => l.legend_id === updated.legend_id ? updated : l))
         emitLegendSync(LEGEND_SYNC_ACTIONS.UPDATED, { legend_id: updated.legend_id, section: updated.section })
       } else {
-        const created = await createLegend(payload)
+        const created = await createLegendApi(payload)
         toast.success(`Legend created in ${LEGEND_SECTIONS.find(s => s.id === activeSection)?.label || activeSection}`)
         setLegends(prev => [created, ...prev])
         setSelectedId(created.legend_id)
@@ -341,11 +422,11 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
     } finally {
       setSaving(false)
     }
-  }, [draftName, draftDesc, draftDefinition, activeSection, selectedId, validateDefinition, projectId])
+  }, [draftName, draftDesc, draftDefinition, activeSection, selectedId, validateDefinition, projectId, legendApi, createLegendApi, updateLegendApi])
 
   const onActivate = useCallback(async (legendId) => {
     try {
-      const activated = await activateLegend(legendId)
+      const activated = await activateLegendApi(legendId)
       toast.success(`Activated: ${activated.name}`)
       // Update local list: only one active per section
       setLegends(prev => prev.map(l => ({
@@ -357,12 +438,12 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
     } catch (err) {
       toast.error('Failed to activate')
     }
-  }, [onActiveChange, section])
+  }, [onActiveChange, section, activateLegendApi])
 
   const onDelete = useCallback(async (legendId) => {
     if (!(await radaiConfirm('Delete this legend? This cannot be undone.'))) return
     try {
-      await deleteLegend(legendId)
+      await deleteLegendApi(legendId)
       const wasActive = legends.find(l => l.legend_id === legendId)?.is_active
       const deletedSection = legends.find(l => l.legend_id === legendId)?.section
       setLegends(prev => prev.filter(l => l.legend_id !== legendId))
@@ -373,7 +454,7 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
     } catch (err) {
       toast.error('Delete failed')
     }
-  }, [selectedId, legends, onActiveChange, section])
+  }, [selectedId, legends, onActiveChange, section, deleteLegendApi])
 
   const safeFilenameBase = useCallback(() => {
     const base = (draftName || activeSection || 'legend').trim().replace(/[^a-zA-Z0-9._-]+/g, '_')
@@ -531,9 +612,9 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
             <BookOpen size={18} />
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 17, fontWeight: 700, color: THEME_TEXT }}>Legend Sheets</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: THEME_TEXT }}>{title || DEFAULT_TITLE}</div>
             <div style={{ fontSize: 12, color: THEME_MUTED }}>
-              Define custom extraction rules — switch section to view or create legends for {LEGEND_SECTIONS.map(s => s.label).join(', ')}
+              {description || `${DEFAULT_DESCRIPTION_PREFIX}${LEGEND_SECTIONS.map(s => s.label).join(', ')}`}
             </div>
           </div>
           {/* Project scope selector — empty = personal/global library */}
@@ -574,25 +655,51 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
           <span style={{ fontSize: 16 }}>🔄</span>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: '#1e40af', marginBottom: 2 }}>
-              Synchronized Across Versions
+              {syncTitle || DEFAULT_SYNC_TITLE}
             </div>
             <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.4 }}>
-              Legends are shared between V1 (P&ID Verification) and V2 (Line List Extractor). Create once, use everywhere.
+              {syncText || DEFAULT_SYNC_TEXT}
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 600 }}>
-            <span style={{ padding: '3px 8px', background: '#dbeafe', color: '#1e40af', borderRadius: 6 }}>V1</span>
-            <span style={{ color: '#94a3b8' }}>↔</span>
-            <span style={{ padding: '3px 8px', background: '#dbeafe', color: '#1e40af', borderRadius: 6 }}>V2</span>
-          </div>
+          {/* V1 ↔ V2 pills illustrate the default cross-version framing —
+              hidden whenever a caller supplies its own sync copy (e.g.
+              ValveMTO.jsx's "Global Library" framing), since they'd be
+              misleading outside the P&ID Verification V1/V2 context. */}
+          {!(syncTitle || syncText) && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 600 }}>
+              <span style={{ padding: '3px 8px', background: '#dbeafe', color: '#1e40af', borderRadius: 6 }}>V1</span>
+              <span style={{ color: '#94a3b8' }}>↔</span>
+              <span style={{ padding: '3px 8px', background: '#dbeafe', color: '#1e40af', borderRadius: 6 }}>V2</span>
+            </div>
+          )}
         </div>
 
         {/* Body: two columns */}
         <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', flex: 1, minHeight: 0 }}>
           {/* ── Left: list ──────────────────────────────────────── */}
-          <div style={{
+          {/* BUG FIX, round 3: round 2's explicit `maxHeight: calc(90vh
+              - 170px)` was a GUESS at how much space the header + sync
+              banner + modal chrome actually consume, and it guessed
+              wrong — confirmed by the next screenshot, which showed the
+              pane squeezed down to barely the section tabstrip + New/
+              Default/Import buttons, with every legend card pushed out
+              of view. Reverted the explicit height. The RIGHT pane
+              (`data-legend-scroll-pane` below) has never had this
+              problem and uses nothing more than plain `overflowY:
+              'auto'`, relying on the grid row (this pane's own direct
+              parent, `flex: 1, minHeight: 0`) to stretch both panes to
+              the same correct height — proof that mechanism does work
+              correctly here. This pane now matches that exact same
+              pattern instead of fighting it with a hardcoded guess.
+              Kept the thicker/darker scrollbar styling from round 2
+              (that part was a real improvement) and switched back from
+              `overflowY: 'scroll'` to `'auto'` — 'scroll' forces a
+              track to render even when there's nothing to scroll, which
+              combined with a wrong height guess was part of what
+              squeezed this pane in round 2. */}
+          <div className="legend-list-pane" style={{
             borderRight: `1px solid ${THEME_BORDER}`, padding: 14, overflowY: 'auto',
-            display: 'flex', flexDirection: 'column', gap: 8, background: THEME_BG_SOFT,
+            display: 'flex', flexDirection: 'column', gap: 6, background: THEME_BG_SOFT,
           }}>
             {/* Section switcher — vertical rail so every section's full label
                 stays readable no matter how many are registered (no cutoff,
@@ -670,13 +777,19 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
                 <div key={l.legend_id}
                   onClick={() => setSelectedId(l.legend_id)}
                   style={{
-                    padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
+                    // Shrunk from '10px 12px' — so more legends fit in
+                    // view at once and the ones that still don't fit
+                    // are visibly cut off at the pane's bottom edge
+                    // (the scroll affordance itself), rather than this
+                    // pane only ever showing ~5 cards before any cue
+                    // that there's more to scroll to.
+                    padding: '6px 10px', borderRadius: 8, cursor: 'pointer',
                     border: `1px solid ${active ? THEME_PRIMARY : THEME_BORDER}`,
                     background: active ? '#faf5ff' : '#fff',
                   }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span style={{
-                      fontWeight: 600, color: THEME_TEXT, fontSize: 13,
+                      fontWeight: 600, color: THEME_TEXT, fontSize: 12,
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
                     }}>
                       {l.name}
@@ -684,18 +797,18 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
                     {l.is_active && (
                       <span style={{
                         display: 'inline-flex', alignItems: 'center', gap: 3,
-                        padding: '2px 6px', borderRadius: 999, fontSize: 10,
+                        padding: '1px 5px', borderRadius: 999, fontSize: 9,
                         background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0',
                       }}>
-                        <CheckCircle2 size={10} /> Active
+                        <CheckCircle2 size={9} /> Active
                       </span>
                     )}
                   </div>
                   {l.description && (
                     <div style={{
-                      fontSize: 11, color: THEME_MUTED, marginTop: 3,
+                      fontSize: 10, color: THEME_MUTED, marginTop: 2,
                       overflow: 'hidden', textOverflow: 'ellipsis',
-                      display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                      display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical',
                     }}>
                       {l.description}
                     </div>
@@ -851,6 +964,23 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
         .legend-tabstrip::-webkit-scrollbar { width: 4px; }
         .legend-tabstrip::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
         .legend-tab-item[aria-selected="false"]:hover { background: rgba(255,255,255,0.08) !important; }
+        /* Darker/wider/opaque-track override of the shared low-contrast
+           scrollbar rule above, specific to the legend list pane's light
+           background — always visible, not just on hover, so a user with
+           several legends in one section can actually see there's more
+           to scroll to. Firefox: scrollbar-width has no "wide" option, so
+           'auto' (not 'thin') is the closest way to make it more visible
+           there too. */
+        /* Prefixed with .legend-sheets-modal so this unambiguously
+           out-specifies the shared ".legend-sheets-modal *" rule above
+           regardless of source order (previously a same-specificity tie
+           resolved only by being declared later — more fragile than
+           necessary). */
+        .legend-sheets-modal .legend-list-pane { scrollbar-width: auto; scrollbar-color: #475569 #cbd5e1; }
+        .legend-sheets-modal .legend-list-pane::-webkit-scrollbar { width: 16px; }
+        .legend-sheets-modal .legend-list-pane::-webkit-scrollbar-track { background: #cbd5e1; border-radius: 8px; }
+        .legend-sheets-modal .legend-list-pane::-webkit-scrollbar-thumb { background: #475569; border-radius: 8px; border: 3px solid #cbd5e1; min-height: 40px; }
+        .legend-sheets-modal .legend-list-pane::-webkit-scrollbar-thumb:hover { background: #1e293b; }
         .legend-symbol-cell:focus { outline: 2px solid ${THEME_PRIMARY}; outline-offset: 1px; }
       `}</style>
     </div>

@@ -26,6 +26,7 @@ import {
   RotateCcw, Pencil, Database, Layers, MapPin, FolderKanban, ChevronDown,
   Check, AlertTriangle, Activity, TrendingUp, Target, Zap, Award,
   Lightbulb, ChevronRight, Info, Clock, Maximize2, Minimize2,
+  Cloud as CloudIcon, BookOpen as BookOpenIcon,
 } from 'lucide-react';
 import {
   STORAGE_KEY, REFRESH_EVENT, PROJECT_FIELDS, VALVE_COLUMNS, VALVE_TABS,
@@ -33,7 +34,7 @@ import {
 } from '../../../config/valveMTO.config';
 import { deriveRemarksFromRow, mergeRemarks } from '../../../config/valveMTORemarks';
 import importValveMTOFile from '../../../config/valveMTOImporter';
-import exportValveMTOWorkbook from '../../../config/valveMTOExporter';
+import exportValveMTOWorkbook, { exportValveMTOAllData } from '../../../config/valveMTOExporter';
 import {
   HISTORY_REFRESH_EVENT, HISTORY_SOURCE_META, listHistory, saveHistoryEntry,
   renameHistoryEntry, deleteHistoryEntry, clearHistory,
@@ -42,8 +43,9 @@ import {
   PROJECTS_REFRESH_EVENT, PROJECT_NAME_MAX_LEN, PROJECT_DESC_MAX_LEN,
   ensureInitialised, listProjects,
   getActiveProject, setActiveProject, createProject, renameProject,
-  deleteProject, syncActiveProject,
+  deleteProject, syncActiveProject, setProjectServerId,
 } from '../../../config/valveMTOProjects';
+import valveMtoService from '../../../services/valveMtoService';
 import {
   PERF_BANDS, PERF_MIN_ROWS_FOR_SCORE, computePerformance, bandFor,
   computeRecommendations,
@@ -51,7 +53,37 @@ import {
 import ProcessingOverlay from './ValveMTOProcessingOverlay';
 import ValveMTOWorkflowDocs from './components/ValveMTOWorkflowDocs';
 import WrenchAiDocAssist from '../../../components/Engineering/WrenchAiDocAssist';
+// The SAME shared Legend Sheets manager used by P&ID Verification V1/V2
+// (apps.pid_checker_v2's structured, per-section-activated legend
+// system) — imported directly, never modified, per this feature's own
+// "reuse existing modal" requirement.
+import LegendSheetsModal from '../Process/components/LegendSheetsModal';
+// SAME service LegendSheetsModal itself uses — reused here only to
+// auto-activate Valve MTO's 5 relevant sections before opening the
+// modal (see handleOpenLegends below), never to duplicate the modal's
+// own CRUD UI.
+// STEP 4 (complete legend-system isolation): uses Valve MTO's OWN
+// isolated legend table/endpoints (apps.valve_mto.models.ValveMTOLegend,
+// services/valveMtoLegendService.js) — NOT apps.pid_checker_v2's shared
+// one (pidCheckerV2API.js), which P&ID Verification V1/V2 also reads.
+// See that service's own module docstring for the full "why": the
+// shared table had only ONE active legend per (user, section), with no
+// per-module dimension, so activating a Valve-MTO default there kept
+// becoming the active legend in P&ID V1/V2 too — confirmed real,
+// repeatedly reported. This removes the shared state entirely.
+import { listLegends, createLegend, activateLegend } from '../../../services/valveMtoLegendService';
+import * as valveMtoLegendService from '../../../services/valveMtoLegendService';
 import apiClient from '../../../services/api.service';
+// BUG FIX: LegendSheetsModal's own "Upload valve symbol image" feature
+// keys its pictures off a apps.pid_verification PIDVProject id (see
+// SymbolImageUploadView), NOT the apps.project_organizer id the modal's
+// built-in project selector offers — those are two disjoint UUID spaces
+// with no bridge between them, so a project picked from that selector
+// 404s on upload every time. Fix: resolve/create a PIDVProject of our
+// own here (reusing the SAME '/pid-verification/projects/' endpoint V1/
+// V2 already use) and hand its id to the modal as `projectId`, exactly
+// the pattern PIDCheckerV2.jsx already uses successfully.
+import { listProjects as listPidvProjects, createProject as createPidvProject } from '../../../services/pidProjectsService';
 
 // ─── Soft-coded page constants ───────────────────────────────────────────
 const BACK_ROUTE       = '/engineering/piping';
@@ -165,6 +197,428 @@ const PDF_EXTRACTION_CONFIG = {
   absoluteMaxDurationMs: 60 * 60 * 1000,
 };
 
+// BYOK (bring-your-own-key) config — same pattern as instrument_io_workflow's
+// PID_VISION_CONFIG (IOListWorkflowPage.jsx's UploadCard): a user can supply
+// their own OpenAI or Claude key instead of relying on the admin-configured
+// one. sessionStorage-persisted, scoped per LOCAL project id (not global) —
+// same reasoning as I/O List's own fix for this: a key entered for one
+// project must never leak into / pre-fill a different project.
+const VALVE_VISION_CONFIG = {
+  providers: [
+    { value: 'openai', label: 'OpenAI' },
+    { value: 'claude', label: 'Claude' },
+  ],
+  defaultProvider: 'openai',
+  sessionStorageProviderKey: 'valve_mto_vision_provider',
+  sessionStorageApiKeyKey:   'valve_mto_vision_api_key',
+  hint: 'Uses the admin-configured OpenAI key by default. Add your own OpenAI or Claude key here to use it instead — never sent anywhere except this one extraction request.',
+};
+
+// Scan mode — 'quick' (1 Vision call/page, today's original behaviour)
+// vs 'thorough' (default: 2x2 tiled, 2 passes = 8 Vision calls/page —
+// see services.piping_valve_mto_extractor's SCAN_MODE_* constants /
+// _scan_mode_params, the single source of truth this must stay in sync
+// with).
+const SCAN_MODE_QUICK = 'quick';
+const SCAN_MODE_THOROUGH = 'thorough';
+const SCAN_MODE_DEFAULT = SCAN_MODE_THOROUGH;
+const SCAN_MODE_STORAGE_KEY = 'radai.valveMTO.scanMode';
+const SCAN_MODE_OPTIONS = [
+  { value: SCAN_MODE_QUICK, label: 'Quick Scan', hint: 'Faster — 1 pass per page.' },
+  { value: SCAN_MODE_THOROUGH, label: 'Thorough Scan', hint: 'More accurate — tiles each page into a 2×2 grid with 2 passes (8 Vision calls/page). Finds more valves on dense drawings, takes longer.' },
+];
+
+// Used below to auto-activate the user's own legend for each section (if
+// one exists) before opening the shared Manage Legends modal, so Valve
+// MTO extraction starts benefiting from them without an extra manual
+// "Activate" click per section.
+// The 7 apps.pid_checker_v2 legend sections Valve MTO extraction actually
+// reads (see apps.pid_verification.services.piping_valve_mto_extractor's
+// _build_legend_context — LEGEND_SECTIONS_ESSENTIAL/_OPTIONAL there is
+// the single source of truth this list must stay in sync with).
+// 'instrument_signal' (instrumentation line styles) and
+// 'control_valve_regulator' (control-valve variants + regulators — a real
+// gap in the 'valve' section's own 15-entry VALVE SYMBOL REFERENCE, e.g.
+// "Control Valve with Hand Wheel", pressure/temperature/level/back-
+// pressure regulators) were both added to the backend's essential list;
+// this array was updated in lockstep so both get the same auto-create-
+// default-if-empty + auto-activate treatment as the original 5.
+const VALVE_MTO_LEGEND_SECTIONS = [
+  'valve', 'piping', 'line_list', 'instrument_signal', 'control_valve_regulator',
+  'scope_symbols', 'limit_line',
+];
+
+// Name of the PIDVProject auto-created (once per user) so the Manage
+// Legends modal's "Upload symbol image" feature has a valid project to
+// key pictures off — see resolveLegendProjectId / handleOpenLegends
+// below. Isolated to Valve MTO: no other module creates or reads this.
+const VALVE_MTO_DEFAULT_PROJECT_NAME = 'Valve MTO Default';
+
+// Fluid codes (the FF segment of the PIPING LINE FORMAT: FF-DD-111XXX-
+// XXXX-X) feed the 'line_list' section's merged "Line List MTO -
+// Complete" legend (see autoPopulateLegendSection below) as one of its
+// fields.
+//
+// BUG FIX: this data used to be a hand-duplicated JS object, hardcoded
+// here AND separately hardcoded in the Vision prompt
+// (apps.pid_verification.services.piping_valve_mto_extractor) — nothing
+// kept the two in sync. apps.valve_mto.fluid_codes.FLUID_CODES is now
+// the single source of truth for both; this file fetches that SAME data
+// at runtime via GET /api/v1/valve-mto/fluid-codes/ instead of
+// re-declaring it, so a future change to the customer's code list only
+// ever needs to happen in one place (that backend module) to reach both
+// the prompt and this legend.
+
+// ─── Additional default legends (line_list / valve / piping) ─────────────
+// Same auto-create-only-if-empty approach as the Fluid Code default above.
+// These mirror the customer reference data already baked into the Vision
+// prompt (apps.pid_verification.services.piping_valve_mto_extractor) —
+// kept here as plain JS (not fetched from a shared backend module, unlike
+// Fluid Codes) because this change is scoped to ValveMTO.jsx only; if the
+// underlying customer data ever changes, update both places by hand.
+const AREA_CODES_LOOKUP = {
+  '026': 'GENERAL AND MISCELLANEOUS',
+  '176': 'CAP GAS WELLS PLATFORM (US-58)',
+  '177': 'GAS TREATMENT PLATFORM',
+  '178': 'ABK TIE-IN PLATFORM',
+  '179': 'COLLECTOR/SEPARATOR PLATFORM',
+  '180': 'ORIGINAL CENTRAL COLLECTOR PLATFORM',
+  '181': 'NORTHERN RISER PLATFORM',
+  '182': 'EASTERN RISER PLATFORM',
+  '183': 'UMM SHAIF EXISTING ACCOMMODATION PLATFORM',
+  '184': 'POWER GENERATION PLATFORM',
+  '185': 'WATER INJECTION PLATFORM (5 MODULES)',
+  '186': 'WATER INJECTION PLATFORM (2 MODULES)',
+  '187': 'BRIDGE B1', '188': 'BRIDGE B2', '189': 'BRIDGE B3', '190': 'BRIDGE B4',
+  '191': 'BRIDGE B5', '192': 'BRIDGE B6', '193': 'BRIDGE B7', '194': 'BRIDGE B8',
+  '195': 'BRIDGE B9', '196': 'BRIDGE B10', '197': 'BRIDGE B11',
+  '350': 'EXTENSION TO GAS TREATMENT PLATFORM',
+  '351': 'FLARES 1, 2 AND TA',
+  '352': 'UMM SHAIF ADDITIONAL ACCOMMODATION',
+  '359': 'BRIDGE SUPPORT TOWER S1',
+  '360': 'BRIDGE SUPPORT TOWER S2',
+  '361': 'BRIDGE SUPPORT TOWER S3',
+  '391': 'CRESTAL GAS INJECTION TOWER US 272',
+  '392': 'CRESTAL GAS INJECTION TOWER US 290',
+  '414': 'NEW 36" MOL (SUBMARINE)',
+  '415': 'NEW 36" MOL RISER PLATFORM',
+  '418': 'BRIDGE SUPPORT TOWER S5',
+  '419': 'BRIDGE SUPPORT TOWER S4',
+  '420': 'BRIDGE B15', '421': 'BRIDGE B14', '423': 'BRIDGE B13',
+  '422': 'TAWEELAH ALPHA PLATFORM',
+  '427': 'NEW GAS TREATMENT PLATFORM',
+  '428': 'THAMAMA PILOT GAS INJECTION US 213',
+  '441': 'ARAB D GAS INJECTION TOWER US 251',
+  '446': 'ARAB D GAS INJECTION TOWER US 250',
+  '501': 'GENERAL & MISCELLANEOUS',
+  '502': 'COLLECTOR SEPARATOR PLATFORM-1 (CSP-1)',
+  '503': 'UMM SHAIF WATER DISPOSAL UNIT (UWDT)',
+  '504': 'FLARE TOWER-4 (FT-4)', '505': 'FLARE TOWER-5 (FT-5)',
+  '510': 'BRIDGE B16', '511': 'BRIDGE B17', '512': 'BRIDGE B18', '513': 'BRIDGE B19',
+  '514': 'BRIDGE B20', '515': 'BRIDGE B21', '516': 'BRIDGE B22', '517': 'BRIDGE B23',
+  '520': 'BRIDGE SUPPORT TOWER S6', '521': 'BRIDGE SUPPORT TOWER S7',
+  '522': 'BRIDGE SUPPORT TOWER S8', '523': 'BRIDGE SUPPORT TOWER S9',
+  '524': 'BRIDGE SUPPORT TOWER S10',
+  '531': 'COMPRESSION PLATFORM-1 (CP-1)',
+  '532': 'UMM SHAIF ACCOMMODATION PLATFORM (UAP)',
+  '533': 'FLARE TOWER-6 (FT-6)',
+  '538': 'BRIDGE B55', '539': 'BRIDGE B56', '540': 'BRIDGE B57',
+  '547': 'BRIDGE SUPPORT TOWER S55', '548': 'BRIDGE SUPPORT TOWER S56',
+};
+
+const INSULATION_CODES_LOOKUP = {
+  A: 'Acoustic',
+  C: 'Cold Conservation',
+  F: 'Fire Proofing',
+  H: 'Heat Conservation',
+  P: 'Personnel Protection',
+  T: 'Heat Tracing',
+  E: 'Electrical Heat Tracing',
+};
+
+const SPECIAL_VALVE_CODES_LOOKUP = {
+  PSV: 'Pressure Safety Valve',
+  SDV: 'Shutdown Valve',
+  BDV: 'Blowdown Valve',
+  MOV: 'Motor Operated Valve',
+  SV: 'Solenoid Valve',
+};
+
+// Same 15 body-shape descriptions as the Vision prompt's own VALVE SYMBOL
+// REFERENCE section, kept consistent so this default legend and the
+// prompt never disagree about what each valve type looks like.
+const VALVE_SYMBOLS_LOOKUP = {
+  'Gate Valve': 'bowtie symbol on pipe',
+  'Globe Valve': 'bowtie with circle on pipe',
+  'Ball Valve': 'circle symbol on pipe',
+  'Plug Valve': 'diamond symbol on pipe',
+  'Check Valve': 'arrow/flap symbol (one direction)',
+  'Butterfly Valve': 'dot inside bowtie',
+  'Needle Valve': 'needle/fine control symbol',
+  'Float Valve': 'float/ball symbol',
+  'Diaphragm Valve': 'curved membrane symbol',
+  'Angle Valve': '90 degree turn valve',
+  'Choke Valve (Adjustable)': 'angle with adjustment',
+  'Three-Way Valve': 'T-junction valve symbol',
+  'Four-Way Valve': 'cross junction valve symbol',
+  'Integral Double Block and Bleed': 'double bowtie',
+  'Valve with Dead Mans Handle': 'handle symbol',
+};
+
+const AREA_CODES_LEGEND_DEFINITION = {
+  separator: '-',
+  fields: [{
+    key: 'area_code',
+    label: 'Area Code',
+    regex: '\\d{3}',
+    notes: 'The AREA segment of the Offshore line-number format AREA-FLUID-SIZE-PIPECLASS-SEQ, and the XXX segment of the DRAWING NUMBER FORMAT AD111-XXX-D-XXXXX — a match confirms the reading and identifies the platform/structure.',
+    lookup: AREA_CODES_LOOKUP,
+  }],
+};
+
+const DRAWING_FORMAT_LEGEND_DEFINITION = {
+  separator: '-',
+  fields: [
+    { key: 'project_indicator', label: 'Project Indicator (AD111)', regex: 'AD\\d{3}',
+      notes: 'AD111 = Project Indicator (USGIF).' },
+    { key: 'area_code', label: 'Area Code (XXX)', regex: '\\d{3}',
+      notes: 'See the "Area Codes - Standard" legend for the full lookup.',
+      lookup: AREA_CODES_LOOKUP },
+    { key: 'discipline_code', label: 'Discipline Code (D)', regex: '[A-Z]',
+      notes: 'D = Process and P&IDs.' },
+    { key: 'drawing_number', label: 'Drawing Number (XXXXX)', regex: '\\d{5}',
+      notes: 'Drawing Number, 10000-19999.' },
+  ],
+};
+
+const LINE_FORMAT_LEGEND_DEFINITION = {
+  separator: '-',
+  fields: [
+    { key: 'fluid_code', label: 'Fluid Code (FF)', regex: '[A-Z]{1,3}',
+      notes: 'See the "Fluid Code - Standard" legend for the full lookup.' },
+    { key: 'diameter', label: 'Line Diameter (DD)', regex: '\\d{1,2}',
+      notes: 'Line diameter in inches.' },
+    { key: 'project_line_number', label: 'Project + Line Number (111XXX)', regex: '\\d{6}',
+      notes: 'Project identifier plus line number.' },
+    { key: 'piping_material_code', label: 'Piping Material Code (XXXX)', regex: '[A-Z0-9]{1,4}',
+      notes: 'Piping material class code.' },
+    { key: 'insulation_type', label: 'Insulation Type (X)', regex: '[A-Z]',
+      notes: 'See the "Insulation Codes - Standard" legend for the full lookup.' },
+  ],
+};
+
+// A single field, not 3 separated by an empty separator: the legend
+// engine's compile_legend() treats '' as falsy and silently substitutes
+// the default '-' separator, which would wrongly produce "V-111-XXXX"
+// for a format that actually has no separators (V111XXXX) — confirmed
+// via a real compile_legend() test before settling on this shape.
+const VALVE_IDENTIFICATION_LEGEND_DEFINITION = {
+  separator: '-',
+  fields: [{
+    key: 'valve_tag',
+    label: 'Valve Tag',
+    regex: 'V\\d{7}',
+    notes: 'V = Valve, next 3 digits = Project Indicator (USGIF), final 4 digits = Sequential Number (0001-9999). Format: V111XXXX.',
+  }],
+};
+
+const SPECIAL_VALVE_NUMBERING_LEGEND_DEFINITION = {
+  separator: '-',
+  fields: [
+    { key: 'area_code', label: 'Area Code (XXX)', regex: '\\d{3}',
+      notes: 'This project’s AREA CODE — see the "Area Codes - Standard" legend.' },
+    { key: 'valve_code', label: 'Valve Code', regex: 'PSV|SDV|BDV|MOV|SV',
+      notes: 'Sets "type" directly from the tag’s own code — overrides a visual best-guess.',
+      lookup: SPECIAL_VALVE_CODES_LOOKUP },
+    { key: 'sequence_number', label: 'Sequence Number (XXXXX)', regex: '\\d{4,5}',
+      notes: 'Valid range depends on the code — see the Vision prompt for exact ranges.' },
+  ],
+};
+
+const VALVE_SYMBOLS_LEGEND_DEFINITION = {
+  separator: '=',
+  fields: [{
+    key: 'valve_type',
+    label: 'Valve Type',
+    regex: '[A-Za-z ()]+',
+    notes: 'Body-shape description — match the symbol actually drawn on the P&ID to identify "type".',
+    lookup: VALVE_SYMBOLS_LOOKUP,
+  }],
+};
+
+// ─── "LINE SYMBOLS" (customer legend sheet) ───────────────────────────────
+// The customer's own legend has a LINE SYMBOLS section with two
+// subcategories. Neither "Pipe Connection" (fittings: flexible joint,
+// expansion joint) nor "Special Piping" (discrete items: spade, spacer,
+// reducer, barred tee) is a good fit — both describe POINT components,
+// not continuous line styles/weights. The best EXISTING-section matches
+// are:
+//   PROCESS LINES      → 'piping' section — its own built-in default
+//                         template already classifies lines the same way
+//                         (MAIN FLOW / OTHERS FLOW / LINE ABOVE GROUND /
+//                         LINE UNDER GROUND, etc.), so Major/Secondary/
+//                         Minor/Existing/Future/Package line styles slot
+//                         in naturally.
+//   INSTRUMENTATION LINES → 'instrument_signal' section — its own
+//                         built-in default template already lists
+//                         Pneumatic/Hydraulic/Capillary/Electrical/
+//                         Software-or-data-link/Electromagnetic-or-sonic
+//                         signal types, a near-exact overlap with the
+//                         customer's Pneumatic/Hydraulic/Capillary/
+//                         Electrical/Soft Link/Sonic/Tubing list.
+// No new section needed.
+const PROCESS_LINES_LOOKUP = {
+  'MAJOR PROCESS': 'MAJOR PROCESS',
+  'SECONDARY PROCESS LINE AND UTILITY LINE': 'SECONDARY PROCESS LINE AND UTILITY LINE',
+  'MINOR PROCESS': 'MINOR PROCESS',
+  'EXISTING LINE': 'EXISTING LINE',
+  'LINES TO BE DELETED': 'LINES TO BE DELETED',
+  'FUTURE LINE': 'FUTURE LINE',
+  'PACKAGE/SKID LINE': 'PACKAGE/SKID LINE',
+};
+
+const INSTRUMENTATION_LINES_LOOKUP = {
+  'PROCESS INSTRUMENT LINE': 'PROCESS INSTRUMENT LINE',
+  'PNEUMATIC': 'PNEUMATIC',
+  'HYDRAULIC': 'HYDRAULIC',
+  'CAPILLARY': 'CAPILLARY',
+  'ELECTRICAL': 'ELECTRICAL',
+  'MECHANICAL': 'MECHANICAL',
+  'SOFT LINK (SOFTWARE)': 'SOFT LINK (SOFTWARE)',
+  'SONIC': 'SONIC',
+  'TUBING': 'TUBING',
+};
+
+const PROCESS_LINES_LEGEND_DEFINITION = {
+  separator: '-',
+  fields: [{
+    key: 'process_line_type',
+    label: 'Process Line Type',
+    regex: '[A-Z0-9 /()&-]+',
+    notes: 'Line weight/style from the customer Legend Sheet’s LINE SYMBOLS → PROCESS LINES table — identifies which lines are current, future, to-be-deleted, or package/skid, so only real, in-scope process lines are extracted.',
+    lookup: PROCESS_LINES_LOOKUP,
+  }],
+};
+
+const INSTRUMENTATION_LINES_LEGEND_DEFINITION = {
+  separator: '-',
+  fields: [{
+    key: 'instrumentation_line_type',
+    label: 'Instrumentation Line Type',
+    regex: '[A-Z0-9 /()&-]+',
+    notes: 'Signal-line style from the customer Legend Sheet’s LINE SYMBOLS → INSTRUMENTATION LINES table.',
+    lookup: INSTRUMENTATION_LINES_LOOKUP,
+  }],
+};
+
+// Control-valve variants and regulators — genuine "type" values the
+// Valve section's own 15-entry VALVE SYMBOL REFERENCE doesn't cover
+// (that list is manual/actuated on-off valve body shapes only).
+const CONTROL_VALVE_REGULATOR_LOOKUP = {
+  'CONTROL VALVE WITH HAND WHEEL': 'CONTROL VALVE WITH HAND WHEEL',
+  'CONTROL VALVE (ANGLE TYPE)': 'CONTROL VALVE (ANGLE TYPE)',
+  'PRESSURE REGULATOR': 'PRESSURE REGULATOR',
+  'TEMPERATURE REGULATOR': 'TEMPERATURE REGULATOR',
+  'LEVEL REGULATOR': 'LEVEL REGULATOR',
+  'BACK PRESSURE REGULATOR': 'BACK PRESSURE REGULATOR',
+};
+
+const CONTROL_VALVE_REGULATOR_LEGEND_DEFINITION = {
+  separator: '-',
+  fields: [{
+    key: 'control_valve_type',
+    label: 'Control Valve Type',
+    regex: '[A-Z0-9 /()&-]+',
+    notes: 'Control-valve variant or regulator type — set "type" from this when the drawn symbol is a control valve/regulator rather than a manual/actuated on-off valve.',
+    lookup: CONTROL_VALVE_REGULATOR_LOOKUP,
+  }],
+};
+
+// BUG FIX (real, confirmed user confusion): this used to create THREE OR
+// FOUR separate named legends per section (e.g. "Area Codes - Standard",
+// "Line Format - Standard", "Drawing Format - Standard", "Fluid Code -
+// Standard" all under line_list), with only the LAST one ending up
+// "Active" — correct per PidCheckerV2LegendSheet's own one-active-per-
+// section DB constraint, but confusing: a user opening Manage Legends saw
+// several legends per section and had no way to tell which one actually
+// mattered. Consolidated into exactly ONE legend per section (still
+// auto-created ONLY when that section has no legend at all yet — never
+// overwrites/duplicates existing user data), with every topic as its own
+// FIELD inside that one legend instead of as separate legend rows. Every
+// field still renders as its own labelled block (with its own lookup
+// table) in the Vision prompt's "LEGEND REFERENCE:" section — see
+// apps.pid_verification.services.piping_valve_mto_extractor's
+// _format_legend_definition, which iterates `fields` the same way either
+// way — so this is a pure UX simplification for Manage Legends, not a
+// loss of any reference data reaching the prompt.
+//
+// TRADE-OFF worth knowing: this section's legends are the SAME ones
+// shared with P&ID Verification V1/V2 (LegendSheetsModal's own "Create
+// once, use everywhere" banner). V1/V2 has at least one real feature
+// (ValidateLineTagsView / legend_validator.py) that compiles a legend's
+// `fields` into ONE sequential regex and pattern-matches real extracted
+// tags against it — a meaningful operation when a legend's fields really
+// are the sequential segments of ONE tag format (the pre-merge legends
+// were), but not when they're several UNRELATED topics concatenated
+// together (post-merge). Valve MTO's own extraction never calls that
+// regex — it only reads field labels/notes/lookups as prompt text — so
+// this merge is harmless here, but if this same account's 'line_list' or
+// 'valve' section is ever used with V1/V2's tag-validation feature, that
+// feature will no longer produce a meaningful pass/fail per real tag.
+const VALVE_MTO_COMPLETE_LEGEND_DEFINITION = {
+  separator: '-',
+  fields: [
+    ...VALVE_IDENTIFICATION_LEGEND_DEFINITION.fields,
+    ...VALVE_SYMBOLS_LEGEND_DEFINITION.fields,
+    ...SPECIAL_VALVE_NUMBERING_LEGEND_DEFINITION.fields,
+    ...CONTROL_VALVE_REGULATOR_LEGEND_DEFINITION.fields,
+  ],
+};
+
+const PIPING_MTO_COMPLETE_LEGEND_DEFINITION = {
+  separator: '-',
+  fields: [
+    { key: 'insulation_code', label: 'Insulation Code', regex: '[A-Z]',
+      notes: 'Trailing single letter of the piping line format FF-DD-111XXX-XXXX-X.',
+      lookup: INSULATION_CODES_LOOKUP },
+    ...PROCESS_LINES_LEGEND_DEFINITION.fields,
+    ...INSTRUMENTATION_LINES_LEGEND_DEFINITION.fields,
+  ],
+};
+
+const SECTION_DEFAULT_LEGENDS = {
+  // 'line_list' is NOT listed here — its one merged legend needs the
+  // fluid-codes table fetched from the backend first, so it's built
+  // directly in autoPopulateLegendSection below instead (see the
+  // `section === 'line_list'` branch there).
+  valve: [
+    { name: 'Valve MTO - Complete',
+      description: 'ALL valve reference data merged into one legend: Valve Identification (V111XXXX), all 15 valve symbols, PSV/SDV/BDV/MOV/SV numbering, and control valve/regulator types — auto-created default for Valve MTO extraction.',
+      definition: VALVE_MTO_COMPLETE_LEGEND_DEFINITION },
+  ],
+  piping: [
+    { name: 'Piping MTO - Complete',
+      description: 'ALL piping reference data merged into one legend: insulation codes, process line styles, and instrumentation line styles — auto-created default for Valve MTO extraction.',
+      definition: PIPING_MTO_COMPLETE_LEGEND_DEFINITION },
+  ],
+  instrument_signal: [
+    { name: 'Instrumentation Lines - Standard',
+      description: 'Customer Legend Sheet LINE SYMBOLS → INSTRUMENTATION LINES (Pneumatic/Hydraulic/Capillary/Electrical/Soft Link/Sonic/Tubing) — auto-created default for Valve MTO extraction.',
+      definition: INSTRUMENTATION_LINES_LEGEND_DEFINITION },
+  ],
+  // Fills a real gap in 'valve' section's own 15-entry VALVE SYMBOL
+  // REFERENCE: control-valve variants and regulators are genuine valve
+  // types that reference doesn't cover. (Its content is ALSO folded into
+  // "Valve MTO - Complete" above per this feature's own merge request —
+  // this standalone legend is left as its own thing too, unchanged,
+  // since 'control_valve_regulator' itself wasn't part of the merge.)
+  control_valve_regulator: [
+    { name: 'Control Valve - Standard',
+      description: 'Control valve variants and regulators not covered by the Valve section’s own 15-entry VALVE SYMBOL REFERENCE — auto-created default for Valve MTO extraction.',
+      definition: CONTROL_VALVE_REGULATOR_LEGEND_DEFINITION },
+  ],
+};
+
 // Stat cards rendered above the table — fully soft-coded.
 // Palette aligned to the common V1 engineering theme (blue/indigo family).
 const STAT_CARDS = [
@@ -215,8 +669,247 @@ const ValveMTOPage = () => {
     return initial.activeId;
   });
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
+  // BUG FIX (real, confirmed): `{project, rows}` state above is seeded
+  // from loadState(), which mirrors whatever project was LAST active in
+  // a previous session — so stat cards (Total Valves / Island Qty /
+  // Field Qty) and the table showed that leftover project's data
+  // immediately on page load, before the user had clicked anything on
+  // the Projects tab. This flag gates DISPLAY only (visibleRows/totals/
+  // stat cards below) — it deliberately does NOT touch `rows` itself or
+  // the autosave/sync pipeline (saveState/syncActiveProject/
+  // syncToServer), which still operate on the real underlying state
+  // exactly as before; changing THAT would risk overwriting a project's
+  // real saved data with emptiness on a page load that never explicitly
+  // opened anything. Set true by every explicit "load a project's data"
+  // action: switching projects, loading a Cloud project, creating a new
+  // project, restoring a history snapshot, or a fresh extraction/import
+  // completing.
+  const [workspaceOpened, setWorkspaceOpened] = useState(false);
+  // BUG FIX: this used to default to visible (false) and only hide itself
+  // AFTER a Wrench error occurred — meaning every page load still showed
+  // (and tried to eagerly use) the panel first, so a user on a page load
+  // where Wrench happens to be unreachable saw an error moment before it
+  // disappeared. Now hidden by default; the user can manually enable it
+  // via the small toggle next to the project switcher if they actually
+  // want to use it. See the AI Document Assist (Wrench) render block
+  // below for the on-error auto-hide behaviour, which still applies once
+  // enabled.
+  const [wrenchPanelHidden, setWrenchPanelHidden] = useState(true);
   // Project dialog: { mode: 'create' | 'rename' | 'delete', target?: project }
   const [projectDialog, setProjectDialog] = useState(null);
+
+  // ─── BYOK Vision (OpenAI/Claude) — see VALVE_VISION_CONFIG's own
+  // comment for why this exists and its sessionStorage scoping. Always
+  // shown as Step 1 of UploadHero's numbered steps (no longer a
+  // collapsible toggle — see this feature's own requirement). ──────────
+  const visionProviderStorageKey = `${VALVE_VISION_CONFIG.sessionStorageProviderKey}::${activeProjectId || 'unassigned'}`;
+  const visionApiKeyStorageKey   = `${VALVE_VISION_CONFIG.sessionStorageApiKeyKey}::${activeProjectId || 'unassigned'}`;
+  const [visionProvider, setVisionProvider] = useState(
+    () => sessionStorage.getItem(`${VALVE_VISION_CONFIG.sessionStorageProviderKey}::${activeProjectId || 'unassigned'}`) || VALVE_VISION_CONFIG.defaultProvider,
+  );
+  const [visionApiKey, setVisionApiKey] = useState(
+    () => sessionStorage.getItem(`${VALVE_VISION_CONFIG.sessionStorageApiKeyKey}::${activeProjectId || 'unassigned'}`) || '',
+  );
+  const [testingVisionKey, setTestingVisionKey] = useState(false);
+  const [visionTestResult, setVisionTestResult] = useState(null);
+
+  // ─── Scan mode (Quick vs Thorough) — see services.piping_valve_mto_
+  // extractor's _scan_mode_params for exactly what each resolves to
+  // server-side (tile grid + passes per page). Defaults to 'thorough'
+  // per this feature's own requirement; persisted across sessions (not
+  // per-project like the BYOK key above — it's a general scan-quality
+  // preference, not something tied to one project's own data).
+  const [scanMode, setScanMode] = useState(
+    () => localStorage.getItem(SCAN_MODE_STORAGE_KEY) || SCAN_MODE_DEFAULT,
+  );
+  useEffect(() => {
+    try { localStorage.setItem(SCAN_MODE_STORAGE_KEY, scanMode); } catch { /* no-op */ }
+  }, [scanMode]);
+
+  const handleTestVisionKey = async () => {
+    if (!visionApiKey.trim()) { setVisionTestResult({ valid: false, message: 'Enter an API key first.' }); return; }
+    setTestingVisionKey(true);
+    setVisionTestResult(null);
+    try {
+      const res = await valveMtoService.testApiKey(visionProvider, visionApiKey.trim());
+      setVisionTestResult(res);
+    } catch (err) {
+      setVisionTestResult({ valid: false, message: err?.response?.data?.message || err?.message || 'Test failed.' });
+    } finally {
+      setTestingVisionKey(false);
+    }
+  };
+
+  // ─── Legend Sheets ──────────────────────────────────────────────────
+  // CORRECTION: an earlier version of this built its OWN legend upload/
+  // list UI + backend endpoints, reusing apps.pid_verification's
+  // PIDVLegendSheet (an unstructured, AI-Vision-extracted legend system
+  // with no "Valve" section) — the wrong system, entirely removed.
+  // Valve MTO now reuses the EXISTING, shared LegendSheetsModal
+  // component (same one P&ID Verification V1/V2 use), which already
+  // manages apps.pid_checker_v2's structured, per-section-activated
+  // legends — including a real 'valve' section — via its own internal
+  // data fetching (pidCheckerV2API.js). No custom upload/list/delete
+  // logic needed here at all; just open the shared modal.
+  const [legendModalOpen, setLegendModalOpen] = useState(false);
+  const [activatingLegends, setActivatingLegends] = useState(false);
+  // BUG FIX: the modal's own "Upload symbol image" feature validates its
+  // `projectId` against a PIDVProject row (apps.pid_verification), but
+  // without this, Valve MTO never passed one — the modal's built-in
+  // project selector only offers project_organizer.Project ids, a
+  // completely different, unrelated UUID space, so every upload 404'd
+  // with "project_id not found". Resolved once per session, cached here.
+  const [legendProjectId, setLegendProjectId] = useState(null);
+
+  // Fetches this user's PIDVProject list (same '/pid-verification/
+  // projects/' endpoint V1/V2 already use via pidProjectsService) and
+  // reuses the first one; creates "Valve MTO Default" only if the user
+  // genuinely has none yet. Isolated to Valve MTO — no other module
+  // reads or depends on this project.
+  const resolveLegendProjectId = async () => {
+    if (legendProjectId) return legendProjectId;
+    try {
+      const existing = await listPidvProjects();
+      const list = Array.isArray(existing) ? existing : [];
+      let project = list[0];
+      if (!project) {
+        project = await createPidvProject(
+          VALVE_MTO_DEFAULT_PROJECT_NAME,
+          'Auto-created so Valve MTO legend symbol-image uploads have a project to attach to.'
+        );
+      }
+      const id = project?.project_id || null;
+      if (id) setLegendProjectId(id);
+      return id;
+    } catch (err) {
+      console.warn('[ValveMTO] Could not resolve a PIDVProject for legend symbol images:', err?.message);
+      return null;
+    }
+  };
+
+  // Auto-activates the user's own legend (if any) for each of Valve
+  // MTO's 7 relevant sections before opening the modal — "these should
+  // be ACTIVE by default for Valve MTO" per this feature's own
+  // requirement. For every section with no SECTION_DEFAULT_LEGENDS entry,
+  // only ever activates a legend the user already created (never
+  // fabricates one) — a section with no legend at all is silently
+  // skipped, same as the modal's own "no legends yet" empty state.
+  // line_list/valve/piping/instrument_signal/control_valve_regulator are
+  // the exception: if this user has NO legend at all yet for one of
+  // those, its full set of SECTION_DEFAULT_LEGENDS (customer reference
+  // data already baked into the Vision prompt statically) is created so a
+  // brand-new user gets useful defaults from their very first extraction.
+  // Only ONE legend per section can be active at a time (DB constraint),
+  // so they're activated in sequence and the LAST one created ends up
+  // active — see SECTION_DEFAULT_LEGENDS' own comment for the chosen
+  // order. Never overwrites/duplicates EXISTING legends — this only
+  // fires when the section is genuinely empty. Best-effort per section:
+  // one section's failure (network hiccup, etc.) never blocks the others
+  // or the modal from opening — this is a convenience, not a hard
+  // requirement to extract.
+  const autoPopulateLegendSection = async (section) => {
+    try {
+      const rows = await listLegends(section);
+      const list = Array.isArray(rows) ? rows : [];
+      const defaults = [...(SECTION_DEFAULT_LEGENDS[section] || [])];
+      const hasOwnDefault = defaults.length > 0 || section === 'line_list';
+      if (hasOwnDefault) {
+        // BUG FIX (confirmed real on production): this used to gate on
+        // `!list.length` — i.e. only auto-create when the section had
+        // ZERO legends at all. That meant a single pre-existing, UNRELATED
+        // legend (e.g. from P&ID Verification V1/V2, not Valve-MTO's own)
+        // silently blocked the Valve-MTO-specific default forever, and
+        // `list.some(l => l.is_active)` return-early above compounded it
+        // by also skipping if any (possibly unrelated) legend was already
+        // active. Now: match by NAME against this section's own
+        // SECTION_DEFAULT_LEGENDS entries (set below, after the
+        // line_list-specific one is built) — create+activate our own
+        // default whenever it's missing, regardless of what else exists;
+        // if it already exists, just make sure it's active. Still fully
+        // idempotent — never duplicates our own default on repeat calls.
+        if (section === 'line_list') {
+          // Fetched lazily, only on this rare first-time-per-user path —
+          // see the fluid-codes comment above for why this isn't a
+          // hardcoded JS object. Merged into ONE legend with area
+          // codes/line format/drawing format (same "one legend per
+          // section" simplification as valve/piping above — see
+          // SECTION_DEFAULT_LEGENDS' own comment).
+          const { data } = await apiClient.get('/valve-mto/fluid-codes/');
+          defaults.push({
+            name: 'Line List MTO - Complete',
+            description: 'ALL line-list reference data merged into one legend: fluid codes, area codes, line format (FF-DD-111XXX-XXXX-X), and drawing format (AD111-XXX-D-XXXXX) — auto-created default for Valve MTO extraction.',
+            definition: {
+              separator: '-',
+              fields: [
+                { key: 'fluid_code', label: 'Fluid Code', regex: '[A-Z]{1,3}',
+                  notes: 'Leading segment (FF) of the piping line format FF-DD-111XXX-XXXX-X — validates a line number as real when it starts with one of these known codes.',
+                  lookup: data?.codes || {} },
+                ...AREA_CODES_LEGEND_DEFINITION.fields,
+                ...LINE_FORMAT_LEGEND_DEFINITION.fields,
+                ...DRAWING_FORMAT_LEGEND_DEFINITION.fields,
+              ],
+            },
+          });
+        }
+        if (!defaults.length) return;
+        const defaultNames = new Set(defaults.map((d) => d.name));
+        const ownExisting = list.filter((l) => defaultNames.has(l.name));
+        // Safe to always create+activate our own defaults here, even
+        // over a different already-active legend: `listLegends`/
+        // `createLegend`/`activateLegend` (imported above from
+        // services/valveMtoLegendService) now hit Valve MTO's OWN,
+        // fully isolated backend table (apps.valve_mto.models.
+        // ValveMTOLegend) — architecturally separate from apps.
+        // pid_checker_v2's PidCheckerV2LegendSheet that P&ID V1/V2
+        // reads, so activating a legend here can no longer affect what's
+        // active there, by construction. (Earlier in this session, before
+        // this table existed, Valve MTO wrote into the SAME shared
+        // pid_checker_v2 table P&ID V1/V2 uses, which had only one
+        // active legend per (user, section) with no per-module dimension
+        // — that's what caused the real, repeatedly-reported leak this
+        // isolation fixes at the root.)
+        if (ownExisting.length) {
+          if (!ownExisting.some((l) => l.is_active)) {
+            await activateLegend(ownExisting[0].legend_id);
+          }
+          return;
+        }
+        for (const def of defaults) {
+          const created = await createLegend({ section, ...def });
+          await activateLegend(created.legend_id);
+        }
+        return;
+      }
+      // No Valve-MTO-specific default for this section (e.g.
+      // 'control_valve_regulator') — only ever activate a legend the user
+      // already created themselves, never fabricate one here.
+      if (!list.length || list.some((l) => l.is_active)) return;
+      // listLegends orders by -updated_at (see LegendSheetsModal's
+      // own refresh()), so the first row is the most recently
+      // edited one for this section — the sensible default to
+      // activate when the user hasn't picked one explicitly yet.
+      await activateLegend(list[0].legend_id);
+    } catch (err) {
+      console.warn(`[ValveMTO] Could not auto-activate legend for section "${section}":`, err?.message);
+    }
+  };
+
+  const handleOpenLegends = async () => {
+    // TEMPORARY DIAGNOSTIC (per explicit request): confirms this handler
+    // actually fires and shows which sections it's about to auto-populate
+    // — remove once production auto-create is confirmed fixed.
+    console.log('[ValveMTO] handleOpenLegends() called — sections:', VALVE_MTO_LEGEND_SECTIONS);
+    setActivatingLegends(true);
+    try {
+      await Promise.all([
+        resolveLegendProjectId(),
+        ...VALVE_MTO_LEGEND_SECTIONS.map(autoPopulateLegendSection),
+      ]);
+    } finally {
+      setActivatingLegends(false);
+      setLegendModalOpen(true);
+    }
+  };
 
   // Fullscreen mode (soft-coded — see PMS_FULLSCREEN_CONFIG)
   const [isFullscreen, setIsFullscreen] = useState(() => {
@@ -244,12 +937,155 @@ const ValveMTOPage = () => {
 
   const activeTab = VALVE_TABS.find((t) => t.id === activeId) || VALVE_TABS[0];
 
-  // Auto-save (debounced) — also mirrors into the active project slot.
+  // ─── Server-side persistence (apps.valve_mto) ──────────────────────────
+  // localStorage remains the fast, always-available copy (nothing above
+  // changes) — this mirrors the same data server-side so it survives a
+  // closed/cleared browser. 'idle' | 'saving' | 'saved' | 'error' — shown
+  // as a small, non-blocking status next to the project switcher (a plain
+  // inline <span> in the header, no overlay/fixed positioning — it was
+  // never actually capable of blocking clicks on the rest of the page).
+  const [serverSyncStatus, setServerSyncStatus] = useState('idle');
+  const [serverProjects, setServerProjects] = useState([]);
+  const [serverProjectsLoading, setServerProjectsLoading] = useState(false);
+
+  // BUG FIX (real, confirmed): 'saved' never reverted to 'idle' on its
+  // own — only the NEXT autosave/sync call changed serverSyncStatus
+  // again, so "Saved to server" could sit in the header indefinitely
+  // after a user's last edit, reading as the page being permanently
+  // stuck even though nothing was actually blocked. Auto-dismiss it
+  // after 3s, like a toast, back to the quiet "N projects backed up"
+  // idle state. 'saving'/'error' are left alone — 'saving' needs to
+  // stay visible for as long as a save is genuinely in flight, and
+  // 'error' is actionable information worth leaving up rather than
+  // silently hiding a failure.
+  useEffect(() => {
+    if (serverSyncStatus !== 'saved') return undefined;
+    const t = setTimeout(() => setServerSyncStatus('idle'), 3000);
+    return () => clearTimeout(t);
+  }, [serverSyncStatus]);
+
+  const refreshServerProjects = () => {
+    setServerProjectsLoading(true);
+    return valveMtoService.listProjects()
+      .then((data) => setServerProjects(Array.isArray(data) ? data : []))
+      .catch((err) => console.warn('[ValveMTO] Could not load server projects:', err?.message))
+      .finally(() => setServerProjectsLoading(false));
+  };
+
+  // Load the user's server-saved projects once on mount — shown in the
+  // "Cloud Projects" panel on the Projects tab (see CloudProjectsPanel),
+  // letting a user browse/restore any project saved server-side, even
+  // from a different browser/device than the one that created it.
+  useEffect(() => {
+    let cancelled = false;
+    setServerProjectsLoading(true);
+    valveMtoService.listProjects()
+      .then((data) => { if (!cancelled) setServerProjects(Array.isArray(data) ? data : []); })
+      .catch((err) => console.warn('[ValveMTO] Could not load server projects:', err?.message))
+      .finally(() => { if (!cancelled) setServerProjectsLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  // BUG FIX (real, confirmed contributing cause of "stuck on Saving…"):
+  // the post-extraction completion call (syncToServer(..., {status:
+  // 'completed'})) and the debounced autosave effect below both call
+  // this function, and both can fire within the same few hundred ms of
+  // each other right after an extraction finishes (the completion call
+  // is immediate/fire-and-forget; the autosave effect's own debounce
+  // timer also fires once `rows`/`project` state updates). Two
+  // overlapping in-flight calls can race on `localActive.serverId` being
+  // read before the first call's createProject() has resolved and
+  // persisted it — both then try to create a SEPARATE server-side
+  // project, and whichever call's try/catch resolves LAST wins the
+  // `serverSyncStatus` badge, regardless of which one actually matches
+  // reality. These refs serialize calls: only one runs at a time, and a
+  // call that arrives while one is already in flight is coalesced into a
+  // single follow-up run (using its own, more current project/rows) that
+  // fires the moment the in-flight one finishes, instead of starting a
+  // second overlapping request.
+  const syncInFlightRef = useRef(false);
+  const pendingSyncRef = useRef(null);
+
+  // Creates the server-side project on first save for this local project
+  // (lazily — a brand-new, still-empty local project has nothing worth
+  // syncing yet), then bulk-replaces its rows. Never throws to the
+  // caller — a sync failure must never interrupt the localStorage-backed
+  // UX, which already fully works without this.
+  const syncToServer = async (currentProject, currentRows, { status } = {}) => {
+    if (!currentRows.length) return;
+    const localActive = getActiveProject();
+    if (!localActive) return;
+    if (syncInFlightRef.current) {
+      // Remember the most recent request's data; never let a plain
+      // autosave's lack of `status` silently erase an already-queued
+      // 'completed' from an earlier request that raced it.
+      pendingSyncRef.current = {
+        project: currentProject,
+        rows: currentRows,
+        status: status || pendingSyncRef.current?.status,
+      };
+      return;
+    }
+    syncInFlightRef.current = true;
+    setServerSyncStatus('saving');
+    try {
+      let serverId = localActive.serverId;
+      if (!serverId) {
+        const created = await valveMtoService.createProject({
+          projectName: localActive.name || currentProject?.doc_title || 'Valve MTO Project',
+          sourcePdfName: currentProject?.doc_no || '',
+          status: status || 'extracting',
+        });
+        serverId = created.id;
+        setProjectServerId(localActive.id, serverId);
+      } else if (status) {
+        await valveMtoService.updateProject(serverId, { status }).catch(() => {});
+      }
+      await valveMtoService.saveRows(serverId, currentRows);
+      setServerSyncStatus('saved');
+    } catch (err) {
+      console.warn('[ValveMTO] Server sync failed (localStorage copy is unaffected):', err?.message);
+      setServerSyncStatus('error');
+    } finally {
+      syncInFlightRef.current = false;
+      const pending = pendingSyncRef.current;
+      pendingSyncRef.current = null;
+      if (pending) {
+        syncToServer(pending.project, pending.rows, { status: pending.status });
+      }
+    }
+  };
+
+  // BUG FIX (real, confirmed root cause of "Saved to server" repeating
+  // forever): this effect's dependency array is [project, rows] — React
+  // compares those by REFERENCE, not content. saveState() below writes
+  // to localStorage and dispatches REFRESH_EVENT; the cross-tab listener
+  // a few lines down reacts to that event by calling
+  // setState(loadState()), and loadState() does a fresh JSON.parse() —
+  // which ALWAYS returns brand-new object/array references, even when
+  // the content is byte-identical to what's already in state. Those new
+  // references made this effect think project/rows had "changed" again,
+  // so it re-ran saveState() -> REFRESH_EVENT -> setState(loadState())
+  // -> [new references] -> this effect again, forever — each pass also
+  // called syncToServer(), which is exactly why "Saved to server" kept
+  // reappearing with no further user action. Fixed with a hasChanges
+  // check: a content signature (not reference) of the last state this
+  // effect actually acted on, so a reference-only replacement with
+  // identical content is skipped instead of feeding the loop.
+  const lastSyncedSignatureRef = useRef(null);
+
+  // Auto-save (debounced) — also mirrors into the active project slot,
+  // and (same debounce) into the server-side copy — "auto-save on every
+  // edit" per this feature's own requirement.
   useEffect(() => {
     const t = setTimeout(() => {
+      const signature = JSON.stringify({ project, rows });
+      if (signature === lastSyncedSignatureRef.current) return;
+      lastSyncedSignatureRef.current = signature;
       saveState({ project, rows });
       syncActiveProject({ project, rows });
       setProjects(listProjects());
+      syncToServer(project, rows);
     }, AUTOSAVE_DEBOUNCE);
     return () => clearTimeout(t);
   }, [project, rows]);
@@ -282,7 +1118,10 @@ const ValveMTOPage = () => {
 
   // ─── Derived: filtered rows per active tab ─────────────────────────────
   const visibleRows = useMemo(() => {
-    let list = rows;
+    // See workspaceOpened's own comment — empty state until the user
+    // explicitly opens a project, even though `rows` itself may still
+    // hold a previous session's data underneath.
+    let list = workspaceOpened ? rows : [];
     if (activeTab.areaFilter) {
       const af = activeTab.areaFilter.toLowerCase();
       list = list.filter((r) => String(r.area || '').toLowerCase() === af);
@@ -294,7 +1133,7 @@ const ValveMTOPage = () => {
       );
     }
     return list;
-  }, [rows, activeTab, search]);
+  }, [rows, activeTab, search, workspaceOpened]);
 
   const totals = useMemo(() => ({
     island: sumQty(visibleRows, 'qty_island'),
@@ -318,6 +1157,9 @@ const ValveMTOPage = () => {
     if (activeTab.areaFilter) r.area = activeTab.areaFilter;
     r.sl_no = rows.length + 1;
     setState((s) => ({ ...s, rows: [...s.rows, r] }));
+    // A manually-added row must be visible immediately, not silently
+    // added to a still-hidden `rows` — see workspaceOpened's own comment.
+    setWorkspaceOpened(true);
   };
 
   const deleteRow = (id) =>
@@ -364,6 +1206,19 @@ const ValveMTOPage = () => {
         setImportMsg({ type: 'warn', text: 'Uploading PDF & queuing AI Vision extraction…' });
         const fd = new FormData();
         fd.append(PDF_EXTRACTION_CONFIG.fileFieldName, file);
+        // BYOK — only sent when the user actually entered a key; omitted
+        // entirely otherwise so the backend falls back to the admin-
+        // configured OpenAI key exactly as it always has (see
+        // _resolve_vision_credential's own docstring on the backend).
+        if (visionApiKey.trim()) {
+          fd.append('vision_provider', visionProvider);
+          fd.append('vision_api_key', visionApiKey.trim());
+        }
+        // Always sent explicitly (not omit-when-default, unlike BYOK
+        // above) — the backend also defaults to 'thorough' on its own,
+        // but sending it here keeps the two sides from ever silently
+        // disagreeing if either default is ever changed independently.
+        fd.append('scan_mode', scanMode);
         const { data: startResp } = await apiClient.post(
           PDF_EXTRACTION_CONFIG.startEndpoint, fd,
           {
@@ -488,6 +1343,14 @@ const ValveMTOPage = () => {
         const finalRows = parsed.map((r, i) => ({ ...r, sl_no: i + 1 }));
         const finalProject = { ...project, ...projectMeta };
         setState({ project: finalProject, rows: finalRows });
+        setWorkspaceOpened(true);
+        // Save the freshly extracted/imported rows to the server
+        // immediately (not just via the debounced autosave) — "after
+        // extraction completes: save all rows to server" per this
+        // feature's own requirement. Fire-and-forget: a failure here is
+        // logged (see syncToServer) but never blocks the success message
+        // below — the data is still safe in localStorage either way.
+        syncToServer(finalProject, finalRows, { status: 'completed' });
         // Auto-save a history snapshot so the user never has to re-extract.
         const snap = saveHistoryEntry({
           source:     isPdf ? 'pdf' : 'spreadsheet',
@@ -528,6 +1391,18 @@ const ValveMTOPage = () => {
     exportValveMTOWorkbook({ rows, project, filename });
   };
 
+  // Separate "Download All Data" export — all 18 server-shaped columns on
+  // every sheet, every row (real + line-recovery placeholders, same as
+  // onExport above already includes — neither export filters those out).
+  const onExportAllData = () => {
+    if (!rows.length) {
+      setImportMsg({ type: 'warn', text: 'Add or import valves first, then export.' });
+      return;
+    }
+    const filename = `${(project.doc_no || 'Valve_MTO').replace(/[\\/*?:[\]\s]+/g, '_')}_AllData.xlsx`;
+    exportValveMTOAllData({ rows, project, filename });
+  };
+
   // ─── History ───────────────────────────────────────────────────────────
   const onSaveSnapshot = async () => {
     if (!rows.length) {
@@ -557,6 +1432,7 @@ const ValveMTOPage = () => {
       project: { ...(entry.project || {}) },
       rows:    (entry.rows || []).map((r, i) => ({ ...r, sl_no: i + 1 })),
     });
+    setWorkspaceOpened(true);
     setActiveId('all');
     setImportMsg({ type: 'ok', text: `Restored snapshot “${entry.label}” (${entry.rowCount} row(s)).` });
   };
@@ -588,7 +1464,20 @@ const ValveMTOPage = () => {
   };
 
   const onSwitchProject = (id) => {
-    if (id === activeProjectId) { setProjectMenuOpen(false); return; }
+    // BUG FIX: used to early-return as a no-op whenever `id` already
+    // equalled `activeProjectId` — which, on a fresh page load, is
+    // whatever project was active in a PREVIOUS session (see
+    // ensureInitialised/workspaceOpened's own comment), never actually
+    // opened by the user yet. Clicking that exact project in the
+    // Projects list used to do nothing visible at all (stats stayed at
+    // 0). Now still short-circuits the actual id-switch work when
+    // nothing would change, but always falls through to mark the
+    // workspace opened so its data/stats actually display.
+    if (id === activeProjectId) {
+      setWorkspaceOpened(true);
+      setProjectMenuOpen(false);
+      return;
+    }
     // Persist current workspace into the outgoing active project.
     syncActiveProject({ project, rows });
     setActiveProject(id);
@@ -596,6 +1485,7 @@ const ValveMTOPage = () => {
     if (next) {
       setActiveProjectId(next.id);
       setState({ project: { ...(next.project || {}) }, rows: (next.rows || []).map((r) => ({ ...r })) });
+      setWorkspaceOpened(true);
       setImportMsg({ type: 'ok', text: `Switched to “${next.name}” (${next.rows?.length || 0} valve row(s)).` });
     }
     setProjectMenuOpen(false);
@@ -615,6 +1505,91 @@ const ValveMTOPage = () => {
     setProjectDialog({ mode: 'delete', target: cur });
   };
 
+  // ─── Cloud Projects (server-side, apps.valve_mto) ──────────────────────
+  // Loads a server-saved project into the workspace — reuses the LOCAL
+  // project it's already linked to (via serverId) if one exists on this
+  // browser, so re-loading doesn't create a duplicate local entry every
+  // time; otherwise creates a fresh local project to hold it (e.g. the
+  // browser was cleared, or this project was saved from a different
+  // device).
+  const onLoadServerProject = async (serverProject) => {
+    syncActiveProject({ project, rows });
+    try {
+      const localMatch = projects.find((p) => p.serverId === serverProject.id);
+      const mappedRows = await valveMtoService.getRows(serverProject.id);
+      const nextProject = { doc_title: serverProject.project_name, doc_no: serverProject.source_pdf_name || '' };
+      let targetId;
+      if (localMatch) {
+        targetId = localMatch.id;
+        setActiveProject(targetId);
+        syncActiveProject({ project: nextProject, rows: mappedRows });
+      } else {
+        const entry = createProject({
+          name: serverProject.project_name,
+          project: nextProject,
+          rows: mappedRows,
+          serverId: serverProject.id,
+        });
+        targetId = entry.id;
+      }
+      setActiveProjectId(targetId);
+      setState({ project: nextProject, rows: mappedRows });
+      setWorkspaceOpened(true);
+      setProjects(listProjects());
+      setActiveId('all');
+      setImportMsg({ type: 'ok', text: `Loaded “${serverProject.project_name}” from the server (${mappedRows.length} valve row(s)).` });
+    } catch (err) {
+      setImportMsg({ type: 'err', text: err?.response?.data?.error || err?.message || 'Could not load this project from the server.' });
+    }
+  };
+
+  const onRenameServerProject = async (serverProject) => {
+    const name = await radaiPrompt('Rename this cloud project:', serverProject.project_name || '');
+    if (name === null) return;
+    const trimmed = (name || '').trim();
+    if (!trimmed) return;
+    try {
+      await valveMtoService.updateProject(serverProject.id, { project_name: trimmed, status: serverProject.status });
+      await refreshServerProjects();
+    } catch (err) {
+      setImportMsg({ type: 'err', text: err?.response?.data?.error || err?.message || 'Rename failed.' });
+    }
+  };
+
+  const onDeleteServerProject = async (serverProject) => {
+    if (!(await radaiConfirm(`Delete “${serverProject.project_name}” from the server? This cannot be undone. (Any local copy in this browser is kept.)`))) return;
+    try {
+      await valveMtoService.deleteProject(serverProject.id);
+      // Unlink any local project that pointed at it — the server row is
+      // gone, so autosave must create a fresh one rather than trying to
+      // update/save-rows against an id that no longer exists.
+      const localMatch = projects.find((p) => p.serverId === serverProject.id);
+      if (localMatch) setProjectServerId(localMatch.id, null);
+      await refreshServerProjects();
+    } catch (err) {
+      setImportMsg({ type: 'err', text: err?.response?.data?.error || err?.message || 'Delete failed.' });
+    }
+  };
+
+  // BUG FIX (real, confirmed gap): valveMtoService.exportXlsx() — a
+  // fully-built server-side xlsx export (apps.valve_mto.views's own
+  // `export` action, using export_project_to_xlsx) — had NO button
+  // anywhere calling it. The main toolbar's "Download Valve MTO (.xlsx)"
+  // button (onExport below) already existed and works fine for the
+  // CURRENT in-browser `rows`, on every tab (it lives in the page header,
+  // not inside any tab's content, so it's not tab-scoped at all) — but a
+  // project sitting in Cloud Projects, not yet Loaded into the local
+  // workspace, had no way to download its xlsx directly. This closes
+  // that gap without requiring a Load first.
+  const onExportServerProject = async (serverProject) => {
+    try {
+      const filename = `${(serverProject.project_name || 'Valve_MTO').replace(/[\\/*?:[\]\s]+/g, '_')}.xlsx`;
+      await valveMtoService.exportXlsx(serverProject.id, filename);
+    } catch (err) {
+      setImportMsg({ type: 'err', text: err?.response?.data?.error || err?.message || 'Download failed.' });
+    }
+  };
+
   // Modal submit handlers
   const submitCreateProject = ({ name, description }) => {
     syncActiveProject({ project, rows });
@@ -622,6 +1597,7 @@ const ValveMTOPage = () => {
     if (entry) {
       setActiveProjectId(entry.id);
       setState({ project: {}, rows: [] });
+      setWorkspaceOpened(true);
       setProjects(listProjects());
       setProjectDialog(null);
       setImportMsg({ type: 'ok', text: `Project “${entry.name}” created. Workspace cleared — ready to import or add valves.` });
@@ -774,6 +1750,33 @@ const ValveMTOPage = () => {
                 onRename={onRenameActiveProject}
                 onDelete={onDeleteActiveProject}
               />
+              {/* Server-side persistence status (apps.valve_mto) — see
+                  syncToServer's own comment. Purely informational; the
+                  page works fully without this succeeding. */}
+              {serverSyncStatus === 'idle' && serverProjects.length > 0 && (
+                <span className="text-[11px] text-slate-400" title="Projects backed up on the server from this or another session">
+                  {serverProjects.length} project{serverProjects.length === 1 ? '' : 's'} backed up
+                </span>
+              )}
+              {serverSyncStatus !== 'idle' && (
+                <span
+                  className={`inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded ${
+                    serverSyncStatus === 'saving' ? 'text-slate-400'
+                      : serverSyncStatus === 'error' ? 'text-amber-600 bg-amber-50'
+                        : 'text-emerald-600 bg-emerald-50'
+                  }`}
+                  title={
+                    serverSyncStatus === 'error'
+                      ? 'Could not save to the server — your data is still safe in this browser.'
+                      : 'Server-side backup status'
+                  }
+                >
+                  {serverSyncStatus === 'saving' && <RefreshCw className="w-3 h-3 animate-spin" />}
+                  {serverSyncStatus === 'saved' && <Check className="w-3 h-3" />}
+                  {serverSyncStatus === 'error' && <AlertTriangle className="w-3 h-3" />}
+                  {serverSyncStatus === 'saving' ? 'Saving…' : serverSyncStatus === 'saved' ? 'Saved to server' : 'Server save failed'}
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -836,6 +1839,15 @@ const ValveMTOPage = () => {
                 <Download className="w-4 h-4" />
                 Download Valve MTO (.xlsx)
               </button>
+              <button
+                onClick={onExportAllData}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-bold text-white rounded-xl transition-all hover:-translate-y-px"
+                style={{ background: 'linear-gradient(90deg,#0ea5e9,#2563eb)', boxShadow: '0 4px 12px rgba(37,99,235,0.35)' }}
+                title="Export every column and every row (including line-recovery placeholder rows) across ALL VALVES / ISLAND / FIELD / COMBINED MTO / Pivot Summary"
+              >
+                <Download className="w-4 h-4" />
+                Download All Data
+              </button>
             </div>
           </div>
           </div>
@@ -890,8 +1902,61 @@ const ValveMTOPage = () => {
           </div>
         )}
 
+
+        {/* ── Manage Legends — opens the SAME shared LegendSheetsModal
+            P&ID Verification V1/V2 use (apps.pid_checker_v2). Auto-
+            activates the user's own legend (if any) for Valve MTO's 5
+            relevant sections first — see handleOpenLegends's own
+            comment. Same small-button style as the two rows either
+            side of it. ───────────────────────────────────────────── */}
+        <button
+          type="button"
+          onClick={handleOpenLegends}
+          disabled={activatingLegends}
+          className="mb-4 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-violet-700 bg-violet-50 border border-violet-200 hover:bg-violet-100 rounded-lg transition-colors disabled:opacity-60"
+        >
+          {activatingLegends ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <BookOpenIcon className="w-3.5 h-3.5" />}
+          {activatingLegends ? 'Activating legends…' : 'Manage Legends'}
+        </button>
+
+        {/* ── AI Document Assist (Wrench) toggle — hidden by default, see
+            wrenchPanelHidden's own comment. ─────────────────────────── */}
+        {wrenchPanelHidden ? (
+          <button
+            type="button"
+            onClick={() => setWrenchPanelHidden(false)}
+            className="mb-4 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-500 border border-dashed border-slate-300 hover:border-slate-400 hover:text-slate-700 rounded-lg transition-colors"
+          >
+            <CloudIcon className="w-3.5 h-3.5" /> Enable AI Document Assist (Wrench · optional)
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setWrenchPanelHidden(true)}
+            className="mb-1.5 inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-600"
+          >
+            <X className="w-3 h-3" /> Hide Wrench panel
+          </button>
+        )}
+
         {/* ── AI Document Assist (Wrench) — soft-coded, optional ────── */}
-        {AI_DOC_ASSIST_CONFIG.enabled && (
+        {/* BUG FIX: this panel's own onError used to feed the page-level
+            importMsg red banner (the same one used for real PDF/spreadsheet
+            import failures) — a real, confirmed incident: a Wrench-side
+            outage ("Failed to load Wrench projects" / "AI credential
+            unavailable") made the whole page LOOK broken, even though the
+            plain "Import" button (local file upload, onPickFile/fileRef
+            above) never depended on Wrench at all and kept working fine.
+            Wrench is explicitly optional (see AI_DOC_ASSIST_CONFIG's own
+            subtitleTag) — a failure in it must never look like a failure
+            of Valve MTO itself. Per the fix: on any Wrench error, hide
+            this panel outright (not just suppress the banner) so it can
+            never sit there half-broken in the user's way; the rest of the
+            page — including local file upload — is completely unaffected
+            either way. Logged to console instead of surfaced to the user,
+            since there's nothing actionable for them to do about a Wrench-
+            side outage from here. */}
+        {AI_DOC_ASSIST_CONFIG.enabled && !wrenchPanelHidden && (
           <div className="mb-4">
             <WrenchAiDocAssist
               title={AI_DOC_ASSIST_CONFIG.title}
@@ -903,7 +1968,10 @@ const ValveMTOPage = () => {
               acceptedExts={AI_DOC_ASSIST_CONFIG.acceptedExts}
               projectName={activeProject?.name || ''}
               onFileSelected={(file) => runImportForFile(file)}
-              onError={(msg) => setImportMsg({ type: 'err', text: msg })}
+              onError={(msg) => {
+                console.warn('[ValveMTO] Wrench AI Document Assist error — hiding the optional panel:', msg);
+                setWrenchPanelHidden(true);
+              }}
             />
           </div>
         )}
@@ -930,7 +1998,10 @@ const ValveMTOPage = () => {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           {STAT_CARDS.map((s) => {
             const Icon = s.icon;
-            const value = s.pick({ rows, history });
+            // 'history' (Saved Snapshots) isn't project-scoped — always
+            // real. The other three cards ARE project-scoped, so they
+            // stay at 0 until a project is explicitly opened.
+            const value = s.pick({ rows: workspaceOpened ? rows : [], history });
             return (
               <div key={s.key} className={`relative overflow-hidden rounded-xl bg-gradient-to-br ${s.gradient} text-white p-4 shadow-sm`}>
                 <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide opacity-90">
@@ -968,14 +2039,25 @@ const ValveMTOPage = () => {
 
         {/* Per-tab body */}
         {activeTab.id === 'projects' ? (
-          <ProjectsView
-            projects={projects}
-            activeProjectId={activeProjectId}
-            onOpen={(id) => { onSwitchProject(id); setActiveId('upload'); }}
-            onCreate={onCreateProject}
-            onRename={(p) => { setActiveProjectId(p.id); setActiveProject(p.id); onRenameActiveProject(); }}
-            onDelete={(p) => { setActiveProjectId(p.id); setActiveProject(p.id); onDeleteActiveProject(); }}
-          />
+          <>
+            <ProjectsView
+              projects={projects}
+              activeProjectId={activeProjectId}
+              onOpen={(id) => { onSwitchProject(id); setActiveId('upload'); }}
+              onCreate={onCreateProject}
+              onRename={(p) => { setActiveProjectId(p.id); setActiveProject(p.id); onRenameActiveProject(); }}
+              onDelete={(p) => { setActiveProjectId(p.id); setActiveProject(p.id); onDeleteActiveProject(); }}
+            />
+            <CloudProjectsPanel
+              serverProjects={serverProjects}
+              loading={serverProjectsLoading}
+              onRefresh={refreshServerProjects}
+              onLoad={onLoadServerProject}
+              onRename={onRenameServerProject}
+              onDelete={onDeleteServerProject}
+              onExport={onExportServerProject}
+            />
+          </>
         ) : activeTab.id === 'upload' ? (
           <UploadHero
             importing={importing}
@@ -984,9 +2066,27 @@ const ValveMTOPage = () => {
             onOpenHistory={() => setActiveId('history')}
             activeProject={activeProject}
             onChangeProject={() => setActiveId('projects')}
+            onOpenLegends={handleOpenLegends}
+            scanMode={scanMode}
+            onScanModeChange={setScanMode}
+            visionProvider={visionProvider}
+            onVisionProviderChange={(v) => {
+              setVisionProvider(v);
+              setVisionTestResult(null);
+              sessionStorage.setItem(visionProviderStorageKey, v);
+            }}
+            visionApiKey={visionApiKey}
+            onVisionApiKeyChange={(v) => {
+              setVisionApiKey(v);
+              setVisionTestResult(null);
+              sessionStorage.setItem(visionApiKeyStorageKey, v);
+            }}
+            testingVisionKey={testingVisionKey}
+            visionTestResult={visionTestResult}
+            onTestVisionKey={handleTestVisionKey}
           />
         ) : activeTab.id === 'pivot' ? (
-          <PivotView rows={rows} />
+          <PivotView rows={workspaceOpened ? rows : []} />
         ) : activeTab.id === 'history' ? (
           <HistoryView
             history={history}
@@ -1009,6 +2109,7 @@ const ValveMTOPage = () => {
             onDeleteRow={deleteRow}
             onClearAll={clearAll}
             renderField={renderField}
+            noProjectOpened={!workspaceOpened}
           />
         )}
 
@@ -1037,6 +2138,39 @@ const ValveMTOPage = () => {
         onSubmitCreate={submitCreateProject}
         onSubmitRename={submitRenameProject}
         onSubmitDelete={submitDeleteProject}
+      />
+
+      {/* Manage Legends — the SAME shared component P&ID Verification
+          V1/V2 use (apps.pid_checker_v2's structured, per-section legend
+          system). Opens directly on the "Valve" section; the user can
+          switch to Piping/Line List/Scope Symbols/Limit Line via its own
+          section tabstrip. projectId is a PIDVProject id we resolve/
+          create ourselves (see resolveLegendProjectId above) — legend
+          CRUD itself is per-user and works without it, but the modal's
+          "Upload symbol image" feature needs a real PIDVProject id (not
+          the project_organizer id its own selector offers) or every
+          upload 404s; see the BUG FIX comment on that import above. */}
+      <LegendSheetsModal
+        open={legendModalOpen}
+        onClose={() => setLegendModalOpen(false)}
+        section="valve"
+        projectId={legendProjectId || undefined}
+        title="Valve MTO Legend Sheets"
+        description="Upload valve symbols, piping classes, and line number formats to improve AI extraction accuracy for your P&ID drawings."
+        syncTitle="Global Library"
+        syncText="Legends are shared across all your Valve MTO extractions."
+        // NOTE: harmless marker only — LegendSheetsModal.jsx does not
+        // currently read/consume this prop (out of scope here to add
+        // that). It does NOT gate anything: auto-create/auto-activate
+        // already only runs from THIS file's own handleOpenLegends(),
+        // never from the modal itself or from P&ID V1/V2 / I/O List
+        // (they never call handleOpenLegends). The actual cross-module
+        // leak this session's "CRITICAL BUG" report described was
+        // fixed above in autoPopulateLegendSection (no longer steals
+        // activation from an already-active legend in a shared section).
+        isValveMTO
+        filterOutMTOLegends={false}
+        legendApi={valveMtoLegendService}
       />
     </div>
   );
@@ -1503,7 +2637,89 @@ const ProjectsView = ({ projects, activeProjectId, onOpen, onCreate, onRename, o
   </div>
 );
 
-const UploadHero = ({ importing, onPickFile, historyCount = 0, onOpenHistory, activeProject, onChangeProject }) => (
+// Server-saved projects (apps.valve_mto) — separate from the local-only
+// "Project Folders" above. A row here can exist on the server without
+// (yet) being linked to any local project entry on THIS browser — e.g.
+// saved from another device — which is exactly the case Load exists to
+// handle.
+const CloudProjectsPanel = ({ serverProjects, loading, onRefresh, onLoad, onRename, onDelete, onExport }) => (
+  <div className="bg-white rounded-2xl border border-slate-200 shadow-sm mt-4">
+    <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-3 flex-wrap">
+      <div className="p-2 rounded-lg bg-gradient-to-br from-sky-500 to-blue-600 shadow-sm">
+        <CloudIcon className="w-4 h-4 text-white" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-base font-bold text-slate-900">Cloud Projects</div>
+        <div className="text-xs text-slate-500">
+          Saved on the server — available even if this browser&apos;s data is cleared, or from another device.
+        </div>
+      </div>
+      <button
+        onClick={onRefresh}
+        disabled={loading}
+        className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors disabled:opacity-60"
+      >
+        <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
+      </button>
+    </div>
+
+    {serverProjects.length === 0 ? (
+      <div className="p-6 text-sm text-slate-500 text-center">
+        {loading ? 'Loading…' : 'No projects saved to the server yet — they appear here automatically after your first extraction/edit.'}
+      </div>
+    ) : (
+      <div className="divide-y divide-slate-100">
+        {serverProjects.map((sp) => (
+          <div key={sp.id} className="px-5 py-3 flex items-center gap-3 flex-wrap hover:bg-slate-50/60 transition-colors">
+            <CloudIcon className="w-4 h-4 text-sky-500 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold text-slate-900 truncate">{sp.project_name || 'Untitled Project'}</div>
+              <div className="text-[11px] text-slate-500">
+                {formatDate(sp.updated_at)} · {sp.row_count ?? 0} valve row(s) · {sp.status}
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <button
+                onClick={() => onLoad(sp)}
+                className="px-3 py-1.5 text-xs font-semibold text-sky-700 bg-sky-50 border border-sky-200 hover:bg-sky-100 rounded-lg transition-colors"
+              >
+                Load
+              </button>
+              <button
+                onClick={() => onExport(sp)}
+                title="Download this project's Valve MTO as .xlsx — no need to Load it first"
+                className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+              >
+                <Download className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => onRename(sp)}
+                title="Rename"
+                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => onDelete(sp)}
+                title="Delete"
+                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+);
+
+const UploadHero = ({
+  importing, onPickFile, historyCount = 0, onOpenHistory, activeProject, onChangeProject,
+  onOpenLegends, scanMode, onScanModeChange,
+  visionProvider, onVisionProviderChange, visionApiKey, onVisionApiKeyChange,
+  testingVisionKey, visionTestResult, onTestVisionKey,
+}) => (
   <div className="relative bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
     {/* Decorative gradient blobs */}
     <div className="absolute -top-20 -right-16 w-72 h-72 bg-gradient-to-br from-amber-200 via-orange-200 to-rose-200 rounded-full blur-3xl opacity-60 pointer-events-none" />
@@ -1538,6 +2754,115 @@ const UploadHero = ({ importing, onPickFile, historyCount = 0, onOpenHistory, ac
         PDFs are read with multi-page GPT-4o Vision; spreadsheets parse locally with header-alias detection,
         emitting the standard 5-sheet <strong>PIPING VALVES MTO</strong> template.
       </p>
+
+      {/* Step-by-step guide — Legend Sheet is optional but improves AI
+          accuracy on valve types, PMS/piping class and line format (see
+          apps.pid_verification.services.piping_valve_mto_extractor's
+          _build_legend_context, which reads the SAME apps.pid_checker_v2
+          legends this button opens — 'Valve'/'Piping'/'Line List'
+          sections, same as P&ID Verification V1/V2). */}
+      <div className="max-w-md mx-auto mb-6 text-left space-y-2">
+        {/* Step 1 — AI Vision API Key. Always shown, not a collapsible
+            toggle (see this feature's own requirement) — "(optional)"
+            removed from the label since the wording made it read as
+            skippable; the underlying fallback behaviour is unchanged
+            (see VALVE_VISION_CONFIG.hint below and
+            _resolve_vision_credential on the backend: a blank key here
+            still falls back to the admin-managed OpenAI key exactly as
+            before — this is a visibility/prominence change in the UI
+            only, not a new hard requirement to enter a key). */}
+        <div className="p-2.5 rounded-lg bg-white/70 border border-amber-100">
+          <div className="flex items-center gap-2.5 mb-2">
+            <span className="flex-shrink-0 w-5 h-5 rounded-full bg-amber-500 text-white text-[11px] font-bold flex items-center justify-center">1</span>
+            <span className="text-xs text-slate-700 flex-1 font-semibold">AI Vision API Key</span>
+            {visionApiKey.trim() && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 bg-emerald-50 rounded">
+                <Check className="w-3 h-3" /> Key set
+              </span>
+            )}
+          </div>
+          <div className="pl-7 space-y-2">
+            <p className="text-[11px] text-slate-500">{VALVE_VISION_CONFIG.hint}</p>
+            <div className="flex gap-2 flex-wrap">
+              <select
+                value={visionProvider}
+                onChange={(e) => onVisionProviderChange(e.target.value)}
+                className="text-xs border border-slate-300 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-amber-200 focus:border-amber-400 outline-none"
+              >
+                {VALVE_VISION_CONFIG.providers.map((p) => (
+                  <option key={p.value} value={p.value}>{p.label}</option>
+                ))}
+              </select>
+              <input
+                type="password"
+                value={visionApiKey}
+                onChange={(e) => onVisionApiKeyChange(e.target.value)}
+                placeholder="API key (uses admin key if blank)"
+                className="flex-1 min-w-[220px] text-xs border border-slate-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-amber-200 focus:border-amber-400 outline-none"
+              />
+              <button
+                type="button"
+                onClick={onTestVisionKey}
+                disabled={testingVisionKey || !visionApiKey.trim()}
+                className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-40 flex items-center gap-1 flex-shrink-0"
+              >
+                {testingVisionKey ? <RefreshCw className="w-3 h-3 animate-spin" /> : null} Test Connection
+              </button>
+            </div>
+            {visionTestResult && (
+              <p className={`text-[11px] ${visionTestResult.valid ? 'text-emerald-600' : 'text-red-600'}`}>
+                {visionTestResult.message}
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2.5 p-2.5 rounded-lg bg-white/70 border border-amber-100">
+          <span className="flex-shrink-0 w-5 h-5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-bold flex items-center justify-center">2</span>
+          <span className="text-xs text-slate-700 flex-1">Upload Legend <span className="text-slate-400">(Optional)</span></span>
+          <button
+            type="button"
+            onClick={onOpenLegends}
+            className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-violet-700 bg-violet-50 border border-violet-200 hover:bg-violet-100 rounded-lg transition-colors"
+          >
+            <Sparkles className="w-3 h-3" /> Manage Legends
+          </button>
+        </div>
+        {/* Scan mode — Quick (1 call/page) vs Thorough (2x2 tiles, 2
+            passes = 8 calls/page), default Thorough — see
+            SCAN_MODE_OPTIONS / services.piping_valve_mto_extractor's
+            _scan_mode_params for exactly what each resolves to. */}
+        <div className="p-2.5 rounded-lg bg-white/70 border border-amber-100">
+          <div className="flex items-center gap-2.5 mb-2">
+            <span className="flex-shrink-0 w-5 h-5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-bold flex items-center justify-center">3</span>
+            <span className="text-xs text-slate-700 flex-1">Scan Mode</span>
+          </div>
+          <div className="flex flex-col gap-1.5 pl-7">
+            {SCAN_MODE_OPTIONS.map((opt) => (
+              <label key={opt.value} className="flex items-start gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="valve-mto-scan-mode"
+                  value={opt.value}
+                  checked={scanMode === opt.value}
+                  onChange={() => onScanModeChange(opt.value)}
+                  className="mt-0.5"
+                />
+                <span className="text-xs text-slate-700">
+                  <span className="font-semibold">{opt.label}</span>
+                  {opt.value === SCAN_MODE_DEFAULT && (
+                    <span className="ml-1 text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">DEFAULT</span>
+                  )}
+                  <span className="block text-[11px] text-slate-500">{opt.hint}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="flex items-center gap-2.5 p-2.5 rounded-lg bg-white/70 border border-amber-100">
+          <span className="flex-shrink-0 w-5 h-5 rounded-full bg-amber-500 text-white text-[11px] font-bold flex items-center justify-center">4</span>
+          <span className="text-xs text-slate-700">Upload P&amp;ID PDF</span>
+        </div>
+      </div>
 
       <div className="flex flex-wrap items-center justify-center gap-3">
         <button
@@ -2234,13 +3559,27 @@ const DetailedRunsPanel = ({ detailed, expandedId, onToggle, showAll, onToggleSh
   );
 };
 
-const TableView = ({ tab, rows, totals, search, onSearch, onAddRow, onDeleteRow, onClearAll, renderField }) => {
+const TableView = ({ tab, rows, totals, search, onSearch, onAddRow, onDeleteRow, onClearAll, renderField, noProjectOpened }) => {
   // Per-sheet column visibility — matches the Excel exporter.
   const visibleCols = useMemo(() => {
-    if (tab.id === 'combined') {
-      return VALVE_COLUMNS.filter((c) => c.key !== 'size_2');
-    }
-    return VALVE_COLUMNS.filter((c) => c.key !== 'bore');
+    const base = tab.id === 'combined'
+      ? VALVE_COLUMNS.filter((c) => c.key !== 'size_2')
+      : VALVE_COLUMNS.filter((c) => c.key !== 'bore');
+    // BUG FIX: 'valve_tag' (TAG NUMBER) is declared near the end of
+    // VALVE_COLUMNS (after LINE LIST) — far enough right in a wide table
+    // that it read as "missing" even though it was rendering. Reordered
+    // here, for table rendering only (VALVE_COLUMNS itself — shared by
+    // the importer/exporter/datalists elsewhere in this file — is left
+    // untouched), to sit right after AREA and before TYPE: SL. NO | AREA
+    // | TAG NUMBER | VALVE TYPE | ...
+    const tagIdx = base.findIndex((c) => c.key === 'valve_tag');
+    const areaIdx = base.findIndex((c) => c.key === 'area');
+    if (tagIdx === -1 || areaIdx === -1 || tagIdx === areaIdx + 1) return base;
+    const tagCol = base[tagIdx];
+    const withoutTag = base.filter((c) => c.key !== 'valve_tag');
+    const insertAt = withoutTag.findIndex((c) => c.key === 'area') + 1;
+    withoutTag.splice(insertAt, 0, tagCol);
+    return withoutTag;
   }, [tab.id]);
 
   return (
@@ -2306,7 +3645,9 @@ const TableView = ({ tab, rows, totals, search, onSearch, onAddRow, onDeleteRow,
             {rows.length === 0 && (
               <tr>
                 <td colSpan={visibleCols.length + 1} className="px-4 py-8 text-center text-slate-400 italic">
-                  No valves to display. Click <strong>Add row</strong> or import an existing MTO.
+                  {noProjectOpened
+                    ? 'No project open yet — open one from the Projects tab to see its valves here.'
+                    : <>No valves to display. Click <strong>Add row</strong> or import an existing MTO.</>}
                 </td>
               </tr>
             )}

@@ -18470,6 +18470,7 @@ const PIDVerificationV2 = () => {
         section={LEGEND_SECTION}
         onActiveChange={() => {}}
         projectId={selectedProject?.project_id}
+        filterOutMTOLegends
       />
 
     </DarkBg>
