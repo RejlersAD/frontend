@@ -1,6 +1,7 @@
 /* eslint-disable react/prop-types */
 import { ArrowRightIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
 import { useState } from 'react';
+import { financeSource } from './financeSourcePresentation';
 import { revenueMoney, revenueNumber, revenuePercent, revenueIdentity } from './portfolioRevenuePresentation';
 import { INVOICE_TOTALS, RECORDED_INVOICE_STATUSES, recordedCurrency, recordedMetricNote, recordedMetricValue } from './portfolioInvoicePresentation';
 import './PortfolioRevenueSummaries.css';
@@ -60,11 +61,11 @@ export function InvoicePosition({ recordedInvoices, onNavigate }) {
   const readable = RECORDED_INVOICE_STATUSES.has(source?.status);
   const groups = source?.totals_by_currency || [];
   const group = groups.find(item => item.currency === selected) || groups[0];
-  return <SummaryPanel title="Invoice position" subtitle="Current Finance records · All recorded dates" testId="revenue-overview-invoice" className="prv-invoice-summary"
+  return <SummaryPanel title="Invoice position" subtitle={`${financeSource(source).label} · All recorded dates`} testId="revenue-overview-invoice" className="prv-invoice-summary"
     action={<OpenSection section="invoice" onNavigate={onNavigate}>Open invoice control</OpenSection>}>
     {recordedInvoices?.loading ? <p className="prv-overview-empty" role="status">Loading recorded invoices…</p> : recordedInvoices?.error ? <p className="prv-overview-empty">{recordedInvoices.error.message}</p> : !readable ? <p className="prv-overview-empty">{source?.status === 'restricted' ? 'Outgoing invoice access is restricted.' : 'Recorded invoices are unavailable.'}</p> : !group ? <p className="prv-overview-empty">No included recorded invoices in this scope.</p> : <>
       <div className="prv-invoice-reference-stats">{INVOICE_TOTALS.map(([key, label]) => { const metric = group[key], value = recordedMetricValue(metric), note = recordedMetricNote(metric), currency = recordedCurrency(group.currency); return <div key={key}><span>{label}</span><strong className={revenueNumber(value) < 0 ? 'prv-negative-text' : undefined} title={`${note} · ${currency} ${revenueMoney(value)}`} aria-label={`${label}: ${currency} ${revenueMoney(value)}. ${note}`}><small>{currency}</small> {compact(value)}</strong>{metric?.value == null && value != null && <small>Known subtotal</small>}</div>; })}</div>
-      <p className="prv-invoice-reference-note"><InformationCircleIcon aria-hidden="true" /><span>Current balances · Original currency</span>{groups.length > 1 && <select aria-label="Invoice position currency" value={group.currency || ''} onChange={event => setSelected(event.target.value)}>{groups.map(item => <option key={item.currency || 'unknown'} value={item.currency || ''}>{recordedCurrency(item.currency)}</option>)}</select>}</p>
+      <p className="prv-invoice-reference-note"><InformationCircleIcon aria-hidden="true" /><span>{financeSource(source).workbook ? 'Recorded workbook balances' : 'Current balances'} · Original currency</span>{groups.length > 1 && <select aria-label="Invoice position currency" value={group.currency || ''} onChange={event => setSelected(event.target.value)}>{groups.map(item => <option key={item.currency || 'unknown'} value={item.currency || ''}>{recordedCurrency(item.currency)}</option>)}</select>}</p>
     </>}
   </SummaryPanel>;
 }
