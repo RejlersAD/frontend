@@ -1,129 +1,19 @@
 import { test, expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 
-const fixedTime = '2026-09-30T08:00:00Z'
-const options = {
-  default_owner: 11,
-  owners: [{ id: 11, name: 'Aisha Noor' }, { id: 12, name: 'Omar Ali' }],
-  opportunity_types: [
-    { value: 'tender', label: 'Tender' }, { value: 'rfq', label: 'RFQ' },
-    { value: 'eoi', label: 'EOI' }, { value: 'direct_enquiry', label: 'Direct enquiry' },
-    { value: 'other', label: 'Other' },
-  ],
-}
+import { prepareRegister, opportunity } from '../fixtures/sales-opportunity-register-api'
 
-function opportunity(index, changes = {}) {
-  return {
-    id: `opportunity-${index}`, deal_code: `Q-${102101 + index}`,
-    deal_name: `Synthetic engineering package ${index + 1}`,
-    client: 'client-one', client_name: 'Example Energy LLC',
-    owner: 11, owner_name: 'Aisha Noor', created_by: 11, created_by_name: 'Aisha Noor',
-    opportunity_type: 'tender', open_date: '2026-09-30',
-    created_at: fixedTime, updated_at: fixedTime,
-    stage: 'lead', stage_display: 'Open', probability: 10, bid_decision: 'pending',
-    scope_type: 'feed', service_categories: ['engineering_design'],
-    description: `Reviewed engineering scope for package ${index + 1}.`,
-    client_reference: `ITT-${index + 1}`, currency: '',
-    estimated_value: null, weighted_value: null, expected_close_date: null,
-    submission_due_date: null, next_action: '', next_action_date: null,
-    source_history: [], lifecycle_history: [], permitted_actions: [],
-    ...changes,
-  }
-}
-
-const sampleRows = () => [
-  opportunity(0, { deal_name: 'Seawater intake engineering study', opportunity_type: 'eoi' }),
-  opportunity(1, { deal_name: 'Compressor replacement FEED', stage: 'qualified', stage_display: 'Qualified Lead',
-    owner: 12, owner_name: 'Omar Ali', bid_decision: 'bid', estimated_value: '200000.00',
-    weighted_value: '50000.00', currency: 'AED', submission_due_date: '2026-10-02' }),
-  opportunity(2, { deal_name: 'Substation design and control systems', stage: 'proposal', stage_display: 'Proposal & Estimate',
-    scope_type: 'pmc', service_categories: ['project_management'], bid_decision: 'conditional_bid',
-    estimated_value: '300000.00', weighted_value: '150000.00', currency: 'USD', submission_due_date: '2026-10-03' }),
-  opportunity(3, { deal_name: 'Closed historical package', stage: 'lost', stage_display: 'Lost', bid_decision: 'no_bid' }),
-  opportunity(4, { deal_name: 'No-bid historical package', stage: 'no_bid', stage_display: 'No Bid', bid_decision: 'no_bid' }),
-  ...Array.from({ length: 25 }, (_, index) => opportunity(index + 5)),
-  opportunity(30, { deal_name: 'Offshore platform electrical upgrade', client_name: 'Azure Gas Company',
-    owner: 12, owner_name: 'Omar Ali', opportunity_type: 'rfq', scope_type: 'epcm',
-    submission_due_date: '2026-10-05' }),
-]
-
-async function prepareRegister(page, configuration = {}) {
-  const state = {
-    records: sampleRows(), requests: [], exports: [], pageErrors: [],
-    listStatus: 200, listPageStatuses: {}, exportStatus: 200, detailStatuses: {}, detailHolds: {},
-    patchStatuses: {}, patchHolds: {},
-    ...configuration,
-  }
-  page.on('pageerror', error => state.pageErrors.push(error.message))
-  await page.clock.setFixedTime(new Date(fixedTime))
-  await page.addInitScript(() => localStorage.setItem('radai_access_token', 'synthetic-register-user'))
-  await page.route('**/*', async route => {
-    const request = route.request(), url = new URL(request.url())
-    if (!['127.0.0.1', 'localhost'].includes(url.hostname)) return route.abort()
-    if (!url.pathname.startsWith('/api/v1/')) return route.continue()
-    const body = ['POST', 'PATCH'].includes(request.method()) ? request.postDataJSON() : null
-    state.requests.push({ method: request.method(), path: url.pathname, search: url.search, body })
-    if (url.pathname.endsWith('/deals/registration-options/')) return route.fulfill({ json: options })
-    if (url.pathname.endsWith('/deals/export/') && request.method() === 'POST') {
-      state.exports.push(body)
-      if (state.exportStatus !== 200) return route.fulfill({ status: state.exportStatus, json: { detail: 'The selected export is unavailable.' } })
-      return route.fulfill({ contentType: 'text/csv; charset=utf-8',
-        headers: { 'content-disposition': 'attachment; filename="opportunities.csv"' },
-        body: 'VF code,Title\r\nQ-102101,Synthetic exported registration\r\n' })
-    }
-    if (url.pathname.endsWith('/deals/') && request.method() === 'GET') {
-      if (state.listStatus !== 200) return route.fulfill({ status: state.listStatus, json: { detail: 'Opportunity source is temporarily unavailable.' } })
-      const pageNumber = Number(url.searchParams.get('page') || 1)
-      if (state.listPageStatuses[pageNumber]) return route.fulfill({ status: state.listPageStatuses[pageNumber], json: { detail: 'The complete register could not be loaded.' } })
-      const boundary = Math.ceil(state.records.length / 2)
-      const hasNext = pageNumber === 1 && state.records.length > 1
-      return route.fulfill({ json: {
-        count: state.records.length, next: hasNext ? `${url.origin}/api/v1/sales/deals/?page=2` : null,
-        previous: pageNumber === 2 ? `${url.origin}/api/v1/sales/deals/?page=1` : null,
-        results: pageNumber === 1 ? state.records.slice(0, boundary) : state.records.slice(boundary),
-      } })
-    }
-    const detail = url.pathname.match(/\/deals\/(opportunity-\d+)\/$/)
-    if (detail && request.method() === 'PATCH') {
-      const identifier = detail[1]
-      if (state.patchHolds[identifier]) await state.patchHolds[identifier]
-      const status = state.patchStatuses[identifier] || 200
-      const index = state.records.findIndex(item => item.id === identifier)
-      if (status === 200) state.records[index] = { ...state.records[index], ...body }
-      return route.fulfill({ status, json: status === 200 ? state.records[index] : { detail: 'The previous opportunity save failed.' } })
-    }
-    if (detail && request.method() === 'GET') {
-      const identifier = detail[1]
-      if (state.detailHolds[identifier]) await state.detailHolds[identifier]
-      const status = state.detailStatuses[identifier] || 200
-      const record = state.records.find(item => item.id === identifier)
-      return route.fulfill({ status, json: status === 200 ? record : { detail: 'Opportunity details could not be loaded.' } })
-    }
-    if (url.pathname.endsWith('/clients/')) return route.fulfill({ json: {
-      count: 1, next: null, previous: null, results: [{ id: 'client-one', company_name: 'Example Energy LLC' }],
-    } })
-    if (request.method() === 'GET') return route.fulfill({ json: { count: 0, next: null, previous: null, results: [] } })
-    return route.fulfill({ status: 400, json: { detail: 'Unexpected synthetic test request.' } })
-  })
-  await page.goto('/tests/fixtures/sales-vf-registration.html')
-  const pageSize = page.getByRole('combobox', { name: 'Rows per page', exact: true })
-  await expect.poll(async () => state.pageErrors.length > 0 || await pageSize.count() > 0, { timeout: 40000 }).toBe(true)
-  expect(state.pageErrors).toEqual([])
-  await pageSize.selectOption('50')
-  return state
-}
-
-const register = page => page.getByRole('table')
+const register = page => page.locator('.sor-table-scroll table')
 const rail = page => page.getByRole('complementary', { name: 'Opportunity details', exact: true })
 const vf = (page, index) => register(page).getByRole('button', { name: `Q-${102101 + index}`, exact: true })
 const search = page => page.getByRole('textbox', { name: 'Search opportunities', exact: true })
 const menu = (page, label) => page.locator('summary').filter({ hasText: new RegExp(`^\\s*${label}\\s*$`) })
 
-test('search includes later API pages and open default excludes closed records', async ({ page }) => {
+test('search includes later API pages and all default includes closed records', async ({ page }) => {
   const state = await prepareRegister(page)
   await expect(vf(page, 0)).toBeVisible()
   await expect.poll(() => state.requests.filter(item => item.path.endsWith('/deals/') && item.method === 'GET').length).toBe(2)
-  await expect(register(page)).not.toContainText('Closed historical package')
+  await expect(register(page)).toContainText('Closed historical package')
   await search(page).fill('Azure Gas Company')
   await expect(vf(page, 30)).toBeVisible()
   await expect(register(page)).toContainText('Offshore platform electrical upgrade')
@@ -135,13 +25,14 @@ test('selecting a row opens the persistent detail rail and full record remains a
   const state = await prepareRegister(page)
   await vf(page, 0).click()
   await expect(rail(page)).toContainText('Seawater intake engineering study')
-  await expect(rail(page).getByRole('tab', { name: 'Overview', exact: true })).toHaveAttribute('aria-selected', 'true')
-  await rail(page).getByRole('tab', { name: 'Overview', exact: true }).focus()
+  await expect(rail(page).getByRole('tab', { name: 'Workspace', exact: true })).toHaveAttribute('aria-selected', 'true')
+  await rail(page).getByRole('tab', { name: 'Overview', exact: true }).click()
   await page.keyboard.press('ArrowRight')
-  await expect(rail(page).getByRole('tab', { name: 'Commercial', exact: true })).toBeFocused()
-  await expect(rail(page).getByRole('tab', { name: 'Commercial', exact: true })).toHaveAttribute('aria-selected', 'true')
-  await expect(rail(page)).toContainText(/not (provided|recorded|set)|unknown/i)
+  await expect(rail(page).getByRole('tab', { name: 'Workspace', exact: true })).toBeFocused()
+  await expect(rail(page).getByRole('tab', { name: 'Workspace', exact: true })).toHaveAttribute('aria-selected', 'true')
+  await expect(rail(page)).toContainText('SharePoint setup required')
   await rail(page).getByRole('tab', { name: 'Activity', exact: true }).click()
+  await rail(page).getByLabel('More opportunity actions').click()
   await rail(page).getByRole('button', { name: 'Open full record', exact: true }).click()
   await expect(page.getByRole('dialog', { name: 'Opportunity record', exact: true })).toBeVisible()
   expect(state.pageErrors).toEqual([])
@@ -227,7 +118,7 @@ test('export current view sends only filtered IDs and returns a CSV download', a
   const download = await downloaded
   expect(download.suggestedFilename()).toMatch(/\.csv$/)
   expect(state.exports).toEqual([{ ids: 'opportunity-1' }])
-  await expect(page.getByRole('status')).toContainText('Exported 1 opportunity')
+  await expect(page.locator('.sor-notice')).toContainText('Exported 1 opportunity')
 })
 
 test('export selected surfaces a failure and preserves selection for retry', async ({ page }) => {
@@ -297,8 +188,12 @@ test('refresh reloads selected detail and removes a record no longer in the regi
 })
 
 test('full record detail failure blocks edits and recovers through its retry', async ({ page }) => {
-  const state = await prepareRegister(page, { detailStatuses: { 'opportunity-0': 503 } })
-  await register(page).getByRole('row').filter({ hasText: 'Q-102101' }).getByRole('button', { name: 'View', exact: true }).click()
+  const state = await prepareRegister(page)
+  await vf(page, 0).click()
+  await expect(rail(page)).toContainText('Seawater intake engineering study')
+  state.detailStatuses['opportunity-0'] = 503
+  await rail(page).getByLabel('More opportunity actions').click()
+  await rail(page).getByRole('button', { name: 'Open full record', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Opportunity record', exact: true })
   await expect(dialog).toContainText('Opportunity details could not be loaded.')
   await expect(dialog.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0)
@@ -318,7 +213,7 @@ for (const status of [200, 503]) test(`a late ${status} save cannot replace or i
   })
   await vf(page, 0).click()
   await expect(rail(page)).toContainText('Seawater intake engineering study')
-  await rail(page).getByRole('button', { name: 'Edit', exact: true }).click()
+  await rail(page).getByRole('button', { name: 'Edit details', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Opportunity record', exact: true })
   await dialog.getByLabel('Opportunity name', { exact: true }).fill('First opportunity pending save')
   await dialog.getByRole('button', { name: 'Save changes', exact: true }).click()
@@ -326,7 +221,7 @@ for (const status of [200, 503]) test(`a late ${status} save cannot replace or i
   await dialog.getByRole('button', { name: 'Close record', exact: true }).click()
   await vf(page, 1).click()
   await expect(rail(page)).toContainText('Compressor replacement FEED')
-  await rail(page).getByRole('button', { name: 'Edit', exact: true }).click()
+  await rail(page).getByRole('button', { name: 'Edit details', exact: true }).click()
   const input = dialog.getByLabel('Opportunity name', { exact: true })
   await input.fill('Retained second opportunity draft')
   await expect(dialog.getByRole('button', { name: 'Save changes', exact: true })).toBeEnabled()
@@ -352,7 +247,7 @@ for (const width of [390, 1366, 1920]) test(`register and selected details fit $
   await expect(rail(page)).toContainText('Seawater intake engineering study')
   const dimensions = await page.evaluate(() => ({ width: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }))
   expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.width + 1)
-  await expect(page.locator('.main-content').getByRole('table')).toBeVisible()
+  await expect(page.locator('.main-content .sor-table-scroll table')).toBeVisible()
   await expect(register(page)).toHaveAttribute('data-table-typography', 'preserve')
   await expect(register(page).getByRole('cell', { name: 'Q-102101', exact: true })).toHaveCSS('font-size', '13px')
   await expect(register(page).getByRole('columnheader', { name: 'VF Code', exact: true })).toHaveCSS('font-size', '12px')
