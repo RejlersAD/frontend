@@ -218,3 +218,37 @@ The reviewed selected-file preview is
 The `corrective` artifact directory retains the ready/unconfigured real-shell
 desktop and mobile previews. Backend migration/runtime evidence belongs to the
 shared feature brief and backend private-attachment contract.
+
+Release alignment verification on 1 October 2026:
+
+- Fetched `origin/development` and `origin/main` and integrated both with ordinary
+  conflict-free merges. Both remote branches were at
+  `20397ecb4552ef9b79e1a06109bdc715f5fc30ed` on the final verification fetch.
+  The tested application head is `5479f781e529e88e81db8af0e401f0e54e6e49b9`.
+- At the preceding aligned head `df4226b9b1662d39a0e0c8dbb52e52b6990ac08b`,
+  all 26 Node tests, changed-source/test ESLint, the production build, six RADAI
+  attachment scenarios, two real-shell browser scenarios and three SharePoint
+  upload/recovery scenarios passed. The later upstream commit changed only
+  engineering workflow documentation layouts; Sales application/test sources
+  were unchanged between these aligned heads.
+- Rebuilt Vite/PWA successfully at the final application head and reran both
+  ready/unconfigured 1586px real-shell browser scenarios. Both passed, including
+  the full application CSS cascade, typography, visible controls, three-pane
+  bounds and WCAG A/AA checks. These scoped release checks supplement the 87
+  distinct historical cases above; they are not a claim that all 87 ran again.
+- Logs are `artifacts/sales-workspace-release-node.log`,
+  `artifacts/sales-workspace-release-lint.log`,
+  `artifacts/sales-workspace-release-fidelity.log`,
+  `artifacts/sales-workspace-release-sharepoint.log`,
+  `artifacts/sales-workspace-release-final-alignment.log`, and
+  `artifacts/sales-workspace-release-build.log`. The later release-evidence
+  commit changes only this document. Existing build warnings remain unchanged.
+- Sidebar, Header, Layout, layout configuration and global stylesheet sources
+  remain unchanged by this feature. Browser API/storage fixtures are synthetic;
+  separate backend migration and authenticated local-runtime checks are recorded
+  in the shared feature brief and backend contract.
+- Deploy the corresponding backend contract and Sales migrations `0012` and
+  `0013_private_opportunity_attachments` before this frontend. Private RADAI
+  attachments require durable private storage. SharePoint remains an optional,
+  separately configured destination; no synchronization is implied. These checks
+  establish neither a production deployment nor a merge into `main`.
