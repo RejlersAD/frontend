@@ -160,7 +160,17 @@ for (const reset of ['mailbox', 'account']) {
   })
 }
 
-for (const status of [401, 403, 404]) {
+test('expired authentication clears source content and redirects to login without retrying', async ({ page }) => {
+  const state = await prepare(page, { detailStatus: 401, details: { detail: 'Private provider failure' } })
+  await expect(page).toHaveURL(/\/login$/)
+  await expect(preview(page)).toHaveCount(0)
+  await expect(page.locator('body')).not.toContainText('Please confirm revision C')
+  expect(await page.evaluate(() => [localStorage.getItem('radai_access_token'), localStorage.getItem('radai_user_data')])).toEqual([null, null])
+  expect(requestedIds(state)).toEqual([message().id])
+  assertReadOnly(state)
+})
+
+for (const status of [403, 404]) {
   test(`automatic detail ${status} clears source content and never retries without user action`, async ({ page }) => {
     const state = await prepare(page, { detailStatus: status, details: { detail: 'Private provider failure' } })
     await expect(inbox(page).getByRole('alert')).toBeVisible()

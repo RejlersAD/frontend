@@ -1181,6 +1181,8 @@ async function revealAnalysis(page) {
 
 async function reviewedForm(page) {
   const dialog = await openOpportunityForm(page)
+  const opportunityType = dialog.getByRole('combobox', { name: 'Opportunity type', exact: true })
+  if (!await opportunityType.inputValue()) await opportunityType.selectOption('rfq')
   await dialog.getByRole('combobox', { name: 'Client', exact: true }).selectOption('client-one')
   await dialog.getByLabel('Opportunity name', { exact: true }).fill('Reviewed pump package')
   await dialog.getByLabel('Estimated value', { exact: true }).fill('275000.25')
@@ -2161,6 +2163,7 @@ test('confirmed opportunity creation sends reviewed decimal and date fields with
   expect(conversionRequests(state)[0].body).toEqual({
     message_id: message().id, source_token: 'synthetic-source-token-1',
     classification_code: 'rfq', classification_confirmed: true,
+    opportunity_type: 'rfq', owner: '11', open_date: '2026-09-28',
     deal_name: 'Reviewed pump package', client: 'client-one', client_reference: 'RFT-2026-1015',
     estimated_value: '275000.25', currency: 'USD', expected_close_date: '2026-12-15',
     submission_due_date: '2026-10-20', scope_type: 'detailed_engineering', description: 'Reviewed engineering package scope.',
@@ -2282,7 +2285,7 @@ test('missing clients and denied client options do not invent a customer or hide
   assertReadOnly(state)
 })
 
-test('unknown amount and award date require reviewer input and do not default to fabricated values', async ({ page }) => {
+test('unknown commercial facts remain blank and explicit registration sends absent values without fabrication', async ({ page }) => {
   const state = await prepare(page, { details: opportunityDetails({ extracted_information: detected({ estimated_value: '', expected_award_date: '', deadline_date: '', due_date: '', scope_summary: '' }) }), clients: paginated([canonicalClient()]), allowConversion: true })
   const dialog = await openOpportunityForm(page)
   await dialog.getByRole('combobox', { name: 'Client', exact: true }).selectOption('client-one')
@@ -2291,9 +2294,10 @@ test('unknown amount and award date require reviewer input and do not default to
   await expect(dialog.getByLabel('Proposal deadline', { exact: true })).toHaveValue('')
   await expect(dialog.getByLabel('Scope summary', { exact: true })).toHaveValue('')
   await dialog.getByRole('button', { name: 'Create opportunity', exact: true }).click()
-  expect(conversionRequests(state)).toHaveLength(0)
-  await expect(dialog).toBeVisible()
-  assertReadOnly(state)
+  await expect(dialog).toHaveCount(0)
+  expect(conversionRequests(state)).toHaveLength(1)
+  expect(conversionRequests(state)[0].body).toMatchObject({ estimated_value: null, expected_close_date: null, submission_due_date: null, description: '' })
+  assertExplicitConversionOnly(state)
 })
 
 test('a pending creation prevents duplicate submission and an account switch ignores its late response', async ({ page }) => {

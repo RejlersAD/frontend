@@ -246,7 +246,9 @@ test('source-backed OQ cards preserve explicit classification and missing opport
   await expect(create(dialog)).toBeDisabled()
   await dialog.getByLabel('Opportunity name', { exact: true }).fill('Human-reviewed OQ procurement')
   await dialog.getByLabel('Client', { exact: true }).selectOption('client-one')
-  await create(dialog).click()
+  // Minimal VF registration allows absent commercial facts once the canonical
+  // client and name are chosen. Reviewing the source still never auto-saves.
+  await expect(create(dialog)).toBeEnabled()
   await expect(dialog).toBeVisible()
   await expect(dialog.getByLabel('Opportunity name', { exact: true })).toHaveValue('Human-reviewed OQ procurement')
   expect(state.requests.filter(request => request.method !== 'GET')).toEqual([])

@@ -6,9 +6,16 @@ import { WORKSPACE_FOLDERS } from '../../src/pages/Sales/salesOpportunityWorkspa
 
 const root = 'https://rejlerssverige.sharepoint.com/sites/TeamADSalesBidding/Delade%20dokument/General/Myynti/Opportunities';
 const panel = page => page.getByRole('region', { name: 'Opportunity document workspace', exact: true });
-const uploadTo = (page, folder) => panel(page).getByRole('button', { name: `Upload to ${folder}`, exact: true });
+const uploadButton = page => panel(page).getByRole('button', { name: 'Upload files', exact: true });
+async function openUpload(page, folder) {
+  await panel(page).getByRole('button', { name: `Open ${folder}`, exact: true }).click();
+  await uploadButton(page).click();
+  // An existing retry queue keeps its destination until the user changes it.
+  await page.getByRole('dialog', { name: 'Upload opportunity file' }).getByLabel('Destination folder').selectOption(WORKSPACE_FOLDERS.find(item => item.name === folder).key);
+  const storage = panel(page).getByRole('combobox', { name: 'Document storage', exact: true });
+  if (await storage.count()) await page.getByRole('dialog', { name: 'Upload opportunity file' }).getByLabel('Save to').selectOption(await storage.inputValue());
+}
 const uploadUuid = body => body.match(/name="upload_request_id"\r\n\r\n([^\r]+)/)[1];
-const tagEditor = (page, folder) => panel(page).getByRole('form', { name: `Edit ${folder} tag`, exact: true });
 const rowButton = (page, id) => page.locator('.sor-table-scroll').getByRole('button', { name: `Q-${102101 + id}`, exact: true });
 const ready = (id = 'opportunity-0', patch = {}) => ({
   opportunity_id: id, deal_code: 'Q-102101', status: 'ready', message: '', web_url: `${root}/Q-102101`, can_manage: true, can_upload: true, can_edit_tags: true, max_upload_bytes: 10485760,
@@ -61,26 +68,21 @@ async function setup(page, configuration = {}) {
   await page.getByRole('button', { name: 'Filters and table settings' }).click();
   await page.locator('summary').filter({ hasText: /^\s*More\s*$/ }).click();
   await page.getByRole('button', { name: 'Hide register summary' }).click();
-  await rowButton(page, 0).click();
+  await rowButton(page, 0).dblclick();
   return { fixture, state };
 }
 
-test('ready workspace uses actual code, six folders, files and paginated browsing', async ({ page }) => {
+test('ready explorer uses actual code, six folders, files and paginated browsing', async ({ page }) => {
   const { state } = await setup(page, { nextCursor: true });
-  await expect(panel(page).getByRole('status')).toHaveText('Workspace ready');
-  await expect(panel(page).getByRole('table')).toContainText('Correspondence');
-  await expect(panel(page).getByRole('columnheader')).toHaveText(['Folder', 'Purpose', 'Tag', 'Items', 'Action']);
-  await expect(panel(page).getByRole('textbox', { name: 'Search workspace folders', exact: true })).toHaveCount(0);
-  await expect(panel(page).getByRole('button', { name: 'Upload files', exact: true })).toHaveCount(0);
-  for (const folder of WORKSPACE_FOLDERS) {
-    const row = panel(page).getByRole('row').filter({ has: page.getByRole('button', { name: `Upload to ${folder.name}`, exact: true }) });
-    await expect(row.getByRole('cell')).toHaveCount(5);
-    await expect(row.getByRole('cell').nth(1)).toHaveText(folder.purpose);
-    await expect(uploadTo(page, folder.name)).toBeEnabled();
-    await expect(uploadTo(page, folder.name)).toHaveText('Upload');
-  }
-  await expect(panel(page).getByRole('link', { name: 'Open SharePoint' })).toHaveAttribute('href', `${root}/Q-102101`);
+  await expect(panel(page).locator('.sow-status')).toHaveText('Workspace ready');
+  const folders = panel(page).getByRole('navigation', { name: 'Opportunity folders', exact: true });
+  await expect(folders.getByRole('button')).toHaveCount(6);
+  for (const folder of WORKSPACE_FOLDERS) await expect(folders.getByRole('button', { name: `Open ${folder.name}`, exact: true })).toBeVisible();
+  await expect(panel(page).getByRole('table', { name: 'Uploaded files' })).toBeVisible();
+  await expect(panel(page).getByRole('button', { name: 'Workspace overview', exact: true })).toHaveCount(0);
+  await expect(uploadButton(page)).toBeEnabled();
   await panel(page).getByRole('button', { name: 'Open Tender', exact: true }).click();
+  await expect(panel(page).getByRole('region', { name: 'Tender documents', exact: true }).getByRole('link', { name: 'Open SharePoint', exact: true })).toHaveAttribute('href', `${root}/Q-102101/Tender`);
   await expect(panel(page).getByRole('button', { name: 'Engineering scope.pdf', exact: true })).toBeVisible();
   await panel(page).getByRole('button', { name: 'Load more files' }).click();
   await expect(panel(page).getByRole('button', { name: 'Clarification.pdf', exact: true })).toBeVisible();
@@ -92,11 +94,10 @@ test('ready workspace uses actual code, six folders, files and paginated browsin
 test('unconfigured workspace shows unknown counts and an actionable upload explanation', async ({ page }) => {
   const { fixture } = await setup(page, { workspacePatch: { status: 'not_configured', web_url: '', can_manage: false, can_upload: false, folders: [] } });
   await expect(panel(page)).toContainText('administrator setup');
-  await expect(panel(page)).toContainText('Item counts unavailable');
-  await expect(uploadTo(page, 'Tender')).toBeEnabled();
+  await expect(uploadButton(page)).toBeEnabled();
   await expect(panel(page).getByRole('link', { name: 'Open SharePoint' })).toHaveCount(0);
-  await expect(panel(page).locator('.sow-count')).toHaveText(['—', '—', '—', '—', '—', '—']);
-  await uploadTo(page, 'Tender').click();
+  await expect(panel(page).locator('.sod-folder-count')).toHaveText(['—', '—', '—', '—', '—', '—']);
+  await openUpload(page, 'Tender');
   const dialog = page.getByRole('dialog', { name: 'Upload opportunity file' });
   await expect(dialog).toContainText('administrator setup');
   await expect(dialog.getByLabel('Destination folder')).toHaveValue('tender');
@@ -110,14 +111,14 @@ test('unconfigured workspace shows unknown counts and an actionable upload expla
 test('malformed ready workspace is unavailable and cannot expose unsafe links', async ({ page }) => {
   await setup(page, { workspacePatch: { folders: [], web_url: 'https://evil.example.test' } });
   await expect(panel(page).getByRole('alert')).toContainText('could not be verified');
-  await expect(uploadTo(page, 'Tender')).toBeEnabled();
+  await expect(uploadButton(page)).toBeEnabled();
   await expect(panel(page).getByRole('link')).toHaveCount(0);
 });
 
 test('read-only workspace can browse empty folders and recover a failed listing', async ({ page }) => {
   const { fixture } = await setup(page, { workspacePatch: { can_upload: false, can_manage: false }, filesStatus: 503, files: [] });
-  await expect(uploadTo(page, 'Tender')).toBeEnabled();
-  await uploadTo(page, 'Tender').click();
+  await expect(uploadButton(page)).toBeEnabled();
+  await openUpload(page, 'Tender');
   const dialog = page.getByRole('dialog', { name: 'Upload opportunity file' });
   await expect(dialog.getByLabel('Destination folder')).toHaveValue('tender');
   await expect(dialog).toContainText('read-only');
@@ -134,16 +135,15 @@ test('workspace fits laptop content width after the existing sidebar', async ({ 
   await page.setViewportSize({ width: 1366, height: 900 });
   await setup(page);
   await page.addStyleTag({ content: '#root { margin-left: 227px; width: calc(100% - 227px); }' });
-  await expect(panel(page).getByRole('status')).toHaveText('Workspace ready');
+  await expect(panel(page).locator('.sow-status')).toHaveText('Workspace ready');
   const geometry = await page.evaluate(() => {
     const workspace = document.querySelector('.sow-workspace');
-    const shell = document.querySelector('.sor-workspace');
-    return { pageWidth: document.documentElement.clientWidth, pageScroll: document.documentElement.scrollWidth, width: workspace.clientWidth, scroll: workspace.scrollWidth, columns: getComputedStyle(shell).gridTemplateColumns.split(' ').map(parseFloat) };
+    return { pageWidth: document.documentElement.clientWidth, pageScroll: document.documentElement.scrollWidth, width: workspace.clientWidth, scroll: workspace.scrollWidth, left: workspace.getBoundingClientRect().left };
   });
   expect(geometry.pageScroll).toBeLessThanOrEqual(geometry.pageWidth + 1);
   expect(geometry.scroll).toBeLessThanOrEqual(geometry.width + 1);
-  expect(geometry.columns).toHaveLength(2);
-  expect(geometry.columns[1]).toBeGreaterThan(geometry.columns[0]);
+  expect(geometry.left).toBeGreaterThanOrEqual(227);
+  expect(geometry.width).toBeGreaterThan(900);
 });
 
 test('denied refresh clears displayed files and can recover', async ({ page }) => {
@@ -161,7 +161,7 @@ test('denied refresh clears displayed files and can recover', async ({ page }) =
 
 test('upload retry retains selected file, folder and request ID', async ({ page }) => {
   const { fixture } = await setup(page, { uploadStatus: 503 });
-  await uploadTo(page, 'Proposal').click();
+  await openUpload(page, 'Proposal');
   const dialog = page.getByRole('dialog', { name: 'Upload opportunity file' });
   await expect(dialog.getByLabel('Destination folder')).toHaveValue('proposal');
   await dialog.getByLabel('File', { exact: true }).setInputFiles({ name: 'review.pdf', mimeType: 'application/pdf', buffer: Buffer.from('synthetic document') });
@@ -170,7 +170,7 @@ test('upload retry retains selected file, folder and request ID', async ({ page 
   await expect(dialog).toContainText('Selected: review.pdf');
   await expect(dialog.getByLabel('Destination folder')).toHaveValue('proposal');
   await dialog.getByRole('button', { name: 'Close upload', exact: true }).click();
-  await uploadTo(page, 'Proposal').click();
+  await openUpload(page, 'Proposal');
   await expect(dialog).toContainText('Selected: review.pdf');
   await expect(dialog.getByLabel('Destination folder')).toHaveValue('proposal');
   fixture.uploadStatus = 201;
@@ -183,13 +183,13 @@ test('upload retry retains selected file, folder and request ID', async ({ page 
   for (const attempt of fixture.uploads) expect(attempt.body).toContain('synthetic document');
 });
 
-test('different row and storage destinations retain the file and start new upload identities', async ({ page }) => {
+test('explicit folder and storage changes retain the file and start new upload identities', async ({ page }) => {
   const { fixture, state } = await setup(page, { uploadStatus: 503, workspacePatch: { radai_storage: {
     status: 'ready', can_upload: true, max_upload_bytes: null, automatic_compression: 'lossless_if_smaller',
     folders: WORKSPACE_FOLDERS.map(folder => ({ ...folder, item_count: 0 })),
   } } });
   await panel(page).getByRole('combobox', { name: 'Document storage', exact: true }).selectOption('sharepoint');
-  await uploadTo(page, 'Tender').click();
+  await openUpload(page, 'Tender');
   const dialog = page.getByRole('dialog', { name: 'Upload opportunity file' });
   await expect(dialog.getByLabel('Destination folder')).toHaveValue('tender');
   await expect(dialog.getByLabel('Save to')).toHaveValue('sharepoint');
@@ -198,7 +198,7 @@ test('different row and storage destinations retain the file and start new uploa
   await dialog.getByRole('button', { name: 'Upload file', exact: true }).click();
   await expect(dialog.getByRole('alert')).toContainText('temporarily unavailable');
   await dialog.getByRole('button', { name: 'Close upload', exact: true }).click();
-  await uploadTo(page, 'Award').click();
+  await openUpload(page, 'Award');
   await expect(dialog.getByLabel('Destination folder')).toHaveValue('award');
   await expect(dialog.getByLabel('Save to')).toHaveValue('sharepoint');
   await expect(dialog).toContainText('Selected: destination-review.pdf');
@@ -206,7 +206,7 @@ test('different row and storage destinations retain the file and start new uploa
   await expect(dialog.getByRole('alert')).toContainText('temporarily unavailable');
   await dialog.getByRole('button', { name: 'Close upload', exact: true }).click();
   await panel(page).getByRole('combobox', { name: 'Document storage', exact: true }).selectOption('radai');
-  await uploadTo(page, 'Award').click();
+  await openUpload(page, 'Award');
   await expect(dialog.getByLabel('Destination folder')).toHaveValue('award');
   await expect(dialog.getByLabel('Save to')).toHaveValue('radai');
   await expect(dialog).toContainText('Automatic lossless compression when it reduces file size. Downloads retain the original data.');
@@ -226,7 +226,7 @@ test('different row and storage destinations retain the file and start new uploa
 
 test('empty file is retained with usable validation and no upload request', async ({ page }) => {
   const { fixture } = await setup(page);
-  await uploadTo(page, 'Correspondence').click();
+  await openUpload(page, 'Correspondence');
   const dialog = page.getByRole('dialog', { name: 'Upload opportunity file' });
   await dialog.getByLabel('File', { exact: true }).setInputFiles({ name: 'empty.pdf', mimeType: 'application/pdf', buffer: Buffer.from('') });
   await dialog.getByRole('button', { name: 'Upload file', exact: true }).click();
@@ -236,7 +236,7 @@ test('empty file is retained with usable validation and no upload request', asyn
 
 test('mixed files above the old limit retain independent retries and skip completed uploads', async ({ page }) => {
   const { fixture, state } = await setup(page, { workspacePatch: { max_upload_bytes: null }, uploadStatuses: { 'scope.pdf': 503 } });
-  await uploadTo(page, 'Tender').click();
+  await openUpload(page, 'Tender');
   const dialog = page.getByRole('dialog', { name: 'Upload opportunity file' });
   await expect(dialog.getByLabel('File', { exact: true })).toHaveAttribute('multiple', '');
   await expect(dialog.getByLabel('File', { exact: true })).not.toHaveAttribute('accept', /.+/);
@@ -252,7 +252,7 @@ test('mixed files above the old limit retain independent retries and skip comple
   await expect(dialog.getByRole('listitem', { name: 'quantities.xlsx', exact: true })).toContainText('Uploaded to Tender');
   await expect(dialog.getByRole('listitem', { name: 'scope.pdf', exact: true })).toContainText('Needs retry');
   await dialog.getByRole('button', { name: 'Close upload', exact: true }).click();
-  await uploadTo(page, 'Tender').click();
+  await openUpload(page, 'Tender');
   fixture.uploadStatuses['scope.pdf'] = 201;
   await dialog.getByRole('button', { name: 'Retry upload', exact: true }).click();
   await expect(dialog).not.toBeVisible();
@@ -266,7 +266,7 @@ test('mixed files above the old limit retain independent retries and skip comple
 
 test('changing a partial queue destination leaves completed files in their original folder', async ({ page }) => {
   const { fixture } = await setup(page, { uploadStatuses: { 'pending.csv': 503 } });
-  await uploadTo(page, 'Tender').click();
+  await openUpload(page, 'Tender');
   const dialog = page.getByRole('dialog', { name: 'Upload opportunity file' });
   await dialog.getByLabel('File', { exact: true }).setInputFiles([
     { name: 'saved.txt', mimeType: 'text/plain', buffer: Buffer.from('saved original') },
@@ -275,8 +275,9 @@ test('changing a partial queue destination leaves completed files in their origi
   await dialog.getByRole('button', { name: 'Upload 2 files', exact: true }).click();
   await expect(dialog.getByRole('button', { name: 'Retry upload', exact: true })).toBeEnabled();
   await dialog.getByRole('button', { name: 'Close upload', exact: true }).click();
-  await uploadTo(page, 'Award').click();
-  await expect(dialog).toContainText('Review the new destination: Award');
+  await openUpload(page, 'Award');
+  await expect(dialog.getByLabel('Destination folder')).toHaveValue('award');
+  await expect(dialog).toContainText('Completed uploads stay in their original folder.');
   await expect(dialog.getByRole('listitem', { name: 'saved.txt', exact: true })).toContainText('Uploaded to Tender');
   await expect(dialog.getByRole('listitem', { name: 'pending.csv', exact: true })).toContainText('Waiting');
   expect(fixture.uploads).toHaveLength(2);
@@ -292,7 +293,7 @@ test('changing a partial queue destination leaves completed files in their origi
 
 test('a configured per-file limit retains invalid files while valid queue entries can upload', async ({ page }) => {
   const { fixture } = await setup(page, { workspacePatch: { max_upload_bytes: 1024 } });
-  await uploadTo(page, 'Proposal').click();
+  await openUpload(page, 'Proposal');
   const dialog = page.getByRole('dialog', { name: 'Upload opportunity file' });
   await expect(dialog).toContainText('Maximum file size: 1.0 KB.');
   await dialog.getByLabel('File', { exact: true }).setInputFiles([
@@ -311,7 +312,7 @@ test('a configured per-file limit retains invalid files while valid queue entrie
 
 test('permission denial stops a batch and retains unsent files for an explicit retry', async ({ page }) => {
   const { fixture } = await setup(page, { uploadStatus: 403 });
-  await uploadTo(page, 'Internal').click();
+  await openUpload(page, 'Internal');
   const dialog = page.getByRole('dialog', { name: 'Upload opportunity file' });
   await dialog.getByLabel('File', { exact: true }).setInputFiles([
     { name: 'first.docx', mimeType: 'application/octet-stream', buffer: Buffer.from('first original') },
@@ -339,7 +340,7 @@ test('completed transfer remains processing and stopping preserves unsent queue 
   let release;
   const hold = new Promise(resolve => { release = resolve; });
   const { fixture } = await setup(page, { uploadHolds: { 'first.pdf': hold } });
-  await uploadTo(page, 'Tender').click();
+  await openUpload(page, 'Tender');
   const dialog = page.getByRole('dialog', { name: 'Upload opportunity file' });
   await dialog.getByLabel('File', { exact: true }).setInputFiles([
     { name: 'first.pdf', mimeType: 'application/pdf', buffer: Buffer.from('first original') },
@@ -367,8 +368,9 @@ test('completed transfer remains processing and stopping preserves unsent queue 
 test('setup queues safely and My opportunities uses authenticated canonical owner', async ({ page }) => {
   const { fixture } = await setup(page, { workspacePatch: { status: 'not_created', can_upload: false } });
   await panel(page).getByRole('button', { name: 'Create workspace', exact: true }).click();
-  await expect(panel(page).getByRole('status')).toHaveText('Workspace queued');
+  await expect(panel(page).locator('.sow-status')).toHaveText('Workspace queued');
   expect(fixture.workspacePatch.status).toBe('pending');
+  await page.getByRole('button', { name: 'Back to register', exact: true }).click();
   await page.getByRole('button', { name: 'My opportunities', exact: true }).click();
   await expect(rowButton(page, 0)).toBeVisible();
   await expect(rowButton(page, 1)).toHaveCount(0);
@@ -384,8 +386,9 @@ test('a late file response cannot populate a different opportunity', async ({ pa
   await rowButton(page, 1).click();
   await expect(page.locator('.sor-detail-code')).toHaveText('Q-102102');
   fixture.filesHold = null; release();
-  await expect(panel(page).getByRole('table')).toBeVisible();
-  await expect(panel(page)).not.toContainText('Engineering scope.pdf');
+  await expect(panel(page)).toHaveCount(0);
+  await expect(page.getByRole('tab', { name: 'Overview', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Engineering scope.pdf', exact: true })).toHaveCount(0);
 });
 
 test('edit fields lock during a pending save and failed saves retain input', async ({ page }) => {
@@ -403,98 +406,7 @@ test('edit fields lock during a pending save and failed saves retain input', asy
   await expect(input).toHaveValue('Retain my reviewed title');
 });
 
-test('custom folder tags persist across refresh and storage providers and can be cleared', async ({ page }) => {
-  const { fixture, state } = await setup(page, { workspacePatch: { radai_storage: {
-    status: 'ready', can_upload: true, max_upload_bytes: 10485760,
-    folders: WORKSPACE_FOLDERS.map(folder => ({ ...folder, item_count: 0 })),
-  } } });
-  const storage = panel(page).getByRole('combobox', { name: 'Document storage', exact: true });
-  await storage.selectOption('sharepoint');
-  await panel(page).getByRole('button', { name: 'Add tag for Tender', exact: true }).click();
-  const editor = tagEditor(page, 'Tender');
-  await expect(editor.getByRole('textbox', { name: 'Tag for Tender', exact: true })).toHaveAttribute('maxlength', '64');
-  await editor.getByRole('textbox').fill('Client clarification');
-  await editor.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(panel(page).getByRole('button', { name: 'Edit tag for Tender', exact: true })).toHaveText('Client clarification');
-  await storage.selectOption('radai');
-  await expect(panel(page).getByRole('button', { name: 'Edit tag for Tender', exact: true })).toHaveText('Client clarification');
-  await panel(page).getByRole('button', { name: 'Refresh workspace', exact: true }).click();
-  await expect(panel(page).getByRole('button', { name: 'Edit tag for Tender', exact: true })).toHaveText('Client clarification');
-  await panel(page).getByRole('button', { name: 'Edit tag for Tender', exact: true }).click();
-  await editor.getByRole('textbox').fill('Unsaved local edit');
-  await editor.getByRole('button', { name: 'Cancel', exact: true }).click();
-  await expect(panel(page).getByRole('button', { name: 'Edit tag for Tender', exact: true })).toHaveText('Client clarification');
-  expect(fixture.tagWrites).toHaveLength(1);
-  await panel(page).getByRole('button', { name: 'Edit tag for Tender', exact: true }).click();
-  await editor.getByRole('textbox').fill('');
-  await editor.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(panel(page).getByRole('button', { name: 'Add tag for Tender', exact: true })).toBeVisible();
-  await storage.selectOption('sharepoint');
-  await panel(page).getByRole('button', { name: 'Refresh workspace', exact: true }).click();
-  await expect(panel(page).getByRole('button', { name: 'Add tag for Tender', exact: true })).toBeVisible();
-  expect(fixture.tagWrites.map(write => write.body)).toEqual([
-    { tag: 'Client clarification', expected_token: 'opportunity-0:tender:initial' },
-    { tag: '', expected_token: 'opportunity-0:tender:saved-1' },
-  ]);
-  await expect(panel(page).locator('.sow-count')).toHaveText(['0', '0', '0', '0', '0', '0']);
-  expect(state.requests.filter(request => request.method !== 'GET').map(request => request.path)).toEqual([
-    '/api/v1/sales/deals/opportunity-0/workspace/folders/tender/tag/',
-    '/api/v1/sales/deals/opportunity-0/workspace/folders/tender/tag/',
-  ]);
-  expect(state.pageErrors).toEqual([]);
-});
-
-test('tag conflict refresh retains draft and a failed retry keeps the refreshed token', async ({ page }) => {
-  const { fixture, state } = await setup(page, { tags: { 'opportunity-0:tender': { tag: 'Original label', tag_token: 'tender-v1' } }, tagStatus: 409 });
-  await panel(page).getByRole('button', { name: 'Edit tag for Tender', exact: true }).click();
-  const editor = tagEditor(page, 'Tender');
-  await editor.getByRole('textbox').fill('Reviewed client scope');
-  fixture.tags['opportunity-0:tender'] = { tag: 'Concurrent saved label', tag_token: 'tender-v2' };
-  await editor.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(editor.getByRole('alert')).toContainText('changed');
-  await expect(editor.getByRole('textbox')).toHaveValue('Reviewed client scope');
-  await expect(editor.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
-  await editor.getByRole('button', { name: 'Refresh tag', exact: true }).click();
-  await expect(editor.getByRole('status')).toContainText('Concurrent saved label');
-  await expect(editor.getByRole('textbox')).toHaveValue('Reviewed client scope');
-  expect(fixture.tagWrites).toHaveLength(1);
-  fixture.tagStatus = 503;
-  await editor.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(editor.getByRole('alert')).toContainText('unavailable');
-  await expect(editor.getByRole('textbox')).toHaveValue('Reviewed client scope');
-  fixture.tagStatus = 200;
-  await editor.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(panel(page).getByRole('button', { name: 'Edit tag for Tender', exact: true })).toHaveText('Reviewed client scope');
-  expect(fixture.tagWrites.map(write => write.body)).toEqual([
-    { tag: 'Reviewed client scope', expected_token: 'tender-v1' },
-    { tag: 'Reviewed client scope', expected_token: 'tender-v2' },
-    { tag: 'Reviewed client scope', expected_token: 'tender-v2' },
-  ]);
-  expect(state.pageErrors).toEqual([]);
-});
-
-test('denied tag saves retain text and revoked edit access keeps the saved label read-only', async ({ page }) => {
-  const { fixture, state } = await setup(page, { tags: { 'opportunity-0:tender': { tag: 'Existing label', tag_token: 'tender-v1' } }, tagStatus: 403 });
-  await panel(page).getByRole('button', { name: 'Edit tag for Tender', exact: true }).click();
-  const editor = tagEditor(page, 'Tender');
-  await editor.getByRole('textbox').fill('Retain denied draft');
-  await editor.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(editor.getByRole('alert')).toContainText('permission');
-  await expect(editor.getByRole('textbox')).toHaveValue('Retain denied draft');
-  fixture.workspacePatch.can_edit_tags = false;
-  await panel(page).getByRole('button', { name: 'Refresh workspace', exact: true }).click();
-  await expect(editor.getByRole('textbox')).toHaveValue('Retain denied draft');
-  await expect(editor.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
-  await editor.evaluate(form => form.requestSubmit());
-  expect(fixture.tagWrites).toHaveLength(1);
-  await editor.getByRole('button', { name: 'Cancel', exact: true }).click();
-  await expect(panel(page).getByRole('button', { name: /^(Add|Edit) tag for / })).toHaveCount(0);
-  await expect(panel(page)).toContainText('Existing label');
-  expect(fixture.tags['opportunity-0:tender'].tag).toBe('Existing label');
-  expect(state.pageErrors).toEqual([]);
-});
-
-test('folder overview table remains usable in the actual desktop and mobile shell', async ({ page }, testInfo) => {
+test('document explorer and upload queue remain usable in the actual desktop and mobile shell', async ({ page }, testInfo) => {
   test.setTimeout(120000);
   await page.setViewportSize({ width: 1586, height: 992 });
   const { state } = await setup(page, { realShell: true, entry: '/sales/opportunities?record=opportunity-0&workspace=1&folder=tender',
@@ -502,27 +414,20 @@ test('folder overview table remains usable in the actual desktop and mobile shel
     files: [{ ...file(), id: 'radai-00000000-0000-4000-8000-000000000001', storage_provider: 'radai' }],
     workspacePatch: { max_upload_bytes: null, radai_storage: { status: 'ready', can_upload: true, max_upload_bytes: null, automatic_compression: 'lossless_if_smaller', folders: WORKSPACE_FOLDERS.map(folder => ({ ...folder, item_count: 0 })) } },
   });
-  await panel(page).getByRole('button', { name: 'Workspace overview', exact: true }).click();
-  await expect(panel(page).getByRole('table', { name: 'Workspace folders', exact: true })).toBeVisible();
-  await expect(panel(page).getByRole('columnheader')).toHaveText(['Folder', 'Purpose', 'Tag', 'Items', 'Action']);
-  await expect(panel(page).getByRole('textbox', { name: 'Search workspace folders', exact: true })).toHaveCount(0);
-  await expect(panel(page).getByRole('button', { name: 'Upload files', exact: true })).toHaveCount(0);
+  await expect(panel(page).getByRole('table', { name: 'Uploaded files', exact: true })).toBeVisible();
+  await expect(panel(page).getByRole('button', { name: 'Workspace overview', exact: true })).toHaveCount(0);
   await expect(page.getByRole('navigation', { name: 'Primary navigation', exact: true })).toBeVisible();
   await expect(page.locator('#application-sidebar')).toBeVisible();
-  await expect(panel(page).getByRole('button', { name: 'Edit tag for Tender', exact: true })).toHaveText('Client clarification');
-  await expect(panel(page).getByRole('button', { name: 'Add tag for Award', exact: true })).toBeVisible();
-  await expect(uploadTo(page, 'Award')).toBeInViewport();
-  await page.screenshot({ path: testInfo.outputPath('folder-overview-desktop.png'), fullPage: true });
+  await expect(uploadButton(page)).toBeInViewport();
+  await page.screenshot({ path: testInfo.outputPath('document-explorer-desktop.png'), fullPage: true });
   const audit = await new AxeBuilder({ page }).include('.sor-workspace').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
   expect(audit.violations).toEqual([]);
   await page.setViewportSize({ width: 390, height: 844 });
-  await panel(page).getByRole('table', { name: 'Workspace folders', exact: true }).scrollIntoViewIfNeeded();
-  await page.screenshot({ path: testInfo.outputPath('folder-overview-mobile.png'), fullPage: true });
-  await uploadTo(page, 'Award').scrollIntoViewIfNeeded();
-  await expect(uploadTo(page, 'Award')).toBeInViewport();
+  await uploadButton(page).scrollIntoViewIfNeeded();
+  await expect(uploadButton(page)).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)).toBe(true);
-  await page.screenshot({ path: testInfo.outputPath('folder-overview-mobile-actions.png'), fullPage: true });
-  await uploadTo(page, 'Award').click();
+  await page.screenshot({ path: testInfo.outputPath('document-explorer-mobile.png'), fullPage: true });
+  await openUpload(page, 'Award');
   const uploadDialog = page.getByRole('dialog', { name: 'Upload opportunity file' });
   await expect(uploadDialog.getByLabel('Destination folder')).toHaveValue('award');
   await expect(uploadDialog).toContainText('Automatic lossless compression when it reduces file size.');
@@ -545,7 +450,7 @@ test('folder overview table remains usable in the actual desktop and mobile shel
 for (const width of [390, 1366, 1920]) test(`workspace reference fits ${width}px with real API fixtures`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width, height: 1000 });
   await setup(page, { records: Array.from({ length: 8 }, (_, index) => opportunity(index, { submission_due_date: `2026-10-${String(index + 9).padStart(2, '0')}` })) });
-  await expect(panel(page).getByRole('status')).toHaveText('Workspace ready');
+  await expect(panel(page).locator('.sow-status')).toHaveText('Workspace ready');
   const geometry = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, width: document.documentElement.clientWidth }));
   expect(geometry.scroll).toBeLessThanOrEqual(geometry.width + 1);
   await page.screenshot({ path: testInfo.outputPath(`workspace-${width}.png`), fullPage: true });
