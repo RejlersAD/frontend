@@ -5,8 +5,8 @@
   "type": "module",
   "description": "Smart ReactJS frontend for RADAI application",
   "engines": {
-    "node": ">=20 <21",
-    "npm": ">=10 <11"
+    "node": ">=22",
+    "npm": ">=10"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
