@@ -2605,10 +2605,11 @@ const CriticalLineList = () => {
             }}>
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: CLL_WORKFLOW_CONFIG.SPLIT_SCREEN 
+                gridTemplateColumns: CLL_WORKFLOW_CONFIG.SPLIT_SCREEN
                   ? `${CLL_WORKFLOW_CONFIG.WORKFLOW_WIDTH_PERCENT}% ${CLL_WORKFLOW_CONFIG.DOC_WIDTH_PERCENT}%`
                   : '1fr',
                 gap: CLL_WORKFLOW_CONFIG.SPLIT_GAP,
+                alignItems: 'stretch',
                 '@media (max-width: 1024px)': {
                   gridTemplateColumns: '1fr',
                 },
@@ -2623,7 +2624,7 @@ const CriticalLineList = () => {
                   overflow: 'hidden',
                   display: 'flex',
                   flexDirection: 'column',
-                  height: workflowCollapsed ? CLL_WORKFLOW_CONFIG.COLLAPSED_HEIGHT : 'auto',
+                  height: workflowCollapsed ? CLL_WORKFLOW_CONFIG.COLLAPSED_HEIGHT : '100%',
                   transition: `all ${CLL_WORKFLOW_CONFIG.TRANSITION_DURATION} ${CLL_WORKFLOW_CONFIG.TRANSITION_EASING}`,
                 }}>
                   {/* Workflow Header */}
@@ -2892,7 +2893,8 @@ const CriticalLineList = () => {
                     overflow: 'hidden',
                     display: 'flex',
                     flexDirection: 'column',
-                    maxHeight: '600px',
+                    height: '100%',
+                    maxHeight: 'none',
                   }}>
                     {/* Documentation Header */}
                     <div style={{
@@ -3807,10 +3809,11 @@ const CriticalLineList = () => {
         >
           <div style={{
             display: 'grid',
-            gridTemplateColumns: CLL_WORKFLOW_CONFIG.SPLIT_SCREEN 
+            gridTemplateColumns: CLL_WORKFLOW_CONFIG.SPLIT_SCREEN
               ? `${CLL_WORKFLOW_CONFIG.WORKFLOW_WIDTH_PERCENT}% ${CLL_WORKFLOW_CONFIG.DOC_WIDTH_PERCENT}%`
               : '1fr',
             gap: CLL_WORKFLOW_CONFIG.SPLIT_GAP,
+            alignItems: 'stretch',
           }}>
             
             {/* ─── LEFT COLUMN: Workflow Diagram ─── */}
@@ -3822,7 +3825,7 @@ const CriticalLineList = () => {
               overflow: 'hidden',
               display: 'flex',
               flexDirection: 'column',
-              height: workflowCollapsed ? CLL_WORKFLOW_CONFIG.COLLAPSED_HEIGHT : 'auto',
+              height: workflowCollapsed ? CLL_WORKFLOW_CONFIG.COLLAPSED_HEIGHT : '100%',
               transition: `all ${CLL_WORKFLOW_CONFIG.TRANSITION_DURATION} ${CLL_WORKFLOW_CONFIG.TRANSITION_EASING}`,
             }}>
               {/* Workflow Header */}
@@ -4091,7 +4094,8 @@ const CriticalLineList = () => {
                 overflow: 'hidden',
                 display: 'flex',
                 flexDirection: 'column',
-                maxHeight: '600px',
+                height: '100%',
+                maxHeight: 'none',
               }}>
                 {/* Documentation Header */}
                 <div style={{

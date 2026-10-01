@@ -565,8 +565,7 @@ const IOListWorkflowDocs = () => {
       background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px',
       boxShadow: '0 1px 3px rgba(0,0,0,0.08)', overflow: 'hidden',
       display: 'flex', flexDirection: 'column',
-      height: cfg.splitScreen.enabled ? panelHeight : undefined,
-      maxHeight: cfg.splitScreen.enabled ? panelHeight : undefined,
+      height: cfg.splitScreen.enabled ? '100%' : undefined,
     }}>
       {/* Header */}
       <div style={{
@@ -640,7 +639,7 @@ const IOListWorkflowDocs = () => {
         gridTemplateColumns: `${cfg.splitScreen.workflowWidthPct}% ${cfg.splitScreen.docsWidthPct}%`,
         gap: cfg.splitScreen.gap,
         marginBottom: '24px',
-        alignItems: 'start',
+        alignItems: 'stretch',
       }}>
         <style>{`@media (max-width: ${cfg.splitScreen.responsiveMinWidth - 1}px) {
           .io-workflow-split { display: block !important; grid-template-columns: 1fr !important; }

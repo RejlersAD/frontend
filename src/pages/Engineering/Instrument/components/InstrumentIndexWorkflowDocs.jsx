@@ -11,7 +11,7 @@
  * SOFT-CODED: all content, colours and layout live in INST_DOCS_CONFIG below —
  * edit text/tabs/steps without touching JSX. Set enabled:false to hide.
  */
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Loader, AlertTriangle, ChevronDown, ChevronUp, BookOpen,
@@ -206,7 +206,7 @@ const WorkflowDiagram = ({ cfg, panelHeight }) => {
       background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px',
       boxShadow: '0 1px 3px rgba(0,0,0,0.08)', overflow: 'hidden', marginBottom: '16px',
       display: 'flex', flexDirection: 'column',
-      height: panelHeight, maxHeight: panelHeight,
+      // Natural height — the card wraps the diagram; docs panel syncs to this height.
     }}>
       {/* Header bar — dark gradient */}
       <div style={{
@@ -321,8 +321,9 @@ const WorkflowDiagram = ({ cfg, panelHeight }) => {
               onLoad={() => { setLoaded(true); setError(false); }}
               onError={() => { setError(true); setLoaded(false); }}
               style={{
-                maxWidth: `${zoom}%`, maxHeight: '100%', width: 'auto', height: 'auto',
-                objectFit: 'contain', display: error ? 'none' : 'block',
+                // Width-fill — the diagram spans the card and keeps its natural aspect
+                // ratio, so the card height is driven by the image (not stretched).
+                width: `${zoom}%`, height: 'auto', display: error ? 'none' : 'block',
                 margin: '0 auto', transition: 'all 300ms ease',
                 cursor: zoom < cfg.maxZoomPct ? 'zoom-in' : 'default',
               }}
@@ -552,18 +553,33 @@ const InstrumentIndexWorkflowDocs = () => {
   const [docCollapsed, setDocCollapsed] = useState(cfg.docs.defaultCollapsed);
   const [activeTab, setActiveTab]       = useState(cfg.docs.defaultTab);
 
+  // Measure the workflow card so the docs panel matches the diagram's height.
+  const wfRef = useRef(null);
+  const [wfHeight, setWfHeight] = useState(null);
+  useEffect(() => {
+    const el = wfRef.current;
+    if (!el) return undefined;
+    const ro = new ResizeObserver(() => setWfHeight(el.getBoundingClientRect().height));
+    ro.observe(el);
+    setWfHeight(el.getBoundingClientRect().height);
+    return () => ro.disconnect();
+  }, [cfg.enabled]);
+
   if (!cfg.enabled) return null;
 
   const wfCfg = cfg.workflow?.enabled ? cfg.workflow : null;
   const panelHeight = cfg.splitScreen.panelHeight;
+  // Docs panel matches the workflow diagram's rendered height (falls back to config).
+  const docsHeight = wfHeight ? `${Math.round(wfHeight)}px` : panelHeight;
 
   const docsPanel = cfg.docs.enabled && (
     <div style={{
       background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px',
       boxShadow: '0 1px 3px rgba(0,0,0,0.08)', overflow: 'hidden',
       display: 'flex', flexDirection: 'column',
-      height: cfg.splitScreen.enabled ? panelHeight : undefined,
-      maxHeight: cfg.splitScreen.enabled ? panelHeight : undefined,
+      // Match the workflow diagram's height; content scrolls internally.
+      height: cfg.splitScreen.enabled ? docsHeight : undefined,
+      maxHeight: cfg.splitScreen.enabled ? docsHeight : undefined,
     }}>
       {/* Header */}
       <div style={{
@@ -643,7 +659,7 @@ const InstrumentIndexWorkflowDocs = () => {
           .inst-workflow-split { display: block !important; grid-template-columns: 1fr !important; }
           .inst-workflow-split > * { margin-bottom: 16px; }
         }`}</style>
-        <div style={{ minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        <div ref={wfRef} style={{ minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           <WorkflowDiagram cfg={wfCfg} panelHeight={panelHeight} />
         </div>
         {docsPanel}
