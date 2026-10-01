@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { toast } from 'react-toastify'
 import * as XLSX from 'xlsx'
-import { BookOpen, Plus, Save, Trash2, CheckCircle2, X, Download, Upload, Loader2, LayoutList, Braces, GripVertical, FileSpreadsheet, FileText, ImageOff, Pencil } from 'lucide-react'
+import { BookOpen, Plus, Save, Trash2, CheckCircle2, X, Download, Upload, Loader2, LayoutList, Braces, GripVertical, FileSpreadsheet, FileText, ImageOff, Pencil, Folder } from 'lucide-react'
 
 import {
   listLegends, createLegend, updateLegend, deleteLegend,
@@ -11,6 +11,7 @@ import {
   getDefaultSymbolImages, uploadSymbolImage, deleteSymbolImage,
   deleteLegendLookupEntry, LEGEND_SECTIONS,
 } from '../../../../services/pidCheckerV2API'
+import projectOrganizerService from '../../../../services/projectOrganizerService'
 import AddToLegendModal from './AddToLegendModal'
 import { emitLegendSync, subscribeLegendSync, LEGEND_SYNC_ACTIONS, LEGEND_SYNC_POLL_MS } from '../../../../config/legendSheetsRules'
 import { parseLegendFile, IMPORT_ACCEPT } from '../../../../config/legendSheetsImport'
@@ -124,8 +125,29 @@ function newBlankField() {
  *                      legend for the CURRENT section changes; parent uses it
  *                      to refresh the "Active Legend" badge.
  */
-export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SECTION, onActiveChange, projectId }) {
+export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SECTION, onActiveChange, projectId: projectIdProp }) {
   const [activeSection, setActiveSection] = useState(section || DEFAULT_SECTION)
+
+  // ── Project scope — soft-coded selector in the header. When the parent
+  // passes projectId it acts as the initial value; the user can switch or
+  // clear it here without leaving the modal. Empty = personal/global library.
+  const [projectId, setProjectId] = useState(projectIdProp || '')
+  const [projects, setProjects] = useState([])
+  const [projectsBusy, setProjectsBusy] = useState(false)
+  useEffect(() => { if (open) setProjectId(projectIdProp || '') }, [open, projectIdProp])
+  useEffect(() => {
+    if (!open) return undefined
+    let live = true
+    setProjectsBusy(true)
+    ;(async () => {
+      try {
+        const items = await projectOrganizerService.listProjects()
+        if (live) setProjects(Array.isArray(items) ? items : [])
+      } catch { /* selector stays empty — non-fatal */ }
+      finally { if (live) setProjectsBusy(false) }
+    })()
+    return () => { live = false }
+  }, [open])
 
   // Reference pictures, manually uploaded per symbol (see LegendSymbolImage /
   // SymbolImagesListView / SymbolImageUploadView) — keyed by
@@ -176,7 +198,7 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
   const refresh = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
     try {
-      const rows = await listLegends(activeSection)
+      const rows = await listLegends(activeSection, projectId || undefined)
       setLegends(Array.isArray(rows) ? rows : [])
       // Clear selection when switching sections so the editor doesn't show a
       // stale legend belonging to a different section. Only do this for a
@@ -197,7 +219,7 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [activeSection, section, onActiveChange])
+  }, [activeSection, section, onActiveChange, projectId])
 
   useEffect(() => { if (open) refresh() }, [open, refresh])
 
@@ -289,6 +311,7 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
         description: draftDesc,
         definition: JSON.parse(draftDefinition),
       }
+      if (projectId) payload.project = projectId
       if (selectedId) {
         const updated = await updateLegend(selectedId, payload)
         toast.success('Legend updated')
@@ -318,7 +341,7 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
     } finally {
       setSaving(false)
     }
-  }, [draftName, draftDesc, draftDefinition, activeSection, selectedId, validateDefinition])
+  }, [draftName, draftDesc, draftDefinition, activeSection, selectedId, validateDefinition, projectId])
 
   const onActivate = useCallback(async (legendId) => {
     try {
@@ -512,6 +535,28 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
             <div style={{ fontSize: 12, color: THEME_MUTED }}>
               Define custom extraction rules — switch section to view or create legends for {LEGEND_SECTIONS.map(s => s.label).join(', ')}
             </div>
+          </div>
+          {/* Project scope selector — empty = personal/global library */}
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+            <Folder size={14} style={{ position: 'absolute', left: 10, color: THEME_MUTED, pointerEvents: 'none' }} />
+            <select
+              value={projectId}
+              onChange={e => setProjectId(e.target.value)}
+              disabled={projectsBusy}
+              title="Scope legends to a project — project legends are inherited by every tool working on that project"
+              style={{
+                padding: '7px 28px 7px 30px', borderRadius: 10, fontSize: 12, fontWeight: 600,
+                color: THEME_TEXT, background: projectId ? '#eef2ff' : THEME_BG_SOFT,
+                border: `1px solid ${projectId ? '#c7d2fe' : THEME_BORDER}`,
+                appearance: 'none', cursor: 'pointer', maxWidth: 220,
+              }}
+            >
+              <option value="">Global library (no project)</option>
+              {projects.map(p => (
+                <option key={p.project_id} value={p.project_id}>{p.name || p.code || p.project_id}</option>
+              ))}
+            </select>
+            <span style={{ position: 'absolute', right: 10, color: THEME_MUTED, pointerEvents: 'none', fontSize: 10 }}>▾</span>
           </div>
           <button onClick={onClose} style={{
             background: 'none', border: 'none', cursor: 'pointer', color: THEME_MUTED,

@@ -29,13 +29,22 @@
  */
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { DocumentTextIcon, CloudArrowUpIcon, CheckCircleIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon } from '@heroicons/react/24/outline';
+import { DocumentTextIcon, CloudArrowUpIcon, CheckCircleIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon, BookOpenIcon, Cog6ToothIcon } from '@heroicons/react/24/outline';
 import apiClient from '../../../services/api.service';
 import * as XLSX from 'xlsx';
 import envConfig from '../../../config/environment.config';
 import WrenchAiDocAssist from '../../../components/Engineering/WrenchAiDocAssist';
+import LineListWorkflowDocs from './components/LineListWorkflowDocs';
+import LegendSheetsModal from './components/LegendSheetsModal';
+import ProjectLegendPanel from '../../../components/Engineering/ProjectLegendPanel';
+import { listLegends } from '../../../services/pidCheckerV2API';
 import { getApiBaseUrl } from '../../../config/environment.config';
 import { STORAGE_KEYS } from '../../../config/app.config';
+// Shared Project Organizer — soft-coded workspace (same pattern as HMB Extractor)
+import { PROJECT_ORGANIZER_CONFIG } from '../../../config/projectOrganizer.config';
+import projectOrganizerService from '../../../services/projectOrganizerService';
+import { ProjectCard, ProjectFormModal, useActiveProject } from '../../../components/ProjectOrganizer';
+import { FolderIcon, FolderPlusIcon } from '@heroicons/react/24/outline';
 
 // ---------------------------------------------------------------------------
 // Soft-coded config — all timing values flow from environments.json.
@@ -184,6 +193,7 @@ const LL_HEADER_STYLE = 'v1';
 
 // SOFT-CODED: visibility toggles for optional page sections.
 const LL_SHOW_FORMATS_REFERENCE = false;   // "Supported Line Number Formats" card — hidden
+const LL_SHOW_WHAT_GETS_EXTRACTED = false; // "What Gets Extracted" info panel — hidden
 
 // V1-style light header config (mirrors PIDVerification.jsx header constants)
 const LL_HEADER = {
@@ -295,15 +305,57 @@ const LAYOUT_CONFIG = {
 // Helper — returns patience message based on elapsed time.
 const getPatienceMsg = (secs) => {
   if (secs < 60)  return 'OCR extraction running in the background — usually 2–10 min for standard P&IDs.';
+  if (secs < 60)  return 'OCR extraction running in the background — usually 2–10 min for standard P&IDs.';
   if (secs < 180) return 'Still working… multi-page or high-density P&IDs take longer. Please keep this tab open.';
   if (secs < 600) return `Running for ${Math.floor(secs/60)}m ${secs%60}s — complex drawings can take 10–30 min on the server. You can safely leave this tab open.`;
   return `Running for ${Math.floor(secs/60)}m ${secs%60}s — still processing. For very large files consider splitting into single-sheet P&IDs.`;
 };
 
+// ---------------------------------------------------------------------------
+// SOFT-CODED: Project Organizer integration for Line List
+// true = require a project before extraction (V1-style workspace);
+// false = legacy single-shot mode (no projects).
+// ---------------------------------------------------------------------------
+const LL_PROJECTS = {
+  enabled:    true,
+  toolCode:   'pid_line_list',                 // matches moduleCode in engineeringStructure.config
+  storageKey: 'lineListActiveProject',
+  theme:      PROJECT_ORGANIZER_CONFIG.defaultTheme,
+  createTitle:'New Line List Project',
+};
+
+const LL_LEGENDS = {
+  enabled: true,                 // false → restore legacy manual legend upload card
+  section: 'line_list',          // backend legend section (pidCheckerV2API.LEGEND_SECTIONS)
+};
+
 const LineList = () => {
+  // ── Project Organizer state (soft-coded — see LL_PROJECTS) ─────────────
+  const { activeProject, setActiveProject, hydrated: projHydrated } = useActiveProject(LL_PROJECTS.storageKey);
+  const [projects, setProjects]               = useState([]);
+  const [loadingProjects, setLoadingProjects] = useState(true);
+  const [showCreateProject, setShowCreateProject] = useState(false);
+  const [projectBusy, setProjectBusy]         = useState(false);
+  const [projectError, setProjectError]       = useState('');
+
   // State management
   const [pidDocument, setPidDocument] = useState(null);
   const [legendDocument, setLegendDocument] = useState(null);
+
+  // ── Managed Legend Sheets (shared V1 system — soft-coded via LL_LEGENDS) ──
+  const [legendModalOpen, setLegendModalOpen] = useState(false);
+  const [activeLegend, setActiveLegend]       = useState(null);
+
+  const refreshActiveLegend = useCallback(async () => {
+    try {
+      const rows = await listLegends(LL_LEGENDS.section);
+      const list = rows || [];
+      setActiveLegend(list.find(l => l.is_active) || null);
+    } catch { /* non-fatal — legend is optional */ }
+  }, []);
+
+  useEffect(() => { if (LL_LEGENDS.enabled) refreshActiveLegend(); }, [refreshActiveLegend]);
+
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [statusMessage, setStatusMessage] = useState('');
@@ -364,6 +416,49 @@ const LineList = () => {
     return () => clearInterval(elapsedTimerRef.current);
   }, [isProcessing]);
 
+  // -------------------------------------------------------------------------
+  // Project Organizer — load projects + handlers (soft-coded via LL_PROJECTS)
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    if (!LL_PROJECTS.enabled) { setLoadingProjects(false); return; }
+    let live = true;
+    (async () => {
+      try {
+        const items = await projectOrganizerService.listProjects();
+        if (live) setProjects(items);
+      } catch {
+        if (live) setProjectError('Failed to load projects');
+      } finally {
+        if (live) setLoadingProjects(false);
+      }
+    })();
+    return () => { live = false; };
+  }, []);
+
+  const handleCreateProject = async (payload) => {
+    setProjectBusy(true); setProjectError('');
+    try {
+      const p = await projectOrganizerService.createProject(payload);
+      setProjects(prev => [p, ...prev]);
+      setShowCreateProject(false);
+      setActiveProject(p);
+    } catch (e) {
+      setProjectError(e?.response?.data?.error || 'Failed to create project');
+    } finally {
+      setProjectBusy(false);
+    }
+  };
+
+  // Fire-and-forget cross-tool activity log (never blocks extraction UX)
+  const logExtractionActivity = (fileName, lineCount) => {
+    if (!LL_PROJECTS.enabled || !activeProject) return;
+    projectOrganizerService.logProjectActivity(activeProject.project_id, {
+      toolCode: LL_PROJECTS.toolCode,
+      summary: `Line list extracted from "${fileName}" — ${lineCount} line${lineCount === 1 ? '' : 's'}`,
+      metadata: { file: fileName, lines: lineCount, format: formatType },
+    }).catch(() => {});
+  };
+
   // Friendly elapsed-time string e.g. "2m 34s"
   const formatElapsed = (secs) => {
     if (secs < 60) return `${secs}s`;
@@ -407,6 +502,7 @@ const LineList = () => {
           setStatusMessage('Extraction complete!');
           setExtractedData(data.result);
           setIsProcessing(false);
+          logExtractionActivity(pidDocument?.name || 'P&ID', data.result?.lines?.length ?? 0);
 
         } else if (state === 'FAILURE') {
           clearTimeout(pollTimerRef.current);
@@ -528,6 +624,7 @@ const LineList = () => {
           setProgress(100);
           setStatusMessage('Extraction complete!');
           setIsProcessing(false);
+          logExtractionActivity(pidDocument?.name || 'P&ID', data?.lines?.length ?? 0);
           return;
         }
 
@@ -613,6 +710,67 @@ const LineList = () => {
   // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------
+
+  // ── PROJECT GATE — V1-style workspace: select/create a project first ─────
+  // SOFT-CODED: disable via LL_PROJECTS.enabled = false (legacy single-shot).
+  if (LL_PROJECTS.enabled && (!projHydrated || loadingProjects)) {
+    return <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #f8faff 0%, #eef2ff 45%, #f0f9ff 75%, #fffbeb 100%)' }} />;
+  }
+
+  if (LL_PROJECTS.enabled && !activeProject) {
+    return (
+      <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #f8faff 0%, #eef2ff 45%, #f0f9ff 75%, #fffbeb 100%)', padding: '32px 24px' }}>
+        <div className="w-full" style={{ maxWidth: 1400, margin: '0 auto' }}>
+          {/* Header */}
+          <div className="flex items-center gap-3 mb-1.5">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ background: 'linear-gradient(135deg,#3b82f6,#6366f1)', boxShadow: '0 4px 14px rgba(59,130,246,0.3)' }}>
+              <DocumentTextIcon className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-extrabold text-slate-900" style={{ margin: 0 }}>Line List — Project Workspace</h1>
+              <p className="text-sm text-slate-500" style={{ margin: 0 }}>Select or create a project to organise your P&ID line-list extractions.</p>
+            </div>
+          </div>
+
+          <div className="mt-6 mb-5">
+            <button onClick={() => setShowCreateProject(true)}
+              className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-white rounded-xl transition-all hover:-translate-y-px"
+              style={{ background: 'linear-gradient(135deg,#3b82f6,#6366f1)', boxShadow: '0 4px 12px rgba(59,130,246,0.25)', border: 'none', cursor: 'pointer' }}>
+              <FolderPlusIcon className="h-4 w-4" /> New Project
+            </button>
+          </div>
+
+          {projectError && (
+            <div role="alert" className="mb-4 px-4 py-3 rounded-lg text-sm" style={{ border: '1px solid #fecaca', background: '#fef2f2', color: '#991b1b' }}>
+              {projectError}
+            </div>
+          )}
+
+          {projects.length === 0 ? (
+            <div className="rounded-2xl p-16 text-center" style={{ background: '#fff', border: '1px dashed rgba(59,130,246,0.3)' }}>
+              <FolderIcon className="h-12 w-12 mx-auto mb-3" style={{ color: '#3b82f6', opacity: 0.45 }} />
+              <h2 className="text-lg font-bold text-slate-900" style={{ margin: 0 }}>No projects yet</h2>
+              <p className="text-sm text-slate-500 mt-1">Create your first project to start extracting line lists.</p>
+            </div>
+          ) : (
+            <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))' }}>
+              {projects.map(p => (
+                <ProjectCard key={p.project_id} project={p} theme={LL_PROJECTS.theme}
+                  onOpen={() => setActiveProject(p)} />
+              ))}
+            </div>
+          )}
+
+          {showCreateProject && (
+            <ProjectFormModal theme={LL_PROJECTS.theme} busy={projectBusy}
+              onClose={() => setShowCreateProject(false)} onSubmit={handleCreateProject} />
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <style>{`
@@ -799,8 +957,18 @@ const LineList = () => {
                   </div>
                 </div>
 
-                {/* Right: fullscreen toggle + quick stats — V1 pattern */}
-                <div className="flex items-center gap-6">
+                {/* Right: project chip + fullscreen toggle + quick stats — V1 pattern */}
+                <div className="flex items-center gap-4 flex-wrap">
+                  {LL_PROJECTS.enabled && activeProject && (
+                    <button onClick={() => setActiveProject(null)}
+                      title="Switch project"
+                      className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition-all">
+                      <FolderIcon className="h-4 w-4" />
+                      <span className="max-w-[180px] truncate">{activeProject.name || activeProject.code || 'Project'}</span>
+                      <span className="text-blue-400">·</span>
+                      <span className="text-blue-500">Switch</span>
+                    </button>
+                  )}
                   <button
                     onClick={() => setIsFullscreen(fs => !fs)}
                     title={isFullscreen ? 'Exit fullscreen' : 'Expand to fullscreen'}
@@ -910,6 +1078,10 @@ const LineList = () => {
           )}
           </div>
 
+          {/* ═══ VERIFICATION WORKFLOW + SMART DOCUMENTATION — V1 split-screen ═══
+              Soft-coded: components/LineListWorkflowDocs.jsx (LL_DOCS_CONFIG) */}
+          <LineListWorkflowDocs />
+
           {/* ── Supported Formats Reference card — soft-coded off (LL_SHOW_FORMATS_REFERENCE) ── */}
           {LL_SHOW_FORMATS_REFERENCE && (
           <div className="rounded-2xl p-5 mb-4 ll-section" style={{
@@ -943,6 +1115,14 @@ const LineList = () => {
           )}
 
           {/* ── Upload + Options Card ── */}
+          {/* ═══ PROJECT WORKSPACE section header — V1 pattern ═══ */}
+          <div className="flex items-center justify-between mb-6 mt-2 flex-wrap gap-4 ll-section" style={{ animationDelay: '0.1s' }}>
+            <div>
+              <h2 className="text-xl font-bold text-slate-900" style={{ margin: 0, marginBottom: '4px' }}>Project Workspace</h2>
+              <p className="text-sm text-slate-500" style={{ margin: 0 }}>Upload a P&ID drawing to extract the line list — then review and export.</p>
+            </div>
+          </div>
+
           <div className="rounded-2xl p-6 mb-4 ll-section" style={{
             background: 'white',
             border: '1px solid rgba(37,99,235,0.13)',
@@ -1093,7 +1273,16 @@ const LineList = () => {
             </div>
           </div>
 
-          {/* ── Legend Sheet Upload Card (optional) ── */}
+          {/* ── Legend Sheets — shared ProjectLegendPanel (project inheritance) ── */}
+          {LL_LEGENDS.enabled ? (
+          <ProjectLegendPanel
+            section={LL_LEGENDS.section}
+            projectId={activeProject?.project_id}
+            projectName={activeProject?.name || activeProject?.code || ''}
+            onManage={() => setLegendModalOpen(true)}
+            refreshToken={legendModalOpen ? 0 : 1}
+          />
+          ) : (
           <div className="rounded-2xl p-6 mb-4 ll-section" style={{
             background: 'white',
             border: '1px solid rgba(16,185,129,0.18)',
@@ -1155,6 +1344,7 @@ const LineList = () => {
               </div>
             </div>
           </div>
+          )}
 
           {/* ── Action Buttons ── */}
           <div className="flex gap-3 mb-4 ll-section" style={{ animationDelay: '0.2s' }}>
@@ -1513,8 +1703,8 @@ const LineList = () => {
             </div>
           )}
 
-          {/* ── Info Panel (idle) — coloured feature tiles with hover lift ── */}
-          {!extractedData && !isProcessing && (
+          {/* ── Info Panel (idle) — soft-coded off (LL_SHOW_WHAT_GETS_EXTRACTED) ── */}
+          {LL_SHOW_WHAT_GETS_EXTRACTED && !extractedData && !isProcessing && (
             <div className="rounded-2xl p-6 mt-4 ll-section" style={{
               background: 'white',
               border: '1px solid rgba(37,99,235,0.1)',
@@ -1566,6 +1756,17 @@ const LineList = () => {
 
         </div>
       </div>
+
+      {/* ── Managed Legend Sheets modal (shared V1 system) ── */}
+      {LL_LEGENDS.enabled && (
+        <LegendSheetsModal
+          open={legendModalOpen}
+          onClose={() => setLegendModalOpen(false)}
+          section={LL_LEGENDS.section}
+          projectId={activeProject?.project_id}
+          onActiveChange={(legend) => { setActiveLegend(legend); refreshActiveLegend(); }}
+        />
+      )}
     </>
   );
 };

@@ -8,6 +8,7 @@ const EXTRACT_ENDPOINT = `${BASE_PATH}/extract-line-tags/`
 const EXTRACTIONS_ENDPOINT = `${BASE_PATH}/extractions/`
 const LEGENDS_ENDPOINT = `${BASE_PATH}/legends/`
 const LEGENDS_DEFAULT_TEMPLATE_ENDPOINT = `${BASE_PATH}/legends/default-template/`
+const LEGENDS_PACK_UPLOAD_ENDPOINT = `${BASE_PATH}/legends/pack-upload/`
 const LEGENDS_LOOKUP_ADD_ENDPOINT = `${BASE_PATH}/legends/add-lookup/`
 const LEGENDS_LOOKUP_EDIT_ENDPOINT = `${BASE_PATH}/legends/edit-lookup/`
 const LEGENDS_LOOKUP_DELETE_ENDPOINT = `${BASE_PATH}/legends/delete-lookup/`
@@ -150,9 +151,13 @@ export async function deleteExtraction(extractionId) {
 // Legend Sheets — user-owned per-section rule sets
 // ═════════════════════════════════════════════════════════════════════
 
-export async function listLegends(section) {
-  const params = section ? { section } : undefined
-  const res = await apiClient.get(LEGENDS_ENDPOINT, { params })
+export async function listLegends(section, projectId) {
+  const params = {}
+  if (section) params.section = section
+  // Optional project scope — returns project-pack legends (inherited, any
+  // uploader) alongside the user's own; rows carry an `inherited` flag.
+  if (projectId) params.project_id = projectId
+  const res = await apiClient.get(LEGENDS_ENDPOINT, { params: Object.keys(params).length ? params : undefined })
   return res.data
 }
 
@@ -182,6 +187,20 @@ export async function activateLegend(legendId) {
 
 export async function getLegendDefaultTemplate(section) {
   const res = await apiClient.get(LEGENDS_DEFAULT_TEMPLATE_ENDPOINT, { params: { section } })
+  return res.data
+}
+
+// Upload ONE project legend pack file (PDF/image) — the backend AI-parses it
+// and auto-splits it into per-section project legends that every tool inherits.
+export async function uploadLegendPack({ file, projectId, name = '', useAi = true }) {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('project_id', projectId)
+  if (name) form.append('name', name)
+  form.append('use_ai', useAi ? 'true' : 'false')
+  const res = await apiClient.post(LEGENDS_PACK_UPLOAD_ENDPOINT, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
   return res.data
 }
 

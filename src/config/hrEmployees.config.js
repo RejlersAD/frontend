@@ -297,7 +297,7 @@ export const HR_VIEW_MODES = [
   // 'dept' tab re-purposed as a live organisation demography rooted at the CEO.
   // The id stays 'dept' so view-mode wiring, pagination and URL params are untouched.
   { id: 'dept',      label: 'Org Demography',  icon: 'UserGroupIcon' },
-  { id: 'hierarchy', label: 'Hierarchy',       icon: 'ShareIcon' },
+  // 'hierarchy' view removed — toggle this entry back to re-enable it.
   { id: 'timesheet', label: 'Time Sheet',      icon: 'ClockIcon' },
 ]
 export const HR_DEFAULT_VIEW_MODE = 'table'

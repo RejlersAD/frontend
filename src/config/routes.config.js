@@ -79,6 +79,8 @@ export const ROUTES = {
   SMART_PLANT_3D: '/engineering/digitization/smart-plant-3d',
   VALVE_STANDARDS: '/engineering/digitization/valve-standards',
   DOCUMENT_VALIDATION: '/engineering/process/pid-checker-v2',
+  // 1.8 Legend Manager — central legend-sheet library
+  LEGEND_MANAGER: '/engineering/legends',
 };
 
 /**

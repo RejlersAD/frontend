@@ -20,7 +20,8 @@ import {
   CircleStackIcon,
   DocumentMagnifyingGlassIcon,
   DocumentCheckIcon,
-  CubeIcon
+  CubeIcon,
+  BookOpenIcon
 } from '@heroicons/react/24/outline'
 
 // SOFT-CODED: P&ID Feature Naming Configuration
@@ -192,6 +193,7 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/piping/datasheet',
         description: 'Piping component datasheets',
         moduleCode: 'piping_datasheet',
+        enabled: false,
       }
     ]
   },
@@ -385,6 +387,32 @@ export const ENGINEERING_DISCIPLINES = {
       // route still at /engineering/digitization/valve-standards). Previously
       // duplicated here as a sibling sub-feature by mistake; removed 2026-08-27
       // to avoid a second top-level Digitization menu item for the same feature.
+    ]
+  },
+
+  // SOFT-CODED: 1.8 Legend Manager — central legend-sheet library shared by
+  // all engineering extraction tools (Line List, Equipment List, Instrument
+  // Index, P&ID QC …). Configure once per project; every tool inherits.
+  legendManager: {
+    id: 'legendManager',
+    name: 'Legend Manager',
+    fullName: 'Legend Sheet Manager',
+    icon: BookOpenIcon,
+    description: 'Central legend-sheet library — one legend pack per project, inherited by every extraction tool',
+    color: 'indigo',
+    gradient: 'from-indigo-500 to-blue-600',
+    order: 8,
+    subFeatures: [
+      {
+        id: 'manageLegends',
+        name: 'Manage Legends',
+        fullName: 'Legend Sheet Manager',
+        icon: BookOpenIcon,
+        path: '/engineering/legends',
+        description: 'Central legend-sheet library — manage per-section legends and project legend packs',
+        moduleCode: 'legend_manager',
+        badge: ''
+      }
     ]
   }
 }

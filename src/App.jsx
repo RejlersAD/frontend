@@ -143,6 +143,7 @@ import PIDVerificationV2Report from './pages/Engineering/Process/PIDVerification
 import PIDCheckerV2 from './pages/Engineering/Process/PIDCheckerV2'
 import PIDCheckerV2Docs from './pages/Engineering/Process/PIDCheckerV2Docs'
 import LegendSheetsCanvas from './pages/Engineering/Process/LegendSheetsCanvas'
+import LegendManagerPage from './pages/Engineering/Legends/LegendManagerPage'
 import PFDQualityChecker from './pages/Engineering/Process/PFDQualityChecker'
 import HMBExtractor from './pages/Engineering/Process/HMBExtractor'
 import ManageProjectsPage from './pages/ProjectOrganizer/ManageProjectsPage'
@@ -1150,6 +1151,16 @@ function App() {
           element={
             <ModuleProtectedRoute moduleCode="pid_analysis">
               <LegendSheetsCanvas />
+            </ModuleProtectedRoute>
+          }
+        />
+
+        {/* 1.8 Legend Manager — central legend-sheet library (project-aware) */}
+        <Route
+          path="engineering/legends"
+          element={
+            <ModuleProtectedRoute moduleCode="legend_manager">
+              <LegendManagerPage />
             </ModuleProtectedRoute>
           }
         />

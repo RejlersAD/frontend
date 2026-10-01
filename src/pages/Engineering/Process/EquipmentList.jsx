@@ -14,6 +14,11 @@ import {
   ArrowDownTrayIcon,
   ArrowsPointingOutIcon,
   ArrowsPointingInIcon,
+  BookOpenIcon,
+  Cog6ToothIcon,
+  FolderIcon,
+  FolderPlusIcon,
+  DocumentTextIcon,
 } from '@heroicons/react/24/outline';
 import { Boxes } from 'lucide-react';
 import apiClient from '../../../services/api.service';
@@ -21,6 +26,14 @@ import * as XLSX from 'xlsx';
 import { getApiBaseUrl } from '../../../config/environment.config';
 import { STORAGE_KEYS } from '../../../config/app.config';
 import WrenchAiDocAssist from '../../../components/Engineering/WrenchAiDocAssist';
+import LegendSheetsModal from './components/LegendSheetsModal';
+import ProjectLegendPanel from '../../../components/Engineering/ProjectLegendPanel';
+import { listLegends } from '../../../services/pidCheckerV2API';
+import EquipmentListWorkflowDocs from './components/EquipmentListWorkflowDocs';
+// Shared Project Organizer — soft-coded workspace (same pattern as Line List / HMB)
+import { PROJECT_ORGANIZER_CONFIG } from '../../../config/projectOrganizer.config';
+import projectOrganizerService from '../../../services/projectOrganizerService';
+import { ProjectCard, ProjectFormModal, useActiveProject } from '../../../components/ProjectOrganizer';
 
 // ---------------------------------------------------------------------------
 // Soft-coded column definitions — add/remove columns here only.
@@ -503,7 +516,37 @@ const EQ_T = {
 };
 
 // ---------------------------------------------------------------------------
+// SOFT-CODED: feature integrations (same pattern as Line List)
+// ---------------------------------------------------------------------------
+const EQ_PROJECTS = {
+  enabled:    true,                       // false → legacy single-shot mode (no projects)
+  toolCode:   'pid_equipment_list',       // matches moduleCode in engineeringStructure.config
+  storageKey: 'equipmentListActiveProject',
+  theme:      PROJECT_ORGANIZER_CONFIG.defaultTheme,
+};
+const EQ_LEGENDS = {
+  enabled: true,                          // managed legend sheets (shared V1 system)
+  section: 'equipment_list',              // backend legend section
+};
+const EQ_DOCS = { enabled: true };        // workflow + Smart Documentation split-screen
+
+// SOFT-CODED: visibility toggles for optional page sections
+const EQ_SHOW_WHAT_GETS_EXTRACTED = false; // "What Gets Extracted" info panel — hidden
+
+// ---------------------------------------------------------------------------
 const EquipmentList = () => {
+  // ── Project Organizer state (soft-coded — see EQ_PROJECTS) ─────────────
+  const { activeProject, setActiveProject, hydrated: projHydrated } = useActiveProject(EQ_PROJECTS.storageKey);
+  const [projects, setProjects]               = useState([]);
+  const [loadingProjects, setLoadingProjects] = useState(true);
+  const [showCreateProject, setShowCreateProject] = useState(false);
+  const [projectBusy, setProjectBusy]         = useState(false);
+  const [projectError, setProjectError]       = useState('');
+
+  // ── Managed Legend Sheets state (shared V1 system — see EQ_LEGENDS) ─────
+  const [legendModalOpen, setLegendModalOpen] = useState(false);
+  const [activeLegend, setActiveLegend]       = useState(null);
+
   const [files,          setFiles]          = useState([]);
   const [isProcessing,   setIsProcessing]   = useState(false);
   const [progress,       setProgress]       = useState(0);
@@ -525,6 +568,58 @@ const EquipmentList = () => {
   const pollTimerRef = useRef(null);
   const pollStartRef = useRef(null);
   const elapsedRef   = useRef(null);
+
+  // ── Project Organizer — load projects + handlers (soft-coded via EQ_PROJECTS) ──
+  useEffect(() => {
+    if (!EQ_PROJECTS.enabled) { setLoadingProjects(false); return; }
+    let live = true;
+    (async () => {
+      try {
+        const items = await projectOrganizerService.listProjects();
+        if (live) setProjects(items);
+      } catch {
+        if (live) setProjectError('Failed to load projects');
+      } finally {
+        if (live) setLoadingProjects(false);
+      }
+    })();
+    return () => { live = false; };
+  }, []);
+
+  const handleCreateProject = async (payload) => {
+    setProjectBusy(true); setProjectError('');
+    try {
+      const p = await projectOrganizerService.createProject(payload);
+      setProjects(prev => [p, ...prev]);
+      setShowCreateProject(false);
+      setActiveProject(p);
+    } catch (e) {
+      setProjectError(e?.response?.data?.error || 'Failed to create project');
+    } finally {
+      setProjectBusy(false);
+    }
+  };
+
+  // Fire-and-forget cross-tool activity log (never blocks extraction UX)
+  const logExtractionActivity = (fileNames, eqCount) => {
+    if (!EQ_PROJECTS.enabled || !activeProject) return;
+    projectOrganizerService.logProjectActivity(activeProject.project_id, {
+      toolCode: EQ_PROJECTS.toolCode,
+      summary: `Equipment list extracted from ${fileNames} — ${eqCount} item${eqCount === 1 ? '' : 's'}`,
+      metadata: { files: fileNames, items: eqCount },
+    }).catch(() => {});
+  };
+
+  // ── Managed Legend Sheets — load active legend (soft-coded via EQ_LEGENDS) ──
+  const refreshActiveLegend = useCallback(async () => {
+    try {
+      const rows = await listLegends(EQ_LEGENDS.section);
+      const list = rows || [];
+      setActiveLegend(list.find(l => l.is_active) || null);
+    } catch { /* non-fatal — legend is optional */ }
+  }, []);
+
+  useEffect(() => { if (EQ_LEGENDS.enabled) refreshActiveLegend(); }, [refreshActiveLegend]);
 
   // Elapsed timer
   useEffect(() => {
@@ -632,6 +727,7 @@ const EquipmentList = () => {
               setProgress(100);
               setStatusMessage('Extraction complete!');
               setIsProcessing(false);
+              logExtractionActivity(files.map(f => f.name).join(', ') || 'P&ID', r.total ?? r.equipment?.length ?? 0);
             })
             .catch(() => {
               setError('Failed to load results. Please try again.');
@@ -718,6 +814,7 @@ const EquipmentList = () => {
           setProgress(100);
           setStatusMessage('Extraction complete!');
           setIsProcessing(false);
+          logExtractionActivity(files.map(f => f.name).join(', ') || 'P&ID', data.total ?? data.equipment?.length ?? 0);
           return;
         }
 
@@ -860,6 +957,66 @@ const EquipmentList = () => {
         : 1,
     };
   }, [results]);
+
+  // ── PROJECT GATE — V1-style workspace: select/create a project first ─────
+  // SOFT-CODED: disable via EQ_PROJECTS.enabled = false (legacy single-shot).
+  if (EQ_PROJECTS.enabled && (!projHydrated || loadingProjects)) {
+    return <div style={{ minHeight: '100vh', background: EQ_T.bg }} />;
+  }
+
+  if (EQ_PROJECTS.enabled && !activeProject) {
+    return (
+      <div style={{ minHeight: '100vh', background: EQ_T.bg, padding: '32px 24px' }}>
+        <div className="w-full" style={{ maxWidth: 1400, margin: '0 auto' }}>
+          {/* Header */}
+          <div className="flex items-center gap-3 mb-1.5">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ background: 'linear-gradient(135deg,#3b82f6,#6366f1)', boxShadow: '0 4px 14px rgba(59,130,246,0.3)' }}>
+              <Boxes className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-extrabold text-slate-900" style={{ margin: 0 }}>Equipment List — Project Workspace</h1>
+              <p className="text-sm text-slate-500" style={{ margin: 0 }}>Select or create a project to organise your P&ID equipment extractions.</p>
+            </div>
+          </div>
+
+          <div className="mt-6 mb-5">
+            <button onClick={() => setShowCreateProject(true)}
+              className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-white rounded-xl transition-all hover:-translate-y-px"
+              style={{ background: 'linear-gradient(135deg,#3b82f6,#6366f1)', boxShadow: '0 4px 12px rgba(59,130,246,0.25)', border: 'none', cursor: 'pointer' }}>
+              <FolderPlusIcon className="h-4 w-4" /> New Project
+            </button>
+          </div>
+
+          {projectError && (
+            <div role="alert" className="mb-4 px-4 py-3 rounded-lg text-sm" style={{ border: '1px solid #fecaca', background: '#fef2f2', color: '#991b1b' }}>
+              {projectError}
+            </div>
+          )}
+
+          {projects.length === 0 ? (
+            <div className="rounded-2xl p-16 text-center" style={{ background: '#fff', border: '1px dashed rgba(59,130,246,0.3)' }}>
+              <FolderIcon className="h-12 w-12 mx-auto mb-3" style={{ color: '#3b82f6', opacity: 0.45 }} />
+              <h2 className="text-lg font-bold text-slate-900" style={{ margin: 0 }}>No projects yet</h2>
+              <p className="text-sm text-slate-500 mt-1">Create your first project to start extracting equipment registers.</p>
+            </div>
+          ) : (
+            <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))' }}>
+              {projects.map(p => (
+                <ProjectCard key={p.project_id} project={p} theme={EQ_PROJECTS.theme}
+                  onOpen={() => setActiveProject(p)} />
+              ))}
+            </div>
+          )}
+
+          {showCreateProject && (
+            <ProjectFormModal theme={EQ_PROJECTS.theme} busy={projectBusy}
+              onClose={() => setShowCreateProject(false)} onSubmit={handleCreateProject} />
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -1039,6 +1196,39 @@ const EquipmentList = () => {
               ))}
             </div>
           </div>
+
+          {/* ═══ VERIFICATION WORKFLOW + SMART DOCUMENTATION — V1 split-screen ═══
+              Soft-coded: components/EquipmentListWorkflowDocs.jsx (EQ_DOCS_CONFIG) */}
+          {EQ_DOCS.enabled && <EquipmentListWorkflowDocs />}
+
+          {/* ═══ PROJECT WORKSPACE section header + project chip — V1 pattern ═══ */}
+          <div className="flex items-center justify-between mb-6 mt-2 flex-wrap gap-4 eq-section" style={{ animationDelay: '0.06s' }}>
+            <div>
+              <h2 className="text-xl font-bold text-slate-900" style={{ margin: 0, marginBottom: '4px' }}>Project Workspace</h2>
+              <p className="text-sm text-slate-500" style={{ margin: 0 }}>Upload P&ID drawings to extract the equipment register — then review and export.</p>
+            </div>
+            {EQ_PROJECTS.enabled && activeProject && (
+              <button onClick={() => setActiveProject(null)}
+                title="Switch project"
+                className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition-all">
+                <FolderIcon className="h-4 w-4" />
+                <span className="max-w-[180px] truncate">{activeProject.name || activeProject.code || 'Project'}</span>
+                <span className="text-blue-400">·</span>
+                <span className="text-blue-500">Switch</span>
+              </button>
+            )}
+          </div>
+
+          {/* ── Legend Sheets — shared ProjectLegendPanel (project inheritance) ── */}
+          {EQ_LEGENDS.enabled && (
+          <ProjectLegendPanel
+            section={EQ_LEGENDS.section}
+            projectId={activeProject?.project_id}
+            projectName={activeProject?.name || activeProject?.code || ''}
+            onManage={() => setLegendModalOpen(true)}
+            refreshToken={legendModalOpen ? 0 : 1}
+          />
+          )}
 
           {/* ── Upload Card ── */}
           <div className="rounded-2xl p-6 mb-4 eq-section" style={{
@@ -1933,9 +2123,9 @@ const EquipmentList = () => {
             </div>
           )}
 
-          {/* ── Info Panel (idle) ── */}
+          {/* ── Info Panel (idle) — soft-coded off (EQ_SHOW_WHAT_GETS_EXTRACTED) ── */}
           <div className="px-6" style={{ maxWidth: LAYOUT_CONFIG.normalMaxWidth }}>
-          {!results && !isProcessing && (
+          {EQ_SHOW_WHAT_GETS_EXTRACTED && !results && !isProcessing && (
             <div className="rounded-2xl overflow-hidden mt-4 eq-section" style={{
               background: 'white',
               border: '1px solid rgba(59,130,246,0.12)',
@@ -2014,6 +2204,17 @@ const EquipmentList = () => {
 
         </div>
       </div>
+
+      {/* ── Managed Legend Sheets modal (shared V1 system) ── */}
+      {EQ_LEGENDS.enabled && (
+        <LegendSheetsModal
+          open={legendModalOpen}
+          onClose={() => setLegendModalOpen(false)}
+          section={EQ_LEGENDS.section}
+          projectId={activeProject?.project_id}
+          onActiveChange={(legend) => { setActiveLegend(legend); refreshActiveLegend(); }}
+        />
+      )}
     </>
   );
 };

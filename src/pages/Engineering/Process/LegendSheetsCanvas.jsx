@@ -53,7 +53,7 @@ function fieldsFromDefinition(def) {
 }
 
 
-export default function LegendSheetsCanvas() {
+export default function LegendSheetsCanvas({ projectId = null, projectName = '' }) {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const initialSection = params.get('section') || DEFAULT_SECTION
@@ -84,7 +84,8 @@ export default function LegendSheetsCanvas() {
   const refresh = useCallback(async () => {
     setLoading(true)
     try {
-      const rows = await listLegends(activeSection)
+      // projectId (optional) scopes the list to include the project legend pack
+      const rows = await listLegends(activeSection, projectId || undefined)
       setLegends(Array.isArray(rows) ? rows : [])
       setSelectedId(null)
     } catch {
@@ -92,7 +93,7 @@ export default function LegendSheetsCanvas() {
     } finally {
       setLoading(false)
     }
-  }, [activeSection])
+  }, [activeSection, projectId])
 
   // Load lightweight counts + active-legend names for every section so the
   // top overview always reflects reality — even when the user is viewing a
@@ -100,7 +101,7 @@ export default function LegendSheetsCanvas() {
   const loadAllCounts = useCallback(async () => {
     try {
       const results = await Promise.all(
-        LEGEND_SECTIONS.map(s => listLegends(s.id).then(
+        LEGEND_SECTIONS.map(s => listLegends(s.id, projectId || undefined).then(
           rows => ({ id: s.id, rows: Array.isArray(rows) ? rows : [] }),
           ()  => ({ id: s.id, rows: [] }),
         ))
@@ -115,7 +116,7 @@ export default function LegendSheetsCanvas() {
       setSectionActive(active)
       setLastSync(new Date())
     } catch { /* silent — auxiliary */ }
-  }, [])
+  }, [projectId])
 
   useEffect(() => { refresh() }, [refresh])
   useEffect(() => { loadAllCounts() }, [loadAllCounts])
@@ -204,6 +205,9 @@ export default function LegendSheetsCanvas() {
         name: draftName.trim(),
         description: draftDesc,
         definition: JSON.parse(draftDefinition),
+        // When a project is selected on the hub, new legends bind to it so
+        // every tool in that project inherits them (project legend pack).
+        ...(projectId ? { project: projectId } : {}),
       }
       if (selectedId) {
         const updated = await updateLegend(selectedId, payload)

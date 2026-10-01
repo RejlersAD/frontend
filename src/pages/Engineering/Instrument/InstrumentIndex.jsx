@@ -55,6 +55,9 @@ import {
   getInstrumentTemplate,
 } from './InstrumentProjectManager';
 import WrenchAiDocAssist from '../../../components/Engineering/WrenchAiDocAssist';
+// Shared project-legend inheritance (bridges local project by NAME)
+import ProjectLegendPanel from '../../../components/Engineering/ProjectLegendPanel';
+import LegendSheetsModal from '../Process/components/LegendSheetsModal';
 
 // ═════════════════════════════════════════════════════════════════════════════
 // PFD-FORMAT REDESIGN — theme, animations & landing-page primitives
@@ -688,6 +691,9 @@ const InstrumentIndex = () => {
   const [projectManagerOpen, setProjectManagerOpen] = useState(false);
   const [pmInitialView, setPmInitialView] = useState(null);
   const [pmInitialCategory, setPmInitialCategory] = useState(null);
+
+  // Shared project-legend panel (soft-coded — see INST_LEGEND_PANEL)
+  const [legendModalOpen, setLegendModalOpen] = useState(false);
 
   // Open the manager in a specific mode (used by ProjectSetupPanel quick-picks)
   const openManager = (opts = {}) => {
@@ -1507,6 +1513,14 @@ const InstrumentIndex = () => {
             ))}
           </div>
         </div>
+
+        {/* ── Shared Project Legend panel — bridged by project NAME (soft-coded) ── */}
+        <ProjectLegendPanel
+          section="instrument_index"
+          projectName={activeProject?.name || ''}
+          onManage={() => setLegendModalOpen(true)}
+          refreshToken={legendModalOpen ? 0 : 1}
+        />
 
         {/* ── Step 2 · Upload P&ID Drawing card ── */}
         <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-6 mb-6">
@@ -2802,6 +2816,13 @@ const InstrumentIndex = () => {
         onChange={(next) => setEditingRow(prev => prev ? { ...prev, draft: next } : prev)}
         onClose={() => setEditingRow(null)}
         onSave={handleSaveEditedRow}
+      />
+
+      {/* ── Shared Legend Sheets modal (bridged by project NAME) ── */}
+      <LegendSheetsModal
+        open={legendModalOpen}
+        onClose={() => setLegendModalOpen(false)}
+        section="instrument_index"
       />
     </InstBg>
   );
