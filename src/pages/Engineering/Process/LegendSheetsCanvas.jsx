@@ -81,23 +81,39 @@ export default function LegendSheetsCanvas({ projectId = null, projectName = '' 
     [legends, selectedId]
   )
 
-  const refresh = useCallback(async () => {
-    setLoading(true)
+  // `silent` skips the visible "Loading…" spinner — used for background
+  // sync/poll refreshes so the list doesn't flash/shake when nothing changed.
+  // User-driven loads (section switch, initial open) still show the spinner.
+  const refresh = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
       // projectId (optional) scopes the list to include the project legend pack
       const rows = await listLegends(activeSection, projectId || undefined)
-      setLegends(Array.isArray(rows) ? rows : [])
-      setSelectedId(null)
+      // Diff: only update when the row set actually changed (avoids re-render
+      // flicker on background syncs that return identical data).
+      const next = Array.isArray(rows) ? rows : []
+      setLegends(prev => {
+        const same = prev.length === next.length
+          && prev.every((p, i) => p.legend_id === next[i]?.legend_id && p.updated_at === next[i]?.updated_at)
+        return same ? prev : next
+      })
+      if (!silent) setSelectedId(null)
     } catch {
-      toast.error('Failed to load legends')
+      if (!silent) toast.error('Failed to load legends')
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [activeSection, projectId])
 
   // Load lightweight counts + active-legend names for every section so the
   // top overview always reflects reality — even when the user is viewing a
   // different section tab.
+  //
+  // Runs on a 15s fallback poll AND on every cross-tab sync event. To stop the
+  // page visibly re-rendering ("shaking"/flicker) on each poll when nothing
+  // changed, we diff the fresh result against current state and only setState
+  // when something actually differs — React skips the re-render entirely for
+  // identical references.
   const loadAllCounts = useCallback(async () => {
     try {
       const results = await Promise.all(
@@ -110,10 +126,24 @@ export default function LegendSheetsCanvas({ projectId = null, projectName = '' 
       const active = {}
       results.forEach(({ id, rows }) => {
         counts[id] = rows.length
-        active[id] = rows.find(r => r.is_active) || null
+        const a = rows.find(r => r.is_active) || null
+        active[id] = a ? { legend_id: a.legend_id, name: a.name } : null
       })
-      setSectionCounts(counts)
-      setSectionActive(active)
+      // Diff before setState — avoids a re-render (and the resulting layout
+      // flicker / scroll jump) on every background poll when nothing changed.
+      setSectionCounts(prev => {
+        const same = LEGEND_SECTIONS.every(s => prev[s.id] === counts[s.id])
+        return same ? prev : counts
+      })
+      setSectionActive(prev => {
+        const same = LEGEND_SECTIONS.every(s =>
+          (prev[s.id]?.legend_id || null) === (active[s.id]?.legend_id || null))
+        if (same) return prev
+        // Map back to full legend objects only when the active set changed.
+        const next = {}
+        results.forEach(({ id, rows }) => { next[id] = rows.find(r => r.is_active) || null })
+        return next
+      })
       setLastSync(new Date())
     } catch { /* silent — auxiliary */ }
   }, [projectId])
@@ -123,10 +153,12 @@ export default function LegendSheetsCanvas({ projectId = null, projectName = '' 
 
   // Realtime sync: refresh whenever ANY tab/window creates/edits/deletes a
   // legend. Falls back to polling for browsers without BroadcastChannel.
+  // Both paths run SILENT (no loading spinner / no flicker) — the user is
+  // passively viewing, not actively reloading.
   useEffect(() => {
     const handler = (msg) => {
       loadAllCounts()
-      if (msg?.section === activeSection) refresh()
+      if (msg?.section === activeSection) refresh(true)
     }
     const unsub = subscribeLegendSync(handler)
     const timer = setInterval(loadAllCounts, LEGEND_SYNC_POLL_MS)
