@@ -1,5 +1,6 @@
 import { internalRoute } from './executivePresentation.js';
 import { invoicePerformanceModel } from './invoicePerformancePresentation.js';
+import { financeCount } from '../../components/Finance/financeCommandPresentation.js';
 
 const readable = status => ['available', 'partial'].includes(status);
 const number = value => (typeof value === 'number' || typeof value === 'string')
@@ -228,13 +229,20 @@ export function overviewModel(report, currency = 'AED', receivables = null, mode
     value: pendingAmount, currency, status: pendingAmount === null ? source?.status === 'restricted' ? 'restricted' : 'unavailable' : unpaid?.partial ? 'partial' : 'available',
     source: 'Current authorised invoice register', route: internalRoute(source?.route) };
   const progress = amount.complete && received.complete && amount.value > 0 && received.value >= 0 && received.value <= amount.value ? received.value / amount.value * 100 : null;
-  const projectsMetric = { ...unknownMetric('total_projects', 'Total projects', 'Accessible open projects, including planning, active and on-hold projects.', 'count', portfolio.register.status), value: portfolio.total, route: '/projects' };
+  const projectSummary = receivables?.currency === currency ? summary : null;
+  const projectCount = projectSummary?.schema_version === '1.0' && projectSummary.status === 'available'
+    ? financeCount(projectSummary.totals?.project_count) : null;
+  const projectStatus = projectCount !== null ? 'available'
+    : ['restricted', 'error'].includes(projectSummary?.status) ? projectSummary.status : 'unavailable';
+  const projectsMetric = { ...unknownMetric('total_projects', 'Total projects',
+    'Unique RAD project numbers in the published Finance workbook, across all invoice periods and currencies.', 'count', projectStatus),
+    value: projectCount, source: 'Published Finance workbook', route: projectStatus === 'restricted' ? null : '/finance' };
   const cards = [
     { id: 'revenue', label: 'Invoiced revenue', value: `${metricValue(revenue, currency)}${revenue.status === 'partial' && revenue.value !== null ? '*' : ''}`, note: invoicing.note, metric: revenue, tone: 'blue' },
     { id: 'total_amount', label: 'Total amount', value: `${metricValue(amount, currency)}${amount.status === 'partial' && amount.value !== null ? '*' : ''}`, note: readable(amount.status) ? amount.status === 'partial' ? 'Known subtotal · invoice value' : 'Recorded invoice value' : unavailableText(amount.status), metric: amount, tone: 'violet' },
     { id: 'amount_received', label: 'Total amount received', value: `${metricValue(received, currency)}${received.status === 'partial' && received.value !== null ? '*' : ''}`, note: progress === null ? readable(received.status) ? received.status === 'partial' ? 'Known subtotal · workbook receipts' : 'Recorded workbook receipts' : unavailableText(received.status) : `${overviewNumber(progress)}% of recorded invoice value`, progress, metric: received, tone: 'green' },
     { id: 'amount_pending', label: 'Total amount pending', value: metricValue(pending, currency), note: readable(pending.status) ? unpaid?.partial ? 'Known current balance · partial' : 'Current outstanding balance' : unavailableText(pending.status), metric: pending, tone: 'amber' },
-    { id: 'total_projects', label: 'Total projects', value: overviewNumber(portfolio.total), note: portfolio.total === null ? unavailableText(portfolio.register.status) : `${overviewNumber(portfolio.active)} active · Open portfolio`, metric: projectsMetric, tone: 'blue' },
+    { id: 'total_projects', label: 'Total projects', value: overviewNumber(projectCount), note: projectCount === null ? unavailableText(projectStatus) : 'Unique RAD project numbers · all currencies', metric: projectsMetric, tone: 'blue' },
   ];
   return { currency, cards, portfolio, commercial: commercialModel(report, currency), workforce,
     projects: portfolio.register, decisions: decisionsModel(report), controls: controlsModel(report, workforce),
