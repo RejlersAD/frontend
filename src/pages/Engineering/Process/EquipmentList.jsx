@@ -449,6 +449,15 @@ const EQ_KEYFRAMES = `
     0%, 100% { opacity: 1; }
     50%       { opacity: 0.55; }
   }
+  /* Hero glow ring — rotating conic gradient border */
+  @keyframes eq-hero-ring {
+    to { transform: rotate(360deg); }
+  }
+  /* Hero shimmer sweep across the card */
+  @keyframes eq-hero-sheen {
+    0%   { transform: translateX(-120%) skewX(-18deg); }
+    100% { transform: translateX(220%)  skewX(-18deg); }
+  }
   @keyframes eq-fs-in {
     from { opacity: 0; transform: scale(0.98); }
     to   { opacity: 1; transform: scale(1); }
@@ -1079,8 +1088,32 @@ const EquipmentList = () => {
             }}
           >
 
-          {/* ── Hero Header ── */}
+          {/* ── Hero Header — elevated gradient card (engaging) ── */}
           <div className="mb-10 eq-section relative" style={{ animationDelay: '0s' }}>
+            {/* Glowing gradient border ring (rotating conic) */}
+            <div className="absolute -inset-[1.5px] rounded-3xl pointer-events-none overflow-hidden" aria-hidden>
+              <div style={{
+                position: 'absolute', inset: '-40%',
+                background: 'conic-gradient(from 0deg, rgba(59,130,246,0.55), rgba(99,102,241,0.55), rgba(245,158,11,0.45), rgba(16,185,129,0.45), rgba(59,130,246,0.55))',
+                animation: 'eq-hero-ring 9s linear infinite',
+              }} />
+            </div>
+            {/* Card body */}
+            <div className="relative rounded-3xl overflow-hidden" style={{
+              background: 'linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(238,242,255,0.94) 55%, rgba(240,249,255,0.96) 100%)',
+              border: '1px solid rgba(255,255,255,0.7)',
+              boxShadow: '0 12px 40px rgba(59,130,246,0.14), 0 2px 8px rgba(15,23,42,0.05)',
+              padding: '32px 36px',
+              backdropFilter: 'blur(8px)',
+            }}>
+              {/* Sheen sweep */}
+              <div className="pointer-events-none absolute top-0 bottom-0 w-1/3" aria-hidden style={{
+                background: 'linear-gradient(105deg, transparent 0%, rgba(255,255,255,0.5) 50%, transparent 100%)',
+                animation: 'eq-hero-sheen 5.5s ease-in-out infinite',
+              }} />
+              {/* Soft inner glow orbs */}
+              <div className="pointer-events-none absolute -top-16 -right-10 w-64 h-64 rounded-full" aria-hidden style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.18), transparent 70%)' }} />
+              <div className="pointer-events-none absolute -bottom-20 -left-10 w-64 h-64 rounded-full" aria-hidden style={{ background: 'radial-gradient(circle, rgba(59,130,246,0.14), transparent 70%)' }} />
 
             {/* Rule ring decoration (right side, desktop only) */}
             <div className="absolute right-0 top-1/2 -translate-y-1/2 hidden xl:block pointer-events-none" style={{ opacity: 0.20 }}>
@@ -1108,10 +1141,16 @@ const EquipmentList = () => {
 
             {/* Badge pill */}
             <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full mb-4 eq-chip" style={{
-              background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.22)', animationDelay: '0.04s',
+              background: 'linear-gradient(90deg, rgba(59,130,246,0.12), rgba(99,102,241,0.12))',
+              border: '1px solid rgba(59,130,246,0.30)', animationDelay: '0.04s',
+              boxShadow: '0 2px 10px rgba(59,130,246,0.15)',
             }}>
               <span className="w-1.5 h-1.5 rounded-full bg-blue-500" style={{ animation: 'eq-pulse-badge 2s ease infinite' }} />
-              <span className="text-blue-700 text-xs font-semibold tracking-widest uppercase">AI-Powered · P&amp;ID Analysis</span>
+              <span className="text-blue-700 text-xs font-bold tracking-widest uppercase">AI-Powered · P&amp;ID Analysis</span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold text-white"
+                style={{ background: 'linear-gradient(135deg,#10b981,#059669)' }}>
+                ✓ PRODUCTION READY
+              </span>
             </div>
 
             {/* Title + Fullscreen toggle */}
@@ -1194,6 +1233,7 @@ const EquipmentList = () => {
                   </div>
                 </div>
               ))}
+            </div>
             </div>
           </div>
 

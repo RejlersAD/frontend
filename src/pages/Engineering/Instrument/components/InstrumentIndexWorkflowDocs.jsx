@@ -1,67 +1,63 @@
 /**
- * LineListWorkflowDocs.jsx — Verification Workflow diagram + Smart
- * Documentation panel for the Line List page, mirroring the design language
- * and split-screen placement of PIDVerification.jsx (P&ID Verification V1).
+ * InstrumentIndexWorkflowDocs.jsx — "Instrument Index Workflow" diagram +
+ * "Smart Documentation" panel for the Instrument Index page, mirroring the
+ * shared engineering design language (identical structure to
+ * LineListWorkflowDocs / HMBWorkflowDocs / ValveMTOWorkflowDocs).
  *
- * Structure (identical to V1 / PFDQualityChecker):
- *   LEFT  — collapsible workflow diagram card (soft-coded image path, zoom,
- *           loading/error states)
+ *   LEFT  — collapsible workflow diagram card (soft-coded image path, zoom)
  *   RIGHT — "Smart Documentation" tabbed panel: Quick Start (accordion
- *           steps), Extraction Rules, Best Practices, FAQ, File Formats
+ *           steps), Categories, Best Practices, FAQ, File Formats
  *
- * SOFT-CODED: all content, colours and layout live in LL_DOCS_CONFIG below —
+ * SOFT-CODED: all content, colours and layout live in INST_DOCS_CONFIG below —
  * edit text/tabs/steps without touching JSX. Set enabled:false to hide.
  */
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Loader, AlertTriangle, ChevronDown, ChevronUp, BookOpen,
-  PlayCircle, List, Star, HelpCircle, FileCheck, Maximize2, Minimize2,
-  Upload as UploadIcon, Brain, Eye, Download, CheckCircle, FolderOpen,
-  ExternalLink,
+  PlayCircle, Tag, Star, HelpCircle, FileCheck, Maximize2, Minimize2,
+  Upload as UploadIcon, Brain, Eye, Download, CheckCircle,
+  ExternalLink, Cpu, FolderPlus,
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SOFT-CODED CONFIGURATION
 // ─────────────────────────────────────────────────────────────────────────────
-export const LL_DOCS_CONFIG = {
+export const INST_DOCS_CONFIG = {
   enabled: true,                        // master switch — false hides everything
 
   // ── Split-screen layout (mirrors P&ID Verification V1) ────────────────────
   splitScreen: {
-    enabled:            true,           // false → stacked vertical layout
-    workflowWidthPct:   45,             // left column width
-    docsWidthPct:       55,             // right column width
+    enabled:            true,
+    workflowWidthPct:   45,
+    docsWidthPct:       55,
     gap:                '20px',
-    responsiveMinWidth: 1024,           // px — stacks below this viewport width
+    responsiveMinWidth: 1024,
+    panelHeight:        '600px',        // both panels share this height
   },
 
-  // ── Verification Workflow diagram ─────────────────────────────────────────
+  // ── Workflow diagram ──────────────────────────────────────────────────────
   workflow: {
     enabled:       true,
-    imagePath:     '/assets/images/LineList_Workflow.png',  // drop asset in frontend/public/assets/images/
-    title:         'Line List Verification Workflow',
-    altText:       'Line List Workflow — 3 Stage Process: Upload P&ID, AI Extraction, Line List Output',
-    badge:         'P&ID Analysis',
-    description:   'The same proven pipeline that powers P&ID Verification V1 — line extraction follows an identical Upload → AI Analysis → Quality Output journey.',
-    linkLabel:     'Open P&ID Verification',
-    linkRoute:     '/engineering/process/pid-verification-v1',
+    imagePath:     '/assets/images/InstrumentIndex_Workflow.png',  // drop asset in frontend/public/assets/images/
+    title:         'Instrument Index Workflow',
+    altText:       'Instrument Index Workflow — upload P&ID, AI vision multi-pass scan, instrument index table, Excel export',
+    badge:         'ISA 5.1',
+    description:   'Extract every instrument tag from any P&ID with AI Vision: upload the drawing, run the multi-pass scan, review the categorised index, then export a two-sheet Excel workbook.',
+    linkLabel:     'Open Legend Manager',
+    linkRoute:     '/engineering/legends',
     collapsible:   true,
     defaultCollapsed: false,
     maxZoomPct:    200,
     zoomStepPct:   25,
-    // SOFT-CODED: strip the framed card (white bg + border + shadow + radius)
-    // around the diagram so the artwork sits flush on the page background.
     bareFrame:     true,
-    // SOFT-CODED: match the Smart Documentation panel height so the two
-    // columns align; the diagram is centred and contained within the card.
-    matchDocsMaxHeight: true,
   },
 
   // ── Smart Documentation panel ─────────────────────────────────────────────
   docs: {
     enabled:          true,
     title:            'Smart Documentation',
+    subtitle:         'Everything you need to produce a complete, standards-aligned instrument index',
     collapsible:      true,
     defaultCollapsed: false,
     defaultTab:       'quickstart',
@@ -70,134 +66,110 @@ export const LL_DOCS_CONFIG = {
 
 // ── Tab definitions (order = render order) ──────────────────────────────────
 const DOC_TABS = [
-  { id: 'quickstart', label: 'Quick Start',       Icon: PlayCircle, color: '#3b82f6' },
-  { id: 'rules',      label: 'Extraction Rules',  Icon: List,       color: '#8b5cf6' },
-  { id: 'practices',  label: 'Best Practices',    Icon: Star,       color: '#f59e0b' },
-  { id: 'faq',        label: 'FAQ',               Icon: HelpCircle, color: '#10b981' },
-  { id: 'formats',    label: 'File Formats',      Icon: FileCheck,  color: '#6366f1' },
+  { id: 'quickstart', label: 'Quick Start',     Icon: PlayCircle, color: '#3b82f6' },
+  { id: 'categories', label: 'Categories',      Icon: Tag,        color: '#8b5cf6' },
+  { id: 'practices',  label: 'Best Practices',  Icon: Star,       color: '#f59e0b' },
+  { id: 'faq',        label: 'FAQ',             Icon: HelpCircle, color: '#10b981' },
+  { id: 'formats',    label: 'File Formats',    Icon: FileCheck,  color: '#6366f1' },
 ];
 
-// ── Quick Start accordion steps (8 steps — aligned to the workflow diagram) ──
+// ── Quick Start accordion steps (instrument extraction pipeline) ────────────
 const QUICK_START_STEPS = [
   {
-    key: 'step1', num: 1, title: 'Upload P&ID', color: '#3b82f6', Icon: UploadIcon,
-    tagline: 'The only required input — a P&ID PDF',
+    key: 'step1', num: 1, title: 'Select / Create Project', color: '#3b82f6', Icon: FolderPlus,
+    tagline: 'Pick a project workspace first',
     bullets: [
-      'Drag & drop your P&ID PDF into the upload zone (or let AI Document Assist pick it from Wrench).',
-      'Vector/native PDFs give the fastest, most accurate extraction — scanned drawings work too (≥ 300 DPI).',
-      'Multi-page P&IDs are supported; each page is OCR-scanned in sequence.',
+      'Choose an existing project or create a new one — every extraction is saved per project.',
+      'Projects keep their own results, so different P&IDs stay cleanly separated.',
     ],
   },
   {
-    key: 'step2', num: 2, title: 'AI Document Assist', color: '#06b6d4', Icon: Brain,
-    tagline: 'Let AI pick and prepare the drawing',
+    key: 'step2', num: 2, title: 'Upload P&ID PDF', color: '#8b5cf6', Icon: UploadIcon,
+    tagline: 'The only required input',
     bullets: [
-      'AI Document Assist can fetch the right drawing straight from Wrench.',
-      'It validates the file and hands it to the upload pipeline automatically.',
-      'Optional — you can always upload manually instead.',
+      'Drag & drop your P&ID PDF — single or multi-page supported.',
+      'Vector PDFs give the cleanest symbol detection; scanned drawings work too (≥ 300 DPI).',
+      'Optionally add drawing metadata (number, title, revision, project).',
     ],
   },
   {
-    key: 'step3', num: 3, title: 'Line Number Format', color: '#8b5cf6', Icon: FileCheck,
-    tagline: 'Tell the engine how your line numbers are structured',
+    key: 'step3', num: 3, title: 'Attach Legend Sheet', color: '#06b6d4', Icon: BookOpen,
+    tagline: 'Optional — cross-verifies symbols',
     bullets: [
-      'Pick the naming profile matching your project: Onshore, Offshore, Industrial, ADNOC, or General (auto-detect).',
-      'The profile drives how each line designation is split into Size / Service / Sequence / Spec fields.',
-      'Not sure? "General (Auto-detect)" tries every known format and keeps the best parse.',
+      'Upload the project legend sheet so AI can cross-check instrument bubbles against known symbols.',
+      'Legends improve tag classification and reduce false positives.',
     ],
   },
   {
-    key: 'step4', num: 4, title: 'Upload Legends', color: '#f59e0b', Icon: BookOpen,
-    tagline: 'Optional — resolves codes to descriptions',
+    key: 'step4', num: 4, title: 'AI Vision Multi-Pass Scan', color: '#f59e0b', Icon: Cpu,
+    tagline: '7-pass scan catches every bubble',
     bullets: [
-      'Upload the project legend sheet alongside the drawing.',
-      'Service-code and insulation codes expand into full descriptions via the legend.',
-      'Without a legend, codes are kept as-is (still fully usable).',
+      'Standard pass plus 90°/270° rotations and 4 quadrant tiles — no matter the orientation, tags are caught.',
+      'ISA 5.1 intelligence classifies each tag into its instrument category.',
+      'Runs as an async job with live progress.',
     ],
   },
   {
-    key: 'step5', num: 5, title: 'Extract Line List', color: '#ec4899', Icon: Brain,
-    tagline: 'AI reads and parses every line',
+    key: 'step5', num: 5, title: 'Review the Index', color: '#10b981', Icon: Eye,
+    tagline: 'Categorised, filterable results table',
     bullets: [
-      'OCR reads every label; parsing splits designations per the chosen profile.',
-      'Computer vision correlates text with line geometry to infer FROM→TO connectivity.',
-      'Each parsed row is validated against the chosen format profile and legend.',
+      'Every instrument tag lands in a colour-coded table with incremental index numbers.',
+      'Summary cards show counts per category (Flow, Pressure, Temperature, Level, SDV/BDV, MOV, PSV, RO…).',
+      'Spot-check tags against the drawing before export.',
     ],
   },
   {
-    key: 'step6', num: 6, title: 'Background Processing', color: '#10b981', Icon: CheckCircle,
-    tagline: 'Async job — safe to leave the tab',
+    key: 'step6', num: 6, title: 'Export to Excel', color: '#6366f1', Icon: Download,
+    tagline: 'Two-sheet workbook, one click',
     bullets: [
-      'The job runs server-side with live progress: Upload → OCR → Parse → From→To → Finalize.',
-      'Dense multi-page P&IDs can take 10–45 minutes — the poller keeps you updated.',
-      'Nothing is sent to external services; all processing stays in your deployment.',
-    ],
-  },
-  {
-    key: 'step7', num: 7, title: 'Column Extracted', color: '#0ea5e9', Icon: Eye,
-    tagline: 'All 12 columns land in a reviewable table',
-    bullets: [
-      'Results land in a sortable table — click any column header to sort, use the filter box to search.',
-      'All 12 columns are shown in canonical order, ready for review.',
-      'Rows with unparseable designations are kept with the raw detection preserved.',
-    ],
-  },
-  {
-    key: 'step8', num: 8, title: 'Export', color: '#6366f1', Icon: Download,
-    tagline: 'One click — formatted Excel workbook',
-    bullets: [
-      'Export downloads a formatted .xlsx with all 12 columns in canonical order.',
-      'Column widths are pre-set for readability in Excel.',
-      'Re-run after drawing revisions — each extraction is a fresh snapshot.',
+      'Sheet 1: Instrument Index — every tag with its category and metadata.',
+      'Sheet 2: Summary — per-category counts for quick review.',
+      'Re-export anytime; each run reflects the latest extraction.',
     ],
   },
 ];
 
-// ── Extraction Rules tab (the 12 output columns) ────────────────────────────
-const EXTRACTION_RULES = [
-  { id: 'C-01', name: 'Line Designation',     desc: 'Full raw line number string as detected on the drawing.',              sev: 'core' },
-  { id: 'C-02', name: 'Size',                 desc: 'Nominal bore parsed from the designation (e.g. 2").',                  sev: 'core' },
-  { id: 'C-03', name: 'Service Code',         desc: 'Fluid/service code letter(s) — e.g. D, P, FL.',                        sev: 'core' },
-  { id: 'C-04', name: 'Service Description',  desc: 'Code expanded to full text when a legend sheet is provided.',          sev: 'info' },
-  { id: 'C-05', name: 'Sequence No.',         desc: 'Line sequence identifier within the service.',                         sev: 'core' },
-  { id: 'C-06', name: 'Piping Specification', desc: 'Piping class / spec number (e.g. 033842).',                            sev: 'core' },
-  { id: 'C-07', name: 'Dept Deviation',       desc: 'Department deviation / modifier code (e.g. X).',                       sev: 'minor' },
-  { id: 'C-08', name: 'Insulation',           desc: 'Insulation class code (e.g. N, H, C).',                                sev: 'core' },
-  { id: 'C-09', name: 'Insulation Description', desc: 'Insulation class expanded via legend sheet.',                        sev: 'info' },
-  { id: 'C-10', name: 'From',                 desc: 'Upstream origin — line tag or equipment tag (vision-inferred).',       sev: 'core' },
-  { id: 'C-11', name: 'To',                   desc: 'Downstream destination — line tag or equipment tag.',                  sev: 'core' },
-  { id: 'C-12', name: 'P&ID No.',             desc: 'Source drawing reference for traceability.',                           sev: 'minor' },
+// ── Categories tab (instrument categories detected) ─────────────────────────
+const INSTRUMENT_CATEGORIES = [
+  { id: 'F',  name: 'Flow',            desc: 'Flow instruments — FE, FT, FI, FIC, flow indicators and transmitters.', sev: 'core' },
+  { id: 'P',  name: 'Pressure',        desc: 'Pressure instruments — PT, PI, PIC, PSV relief and safety valves.',      sev: 'core' },
+  { id: 'T',  name: 'Temperature',     desc: 'Temperature instruments — TE, TT, TI, TIC elements and transmitters.',   sev: 'core' },
+  { id: 'L',  name: 'Level',           desc: 'Level instruments — LT, LI, LIC gauges and transmitters.',               sev: 'core' },
+  { id: 'A',  name: 'Analysis',        desc: 'Analysers — AT, AI for composition and quality measurement.',            sev: 'minor' },
+  { id: 'S',  name: 'SDV / BDV',       desc: 'Shutdown and blowdown valves for safety isolation.',                     sev: 'core' },
+  { id: 'M',  name: 'MOV',             desc: 'Motor-operated valves detected on the drawing.',                         sev: 'core' },
+  { id: 'R',  name: 'RO / Restriction', desc: 'Restriction orifices and similar fittings.',                            sev: 'minor' },
 ];
 
-// ── Best Practices tab (aligned to the 8-step workflow) ──────────────────────
+// ── Best Practices tab ───────────────────────────────────────────────────────
 const BEST_PRACTICES = [
-  { title: 'Prefer vector PDFs at Upload',     desc: 'Native CAD-exported PDFs carry embedded text — OCR is skipped where possible, which is faster and more accurate at the Upload P&ID step.' },
-  { title: 'Use AI Document Assist for Wrench', desc: 'If drawings live in Wrench, let AI Document Assist fetch and prepare them — it removes manual file hunting.' },
-  { title: 'Pick the right Line Number Format', desc: 'A wrong profile splits fields incorrectly. When unsure, run General (auto-detect) first and inspect a few rows.' },
-  { title: 'Upload Legends for full descriptions', desc: 'Service-code and insulation descriptions only resolve when you Upload Legends with the drawing.' },
-  { title: 'Let Background Processing finish',  desc: 'Extraction is async; the page polls the job. Closing the tab does not cancel it, but you lose live progress.' },
-  { title: 'Spot-check Column Extracted output', desc: 'Review the extracted columns before Export — vision inference is strongest on clear routing, dense areas deserve a quick manual check.' },
+  { title: 'Use vector PDFs where possible',   desc: 'Native CAD-exported P&IDs carry embedded geometry — the vision pass is faster and more accurate.' },
+  { title: 'Attach the legend sheet',          desc: 'Symbol cross-verification against the project legend sharply reduces mis-classified tags.' },
+  { title: 'One drawing per run',              desc: 'Run each P&ID separately so results stay attributable to a single source drawing.' },
+  { title: 'Let the multi-pass finish',        desc: 'The 7-pass scan (rotations + quadrants) is what catches rotated/partial bubbles — let it complete before reviewing.' },
+  { title: 'Review categories before export',  desc: 'A quick pass over the colour-coded table catches any tag assigned to the wrong category.' },
+  { title: 'Pair with the Line List',          desc: 'Run the same P&ID through Line List for the piping view — the two outputs complement each other.' },
 ];
 
 // ── FAQ tab ──────────────────────────────────────────────────────────────────
 const FAQ_ITEMS = [
-  { q: 'Which Line Number Formats are supported?', a: 'Onshore, Offshore, Industrial/Project, ADNOC compact, and a General auto-detect mode that tries all known conventions.' },
-  { q: 'Do I need to Upload Legends?',             a: 'No — legends are optional. They expand service/insulation codes into full descriptions, but the extraction works without them.' },
-  { q: 'Does it work on scanned P&IDs?',           a: 'Yes — OCR handles raster input. Use ≥ 300 DPI, upright, unskewed scans for reliable results. Vector PDFs remain the gold standard.' },
-  { q: 'How long does Background Processing take?', a: 'Typically 2–10 minutes for standard P&IDs; dense multi-sheet drawings can take 30–45 minutes on the server.' },
-  { q: 'What if a line number does not parse?',    a: 'The row is still included in the Column Extracted table with the raw detection preserved — unparseable fields are left blank rather than guessed.' },
-  { q: 'Is my drawing sent to an external AI?',    a: 'No. OCR, parsing and vision correlation all run server-side inside your RAD AI deployment.' },
+  { q: 'What does the Instrument Index extract?',  a: 'Every instrument tag on the P&ID — Flow, Pressure, Temperature, Level, Analysis, SDV/BDV, MOV, PSV, RO and more — each with its category and an incremental index number.' },
+  { q: 'How does the multi-pass scan work?',        a: 'The drawing is scanned in standard orientation, rotated 90°/270°, and split into 4 quadrant tiles — so instrument bubbles are detected regardless of orientation.' },
+  { q: 'Do I need a legend sheet?',                 a: 'Optional, but recommended — it lets the AI cross-check symbols against your project legend and improves classification accuracy.' },
+  { q: 'What does the Excel export contain?',       a: 'Two sheets: the full Instrument Index (all tags) and a Summary with per-category counts.' },
+  { q: 'Is it ISA 5.1 aware?',                      a: 'Yes — tag letters are interpreted per ISA 5.1, so first/succeeding letters map to the correct measured variable and function.' },
+  { q: 'Is my drawing sent to an external service?', a: 'No — extraction and classification run inside your RAD AI deployment.' },
 ];
 
 // ── File Formats tab ─────────────────────────────────────────────────────────
 const FILE_FORMATS = [
-  { ext: 'PDF (vector)', quality: 'Excellent',    note: 'Preferred — embedded text gives near-perfect extraction.',            ok: true  },
-  { ext: 'PDF (scanned)', quality: 'Good',        note: 'Raster PDF — OCR path; use ≥ 300 DPI for best results.',              ok: true  },
-  { ext: 'PNG/JPG/TIFF',  quality: 'Good',        note: 'Accepted via OCR; avoid heavy compression around thin lines.',        ok: true  },
-  { ext: 'DWG/DXF',       quality: 'Unsupported', note: 'Export to PDF from the CAD package first.',                           ok: false },
+  { ext: 'PDF (vector)',  quality: 'Excellent', note: 'Preferred — embedded geometry gives the most accurate symbol detection.', ok: true },
+  { ext: 'PDF (scanned)', quality: 'Good',      note: 'Raster PDF — handled via vision; use ≥ 300 DPI for best results.',        ok: true },
+  { ext: 'PNG/JPG/TIFF',  quality: 'Good',      note: 'Accepted via vision; avoid heavy compression around thin symbols.',      ok: true },
+  { ext: 'DWG/DXF',       quality: 'Unsupported', note: 'Export to PDF from the CAD package first.',                            ok: false },
 ];
 
-// Severity/role chip colours
+// Severity chip colours (shared design language)
 const SEV_CHIP = {
   core:  { bg: '#eff6ff', border: '#93c5fd', text: '#1d4ed8' },
   minor: { bg: '#fffbeb', border: '#fcd34d', text: '#a16207' },
@@ -205,7 +177,7 @@ const SEV_CHIP = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Sub-components
+// Sub-components (identical structure to the shared WorkflowDocs pattern)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const iconBtnStyle = {
@@ -215,15 +187,14 @@ const iconBtnStyle = {
   color: '#3b82f6', cursor: 'pointer', transition: 'all 200ms ease',
 };
 
-// Dark-header variant (workflow card header sits on a dark slate gradient)
 const iconBtnStyleDark = {
   ...iconBtnStyle,
   border: '1px solid rgba(148,163,184,0.35)', background: 'rgba(148,163,184,0.12)',
   color: '#cbd5e1',
 };
 
-/** Workflow diagram card with loading / error / zoom states (V1 pattern). */
-const WorkflowDiagram = ({ cfg, matchHeight = false }) => {
+/** Workflow diagram card with loading / error / zoom states. */
+const WorkflowDiagram = ({ cfg, panelHeight }) => {
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(cfg.defaultCollapsed);
   const [zoom, setZoom]           = useState(100);
@@ -235,15 +206,14 @@ const WorkflowDiagram = ({ cfg, matchHeight = false }) => {
       background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px',
       boxShadow: '0 1px 3px rgba(0,0,0,0.08)', overflow: 'hidden', marginBottom: '16px',
       display: 'flex', flexDirection: 'column',
-      // Match the docs panel height exactly so the two columns align edge-to-edge.
-      ...(matchHeight ? { height: '600px', maxHeight: '600px' } : {}),
+      height: panelHeight, maxHeight: panelHeight,
     }}>
-      {/* Header bar — dark gradient, identical to V1's workflow card header */}
+      {/* Header bar — dark gradient */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: '10px', padding: '16px 20px',
         borderBottom: collapsed ? 'none' : '1px solid #e2e8f0',
         background: 'linear-gradient(135deg, rgba(15,23,42,0.97) 0%, rgba(30,41,59,0.95) 100%)',
-        cursor: cfg.collapsible ? 'pointer' : 'default',
+        cursor: cfg.collapsible ? 'pointer' : 'default', flexShrink: 0,
       }}
       onClick={() => cfg.collapsible && setCollapsed(c => !c)}
       >
@@ -308,8 +278,7 @@ const WorkflowDiagram = ({ cfg, matchHeight = false }) => {
         <div style={{
           padding: '18px', display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'flex-start',
-          flex: matchHeight ? 1 : undefined,
-          minHeight: 0, overflow: 'hidden',
+          flex: 1, minHeight: 0, overflow: 'hidden',
         }}>
           {cfg.description && (
             <p style={{
@@ -317,16 +286,10 @@ const WorkflowDiagram = ({ cfg, matchHeight = false }) => {
               margin: '0 auto 14px', textAlign: 'center', flexShrink: 0,
             }}>{cfg.description}</p>
           )}
-          <div style={cfg.bareFrame ? {
+          <div style={{
             width: '100%', margin: '0 auto', overflow: 'hidden',
-            position: 'relative', flex: matchHeight ? 1 : undefined, minHeight: 0,
+            position: 'relative', flex: 1, minHeight: 0,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-          } : {
-            width: '95%', maxWidth: '1400px', margin: '0 auto', borderRadius: '12px',
-            overflow: zoom === 100 ? 'hidden' : 'auto',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.12)', background: 'white',
-            border: '2px solid rgba(59,130,246,0.2)', position: 'relative',
-            transition: 'all 300ms ease',
           }}>
             {!loaded && !error && (
               <div style={{
@@ -357,14 +320,9 @@ const WorkflowDiagram = ({ cfg, matchHeight = false }) => {
               alt={cfg.altText}
               onLoad={() => { setLoaded(true); setError(false); }}
               onError={() => { setError(true); setLoaded(false); }}
-              style={matchHeight ? {
-                // Fit the card's available space so the panel heights match the docs.
+              style={{
                 maxWidth: `${zoom}%`, maxHeight: '100%', width: 'auto', height: 'auto',
                 objectFit: 'contain', display: error ? 'none' : 'block',
-                margin: '0 auto', transition: 'all 300ms ease',
-                cursor: zoom < cfg.maxZoomPct ? 'zoom-in' : 'default',
-              } : {
-                width: `${zoom}%`, height: 'auto', display: error ? 'none' : 'block',
                 margin: '0 auto', transition: 'all 300ms ease',
                 cursor: zoom < cfg.maxZoomPct ? 'zoom-in' : 'default',
               }}
@@ -377,7 +335,7 @@ const WorkflowDiagram = ({ cfg, matchHeight = false }) => {
   );
 };
 
-/** Single accordion step in Quick Start (V1 pattern). */
+/** Single accordion step in Quick Start. */
 const StepAccordion = ({ step, expanded, onToggle }) => (
   <div style={{
     marginBottom: '14px', border: `2px solid ${step.color}33`,
@@ -423,7 +381,7 @@ const StepAccordion = ({ step, expanded, onToggle }) => (
 
 /** Tab content renderers — one per DOC_TABS id. */
 const TabContent = ({ tab }) => {
-  // Default: all 8 workflow steps expanded so the full journey is visible at a glance.
+  // Default: all steps expanded so the full journey is visible at a glance.
   const [expandedSteps, setExpandedSteps] = useState(
     () => Object.fromEntries(QUICK_START_STEPS.map(s => [s.key, true]))
   );
@@ -456,16 +414,15 @@ const TabContent = ({ tab }) => {
     );
   }
 
-  if (tab === 'rules') {
+  if (tab === 'categories') {
     return (
       <div>
         <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '14px', lineHeight: 1.55 }}>
-          Every extraction produces the same <strong style={{ color: '#0f172a' }}>12-column output</strong>.
-          Legend: <strong style={{ color: SEV_CHIP.core.text }}>Core</strong> always extracted,{' '}
-          <strong style={{ color: SEV_CHIP.minor.text }}>Minor</strong> when present,{' '}
-          <strong style={{ color: SEV_CHIP.info.text }}>Info</strong> requires a legend sheet.
+          Every detected tag is classified per <strong style={{ color: '#0f172a' }}>ISA 5.1</strong> into one of these categories.{' '}
+          <strong style={{ color: SEV_CHIP.core.text }}>Core</strong> categories are always scanned,{' '}
+          <strong style={{ color: SEV_CHIP.minor.text }}>Minor</strong> when present.
         </p>
-        {EXTRACTION_RULES.map(r => {
+        {INSTRUMENT_CATEGORIES.map(r => {
           const c = SEV_CHIP[r.sev];
           return (
             <div key={r.id} style={{
@@ -551,7 +508,7 @@ const TabContent = ({ tab }) => {
     return (
       <div>
         <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '14px', lineHeight: 1.55 }}>
-          Accepted upload formats and the extraction quality you can expect from each.
+          Accepted input formats and the detection quality you can expect from each.
         </p>
         {FILE_FORMATS.map(f => (
           <div key={f.ext} style={{
@@ -588,29 +545,32 @@ const TabContent = ({ tab }) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Main export — V1 split-screen: workflow diagram (left) + Smart Documentation (right)
+// Main export — split-screen: workflow (left) + Smart Documentation (right)
 // ─────────────────────────────────────────────────────────────────────────────
-const LineListWorkflowDocs = () => {
-  const cfg = LL_DOCS_CONFIG;
+const InstrumentIndexWorkflowDocs = () => {
+  const cfg = INST_DOCS_CONFIG;
   const [docCollapsed, setDocCollapsed] = useState(cfg.docs.defaultCollapsed);
   const [activeTab, setActiveTab]       = useState(cfg.docs.defaultTab);
 
   if (!cfg.enabled) return null;
 
   const wfCfg = cfg.workflow?.enabled ? cfg.workflow : null;
+  const panelHeight = cfg.splitScreen.panelHeight;
 
   const docsPanel = cfg.docs.enabled && (
     <div style={{
       background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px',
       boxShadow: '0 1px 3px rgba(0,0,0,0.08)', overflow: 'hidden',
       display: 'flex', flexDirection: 'column',
-      maxHeight: cfg.splitScreen.enabled ? '600px' : undefined,
+      height: cfg.splitScreen.enabled ? panelHeight : undefined,
+      maxHeight: cfg.splitScreen.enabled ? panelHeight : undefined,
     }}>
-      {/* Header — gradient identical to V1's documentation header */}
+      {/* Header */}
       <div style={{
         padding: '14px 20px',
         borderBottom: docCollapsed ? 'none' : '1px solid #e2e8f0',
         background: 'linear-gradient(135deg, rgba(99,102,241,0.03) 0%, rgba(59,130,246,0.06) 100%)',
+        flexShrink: 0,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{
@@ -623,7 +583,7 @@ const LineListWorkflowDocs = () => {
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0f172a' }}>{cfg.docs.title}</div>
-            <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Everything you need to produce a standards-aligned line list</div>
+            <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{cfg.docs.subtitle}</div>
           </div>
           {cfg.docs.collapsible && (
             <button onClick={() => setDocCollapsed(c => !c)}
@@ -662,30 +622,29 @@ const LineListWorkflowDocs = () => {
 
       {/* Content */}
       {!docCollapsed && (
-        <div style={{ padding: '20px 24px', flex: 1, overflowY: 'auto' }}>
+        <div style={{ padding: '20px 24px', flex: 1, overflowY: 'auto', minHeight: 0 }}>
           <TabContent tab={activeTab} />
         </div>
       )}
     </div>
   );
 
-  // ── Split-screen layout (V1): workflow LEFT, Smart Documentation RIGHT ──
+  // ── Split-screen layout: workflow LEFT, Smart Documentation RIGHT ──
   if (cfg.splitScreen.enabled && wfCfg) {
     return (
-      <div className="ll-workflow-split" style={{
+      <div className="inst-workflow-split" style={{
         display: 'grid',
         gridTemplateColumns: `${cfg.splitScreen.workflowWidthPct}% ${cfg.splitScreen.docsWidthPct}%`,
         gap: cfg.splitScreen.gap,
         marginBottom: '24px',
-        animation: 'll-fade-up 0.5s ease-out 0.08s both',
+        alignItems: 'start',
       }}>
-        {/* Responsive: stack below breakpoint (mirrors V1's SPLIT_SCREEN_MIN_WIDTH) */}
         <style>{`@media (max-width: ${cfg.splitScreen.responsiveMinWidth - 1}px) {
-          .ll-workflow-split { display: block !important; grid-template-columns: 1fr !important; }
-          .ll-workflow-split > * { margin-bottom: 16px; }
+          .inst-workflow-split { display: block !important; grid-template-columns: 1fr !important; }
+          .inst-workflow-split > * { margin-bottom: 16px; }
         }`}</style>
         <div style={{ minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-          {wfCfg && <WorkflowDiagram cfg={wfCfg} matchHeight={!!wfCfg.matchDocsMaxHeight} />}
+          <WorkflowDiagram cfg={wfCfg} panelHeight={panelHeight} />
         </div>
         {docsPanel}
       </div>
@@ -695,10 +654,10 @@ const LineListWorkflowDocs = () => {
   // ── Stacked fallback ──
   return (
     <div style={{ marginTop: '8px' }}>
-      {wfCfg && <WorkflowDiagram cfg={wfCfg} />}
+      {wfCfg && <WorkflowDiagram cfg={wfCfg} panelHeight={panelHeight} />}
       {docsPanel}
     </div>
   );
 };
 
-export default LineListWorkflowDocs;
+export default InstrumentIndexWorkflowDocs;

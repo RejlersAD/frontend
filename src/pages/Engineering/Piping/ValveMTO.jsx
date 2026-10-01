@@ -49,6 +49,7 @@ import {
   computeRecommendations,
 } from '../../../config/valveMTOPerformance';
 import ProcessingOverlay from './ValveMTOProcessingOverlay';
+import ValveMTOWorkflowDocs from './components/ValveMTOWorkflowDocs';
 import WrenchAiDocAssist from '../../../components/Engineering/WrenchAiDocAssist';
 import apiClient from '../../../services/api.service';
 
@@ -58,6 +59,31 @@ const PAGE_TITLE       = 'Valve MTO';
 const PAGE_SUBTITLE    = 'Valve Material Take-Off · Soft-coded template alignment · Smart import & export';
 const AUTOSAVE_DEBOUNCE = 500;
 const ACCEPTED_TYPES   = '.pdf,.xls,.xlsx,.csv,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+// ─── Common V1 page theme (shared with Legend Manager / Line List / P&ID V1) ─
+// Flip PMS_THEME.enabled to false to fall back to the legacy amber look.
+// Pure styling — no logic depends on these values.
+const PMS_THEME = {
+  enabled:  true,
+  bg:       'linear-gradient(135deg, #f8faff 0%, #eef2ff 45%, #f0f9ff 75%, #fffbeb 100%)',
+  gridDot:  'radial-gradient(circle, rgba(99,102,241,0.055) 1px, transparent 1px)',
+  gradBar:  'linear-gradient(90deg,#3b82f6,#6366f1,#f59e0b,#3b82f6)',
+  accent:   'linear-gradient(135deg,#3b82f6,#6366f1)',           // icon tile / primary CTA
+  accentAlt:'linear-gradient(135deg,#8b5cf6,#6366f1)',           // secondary CTA (AI)
+  card:     { background: '#ffffff', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' },
+  headerCard: {
+    background: 'linear-gradient(135deg, rgba(59,130,246,0.03) 0%, rgba(99,102,241,0.06) 100%)',
+    border: '1px solid #e2e8f0',
+  },
+  eyebrow:  'AIFlow · Engineering Suite',
+  badge:    { text: 'Production Ready', color: '#10b981' },
+  featurePills: [
+    { label: 'Smart Import',    color: '#3b82f6' },
+    { label: '5-Sheet Export',  color: '#10b981' },
+    { label: 'Auto-save',       color: '#8b5cf6' },
+    { label: 'Island / Field',  color: '#f59e0b' },
+  ],
+};
 
 // ─── Soft-coded layout offsets ───────────────────────────────────────────
 // The global app header (<Layout> + <Header>) is fixed at top-0 with z-40.
@@ -140,12 +166,13 @@ const PDF_EXTRACTION_CONFIG = {
 };
 
 // Stat cards rendered above the table — fully soft-coded.
+// Palette aligned to the common V1 engineering theme (blue/indigo family).
 const STAT_CARDS = [
-  { key: 'total',  label: 'Total Valves',  icon: Database, gradient: 'from-amber-500 to-orange-600',
+  { key: 'total',  label: 'Total Valves',  icon: Database, gradient: 'from-blue-500 to-indigo-600',
     pick: ({ rows })  => rows.length },
   { key: 'island', label: 'Σ Island Qty',  icon: MapPin,   gradient: 'from-sky-500 to-blue-600',
     pick: ({ rows })  => rows.reduce((a, r) => a + (Number(r.qty_island) || 0), 0) },
-  { key: 'field',  label: 'Σ Field Qty',   icon: Layers,   gradient: 'from-violet-500 to-fuchsia-600',
+  { key: 'field',  label: 'Σ Field Qty',   icon: Layers,   gradient: 'from-violet-500 to-indigo-600',
     pick: ({ rows })  => rows.reduce((a, r) => a + (Number(r.qty_field) || 0), 0) },
   { key: 'history',label: 'Saved Snapshots', icon: HistoryIcon, gradient: 'from-emerald-500 to-teal-600',
     pick: ({ history }) => history.length },
@@ -659,7 +686,25 @@ const ValveMTOPage = () => {
   };
 
   return (
-    <div className={`min-h-screen bg-gradient-to-br from-slate-50 via-amber-50 to-orange-50 ${PAGE_TOP_OFFSET}${isFullscreen ? ` ${PMS_FULLSCREEN_CONFIG.wrapClass}` : ''}`}>
+    <div
+      className={`min-h-screen relative overflow-x-hidden ${PAGE_TOP_OFFSET}${isFullscreen ? ` ${PMS_FULLSCREEN_CONFIG.wrapClass}` : ''}`}
+      style={PMS_THEME.enabled ? { background: PMS_THEME.bg } : undefined}
+    >
+      {/* Legacy background class preserved for the disabled-theme fallback */}
+      {!PMS_THEME.enabled && (
+        <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-amber-50 to-orange-50" />
+      )}
+
+      {/* Common V1 chrome — dot grid + animated top bar */}
+      {PMS_THEME.enabled && (
+        <>
+          <div className="fixed inset-0 pointer-events-none"
+            style={{ backgroundImage: PMS_THEME.gridDot, backgroundSize: '44px 44px' }} />
+          <div className="absolute inset-x-0 top-0 h-[3px] pointer-events-none"
+            style={{ backgroundImage: PMS_THEME.gradBar, backgroundSize: '300% auto', animation: 'pmsGradShift 4s linear infinite' }} />
+          <style>{`@keyframes pmsGradShift { 0%,100%{background-position:0% 50%} 50%{background-position:100% 50%} }`}</style>
+        </>
+      )}
       {/* Soft-coded fullscreen styles — lifts the page above app chrome */}
       <style>{`
         .${PMS_FULLSCREEN_CONFIG.wrapClass} {
@@ -678,27 +723,43 @@ const ValveMTOPage = () => {
         </datalist>
       ))}
 
-      {/* ── Header (offset-only by default; sticky via LOCAL_HEADER_STICKY) ── */}
-      <div className={`bg-white border-b border-slate-200 shadow-sm ${LOCAL_HEADER_CLASS}`}>
+      {/* ── Header — V1-style light card (common design) ─────────────── */}
+      <div className={`${LOCAL_HEADER_CLASS} relative z-10`}>
         <div
-          className="mx-auto px-4 sm:px-6 lg:px-8 py-4"
+          className="mx-auto px-4 sm:px-6 lg:px-8 pt-4"
           style={{ maxWidth: isFullscreen ? PMS_FULLSCREEN_CONFIG.fullscreenMaxWidth : PMS_FULLSCREEN_CONFIG.normalMaxWidth }}
         >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+          <div className="rounded-2xl mb-0" style={PMS_THEME.enabled ? { ...PMS_THEME.headerCard, padding: '20px 24px' } : { padding: '4px 0' }}>
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-4 min-w-0">
               <button
                 onClick={() => navigate(BACK_ROUTE)}
-                className="inline-flex items-center gap-1 px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors"
+                className="inline-flex items-center gap-1 px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900 hover:bg-white/70 rounded-lg transition-colors"
               >
                 <ArrowLeft className="w-4 h-4" /> Back
               </button>
-              <div className="h-8 w-px bg-slate-200" />
-              <div className="p-2 bg-gradient-to-br from-amber-500 to-orange-600 rounded-lg">
+              <div className="p-2.5 rounded-xl text-white" style={PMS_THEME.enabled ? { background: PMS_THEME.accent, boxShadow: '0 4px 14px rgba(59,130,246,0.3)' } : { background: 'linear-gradient(135deg,#f59e0b,#ea580c)' }}>
                 <Wrench className="w-6 h-6 text-white" />
               </div>
-              <div>
-                <h1 className="text-xl font-bold text-slate-900">{PAGE_TITLE}</h1>
-                <p className="text-xs text-slate-500">{PAGE_SUBTITLE}</p>
+              <div className="min-w-0">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="text-blue-600 text-[11px] font-bold tracking-[0.22em] uppercase">{PMS_THEME.eyebrow}</span>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold"
+                    style={{ background: `${PMS_THEME.badge.color}15`, color: PMS_THEME.badge.color, border: `1px solid ${PMS_THEME.badge.color}30` }}>
+                    <Check className="w-3 h-3" /> {PMS_THEME.badge.text}
+                  </span>
+                </div>
+                <h1 className="text-xl font-extrabold text-slate-900 tracking-tight" style={{ margin: 0 }}>{PAGE_TITLE}</h1>
+                <p className="text-xs text-slate-500 mt-0.5" style={{ margin: '2px 0 0' }}>{PAGE_SUBTITLE}</p>
+                {/* Feature pills — V1 colour-coded */}
+                <div className="flex flex-wrap gap-1.5 mt-2.5">
+                  {PMS_THEME.featurePills.map(p => (
+                    <span key={p.label} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold"
+                      style={{ background: `${p.color}10`, color: p.color, border: `1px solid ${p.color}22` }}>
+                      {p.label}
+                    </span>
+                  ))}
+                </div>
               </div>
               <div className="h-8 w-px bg-slate-200 ml-2" />
               {/* Project switcher */}
@@ -766,13 +827,17 @@ const ValveMTOPage = () => {
               )}
               <button
                 onClick={onExport}
-                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 rounded-lg shadow-sm transition-colors"
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-bold text-white rounded-xl transition-all hover:-translate-y-px"
+                style={PMS_THEME.enabled
+                  ? { background: PMS_THEME.accent, boxShadow: '0 4px 12px rgba(59,130,246,0.35)' }
+                  : { background: 'linear-gradient(90deg,#10b981,#059669)' }}
                 title="Export the standard 5-sheet Valve MTO workbook"
               >
                 <Download className="w-4 h-4" />
                 Download Valve MTO (.xlsx)
               </button>
             </div>
+          </div>
           </div>
         </div>
 
@@ -791,8 +856,8 @@ const ValveMTOPage = () => {
                   onClick={() => setActiveId(tab.id)}
                   className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
                     active
-                      ? 'border-amber-600 text-amber-700 bg-amber-50/50'
-                      : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                      ? 'border-indigo-600 text-indigo-700 bg-indigo-50/60'
+                      : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/60'
                   }`}
                 >
                   {Icon && <Icon className="w-4 h-4" />}
@@ -877,6 +942,10 @@ const ValveMTOPage = () => {
             );
           })}
         </div>
+
+        {/* ── Valve MTO Workflow + Smart Documentation — shared split-screen design ──
+            Soft-coded: components/ValveMTOWorkflowDocs.jsx (VMTO_DOCS_CONFIG) */}
+        <ValveMTOWorkflowDocs />
 
         {/* Project Header (always visible — used by exporter) */}
         <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-4 mb-4">

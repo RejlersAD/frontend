@@ -58,6 +58,7 @@ import WrenchAiDocAssist from '../../../components/Engineering/WrenchAiDocAssist
 // Shared project-legend inheritance (bridges local project by NAME)
 import ProjectLegendPanel from '../../../components/Engineering/ProjectLegendPanel';
 import LegendSheetsModal from '../Process/components/LegendSheetsModal';
+import InstrumentIndexWorkflowDocs from './components/InstrumentIndexWorkflowDocs';
 
 // ═════════════════════════════════════════════════════════════════════════════
 // PFD-FORMAT REDESIGN — theme, animations & landing-page primitives
@@ -1225,12 +1226,23 @@ const InstrumentIndex = () => {
         {/* Full-width canvas — aligned with PID Verification V1 (w-full px-2/4/6) */}
         <div className="w-full px-2 sm:px-4 lg:px-6 py-10">
 
-          {/* ── Hero ── */}
-          <div className="mb-10 flex flex-col lg:flex-row lg:items-center gap-8" style={{ animation: 'instFadeUp 0.6s ease-out both' }}>
+          {/* ── Hero — V1 light header card (aligned with Valve MTO / common design) ── */}
+          <div className="mb-10 rounded-2xl" style={{
+            animation: 'instFadeUp 0.6s ease-out both',
+            background: 'linear-gradient(135deg, rgba(59,130,246,0.03) 0%, rgba(99,102,241,0.06) 100%)',
+            border: '1px solid #e2e8f0',
+            padding: '24px 28px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+          }}>
+          <div className="flex flex-col lg:flex-row lg:items-center gap-8">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 mb-2">
                 <div className="w-1 h-7 rounded-full" style={{ background: 'linear-gradient(180deg,#3b82f6,#6366f1)' }} />
                 <span className="text-indigo-600 text-xs font-bold tracking-[0.3em] uppercase">AIFlow · Instrument Engineering</span>
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold"
+                  style={{ background: 'rgba(16,185,129,0.12)', color: '#047857', border: '1px solid rgba(16,185,129,0.25)' }}>
+                  ✓ Production Ready
+                </span>
               </div>
               <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-slate-900 tracking-tight leading-tight mb-3 whitespace-nowrap">
                 Instrument{' '}
@@ -1296,6 +1308,11 @@ const InstrumentIndex = () => {
               </div>
             </div>
           </div>
+          </div>
+
+          {/* ═══ INSTRUMENT INDEX WORKFLOW + SMART DOCUMENTATION — V1 split-screen ═══
+              Soft-coded: components/InstrumentIndexWorkflowDocs.jsx (INST_DOCS_CONFIG) */}
+          <InstrumentIndexWorkflowDocs />
 
           {/* ── Projects header row ── */}
           <div className="flex items-center justify-between mb-8 flex-wrap gap-3">
