@@ -23,9 +23,6 @@
 .sor-detail-explorer .sor-detail-status { font-size: 13px; font-weight: 400; }
 .sor-detail-explorer .sor-detail-secondary { min-height: 34px; font-size: 13px; font-weight: 400; }
 .sor-detail-explorer .sor-detail-copy-notice { position: absolute; top: 4px; right: 0; z-index: 8; max-width: 310px; margin: 0; padding: 9px 13px; border: 1px solid #d5deef; border-radius: 5px; background: #fff; box-shadow: 0 4px 15px #192e4d18; font-size: 13px; pointer-events: none; }
-.sor-detail-explorer .sor-detail-tabs { display: flex; gap: 16px; padding: 0 12px; min-height: 46px; border-top: 0; border-bottom: 1px solid var(--sod-border); background: transparent; }
-.sor-detail-explorer .sor-detail-tabs > button { min-width: 107px; min-height: 46px; padding: 10px 13px; color: var(--sod-muted); font-size: 16px; font-weight: 500; }
-.sor-detail-explorer .sor-detail-tabs > button[aria-selected='true'] { border-bottom-color: var(--sod-purple); color: var(--sod-purple); }
 .sor-detail-explorer .sor-detail-content { padding: 0; }
 .sor-detail-explorer .sor-document-content { display: flex; min-height: 0; overflow: hidden; }
 .sor-document-content > div:not([hidden]) { display: flex; width: 100%; min-width: 0; min-height: 0; }
@@ -200,8 +197,6 @@
   .sor-detail-explorer .sor-detail-title { width: 100%; font-size: 22px; }
   .sor-detail-explorer .sor-detail-meta { gap: 7px; font-size: 13px; }
   .sor-detail-explorer .sor-detail-meta > span:not(:last-child) { padding-right: 7px; }
-  .sor-detail-explorer .sor-detail-tabs { padding: 0; gap: 0; justify-content: space-between; }
-  .sor-detail-explorer .sor-detail-tabs > button { min-width: 85px; font-size: 15px; }
   .sow-explorer-workspace .sow-location { gap: 10px; padding: 10px; }
   .sow-explorer-workspace .sow-breadcrumb { gap: 9px; }
   .sow-explorer-workspace .sow-status, .sow-explorer-workspace .sow-location > a { margin-left: 0; }

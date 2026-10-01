@@ -105,7 +105,7 @@ for (const collapsed of [false, true]) {
     expect(heading.height).toBeLessThanOrEqual(28)
     await expect(page.locator('.sales-email-page-header')).toBeVisible()
     await expect(page.getByRole('navigation', { name: 'Breadcrumb', exact: true })).toHaveCount(0)
-    await expect(page.getByRole('navigation', { name: 'Email read status', exact: true }).getByRole('button', { name: /^Inbox\b/ })).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByRole('navigation', { name: 'Email read status', exact: true }).getByRole('button', { name: /^All mail\b/ })).toHaveAttribute('aria-pressed', 'true')
     const list = await page.locator('.sales-email-list').boundingBox()
     const reader = await page.locator('.sales-email-preview-header').boundingBox()
     const context = await review(page).boundingBox()

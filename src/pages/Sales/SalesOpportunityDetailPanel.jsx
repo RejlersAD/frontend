@@ -14,7 +14,7 @@ const present = (value) => typeof value === "number" && Number.isFinite(value) ?
 const words = (value) => text(value).replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 const lookup = (labels, value) => typeof value === "string" && Object.hasOwn(labels, value) ? labels[value] : "";
 const scopeLabels = { feed: "FEED", pre_feed: "Pre-FEED", epc: "EPC", epcm: "EPCM", pmc: "PMC" };
-const tabs = ["Overview", "Workspace", "Activity"];
+const tabs = ["Overview", "Activity"];
 const formatDate = (value, includeTime = false) => {
   const raw = text(value);
   if (!raw) return "Not provided";
@@ -57,18 +57,16 @@ Facts.propTypes = { rows: PropTypes.array.isRequired };
 export default function SalesOpportunityDetailPanel({ record, loading = false, error = "", onRetry, onOpenFullRecord, onEdit, onAction, actions = [], locked = false, explorer = false, explorerFolder = '', onOpenWorkspace, onCloseWorkspace }) {
   const panelId = useId();
   const contentRef = useRef(null);
-  const [selection, setSelection] = useState({ recordId: null, tab: "Workspace" });
+  const [selection, setSelection] = useState({ recordId: null, tab: "Overview" });
   const [copyNotice, setCopyNotice] = useState("");
   useEffect(() => {
     if (!copyNotice) return undefined;
     const timer = setTimeout(() => setCopyNotice(''), 3500);
     return () => clearTimeout(timer);
   }, [copyNotice]);
-  useEffect(() => { if (explorer) setSelection({ recordId: record?.id, tab: 'Workspace' }); }, [explorer, record?.id]);
-  const activeTab = selection.recordId === record?.id ? selection.tab : "Workspace";
+  const activeTab = explorer ? null : selection.recordId === record?.id ? selection.tab : "Overview";
   const activate = (tab) => {
     setSelection({ recordId: record?.id, tab });
-    if (tab === 'Workspace' && !explorer) onOpenWorkspace?.('');
     if (contentRef.current) contentRef.current.scrollTop = 0;
   };
   const moveTab = (event) => {
@@ -121,7 +119,8 @@ export default function SalesOpportunityDetailPanel({ record, loading = false, e
         <div className="sor-detail-identity"><span className="sor-detail-code">{present(record.deal_code)}</span><button type="button" className="sor-detail-icon-button" aria-label="Copy VF code" onClick={async () => { try { await navigator.clipboard.writeText(record.deal_code); setCopyNotice("VF code copied."); } catch { setCopyNotice("Copy is unavailable in this browser. Select the VF code to copy it."); } }}><Copy aria-hidden="true" /></button>{record.id && <span className="sor-detail-saved"><CheckCircle2 aria-hidden="true" />Saved</span>}</div>
         <div className="sor-detail-header-actions">
           {!locked && onEdit && <button type="button" className="sor-detail-secondary" onClick={onEdit}><Pencil aria-hidden="true" />Edit details</button>}
-          {(onOpenFullRecord || secondaryActions.length > 0) && <details key={record.id} className="sor-detail-menu"><summary className="sor-detail-icon-button" aria-label="More opportunity actions" title="More actions"><MoreHorizontal aria-hidden="true" /></summary><div className="sor-detail-menu-items">
+          {(onOpenFullRecord || (!explorer && onOpenWorkspace) || secondaryActions.length > 0) && <details key={record.id} className="sor-detail-menu"><summary className="sor-detail-icon-button" aria-label="More opportunity actions" title="More actions"><MoreHorizontal aria-hidden="true" /></summary><div className="sor-detail-menu-items">
+            {!explorer && onOpenWorkspace && <button type="button" onClick={(event) => { event.currentTarget.closest("details").open = false; onOpenWorkspace(''); }}>Open workspace</button>}
             {onOpenFullRecord && <button type="button" onClick={(event) => { event.currentTarget.closest("details").open = false; onOpenFullRecord(); }}>Open full record</button>}
             {secondaryActions.map((action) => <button key={action.id} type="button" className={action.danger ? "sor-detail-danger" : ""} disabled={!onAction} onClick={(event) => { event.currentTarget.closest("details").open = false; onAction?.(action.id); }}>{action.label}</button>)}
           </div></details>}
@@ -131,9 +130,9 @@ export default function SalesOpportunityDetailPanel({ record, loading = false, e
       <div className="sor-detail-meta"><span>Client <strong>{client || "Not provided"}</strong></span><span>Owner <strong>{owner || "Unassigned"}</strong></span><span>Deadline <strong>{displayDate(text(record.submission_due_date))}</strong></span>{stageValue}</div>
       {copyNotice && <p className="sor-detail-copy-notice" role="status">{copyNotice}</p>}
     </header>
-    <div className="sor-detail-tabs" role="tablist" aria-label="Opportunity detail view">{tabs.map((tab) => <button key={tab} id={`${panelId}-${tab}-tab`} type="button" role="tab" aria-selected={activeTab === tab} aria-controls={`${panelId}-${tab}-panel`} tabIndex={activeTab === tab ? 0 : -1} onClick={() => activate(tab)} onKeyDown={moveTab}>{tab}</button>)}</div>
-    <div ref={contentRef} key={record.id} className={`sor-detail-content ${explorer && activeTab === 'Workspace' ? 'sor-document-content' : ''}`} role="tabpanel" id={`${panelId}-${activeTab}-panel`} aria-labelledby={`${panelId}-${activeTab}-tab`} tabIndex={0}>
-      <div hidden={activeTab !== "Workspace"}><SalesOpportunityWorkspace key={record.id} record={record} active={activeTab === "Workspace"} explorer={explorer} initialFolder={explorerFolder} onCloseExplorer={onCloseWorkspace} onOpenExplorer={folder => { setSelection({ recordId: record.id, tab: 'Workspace' }); onOpenWorkspace?.(folder); }} /></div>
+    {!explorer && <div className="sor-detail-tabs" role="tablist" aria-label="Opportunity detail view">{tabs.map((tab) => <button key={tab} id={`${panelId}-${tab}-tab`} type="button" role="tab" aria-selected={activeTab === tab} aria-controls={`${panelId}-${tab}-panel`} tabIndex={activeTab === tab ? 0 : -1} onClick={() => activate(tab)} onKeyDown={moveTab}>{tab}</button>)}</div>}
+    <div ref={contentRef} key={record.id} className={`sor-detail-content ${explorer ? 'sor-document-content' : ''}`} role={explorer ? undefined : 'tabpanel'} id={explorer ? undefined : `${panelId}-${activeTab}-panel`} aria-labelledby={explorer ? undefined : `${panelId}-${activeTab}-tab`} tabIndex={explorer ? undefined : 0}>
+      {explorer && <div><SalesOpportunityWorkspace key={record.id} record={record} explorer initialFolder={explorerFolder} onOpenExplorer={folder => onOpenWorkspace?.(folder)} /></div>}
       {activeTab === "Overview" && <>
         <Section number={1} title="Identity"><Facts rows={[["Client", client], ["Client reference", present(record.client_reference)], ["Opportunity type", text(typeLabel(text(record.opportunity_type))) || "Not provided"], ["Service line", serviceLine(record)]]} /></Section>
         <Section number={2} title="Dates & ownership"><Facts rows={[["Open date", displayDate(text(record.open_date))], ["Submission deadline", deadlineValue], ["Expected award date", displayDate(text(record.expected_close_date))], ["Owner", ownerValue]]} /></Section>

@@ -1,7 +1,7 @@
 .sales-opportunities-route { height: 100%; min-height: 0; }
 .sor-workspace {
   --sor-ink: #101828; --sor-secondary: #475467; --sor-muted: #667085; --sor-border: #dce4ee; --sor-blue: #0064c9;
-  display: grid; grid-template-columns: minmax(360px, 42%) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 12px;
+  display: grid; grid-template-columns: minmax(0, 3fr) minmax(320px, 2fr); grid-template-rows: auto minmax(0, 1fr); gap: 12px;
   height: 100%; min-height: 0; padding: 10px 12px 12px 20px; box-sizing: border-box;
   color: var(--sor-ink); background: linear-gradient(120deg, #f0f4f7, #f6f8fb);
   font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; font-weight: 500; line-height: 1.4;
@@ -150,7 +150,7 @@
 @media (max-width: 1000px) { .sor-workspace { display: flex; flex-direction: column; height: auto; min-height: 100%; overflow: visible; padding: 14px; }.sor-main { min-height: 700px; }.sor-table-card { min-height: 350px; }.sor-table-scroll { max-height: 520px; }.sor-workspace > aside { min-height: 560px; max-height: 760px; }.sor-header { flex-direction: row; }.sor-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }.sor-metric { gap: 9px; }.sor-metric-icon { display: none; }.sor-attention-items { grid-template-columns: repeat(3, minmax(0, 1fr)); max-height: 220px; }.sor-attention-items article { flex-wrap: wrap; }.sor-attention-items .sor-button { margin-left: 25px; }.sor-table-scroll table { min-width: 1010px; } }
 @media (max-width: 600px) { .sor-workspace { padding: 12px 8px; gap: 14px; }.sor-main { min-height: 760px; }.sor-header h1 { font-size: 25px; }.sor-header p { font-size: 12px; }.sor-header-actions { gap: 6px; width: 100%; }.sor-header-actions > .sor-button, .sor-header-actions > .sor-menu > summary { padding-inline: 8px; font-size: 12px; }.sor-header-actions .sor-create { margin-left: auto; }.sor-header-actions > .sor-menu > .sor-menu-content { left: 0; right: auto; }.sor-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }.sor-metric { min-height: 83px; }.sor-attention-items { grid-template-columns: 1fr; max-height: 176px; }.sor-attention-items article { flex-wrap: nowrap; padding-block: 3px; }.sor-attention-items .sor-button { margin-left: 0; }.sor-search { min-width: 100%; }.sor-table-tools { margin-left: 0; }.sor-table-tools .sor-menu-content { right: auto; left: 0; }.sor-pagination { flex-wrap: wrap; padding: 8px; gap: 6px; }.sor-pagination label { margin-right: 2px; gap: 5px; }.sor-pagination > div { margin-left: auto; }.sor-pagination label { font-size: 12px; }.sor-pagination button { min-width: 25px; }.sor-chips { gap: 6px; }.sor-table-empty { padding-inline: 10px; text-align: left; }.sor-table-empty > svg { margin-left: 0; } }
 
-/* Opportunity workspace reference: compact list beside a full document workspace. */
+/* Opportunity register: wider list beside Overview and Activity. */
 .sor-workspace { --sor-blue: #4b27e8; background: #f6f8fc; padding: 10px 14px 14px; }
 .sor-workspace > .sor-header, .sor-workspace > .sor-alert, .sor-workspace > .sor-notice { grid-column: 1 / -1; }
 .sor-workspace:has(> .sor-alert, > .sor-notice) { grid-template-rows: auto auto minmax(0, 1fr); }
@@ -208,7 +208,7 @@
 .sor-summary-panel .sor-attention-items article { flex-wrap: nowrap; padding-block: 5px; border: 0; }
 .sor-summary-panel .sor-attention-items .sor-button { margin-left: 0; }
 @media (min-width: 1001px) and (max-width: 1450px) {
-  .sor-workspace { grid-template-columns: minmax(330px, 42%) minmax(0, 1fr); }
+  .sor-workspace { grid-template-columns: minmax(0, 3fr) minmax(320px, 2fr); }
   .sor-results-count { display: none; }
   .sor-toolbar-controls { grid-template-columns: minmax(0, 1fr) auto; }
   .sor-list-tabs { padding-inline: 8px; gap: 1px; }

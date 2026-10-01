@@ -245,6 +245,8 @@ function MailboxEmails({ connection, onConfigure, onAddMailbox }) {
   const mounted = useRef(false);
   const pageRequest = useRef(0);
   const detailRequest = useRef(0);
+  const searchTimer = useRef(null);
+  const searchQuery = useRef("");
   const nextStepRef = useRef(null);
   const [nextStepMessageId, setNextStepMessageId] = useState(null);
   const [page, setPage] = useState({
@@ -264,20 +266,29 @@ function MailboxEmails({ connection, onConfigure, onAddMailbox }) {
     setDetail((current) => current.message ? { ...current, message: { ...current.message, information: withoutCustomerMatch(current.message.information) } } : current);
   }, []);
 
-  const loadPage = useCallback(async (cursor = null, history = []) => {
+  const clearSelection = useCallback(() => {
     setConfirmedClassification("");
-    const currentRequest = ++pageRequest.current;
-    const active = () => mounted.current && currentRequest === pageRequest.current;
     detailRequest.current += 1;
     setNextStepMessageId(null);
     setSelectedId(null);
     setShowOpportunityForm(false);
     setConversion(null);
     setDetail({ message: null, loading: false, error: "" });
+  }, []);
+
+  const loadPage = useCallback(async (cursor = null, history = [], query = searchQuery.current) => {
+    clearTimeout(searchTimer.current);
+    const currentRequest = ++pageRequest.current;
+    const active = () => mounted.current && currentRequest === pageRequest.current;
+    clearSelection();
     setReviewSummaries({});
     setPage({ records: null, loading: true, error: "", cursor, nextCursor: null, history });
+    if (query.length > 256) {
+      setPage({ records: null, loading: false, error: "Use 256 characters or fewer to search mail.", cursor: null, nextCursor: null, history: [], refreshRequired: true });
+      return;
+    }
     try {
-      const payload = await salesService.getMailboxMessages(connection.id, cursor ? { cursor } : {});
+      const payload = await salesService.getMailboxMessages(connection.id, { ...(cursor ? { cursor } : {}), ...(query ? { search: query } : {}) });
       if (!active()) return;
       if (
         !payload ||
@@ -298,17 +309,18 @@ function MailboxEmails({ connection, onConfigure, onAddMailbox }) {
         error: accessError(status) || (status === 410
           ? "Mailbox page has expired. Refresh emails to continue."
           : status === 400
-            ? "Mailbox page could not be opened. Refresh emails to continue."
+            ? query ? "Mailbox search could not be opened. Check the search text or refresh emails." : "Mailbox page could not be opened. Refresh emails to continue."
             : "Mailbox emails could not be loaded. Try again."),
       });
     }
-  }, [connection.id, connection.address]);
+  }, [connection.id, connection.address, clearSelection]);
 
   useEffect(() => {
     mounted.current = true;
     loadPage();
     return () => {
       mounted.current = false;
+      clearTimeout(searchTimer.current);
       pageRequest.current += 1;
       detailRequest.current += 1;
     };
@@ -421,35 +433,38 @@ function MailboxEmails({ connection, onConfigure, onAddMailbox }) {
   const unreadEligible = (page.records || []).filter((record) => record.is_read === false && !record.is_draft && record.direction === "incoming").length;
   const aiReviewedCount = (page.records || []).filter((record) => summaries[record.id]?.status === "validated").length;
   const visibleRecords = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase();
     return (page.records || []).filter((record) => {
       if (readFilter === "unread" && record.is_read !== false) return false;
       if (readFilter === "read" && record.is_read !== true) return false;
       if (readFilter === "drafts" && !record.is_draft) return false;
       if (readFilter === "ai" && summaries[record.id]?.status !== "validated") return false;
       if (readFilter === "needs_review" && (record.direction !== "incoming" || record.is_draft)) return false;
-      return !query || [record.subject, record.sender_name, record.sender_email, record.body_preview]
-        .some((value) => value.toLocaleLowerCase().includes(query));
+      return true;
     });
-  }, [page.records, readFilter, search, summaries]);
+  }, [page.records, readFilter, summaries]);
   useEffect(() => {
     if (!page.loading && !page.error && selectedId === null && visibleRecords.length) {
       loadMessage(visibleRecords[0]);
     }
   }, [page.loading, page.error, selectedId, visibleRecords, loadMessage]);
-  const changeFilter = (nextFilter, nextSearch = search) => {
-    setConfirmedClassification("");
-    detailRequest.current += 1;
-    setNextStepMessageId(null);
-    setSelectedId(null);
-    setShowOpportunityForm(false);
-    setConversion(null);
-    setDetail({ message: null, loading: false, error: "" });
+  const changeFilter = (nextFilter) => {
+    clearSelection();
     setReadFilter(nextFilter);
-    setSearch(nextSearch);
+  };
+  const changeSearch = (value) => {
+    setSearch(value);
+    searchQuery.current = value.replace(/\s+/gu, " ").trim();
+    clearTimeout(searchTimer.current);
+    // Clear private content and invalidate in-flight responses before debouncing.
+    pageRequest.current += 1;
+    clearSelection();
+    setReviewSummaries({});
+    setReadFilter("all");
+    setPage({ records: null, loading: true, error: "", cursor: null, nextCursor: null, history: [] });
+    searchTimer.current = setTimeout(() => loadPage(), 350);
   };
   const readFilters = [
-    ["all", "Inbox", page.records?.length],
+    ["all", "All mail", page.records?.length],
     ["unread", "Unread", page.records?.filter((record) => record.is_read === false).length],
     ["ai", "AI suggestions", aiReviewedCount],
     ["drafts", "Drafts", page.records?.filter((record) => record.is_draft).length],
@@ -474,13 +489,14 @@ function MailboxEmails({ connection, onConfigure, onAddMailbox }) {
         </div>
         <div className="sales-email-toolbar-actions">
         <label className="sales-email-search">
-          <span className="sr-only">Search emails on this page</span>
+          <span className="sr-only">Search all mail</span>
           <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-500" aria-hidden="true" />
           <input
             type="search"
             value={search}
-            onChange={(event) => changeFilter(readFilter, event.target.value)}
-            placeholder="Search emails…"
+            onChange={(event) => changeSearch(event.target.value)}
+            placeholder="Search all mail…"
+            aria-describedby="mailbox-search-scope"
             className="w-full rounded-md border border-slate-300 bg-white py-2 pl-9 pr-3 text-[13px] placeholder:text-slate-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
           />
         </label>
@@ -503,14 +519,15 @@ function MailboxEmails({ connection, onConfigure, onAddMailbox }) {
       </div>}
       <div className="sales-email-grid">
         <aside aria-label="Mailbox emails" className="sales-email-list">
-          <div className="sales-email-list-summary"><h2>Inbox</h2><span>Newest first <ChevronDown size={14} aria-hidden="true" /></span></div>
-          <nav aria-label="Inbox quick filters" className="sales-email-list-filters">{[["all", "All"], ["unread", "Unread"], ["needs_review", "Needs review"]].map(([value, label]) => <button key={value} type="button" title={value === "needs_review" ? "Incoming non-draft messages; review is required before opportunity creation." : undefined} aria-pressed={readFilter === value} onClick={() => changeFilter(value)}>{label}</button>)}</nav>
-          <div className="sr-only" role="status">
+          <div className="sales-email-list-summary"><h2>{searchQuery.current ? "Search results" : "All mail"}</h2><span>Newest first <ChevronDown size={14} aria-hidden="true" /></span></div>
+          <nav aria-label="Mail quick filters" className="sales-email-list-filters">{[["all", "All"], ["unread", "Unread"], ["needs_review", "Needs review"]].map(([value, label]) => <button key={value} type="button" title={value === "needs_review" ? "Incoming non-draft messages; review is required before opportunity creation." : undefined} aria-pressed={readFilter === value} onClick={() => changeFilter(value)}>{label}</button>)}</nav>
+          <div className="px-4 pb-2 text-xs text-slate-600" role="status">
             Page {page.history.length + 1}{page.records !== null && ` · ${page.records.length} emails on this page`}
           </div>
+          <p id="mailbox-search-scope" className="px-4 pb-2 text-xs text-slate-600">Search covers all folders{searchQuery.current ? " (up to 1,000 matches)" : ""}. Filters and counts apply to this page.</p>
           {page.loading && <p role="status" className="p-5 text-sm text-slate-600">Loading mailbox emails…</p>}
           {!page.loading && !page.error && page.records?.length === 0 && <p className="p-5 text-sm text-slate-600">
-            {page.cursor === null && page.nextCursor === null ? "No emails in this mailbox." : "No emails on this page."}
+            {searchQuery.current ? "No matching emails found. Try a shorter subject or reference." : page.cursor === null && page.nextCursor === null ? "No emails in this mailbox." : "No emails on this page."}
           </p>}
           {!page.loading && !page.error && page.records?.length > 0 && visibleRecords.length === 0 && <p className="p-5 text-sm text-slate-600">No matching emails on this page.</p>}
           <ul className="sales-email-list-scroll">

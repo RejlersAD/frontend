@@ -8,7 +8,7 @@ const inbox = page => page.getByRole('region', { name: 'Shared mailbox messages'
 const preview = page => page.getByRole('region', { name: 'Email preview', exact: true })
 const review = page => page.getByRole('complementary', { name: 'Email review', exact: true })
 const row = (page, record = message()) => page.getByRole('button', { name: `Open email: ${record.subject}`, exact: true })
-const search = page => page.getByRole('searchbox', { name: 'Search emails on this page', exact: true })
+const search = page => page.getByRole('searchbox', { name: 'Search all mail', exact: true })
 const requests = state => state.requests.filter(request => request.path.endsWith('/message/'))
 const requestedIds = state => requests(state).map(request => new URLSearchParams(request.query).get('message_id'))
 const deferred = () => {
@@ -65,7 +65,10 @@ test('same-row and Next step interactions reuse the automatic pending request an
 })
 
 test('read filters and search open the first visible result and empty results clear the old reader', async ({ page }) => {
-  const state = await prepare(page, { messages: listing(records), detailHandler: detailsFor })
+  const state = await prepare(page, {
+    messageHandler: ({ url }) => ({ body: listing(records.filter(record => record.subject.toLowerCase().includes((url.searchParams.get('search') || '').toLowerCase()))) }),
+    detailHandler: detailsFor,
+  })
   await expect(preview(page)).toContainText(`Source body for ${message().subject}`)
   await row(page, secondMessage()).click()
   await expect(row(page, secondMessage())).toHaveAttribute('aria-pressed', 'true')
@@ -75,6 +78,7 @@ test('read filters and search open the first visible result and empty results cl
   await expect(preview(page)).toContainText('Source body for Site access update')
   await expect(search(page)).toBeFocused()
   await search(page).fill('Nothing matches this phrase')
+  await expect(page.getByText('No matching emails found. Try a shorter subject or reference.', { exact: true })).toBeVisible()
   await expect(review(page)).toHaveCount(0)
   await expect(preview(page)).not.toContainText('Source body for')
   const count = requests(state).length
@@ -85,7 +89,7 @@ test('read filters and search open the first visible result and empty results cl
   await page.locator('.sales-email-filter-popover').getByRole('button', { name: 'Read', exact: true }).click()
   await expect(row(page, secondMessage())).toHaveAttribute('aria-pressed', 'true')
   await expect(preview(page)).toContainText('Source body for Site access update')
-  expect(state.requests.filter(request => request.path.endsWith('/messages/'))).toHaveLength(1)
+  expect(state.requests.filter(request => request.path.endsWith('/messages/'))).toHaveLength(5)
   assertReadOnly(state)
 })
 

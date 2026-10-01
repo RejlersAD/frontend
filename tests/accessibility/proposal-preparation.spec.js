@@ -1,0 +1,203 @@
+import { test, expect } from '@playwright/test'
+import AxeBuilder from '@axe-core/playwright'
+import { openPreparation, proposalRegisterId } from '../fixtures/proposal-preparation-api'
+
+const panel = page => page.getByRole('region', { name: 'Proposal preparation', exact: true })
+const apply = page => panel(page).getByRole('button', { name: 'Apply selected fields & save revision', exact: true })
+const reason = page => panel(page).getByRole('textbox', { name: 'Preparation review reason', exact: true })
+const refresh = page => panel(page).getByRole('button', { name: 'Refresh preparation', exact: true })
+const source = page => panel(page).getByRole('combobox', { name: 'Technical proposal revision', exact: true })
+const clean = state => { expect(state.register.pageErrors).toEqual([]); expect(state.register.unexpected).toEqual([]) }
+async function preview(page, id = '71') {
+  await expect(source(page)).toBeEnabled()
+  await source(page).selectOption(id)
+  await panel(page).getByRole('button', { name: 'Preview selected source', exact: true }).click()
+  await expect(panel(page).getByRole('heading', { name: 'Choose fields to apply', exact: true })).toBeVisible()
+}
+async function draft(page) {
+  await preview(page)
+  await panel(page).getByRole('checkbox', { name: 'Apply scope', exact: true }).check()
+  await reason(page).fill('Reviewed source scope against the tender requirements.')
+}
+
+test('explicit mappings preserve authored fields and commercial values, refresh Quote, and retain draft across tabs', async ({ page }) => {
+  const state = await openPreparation(page)
+  const original = structuredClone(state.register.rows[0])
+  await draft(page)
+  await expect(panel(page).getByRole('checkbox', { name: 'Apply estimated hours', exact: true })).toBeDisabled()
+  await expect(panel(page).getByRole('checkbox', { name: 'Apply deliverables', exact: true })).not.toBeChecked()
+  await page.getByRole('tab', { name: 'Summary', exact: true }).click()
+  await page.getByRole('tab', { name: 'Preparation', exact: true }).click()
+  await expect(reason(page)).toHaveValue('Reviewed source scope against the tender requirements.')
+  await apply(page).click()
+  await expect(panel(page)).toContainText('Preparation revision saved.')
+  expect(state.mutations).toHaveLength(1)
+  expect(state.mutations[0].body).toEqual({ request_id: expect.any(String), expected_token: 'preview-1-71', technical_proposal_id: '71', selected_fields: ['scope'], reason: 'Reviewed source scope against the tender requirements.' })
+  expect(state.register.rows[0].scope).toBe('Reviewed source scope and execution approach.')
+  for (const field of ['deliverables', 'estimated_hours', 'total_amount', 'estimated_cost', 'currency', 'tax_amount', 'discount_amount']) expect(state.register.rows[0][field]).toEqual(original[field])
+  expect(state.register.mutations).toEqual([])
+  await expect(panel(page)).toContainText('Preparation revision 1')
+  state.sourceState = 'changed'
+  await refresh(page).click()
+  await expect(panel(page)).toContainText('Source changed since capture')
+  clean(state)
+})
+
+test('create workspace requires an explicit unknown duration assumption and attach uses scoped paginated choices', async ({ page }) => {
+  const state = await openPreparation(page, { connection: null, requiresDuration: true, workspacePageSize: 1 })
+  const create = panel(page).getByRole('button', { name: 'Create bid workspace', exact: true })
+  await panel(page).getByRole('textbox', { name: 'Connection reason', exact: true }).fill('Prepare the approved bid.')
+  await expect(create).toBeDisabled()
+  await expect(panel(page).getByRole('spinbutton', { name: 'Draft planning duration (months)' })).toHaveValue('')
+  await panel(page).getByRole('spinbutton', { name: 'Draft planning duration (months)' }).fill('4.5001')
+  await create.click()
+  await expect(panel(page)).toContainText('Bid workspace connected.')
+  expect(state.mutations[0].body).toMatchObject({ mode: 'create', duration_months: '4.5001', expected_token: 'bid-1' })
+  clean(state)
+})
+
+test('attach requires an explicit candidate and preserves it while searching', async ({ page }) => {
+  const state = await openPreparation(page, { connection: null, workspacePageSize: 1 })
+  await panel(page).getByRole('combobox', { name: 'Connection mode', exact: true }).selectOption('attach')
+  const chooser = panel(page).getByRole('combobox', { name: 'Planning workspace', exact: true })
+  await expect(chooser).toBeEnabled()
+  await expect(chooser).toHaveValue('')
+  await panel(page).getByRole('button', { name: 'Next choices', exact: true }).click()
+  await expect(chooser).toBeEnabled()
+  await chooser.selectOption('22')
+  await panel(page).getByRole('searchbox', { name: 'Search planning workspace', exact: true }).fill('Opportunity')
+  await expect(chooser).toHaveValue('22')
+  await panel(page).getByRole('textbox', { name: 'Connection reason', exact: true }).fill('Existing workspace belongs to this bid.')
+  await panel(page).getByRole('button', { name: 'Attach bid workspace', exact: true }).click()
+  await expect(panel(page)).toContainText('Bid workspace connected.')
+  expect(state.mutations[0].body).toMatchObject({ mode: 'attach', planning_project_id: '22' })
+  expect(state.mutations[0].body).not.toHaveProperty('duration_months')
+  clean(state)
+})
+
+test('stale source requires explicit refresh and retains choices/reason with a new token', async ({ page }) => {
+  const state = await openPreparation(page, { prepareStatuses: [409, 200] })
+  await draft(page)
+  await apply(page).click()
+  await expect(panel(page)).toContainText('The proposal or source changed.')
+  await expect(apply(page)).toBeDisabled()
+  state.version = 2
+  await refresh(page).click()
+  await expect(reason(page)).toHaveValue('Reviewed source scope against the tender requirements.')
+  await expect(panel(page).getByRole('checkbox', { name: 'Apply scope', exact: true })).toBeChecked()
+  await apply(page).click()
+  await expect(panel(page)).toContainText('Preparation revision saved.')
+  expect(state.mutations.map(item => item.body.expected_token)).toEqual(['preview-1-71', 'preview-2-71'])
+  expect(state.mutations[0].body.request_id).not.toBe(state.mutations[1].body.request_id)
+  clean(state)
+})
+
+test('validation and denied writes preserve inputs; read-only state allows preview and blocks apply', async ({ page }) => {
+  const state = await openPreparation(page, { prepareStatuses: [400, 403] })
+  await draft(page)
+  await apply(page).click()
+  await expect(panel(page).getByRole('alert')).toContainText('Review reason could not be saved.')
+  await expect(reason(page)).toHaveValue('Reviewed source scope against the tender requirements.')
+  await apply(page).click()
+  await expect(panel(page).getByRole('alert')).toContainText('Permission was revoked.')
+  state.canPrepare = false
+  await refresh(page).click()
+  await expect(panel(page)).toContainText('This proposal is approved and preparation is read-only.')
+  await expect(reason(page)).toHaveValue('Reviewed source scope against the tender requirements.')
+  await expect(apply(page)).toBeDisabled()
+  await expect(panel(page).getByRole('checkbox', { name: 'Apply scope', exact: true })).toBeChecked()
+  clean(state)
+})
+
+for (const kind of ['prepare', 'connect']) test(`uncertain ${kind} retry reuses the exact command and has one effect`, async ({ page }) => {
+  const state = await openPreparation(page, kind === 'prepare' ? { prepareStatuses: ['committed-network-error'] } : { connection: null, connectionStatuses: ['committed-network-error'] })
+  if (kind === 'prepare') { await draft(page); await apply(page).click() }
+  else { await panel(page).getByRole('textbox', { name: 'Connection reason', exact: true }).fill('Prepare this bid workspace.'); await panel(page).getByRole('button', { name: 'Create bid workspace', exact: true }).click() }
+  await expect(panel(page).getByRole('button', { name: 'Retry same request', exact: true })).toBeVisible()
+  if (kind === 'prepare') await expect(reason(page)).toBeDisabled()
+  else await expect(panel(page).getByRole('textbox', { name: 'Connection reason', exact: true })).toBeDisabled()
+  await panel(page).getByRole('button', { name: 'Retry same request', exact: true }).click()
+  await expect(panel(page)).toContainText(kind === 'prepare' ? 'No duplicate was created.' : 'The bid workspace connection was already saved.')
+  expect(state.mutations).toHaveLength(2)
+  expect(state.mutations[0].body).toEqual(state.mutations[1].body)
+  expect(state.saved.size).toBe(1)
+  expect(state.history).toHaveLength(kind === 'prepare' ? 1 : 0)
+  clean(state)
+})
+
+test('read denial is recoverable and failed preview cannot leave applicable stale fields', async ({ page }) => {
+  const state = await openPreparation(page, { getStatus: 403 })
+  await expect(panel(page).getByRole('alert')).toContainText('Preparation access denied.')
+  await expect(source(page)).toHaveCount(0)
+  state.getStatus = 200
+  await refresh(page).click()
+  await draft(page)
+  state.previewStatuses = [403]
+  await panel(page).getByRole('button', { name: 'Preview selected source', exact: true }).click()
+  await expect(panel(page).getByRole('alert')).toContainText('Source revision is no longer accessible.')
+  await expect(apply(page)).toHaveCount(0)
+  await panel(page).getByRole('button', { name: 'Preview selected source', exact: true }).click()
+  await expect(reason(page)).toHaveValue('Reviewed source scope against the tender requirements.')
+  clean(state)
+})
+
+test('late responses cannot replace the newly selected proposal', async ({ page }) => {
+  let release
+  const hold = new Promise(resolve => { release = resolve })
+  const state = await openPreparation(page, { holds: { [proposalRegisterId(0)]: hold } })
+  await page.getByRole('button', { name: 'Select proposal P-2026-0141 revision 2', exact: true }).click()
+  await page.getByRole('tab', { name: 'Preparation', exact: true }).click()
+  await expect(panel(page)).toContainText('Electrical Design Review')
+  release()
+  await expect(panel(page)).not.toContainText('FEED Engineering Services')
+  await draft(page)
+  await apply(page).click()
+  await expect(panel(page)).toContainText('Preparation revision saved.')
+  expect(state.requests.find(item => item.path.endsWith('/prepare/')).path).toContain(proposalRegisterId(1))
+  clean(state)
+})
+
+test('preparation comparison is accessible and usable on desktop and mobile', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1586, height: 992 })
+  const state = await openPreparation(page)
+  await preview(page)
+  const desktop = await new AxeBuilder({ page }).include('.spg-page').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()
+  expect(desktop.violations).toEqual([])
+  await page.screenshot({ path: testInfo.outputPath('preparation-desktop.png'), fullPage: true })
+  await panel(page).getByRole('checkbox', { name: 'Apply deliverables', exact: true }).scrollIntoViewIfNeeded()
+  await page.screenshot({ path: testInfo.outputPath('preparation-comparison.png'), fullPage: true })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await reason(page).fill('Mobile review retained.')
+  await expect(reason(page)).toHaveValue('Mobile review retained.')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
+  await page.screenshot({ path: testInfo.outputPath('preparation-mobile.png'), fullPage: true })
+  const mobile = await new AxeBuilder({ page }).include('.spg-page').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()
+  expect(mobile.violations).toEqual([])
+  clean(state)
+})
+
+test('technical deep link selects exact revision and preserves canonical Sales identity', async ({ page }) => {
+  const state = await openPreparation(page)
+  await preview(page)
+  const proposals = [72, 71].map(id => ({ id, project: 21, proposal_number: 'TP-BID-2026', revision: id === 71 ? 2 : 3, title: `Technical revision ${id}`, client_name: 'Demo Client A', opportunity_reference: 'VF-2026-0142', client_reference: 'CLIENT-A', status: 'draft', sales_preparation_bound: true,
+    sections: [{ key: 'cover', title: 'Cover', content: 'Controlled solution', included: true, group: 'Proposal', section_type: 'narrative' }], snapshot: { schedule: { version: 4 } }, branding: {}, workflow_permissions: { can_edit: true }, issued_files: [] }))
+  await page.route('**/api/v1/planning-intelligence/**', route => {
+    const path = new URL(route.request().url()).pathname
+    if (path.endsWith('/projects/21/')) return route.fulfill({ json: { id: 21, name: 'Opportunity bid preparation', client: 'Demo Client A' } })
+    if (path.endsWith('/technical-proposals/')) return route.fulfill({ json: { results: [proposals[0]], next: '?page=2' } })
+    if (path.endsWith('/technical-proposals/71/')) return route.fulfill({ json: proposals[1] })
+    return route.fulfill({ status: 404, json: { detail: 'Unexpected Planning request.' } })
+  })
+  await panel(page).getByRole('link', { name: 'Open exact technical revision', exact: true }).click()
+  await expect(page.getByRole('textbox', { name: 'Proposal title', exact: true })).toHaveValue('Technical revision 71')
+  await expect(page.getByRole('textbox', { name: 'Client', exact: true })).toBeDisabled()
+  await expect(page.getByRole('textbox', { name: 'Opportunity reference', exact: true })).toBeDisabled()
+  await page.getByRole('button', { name: 'Back to Sales proposal', exact: true }).click()
+  await expect(page.getByLabel('Selected proposal', { exact: true })).toContainText('FEED Engineering Services')
+  await page.goto(`/tests/fixtures/sales-proposal-preview.html?entry=${encodeURIComponent('/proposal-workspace/21?proposalId=999')}`)
+  await expect(page.getByRole('alert')).toContainText('The requested technical revision is unavailable')
+  await expect(page.getByRole('textbox', { name: 'Proposal title', exact: true })).toHaveCount(0)
+  await page.goto(`/tests/fixtures/sales-proposal-preview.html?entry=${encodeURIComponent('/proposal-workspace/21')}`)
+  await expect(page.getByRole('textbox', { name: 'Proposal title', exact: true })).toHaveValue('Technical revision 72')
+  clean(state)
+})

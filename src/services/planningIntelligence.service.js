@@ -324,6 +324,9 @@ export const planningIntelligenceService = {
   listTechnicalProposals: async projectId => unwrapList(await apiClient.get(
     PLANNING_ENDPOINTS.technicalProposals, { params: { project: projectId } },
   )),
+  getTechnicalProposal: async id => (
+    await apiClient.get(PLANNING_ENDPOINTS.technicalProposal(id), { suppressErrorToast: true })
+  ).data,
   createTechnicalProposal: async payload => (
     await apiClient.post(PLANNING_ENDPOINTS.technicalProposals, payload)
   ).data,

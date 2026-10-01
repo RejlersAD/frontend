@@ -5,9 +5,17 @@ summary-first layout and narrow detail panel. The shared sidebar/header are
 unchanged. This frontend requires the corresponding Sales workspace backend;
 missing or unavailable endpoints render a visible recovery state.
 
+The latest register/direct-explorer simplification passed 29 scoped browser
+cases, 26 existing helper checks, source/test lint, accessibility/responsive
+checks and the production/PWA build locally. Evidence is under
+`artifacts/opportunity-navigation/{final,retained-preview,explorer-1024}/` and
+`artifacts/opportunity-register-layout-final-build.log`. This is local validation,
+not a production deployment; the historical intermediate folder-table screen
+is no longer part of the current navigation.
+
 ## Current behavior
 
-- A compact register occupies approximately 42% of the page beside a 58% selected
+- The wider register occupies approximately 60% of the page beside a 40% selected
   record panel. The default view includes all scoped opportunities; My
   opportunities uses the authenticated canonical owner, and Due soon uses the
   existing seven-day active-stage rule. Small screens stack the panels.
@@ -20,16 +28,22 @@ missing or unavailable endpoints render a visible recovery state.
   existing lifecycle commands. The screenshot's sample data and VF-2026 codes
   are not application defaults. Existing fixed-height rows and legible scoped
   typography remain; overflow stays inside the table.
-- The detail panel opens on Workspace and retains Overview and Activity.
+- The detail panel opens on Overview and offers only Overview and Activity.
   Overview includes expandable full commercial details/proposals. Edit details,
   More actions and the row's View action preserve the established editor and full
   record. Edit fields disable while saving; errors retain the submitted draft.
-- Double-clicking an opportunity, clicking the Workspace tab or opening a category
-  enters the full document explorer in the existing route. Deep links use
+- Double-clicking an opportunity or choosing More opportunity actions > Open
+  workspace enters the separate workspace in the existing route. Deep links use
   `?record={id}&workspace=1&folder=proposal`; folder is optional. The mounted
   register retains filters, search, selection, page and columns when Back to
-  register is used. Overview/Activity and editing/lifecycle actions remain
-  available. Back remains usable when record loading fails or is denied.
+  register is used. The full workspace has no opportunity tab strip; Overview
+  and Activity stay in the register. Editing/lifecycle actions remain in the
+  header menu. Back remains usable when record loading fails or is denied.
+- Without a folder parameter, the workspace opens the file explorer directly
+  with Correspondence selected. The intermediate folder-table page and Workspace
+  overview sidebar link are removed at the user's request. All six folders
+  remain in the sidebar; Back to register exits to the list. Existing folder
+  metadata remains stored.
 - Workspace shows Correspondence, Tender, Proposal, Internal, Submitted and
   Award. Readiness, permissions, SharePoint links and direct item counts come
   from the server. Unknown counts are dashes, including unconfigured/failed
@@ -37,7 +51,7 @@ missing or unavailable endpoints render a visible recovery state.
 - Workspace reads never initiate creation. Saved registration queues configured
   provisioning on the backend. Existing records can request Create workspace or
   Retry setup when the server permits it. Pending/creating statuses poll while
-  the Workspace tab is active. Unconfigured storage needs administrator setup.
+  the separate workspace is open. Unconfigured storage needs administrator setup.
 - The full explorer has a six-category navigation tree, uploaded-file table and
   selected-document Details/Versions pane. Search, type filters and sorting apply
   to loaded items; further API pages load explicitly. Counts include nested
