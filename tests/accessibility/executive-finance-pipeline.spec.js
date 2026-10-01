@@ -70,6 +70,8 @@ const clean = state => {
 test('Overview refreshes published Finance on focus, preserves period and exports the displayed source', async ({ page }) => {
   const state = await open(page);
   await expect(page.getByTestId('executive-kpi-revenue')).toContainText('AED 700');
+  await expect(page.getByTestId('executive-kpi-total_projects').locator('.eov-kpi-value')).toHaveText('2');
+  await expect(page.getByTestId('executive-kpi-total_projects')).toContainText('Unique RAD project numbers');
   await expect(page.getByRole('link', { name: 'View Finance source' })).toHaveAttribute('href', '/finance');
   await page.getByRole('group', { name: 'Invoiced revenue period', exact: true }).getByRole('button', { name: 'YTD' }).click();
   state.id = 8;
@@ -82,6 +84,8 @@ test('Overview refreshes published Finance on focus, preserves period and export
   const saved = JSON.parse(await readFile(await (await downloaded).path(), 'utf8'));
   expect(saved.finance.receivables.sources.receivables.snapshot_id).toBe(8);
   expect(saved.finance.reporting_period.mode).toBe('ytd');
+  await page.getByRole('tab', { name: 'Financial performance', exact: true }).click();
+  await expect(page.getByTestId('financial-kpi-total_projects')).toContainText('2');
   clean(state);
 });
 

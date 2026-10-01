@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { financeSource, overviewExport } from '../src/pages/Executive/financeSourcePresentation.js';
 import { portfolioSourceRoute } from '../src/pages/Executive/portfolioInvoicePresentation.js';
 import { financialInvoiceModel } from '../src/pages/Executive/financialInvoicePresentation.js';
+import { overviewModel } from '../src/pages/Executive/overviewPresentation.js';
 
 const finance = {
   currency: 'AED', source_updated_at: '2026-10-01T08:00:00Z',
@@ -48,4 +49,35 @@ test('portfolio links accept read-only Finance while rejecting external and unre
   for (const route of ['https://example.test/finance', '//example.test/finance', '/admin', '/finance/settings', 'javascript:alert(1)']) {
     assert.equal(portfolioSourceRoute(route), null);
   }
+});
+
+test('Overview and Financial project cards share workbook counts independently of portfolio health and invoice periods', () => {
+  const report = { portfolio_performance: { register: { status: 'available', total_rows: 50, projects: [] },
+    health: { status: 'available', counts: { clear: 47, high: 2, medium: 0, low: 0, critical: 1, unknown: 0 } } } };
+  for (const currency of ['AED', 'EUR']) {
+    for (const count of [497, 31, 0, null, -1, 1.5, true, 'invalid']) {
+      const response = { ...finance, currency,
+        workbook_summary: { schema_version: '1.0', status: 'available', totals: { project_count: count } } };
+      for (const mode of ['monthly', 'ytd']) {
+        const model = overviewModel(report, currency, response, mode, '2026-09');
+        const card = model.cards.find(item => item.id === 'total_projects');
+        assert.equal(card.metric.value, financialInvoiceModel(response, currency, mode).projectCount);
+        assert.equal(model.portfolio.total, 50);
+        assert.equal(model.portfolio.buckets[0].count, 47);
+        assert.equal(card.metric.route, '/finance');
+        if (count === 0) assert.equal(card.value, '0');
+      }
+    }
+  }
+  for (const summary of [null, { schema_version: '1.0', status: 'restricted', totals: { project_count: 497 } },
+    { schema_version: '1.0', status: 'error', totals: { project_count: 497 } },
+    { schema_version: 'unsupported', status: 'available', totals: { project_count: 497 } }]) {
+    const card = overviewModel(report, 'AED', { ...finance, workbook_summary: summary }).cards.find(item => item.id === 'total_projects');
+    assert.equal(card.value, '\u2014');
+    assert.equal(card.metric.value, null);
+    if (summary?.status === 'restricted') assert.equal(card.metric.route, null);
+  }
+  const mismatched = { ...finance, currency: 'EUR', workbook_summary: { schema_version: '1.0', status: 'available', totals: { project_count: 497 } } };
+  assert.equal(overviewModel(report, 'AED', mismatched).cards.find(item => item.id === 'total_projects').metric.value, null);
+  assert.equal(overviewModel(report, 'AED', null).cards.find(item => item.id === 'total_projects').metric.value, null);
 });
