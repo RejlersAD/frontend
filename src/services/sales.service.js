@@ -4,6 +4,7 @@
  */
 
 import apiClient from "./api.service";
+import { responseFilename } from '../utils/downloadFilename';
 
 const BASE_URL = "/sales";
 
@@ -219,6 +220,52 @@ class SalesService {
   async getDeal(dealId) {
     const response = await apiClient.get(`${BASE_URL}/deals/${dealId}/`);
     return response.data;
+  }
+
+  async getOpportunityWorkspace(dealId) {
+    const response = await apiClient.get(`${BASE_URL}/deals/${encodeURIComponent(dealId)}/workspace/`, EMAIL_REQUEST_OPTIONS);
+    return response.data;
+  }
+
+  async setupOpportunityWorkspace(dealId) {
+    const response = await apiClient.post(`${BASE_URL}/deals/${encodeURIComponent(dealId)}/workspace/setup/`, {}, EMAIL_REQUEST_OPTIONS);
+    return response.data;
+  }
+
+  async getOpportunityWorkspaceFiles(dealId, folderKey, cursor = null, storage = 'sharepoint') {
+    const response = await apiClient.get(`${BASE_URL}/deals/${encodeURIComponent(dealId)}/workspace/folders/${encodeURIComponent(folderKey)}/files/`, { ...EMAIL_REQUEST_OPTIONS, params: { ...(cursor ? { cursor } : {}), ...(storage === 'radai' ? { storage } : {}) } });
+    return response.data;
+  }
+
+  async uploadOpportunityWorkspaceFile(dealId, folderKey, file, requestId, storage = 'sharepoint') {
+    const body = new FormData();
+    body.append('file', file);
+    body.append('upload_request_id', requestId);
+    if (storage === 'radai') body.append('storage', storage);
+    const response = await apiClient.post(`${BASE_URL}/deals/${encodeURIComponent(dealId)}/workspace/folders/${encodeURIComponent(folderKey)}/upload/`, body, EMAIL_REQUEST_OPTIONS);
+    return response.data;
+  }
+
+  async getOpportunityWorkspaceFile(dealId, folderKey, fileId) {
+    const response = await apiClient.get(`${BASE_URL}/deals/${encodeURIComponent(dealId)}/workspace/folders/${encodeURIComponent(folderKey)}/files/${encodeURIComponent(fileId)}/`, EMAIL_REQUEST_OPTIONS);
+    return response.data;
+  }
+
+  async getOpportunityWorkspaceVersions(dealId, folderKey, fileId, cursor = null) {
+    const response = await apiClient.get(`${BASE_URL}/deals/${encodeURIComponent(dealId)}/workspace/folders/${encodeURIComponent(folderKey)}/files/${encodeURIComponent(fileId)}/versions/`, { ...EMAIL_REQUEST_OPTIONS, params: cursor ? { cursor } : {} });
+    return response.data;
+  }
+
+  async downloadOpportunityWorkspaceFile(dealId, folderKey, fileId) {
+    try {
+      const response = await apiClient.get(`${BASE_URL}/deals/${encodeURIComponent(dealId)}/workspace/folders/${encodeURIComponent(folderKey)}/files/${encodeURIComponent(fileId)}/download/`, { ...EMAIL_REQUEST_OPTIONS, responseType: 'blob' });
+      return { blob: response.data, filename: responseFilename(response.headers?.['content-disposition']) };
+    } catch (error) {
+      if (error.response?.data instanceof Blob) {
+        try { error.response.data = JSON.parse(await error.response.data.text()); } catch { /* Keep the safe generic message for a non-JSON response. */ }
+      }
+      throw error;
+    }
   }
 
   /**

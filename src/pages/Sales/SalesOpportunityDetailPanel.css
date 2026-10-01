@@ -111,3 +111,27 @@
   .sor-detail-panel { min-height: 380px; max-height: 740px; }
   .sor-detail-content { max-height: 510px; }
 }
+
+.sor-detail-header { padding: 16px 19px 14px; }
+.sor-detail-identity { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.sor-detail-code { font-size: 16px; }
+.sor-detail-saved { display: inline-flex; align-items: center; gap: 7px; color: #078252; font-size: 12px; font-weight: 400; margin-left: 8px; }
+.sor-detail-saved svg { width: 16px; height: 16px; }
+.sor-detail-title { font-size: 25px; line-height: 1.35; margin: 11px 0 16px; letter-spacing: -.5px; }
+.sor-detail-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 9px 15px; color: #526689; font-size: 12px; font-weight: 400; }
+.sor-detail-meta > span:not(:last-child) { border-right: 1px solid #ccd6e8; padding-right: 15px; }
+.sor-detail-meta strong { font-weight: 500; color: #243859; margin-left: 7px; }
+.sor-detail-meta > .sor-detail-status { border: 0; padding: 4px 10px; }
+.sor-detail-tabs { display: flex; gap: 13px; border-top: 0; padding-inline: 17px; }
+.sor-detail-tabs button { padding: 10px 13px; min-height: 45px; font-size: 13px; border-bottom-width: 3px; }
+.sor-detail-tabs button[aria-selected="true"] { border-bottom-color: #6333f7; color: #5124e9; }
+.sor-detail-content { padding-inline: 18px; }
+.sor-detail-secondary { min-height: 37px; color: #1b2e51; }
+.sor-detail-header-actions .sor-detail-icon-button { width: 36px; height: 37px; border-color: #d8e3f1; }
+.sor-detail-copy-notice { color: #4d5d7a; font-size: 12px; margin: 8px 0 0; }
+.sor-commercial-details { margin: 12px 0; }
+.sor-commercial-details > summary { padding: 10px 0; color: #4930db; font-weight: 600; cursor: pointer; }
+.sor-detail-section { padding-block: 12px; }
+.sor-detail-facts > div { grid-template-columns: minmax(130px, .65fr) minmax(0, 1.35fr); }
+@media (min-width: 1001px) and (max-width: 1450px) { .sor-detail-header { padding: 14px; } .sor-detail-content { padding-inline: 13px; } .sor-detail-title { font-size: 21px; } .sor-detail-topline { align-items: flex-start; gap: 7px; } .sor-detail-saved { margin-left: 0; } .sor-detail-secondary { padding-inline: 8px; } }
+@media (max-width: 600px) { .sor-detail-header { padding: 13px; } .sor-detail-content { padding-inline: 12px; } .sor-detail-title { font-size: 22px; } .sor-detail-topline { align-items: flex-start; flex-wrap: wrap; } .sor-detail-header-actions { margin-left: auto; } .sor-detail-saved { margin-left: 0; } .sor-detail-tabs { gap: 5px; padding-inline: 7px; } }

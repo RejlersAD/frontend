@@ -71,6 +71,7 @@ async function prepare(page, options = {}) {
       return route.fulfill({ status: 405, json: { detail: 'This fixture allows reads only.' } })
     }
     if (url.pathname === `/api/v1/sales/deals/${recordId}/`) return route.fulfill({ json: structuredClone(state.record) })
+    if (url.pathname === `/api/v1/sales/deals/${recordId}/workspace/`) return route.fulfill({ json: { opportunity_id: recordId, status: 'not_configured', web_url: '', can_manage: false, can_upload: false, folders: [] } })
     if (url.pathname === '/api/v1/sales/deals/') return route.fulfill({ json: { count: 1, results: [state.record] } })
     if (/^\/api\/v1\/sales\/(clients|quotes|frameworks|forecasts|project-handovers)\/$/.test(url.pathname)) return route.fulfill({ json: { count: 0, results: [] } })
     state.unexpected.push(`${request.method()} ${url.pathname}`)

@@ -668,6 +668,7 @@ function RecordDrawer({
               onSubmit={onSave}
               className="space-y-4"
             >
+              <fieldset disabled={saving} className="space-y-4">
               {config.editFields.map(
                 ([key, text, type = "text", options = []]) => (
                   <label
@@ -732,6 +733,7 @@ function RecordDrawer({
                   </label>
                 ),
               )}
+              </fieldset>
             </form>
           ) : (
             <dl className="divide-y divide-slate-200 rounded-md border border-slate-200">
@@ -791,6 +793,7 @@ function RecordDrawer({
                   key="cancel-edit"
                   type="button"
                   onClick={onCancelEdit}
+                  disabled={saving}
                   className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold"
                 >
                   Cancel
@@ -918,7 +921,7 @@ export default function SalesLifecycleArea() {
   }, [area]);
 
   const openRecord = useCallback(
-    async (rowOrId, showFull = true) => {
+    async (rowOrId, showFull = true, workspaceView = null) => {
       if (!config) return;
       const id = typeof rowOrId === "string" ? rowOrId : rowOrId.id;
       const request = ++recordRequest.current;
@@ -928,7 +931,13 @@ export default function SalesLifecycleArea() {
       setFullRecordOpen(showFull);
       setEditing(false);
       setSaving(false);
-      setSearchParams({ record: id }, { replace: true });
+      setSearchParams(previous => {
+        const next = new URLSearchParams(previous);
+        next.set('record', id);
+        if (workspaceView?.open) { next.set('workspace', '1'); if (workspaceView.folder) next.set('folder', workspaceView.folder); else next.delete('folder'); }
+        else if (workspaceView || previous.get('record') !== id) { next.delete('workspace'); next.delete('folder'); }
+        return next;
+      }, { replace: true });
       try {
         const detail = await config.get(id);
         if (request === recordRequest.current) setRecord(detail);
@@ -945,7 +954,13 @@ export default function SalesLifecycleArea() {
     [config, setSearchParams],
   );
 
-  const selectOpportunity = useCallback((row) => openRecord(row, false), [openRecord]);
+  const selectOpportunity = useCallback((row) => openRecord(row, false, { open: false }), [openRecord]);
+  const openOpportunityWorkspace = useCallback((row, folder = '') => {
+    if (!row) return;
+    if (record?.id !== row.id) openRecord(row, false, { open: true, folder });
+    else { setFullRecordOpen(false); setSearchParams(previous => { const next = new URLSearchParams(previous); next.set('record', row.id); next.set('workspace', '1'); if (folder) next.set('folder', folder); else next.delete('folder'); return next; }); }
+  }, [openRecord, record?.id, setSearchParams]);
+  const closeOpportunityWorkspace = () => setSearchParams(previous => { const next = new URLSearchParams(previous); next.delete('workspace'); next.delete('folder'); return next; });
 
   const refreshOpportunities = async () => {
     const selectedId = record?.id;
@@ -963,7 +978,7 @@ export default function SalesLifecycleArea() {
 
   useEffect(() => {
     const recordId = searchParams.get("record");
-    if (recordId && record?.id !== recordId) openRecord(recordId);
+    if (recordId && record?.id !== recordId) openRecord(recordId, searchParams.get('workspace') !== '1', { open: searchParams.get('workspace') === '1', folder: searchParams.get('folder') || '' });
   }, [openRecord, record?.id, searchParams]);
 
   const closeRecord = useCallback(() => {
@@ -987,6 +1002,7 @@ export default function SalesLifecycleArea() {
 
   const saveRecord = async (event) => {
     event.preventDefault();
+    if (saving) return;
     const request = recordRequest.current;
     const selectedId = record.id;
     setSaving(true);
@@ -1683,6 +1699,8 @@ export default function SalesLifecycleArea() {
           rows={rows} loading={loading} error={error}
           record={record} recordLoading={recordLoading} recordError={recordError}
           onRefresh={refreshOpportunities} onSelect={selectOpportunity}
+          explorer={searchParams.get('workspace') === '1'} explorerFolder={searchParams.get('folder') || ''}
+          onOpenWorkspace={openOpportunityWorkspace} onCloseWorkspace={closeOpportunityWorkspace}
           onRetryRecord={() => record && openRecord(record, false)}
           onOpenFullRecord={(row) => row && openRecord(row, true)}
           onEdit={() => { setFullRecordOpen(true); beginEdit(); }}
