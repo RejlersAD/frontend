@@ -801,9 +801,22 @@ const ValveMTOPage = () => {
     try {
       const rows = await listLegends(section);
       const list = Array.isArray(rows) ? rows : [];
-      if (list.some((l) => l.is_active)) return;
-      if (!list.length) {
-        const defaults = [...(SECTION_DEFAULT_LEGENDS[section] || [])];
+      const defaults = [...(SECTION_DEFAULT_LEGENDS[section] || [])];
+      const hasOwnDefault = defaults.length > 0 || section === 'line_list';
+      if (hasOwnDefault) {
+        // BUG FIX (confirmed real on production): this used to gate on
+        // `!list.length` — i.e. only auto-create when the section had
+        // ZERO legends at all. That meant a single pre-existing, UNRELATED
+        // legend (e.g. from P&ID Verification V1/V2, not Valve-MTO's own)
+        // silently blocked the Valve-MTO-specific default forever, and
+        // `list.some(l => l.is_active)` return-early above compounded it
+        // by also skipping if any (possibly unrelated) legend was already
+        // active. Now: match by NAME against this section's own
+        // SECTION_DEFAULT_LEGENDS entries (set below, after the
+        // line_list-specific one is built) — create+activate our own
+        // default whenever it's missing, regardless of what else exists;
+        // if it already exists, just make sure it's active. Still fully
+        // idempotent — never duplicates our own default on repeat calls.
         if (section === 'line_list') {
           // Fetched lazily, only on this rare first-time-per-user path —
           // see the fluid-codes comment above for why this isn't a
@@ -829,16 +842,29 @@ const ValveMTOPage = () => {
           });
         }
         if (!defaults.length) return;
-        // Each section now has exactly one default (see
-        // SECTION_DEFAULT_LEGENDS' own comment) — still a loop/
-        // activate-in-sequence for safety if a section ever gains a
-        // second default again later.
+        const defaultNames = new Set(defaults.map((d) => d.name));
+        const ownExisting = list.filter((l) => defaultNames.has(l.name));
+        if (ownExisting.length) {
+          // Our own default(s) already exist for this user/section — just
+          // make sure one is active (never recreate/duplicate).
+          if (!ownExisting.some((l) => l.is_active)) {
+            await activateLegend(ownExisting[0].legend_id);
+          }
+          return;
+        }
+        // Our Valve-MTO default doesn't exist yet for this user/section —
+        // create + activate it even if other (unrelated) legends already
+        // exist and even if one of those is already active.
         for (const def of defaults) {
           const created = await createLegend({ section, ...def });
           await activateLegend(created.legend_id);
         }
         return;
       }
+      // No Valve-MTO-specific default for this section (e.g.
+      // 'control_valve_regulator') — only ever activate a legend the user
+      // already created themselves, never fabricate one here.
+      if (!list.length || list.some((l) => l.is_active)) return;
       // listLegends orders by -updated_at (see LegendSheetsModal's
       // own refresh()), so the first row is the most recently
       // edited one for this section — the sensible default to
@@ -850,6 +876,10 @@ const ValveMTOPage = () => {
   };
 
   const handleOpenLegends = async () => {
+    // TEMPORARY DIAGNOSTIC (per explicit request): confirms this handler
+    // actually fires and shows which sections it's about to auto-populate
+    // — remove once production auto-create is confirmed fixed.
+    console.log('[ValveMTO] handleOpenLegends() called — sections:', VALVE_MTO_LEGEND_SECTIONS);
     setActivatingLegends(true);
     try {
       await Promise.all([
