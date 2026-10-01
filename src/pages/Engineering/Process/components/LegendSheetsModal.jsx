@@ -146,7 +146,7 @@ const DEFAULT_SYNC_TEXT = 'Legends are shared between V1 (P&ID Verification) and
  */
 export default function LegendSheetsModal({
   open, onClose, section = DEFAULT_SECTION, onActiveChange, projectId: projectIdProp,
-  title, description, syncTitle, syncText,
+  title, description, syncTitle, syncText, filterOutMTOLegends = false,
 }) {
   const [activeSection, setActiveSection] = useState(section || DEFAULT_SECTION)
 
@@ -221,7 +221,46 @@ export default function LegendSheetsModal({
     if (!silent) setLoading(true)
     try {
       const rows = await listLegends(activeSection, projectId || undefined)
-      setLegends(Array.isArray(rows) ? rows : [])
+      const allRows = Array.isArray(rows) ? rows : []
+      // When opened from a non-Valve-MTO caller (P&ID V1/V2), hide
+      // Valve-MTO-specific auto-created legends (name contains "MTO")
+      // from the list entirely — this only affects what's DISPLAYED
+      // here, so another module's "Manage Legends" view isn't cluttered
+      // with legends it didn't create and has no use for.
+      let filteredRows = filterOutMTOLegends
+        ? allRows.filter((l) => !String(l?.name || '').includes('MTO'))
+        : allRows
+      // SELF-HEAL (confirmed real on production): Valve MTO's own
+      // auto-create can activate an MTO-named legend for a section this
+      // user also uses in P&ID V1/V2 — PidCheckerV2LegendSheet has only
+      // ONE active legend per (user, section), no per-module dimension,
+      // so that activation is real server-side state, not just a display
+      // issue. Hiding it from the list (above) stops it being SHOWN as
+      // active, but P&ID's own tag-validation still reads the real
+      // active row — so if the genuinely active legend for this section
+      // turns out to be one of ours, restore whichever non-MTO legend
+      // this user most recently had active/edited instead (listLegends
+      // orders by -updated_at, so filteredRows[0] is exactly that one).
+      // Best-effort and non-destructive: if this user has NO non-MTO
+      // legend at all for this section, there's nothing to restore —
+      // never fabricate one, same rule as everywhere else in this file.
+      if (filterOutMTOLegends) {
+        const activeRaw = allRows.find((l) => l.is_active)
+        const activeIsMTO = activeRaw && String(activeRaw.name || '').includes('MTO')
+        if (activeIsMTO && filteredRows.length) {
+          const restoreTarget = filteredRows[0]
+          try {
+            await activateLegend(restoreTarget.legend_id)
+            filteredRows = filteredRows.map((l) =>
+              l.legend_id === restoreTarget.legend_id ? { ...l, is_active: true } : l
+            )
+          } catch {
+            // Best-effort — if this fails, the MTO legend just stays
+            // hidden-but-technically-active; still never shown here.
+          }
+        }
+      }
+      setLegends(filteredRows)
       // Clear selection when switching sections so the editor doesn't show a
       // stale legend belonging to a different section. Only do this for a
       // user-driven load (tab click / modal open) — a silent background
@@ -233,7 +272,10 @@ export default function LegendSheetsModal({
       // notify parent about active state (only when viewing the section the
       // parent originally opened us with)
       if (onActiveChange && activeSection === section) {
-        const active = (rows || []).find(l => l.is_active) || null
+        // Uses filteredRows, not rows: a parent that hides MTO legends
+        // from display should also never be told one is "active" (e.g.
+        // for a status badge) — stays consistent with what's on screen.
+        const active = filteredRows.find(l => l.is_active) || null
         onActiveChange(active)
       }
     } catch (err) {
@@ -241,7 +283,7 @@ export default function LegendSheetsModal({
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [activeSection, section, onActiveChange, projectId])
+  }, [activeSection, section, onActiveChange, projectId, filterOutMTOLegends])
 
   useEffect(() => { if (open) refresh() }, [open, refresh])
 

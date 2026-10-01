@@ -18014,6 +18014,7 @@ const PIDVerification = () => {
         section={LEGEND_SECTION}
         onActiveChange={onLegendActiveChange}
         projectId={selectedProject?.project_id}
+        filterOutMTOLegends
       />
 
     </DarkBg>

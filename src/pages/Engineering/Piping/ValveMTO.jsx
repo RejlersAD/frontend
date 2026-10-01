@@ -844,17 +844,29 @@ const ValveMTOPage = () => {
         if (!defaults.length) return;
         const defaultNames = new Set(defaults.map((d) => d.name));
         const ownExisting = list.filter((l) => defaultNames.has(l.name));
+        // PidCheckerV2LegendSheet has exactly ONE active legend per
+        // (user, section) — no per-module dimension at all. Valve MTO's
+        // own extraction needs ITS defaults active to feed the Vision
+        // prompt (see _build_legend_context server-side), so this always
+        // creates+activates them, even over a DIFFERENT already-active
+        // legend. That used to visibly leak into P&ID V1/V2 and I/O
+        // List's "Manage Legends" (an MTO legend would show there as the
+        // active one) — now fixed at the source: LegendSheetsModal's own
+        // `filterOutMTOLegends` prop (passed =true from PIDVerification.jsx
+        // /PIDVerificationV2.jsx) hides any legend named with "MTO" from
+        // both their legend list AND their active-legend reporting, so
+        // activating our own default here can no longer surface there —
+        // this file is the only caller that needs it active, and the
+        // other callers now never see it regardless of what's active
+        // server-side. (I/O List's own LegendSheetsModal is a fully
+        // separate component/backend table — never shares this data at
+        // all, so it was never actually affected either way.)
         if (ownExisting.length) {
-          // Our own default(s) already exist for this user/section — just
-          // make sure one is active (never recreate/duplicate).
           if (!ownExisting.some((l) => l.is_active)) {
             await activateLegend(ownExisting[0].legend_id);
           }
           return;
         }
-        // Our Valve-MTO default doesn't exist yet for this user/section —
-        // create + activate it even if other (unrelated) legends already
-        // exist and even if one of those is already active.
         for (const def of defaults) {
           const created = await createLegend({ section, ...def });
           await activateLegend(created.legend_id);
@@ -2140,6 +2152,17 @@ const ValveMTOPage = () => {
         description="Upload valve symbols, piping classes, and line number formats to improve AI extraction accuracy for your P&ID drawings."
         syncTitle="Global Library"
         syncText="Legends are shared across all your Valve MTO extractions."
+        // NOTE: harmless marker only — LegendSheetsModal.jsx does not
+        // currently read/consume this prop (out of scope here to add
+        // that). It does NOT gate anything: auto-create/auto-activate
+        // already only runs from THIS file's own handleOpenLegends(),
+        // never from the modal itself or from P&ID V1/V2 / I/O List
+        // (they never call handleOpenLegends). The actual cross-module
+        // leak this session's "CRITICAL BUG" report described was
+        // fixed above in autoPopulateLegendSection (no longer steals
+        // activation from an already-active legend in a shared section).
+        isValveMTO
+        filterOutMTOLegends={false}
       />
     </div>
   );
