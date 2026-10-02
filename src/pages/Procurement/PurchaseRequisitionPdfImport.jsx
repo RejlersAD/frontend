@@ -5,6 +5,7 @@ import PurchaseOrderLinkReview from './PurchaseOrderLinkReview';
 import ProcurementImportVendorReview from './ProcurementImportVendorReview';
 import ProcurementImportPdfPreview from './ProcurementImportPdfPreview';
 import ProcurementApprovalEmployeeSearch from './ProcurementApprovalEmployeeSearch';
+import ProcurementImportSigners, { IMPORT_SIGNER_ROLES as ROLE_LABELS, capturedImportSignerName as capturedSignerName } from './ProcurementImportSigners';
 import { importErrorMessage } from './procurementPdfImportErrors';
 import useProcurementImportDialog from './useProcurementImportDialog';
 import './PurchaseRequisitionPdfImport.css';
@@ -25,11 +26,6 @@ import { isLevelZeroApprover, isUnknownApprover, normalizeSourceApprovalReview }
 import { normalizeProjectNumbers } from './recommendationProjectNumbers';
 import { calculateProcurementVat, PROCUREMENT_VAT_OPTIONS, roundProcurementMoney } from '../../utils/procurementVat';
 
-const ROLE_LABELS = { pm: 'Project Manager', moe: 'Manager of Engineering', mop: 'Manager of Projects', vp: 'VP Operations' };
-const capturedSignerName = (detection, role) => {
-  const names = (detection?.approval_rows || []).filter(row => row.role_key === role).map(row => row.name || row.raw_name || '').filter(Boolean);
-  return [...new Set(names)].join('; ') || detection?.approver_names?.[role] || '';
-};
 const MAX_SIGNED_PR_PDF_SIZE = 15 * 1024 * 1024;
 const EDITABLE_FIELDS = [
   ['pr_number', 'PR Number', 'text', true],
@@ -153,6 +149,7 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
   const [result, setResult] = useState(null);
   const [edits, setEdits] = useState({});
   const [manualSignatures, setManualSignatures] = useState({});
+  const [sourceRowEdits, setSourceRowEdits] = useState({});
   const [sourceApprovalReview, setSourceApprovalReview] = useState(() => normalizeSourceApprovalReview());
   const [additionalApproverError, setAdditionalApproverError] = useState('');
   const [employees, setEmployees] = useState([]);
@@ -254,6 +251,7 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
     setResult(null);
     setEdits({});
     setManualSignatures({});
+    setSourceRowEdits({});
     setSourceApprovalReview(normalizeSourceApprovalReview());
     setAdditionalApproverError('');
     setRecordCheck(null);
@@ -278,6 +276,7 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
     setResult(null);
     setEdits({});
     setManualSignatures({});
+    setSourceRowEdits({});
     setSourceApprovalReview(normalizeSourceApprovalReview());
     setAdditionalApproverError('');
     setPoEdits({});
@@ -317,9 +316,10 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
       if (version !== previewVersionRef.current) return;
       if (poFile && !data.po_preview?.extracted_data) throw new Error('The PO PDF could not be previewed. Both selected files are retained; retry Preview OCR.');
       const extracted = data.extracted_data || {};
-      const approvers = data.approval_detection?.approver_names || {};
       setPreview(data);
       setSourceApprovalReview(normalizeSourceApprovalReview(data.source_approval_review));
+      setManualSignatures(data.approval_detection?.manual_signature_overrides || {});
+      setSourceRowEdits({});
       setAdditionalApproverError('');
       setRecordCheck({ number: String(extracted.pr_number || data.pr_number || '').trim().toUpperCase(), exists: data.database_match });
       setEdits({
@@ -328,10 +328,10 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
           ? normalizeProjectNumbers(data.project_numbers) : extracted.project_number || '',
         vat_basis: 'unconfirmed',
         approval_date: data.approval_detection?.approval_date || '',
-        pm_name: approvers.pm || capturedSignerName(data.approval_detection, 'pm'),
-        moe_name: approvers.moe || capturedSignerName(data.approval_detection, 'moe'),
-        mop_name: approvers.mop || capturedSignerName(data.approval_detection, 'mop'),
-        vp_name: approvers.vp || capturedSignerName(data.approval_detection, 'vp'),
+        pm_name: capturedSignerName(data.approval_detection, 'pm'),
+        moe_name: capturedSignerName(data.approval_detection, 'moe'),
+        mop_name: capturedSignerName(data.approval_detection, 'mop'),
+        vp_name: capturedSignerName(data.approval_detection, 'vp'),
       });
       setPoEdits(editablePoFields(data.po_preview));
       setSelectedPrId(!file && canLinkPurchaseOrder ? String(data.po_preview?.extracted_data?.pr_id || '') : '');
@@ -373,10 +373,50 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
     if (poFile && (!preview?.po_preview?.extracted_data || !canUploadPurchaseOrder)) return;
     const reviewedSourceApprovals = normalizeSourceApprovalReview(sourceApprovalReview);
     const expectedSourceApprovals = normalizeSourceApprovalReview(preview?.source_approval_review);
+    const sourceRowCorrections = Object.entries(sourceRowEdits).flatMap(([index, draft]) => {
+      const original = preview?.approval_detection?.approval_rows?.[Number(index)];
+      if (!original) return [];
+      const changed = draft.name.trim() !== String(original.name || original.raw_name || '').trim()
+        || draft.approval_label.trim() !== String(original.approval_label || '').trim()
+        || draft.special_note.trim() !== String(original.special_note || '').trim()
+        || (draft.signature_verified && !(original.signature_detected || original.signature_verified));
+      return changed ? [{ row_index: Number(index), expected_row: original,
+        approver_name: draft.name.trim(), approval_label: isLevelZeroApprover(draft.name) ? '0' : draft.approval_label.trim(),
+        signature_verified: draft.signature_verified && !(original.signature_detected || original.signature_verified), special_note: draft.special_note.trim() }] : [];
+    });
+    Object.keys(ROLE_LABELS).forEach(role => {
+      const rows = preview?.approval_detection?.approval_rows || [];
+      const indices = rows.map((row, index) => row.role_key === role ? index : -1).filter(index => index >= 0);
+      if (indices.length !== 1) return;
+      const rowIndex = indices[0];
+      const original = rows[rowIndex];
+      const name = String(edits[`${role}_name`] || '').trim();
+      const originalName = String(original.name || original.raw_name || '').trim();
+      const signatureWasRecorded = original.signature_detected || original.signature_verified
+        || preview?.approval_detection?.manual_signature_overrides?.[role];
+      const confirming = Boolean(manualSignatures[role] && !signatureWasRecorded);
+      const label = isLevelZeroApprover(name) ? '0' : reviewedSourceApprovals.approval_labels[role] || '';
+      const labelChanged = label !== (expectedSourceApprovals.approval_labels[role] || '');
+      if (name !== originalName || confirming || (labelChanged && (isUnknownApprover(originalName) || !signatureWasRecorded))) {
+        sourceRowCorrections.push({ row_index: rowIndex, expected_row: original, approver_name: name,
+          approval_label: label, signature_verified: confirming,
+          special_note: reviewedSourceApprovals.approver_notes?.[role] || '' });
+      }
+    });
+    const invalidSourceRow = sourceRowCorrections.find(row => isUnknownApprover(row.approver_name) || !row.special_note);
+    if (invalidSourceRow) {
+      setError('Enter the source signer name and a Special note explaining the correction.');
+      const noteInput = document.getElementById(`import-pr-source-note-${invalidSourceRow.row_index}`)
+        || document.getElementById(`import-pr-${invalidSourceRow.expected_row.role_key}-note`);
+      noteInput?.focus();
+      return;
+    }
     Object.keys(ROLE_LABELS).forEach(role => {
       if (isLevelZeroApprover(edits[`${role}_name`]) && reviewedSourceApprovals.approval_labels[role]) reviewedSourceApprovals.approval_labels[role] = '0';
     });
-    if (isLevelZeroApprover(reviewedSourceApprovals.additional_approver?.name)) reviewedSourceApprovals.additional_approver.approval_label = '0';
+    reviewedSourceApprovals.additional_approvers.forEach(row => {
+      if (isLevelZeroApprover(row.name)) row.approval_label = '0';
+    });
     const sourceReviewChanged = file && JSON.stringify(reviewedSourceApprovals) !== JSON.stringify(expectedSourceApprovals);
     const reviewedProjectNumbers = normalizeProjectNumbers(edits.project_number || '');
     const projectReferencesChanged = Boolean(file && attachmentNumber
@@ -386,27 +426,27 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
       setError('Project numbers must contain at most 200 characters, including commas.');
       return;
     }
-    if (file && reviewedSourceApprovals.additional_approver && !reviewedSourceApprovals.additional_approver.name) {
-      setAdditionalApproverError('Enter the additional approver name, or clear the additional row.');
-      const input = dialogRef.current?.querySelector('#import-pr-additional-signer');
+    const unnamedAdditional = reviewedSourceApprovals.additional_approvers.find(row => isUnknownApprover(row.name));
+    if (file && unnamedAdditional) {
+      setAdditionalApproverError('Enter the additional signer name, or remove the row.');
+      const input = document.getElementById(`import-pr-additional-${unnamedAdditional.id}`);
       input?.focus();
       input?.scrollIntoView({ block: 'center' });
       return;
     }
-    const previousAdditional = expectedSourceApprovals.additional_approver;
-    const nextAdditional = reviewedSourceApprovals.additional_approver;
-    if (file && previousAdditional && nextAdditional
-      && (previousAdditional.name !== nextAdditional.name || previousAdditional.approval_label !== nextAdditional.approval_label)
-      && !nextAdditional.special_note) {
+    const additionalMissingNote = reviewedSourceApprovals.additional_approvers.find(next => {
+      const previous = expectedSourceApprovals.additional_approvers.find(row => row.id === next.id);
+      return previous && (previous.name !== next.name || previous.approval_label !== next.approval_label) && !next.special_note;
+    });
+    if (file && additionalMissingNote) {
       setAdditionalApproverError('Enter a Special note explaining the approver correction.');
-      dialogRef.current?.querySelector('#import-pr-additional-note')?.focus();
+      document.getElementById(`import-pr-additional-note-${additionalMissingNote.id}`)?.focus();
       return;
     }
     const missingNoteRole = file && Object.keys(ROLE_LABELS).find(role => {
       const originalName = capturedSignerName(preview?.approval_detection, role);
-      return isUnknownApprover(originalName)
-        && (String(edits[`${role}_name`] || '').trim() !== originalName.trim()
-          || (reviewedSourceApprovals.approval_labels[role] || '') !== (expectedSourceApprovals.approval_labels[role] || ''))
+      return (String(edits[`${role}_name`] || '').trim() !== originalName.trim()
+          || (isUnknownApprover(originalName) && (reviewedSourceApprovals.approval_labels[role] || '') !== (expectedSourceApprovals.approval_labels[role] || '')))
         && !reviewedSourceApprovals.approver_notes?.[role];
     });
     if (missingNoteRole) {
@@ -438,7 +478,8 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
       }
       if (!attachmentNumber && edits.price_lines?.length) manualOverrides.price_lines = edits.price_lines;
       const manualSignatureOverrides = Object.fromEntries(
-        Object.entries(manualSignatures).filter(([, verified]) => verified),
+        Object.entries(manualSignatures).filter(([role, verified]) => verified
+          && !sourceRowCorrections.some(row => row.expected_row.role_key === role)),
       );
       const poReviewedFields = Object.fromEntries(PO_REVIEW_FIELDS.filter(([key]) => key !== 'entered_amount').map(([key, , type]) => [key, type === 'date' ? poEdits[key] || null : poEdits[key] ?? '']));
       VENDOR_REVIEW_FIELDS.forEach(key => {
@@ -481,11 +522,14 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
         approval_date: edits.approval_date || '',
         ...Object.fromEntries(Object.keys(ROLE_LABELS).map(role => {
           const sourceName = capturedSignerName(preview?.approval_detection, role);
-          const canCorrectUnknown = isUnknownApprover(sourceName) && String(edits[`${role}_name`] || '').trim() !== sourceName.trim();
-          return [`${role}_name`, preview?.document_signed_off && !canCorrectUnknown ? undefined : edits[`${role}_name`] || ''];
+          const changedName = String(edits[`${role}_name`] || '').trim() !== sourceName.trim();
+          const multipleSourceRows = preview?.approval_detection?.approval_rows?.filter(row => row.role_key === role).length > 1;
+          const correctedByRow = sourceRowCorrections.some(row => row.expected_row.role_key === role);
+          return [`${role}_name`, correctedByRow || multipleSourceRows || (preview?.document_signed_off && !changedName) ? undefined : edits[`${role}_name`] || ''];
         })),
         manual_overrides: JSON.stringify(manualOverrides),
-        manual_signature_overrides: preview?.document_signed_off ? undefined : JSON.stringify(manualSignatureOverrides),
+        manual_signature_overrides: !preview?.document_signed_off || Object.keys(manualSignatureOverrides).length ? JSON.stringify(manualSignatureOverrides) : undefined,
+        source_row_corrections: sourceRowCorrections.length ? JSON.stringify(sourceRowCorrections) : undefined,
         source_approval_review: sourceReviewChanged ? JSON.stringify(reviewedSourceApprovals) : undefined,
         expected_source_approval_review: sourceReviewChanged ? JSON.stringify(expectedSourceApprovals) : undefined,
         reviewed_project_references: projectReferencesChanged ? JSON.stringify({
@@ -495,11 +539,21 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
       });
       if (sourceReviewChanged && (!data.source_approval_review
         || JSON.stringify(normalizeSourceApprovalReview(data.source_approval_review)) !== JSON.stringify(reviewedSourceApprovals))) {
-        throw new Error('The saved Level labels and Additional approver could not be confirmed. Your PDF and review are retained. Check the record before retrying.');
+        throw new Error('The saved Level labels and additional signers could not be confirmed. Your PDF and review are retained. Check the record before retrying.');
       }
       if (projectReferencesChanged && (!Array.isArray(data.project_numbers)
         || normalizeProjectNumbers(data.project_numbers.join(', ')) !== reviewedProjectNumbers)) {
         throw new Error('The saved project numbers could not be confirmed. Your PDF and reviewed details are retained. Check the record before retrying.');
+      }
+      const unacknowledgedRows = sourceRowCorrections.filter(correction => {
+        const saved = data.approval_detection?.approval_rows?.[correction.row_index];
+        return !saved || saved.name !== correction.approver_name
+          || (saved.approval_label || '') !== correction.approval_label
+          || saved.special_note !== correction.special_note
+          || (correction.signature_verified && !(saved.signature_detected || saved.signature_verified));
+      });
+      if (unacknowledgedRows.length) {
+        throw new Error('The corrected source signers could not be confirmed. Your PDF and review are retained; check the record before retrying.');
       }
       const unacknowledgedSignatures = Object.keys(manualSignatureOverrides).filter(
         (role) => !data.approval_detection?.signatures?.[role],
@@ -554,10 +608,14 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
     return !String(edits[key] ?? '').trim() || (!edited && (confidence[key] || confidence[confidenceKey]) === 'conflict');
   }).length;
   const sourceSignaturesComplete = sourceApprovalRows.length
-    ? sourceApprovalRows.every(row => row.role_key && row.name && (row.signature_detected || detection.manual_signature_overrides?.[row.role_key] || manualSignatures[row.role_key]))
+    ? sourceApprovalRows.every((row, index) => {
+      const draft = sourceRowEdits[index];
+      const uniqueRole = sourceApprovalRows.filter(item => item.role_key === row.role_key).length === 1;
+      const name = draft?.name ?? (uniqueRole ? edits[`${row.role_key}_name`] : row.name);
+      return row.role_key && !isUnknownApprover(name) && (row.signature_detected || row.signature_verified
+        || draft?.signature_verified || (uniqueRole && (detection.manual_signature_overrides?.[row.role_key] || manualSignatures[row.role_key])));
+    })
     : Object.keys(ROLE_LABELS).every(key => detection.signatures?.[key] || manualSignatures[key]);
-  const additionalApprover = sourceApprovalReview.additional_approver || { name: '', approval_label: '', signature_verified: false };
-  const hasAdditionalApprover = Boolean(additionalApprover.name.trim() || additionalApprover.approval_label.trim() || additionalApprover.signature_verified);
   const prApprovalComplete = (documentSignedOff || sourceSignaturesComplete) && Boolean(edits.approval_date);
   const poApprovalComplete = poEvidence.signatureVerified && missingPoApprovalFields.length === 0;
   const approvalComplete = (!file || prApprovalComplete) && (!poFile || poApprovalComplete);
@@ -757,53 +815,12 @@ const PurchaseRequisitionPdfImport = ({ isOpen, onClose, onImported, expectedPrN
                     <div className="procurement-import-review__section-body procurement-import-review__approvals">
                       {employeeLoadError && <p className="text-xs text-amber-700">{employeeLoadError}</p>}
                       <datalist id="approved-pr-active-employees">{employees.map(employee => <option key={employee.id} value={employeeDisplayName(employee)}>{[employee.email, employee.job_title, employee.department].filter(Boolean).join(' · ')}</option>)}</datalist>
-                      <div className="procurement-import-review__signer-headings" aria-hidden="true"><span>Role</span><span>Level</span><span>Signer</span><span>Signature</span></div>
-                      {!isLevelZeroApprover(additionalApprover.name) && !sourceApprovalRows.some(row => isLevelZeroApprover(row.name || row.raw_name)) && <div className="procurement-import-review__signer">
-                        <label htmlFor="import-pr-level-zero-signer">Procurement</label>
-                        <input className="procurement-import-review__approval-level" aria-label="Procurement level" readOnly value="0" />
-                        <input id="import-pr-level-zero-signer" aria-label="Procurement approver, Level 0" readOnly value={preview?.default_level_zero_approver?.full_name || 'Richa Hannah Thomas'} />
-                        <span className="procurement-import-review__signature-status">Not recorded</span>
-                      </div>}
-                      {Object.entries(ROLE_LABELS).map(([key, label]) => {
-                        const sourceRows = sourceApprovalRows.filter(row => row.role_key === key);
-                        const absentFromSource = sourceApprovalRows.length > 0 && sourceRows.length === 0;
-                        const unknownSource = isUnknownApprover(capturedSignerName(detection, key));
-                        const capturedOnly = (documentSignedOff && !unknownSource) || absentFromSource || sourceRows.length > 1;
-                        const automaticallyDetected = Boolean(sourceRows.length ? sourceRows.every(row => row.signature_detected) : detection.signatures?.[key]);
-                        const manuallyVerified = Boolean(manualSignatures[key]);
-                        const signerName = capturedOnly ? capturedSignerName(detection, key) : edits[`${key}_name`] || '';
-                        const levelZero = isLevelZeroApprover(signerName);
-                        return <div key={key} className="procurement-import-review__signer">
-                          <div><label htmlFor={`import-pr-${key}-signer`}>{label}</label>{sourceRows.length === 1 && sourceRows[0].source_role && <small className="procurement-import-review__source-role">PDF: {sourceRows[0].source_role}</small>}</div>
-                          <input className="procurement-import-review__approval-level" aria-label={`${label} level`} title="Level label shown in the PDF" maxLength={20} disabled={loading} readOnly={levelZero} value={levelZero ? '0' : sourceApprovalReview.approval_labels[key] || ''} placeholder="Level" onChange={event => setSourceApprovalReview(current => ({ ...current, approval_labels: { ...current.approval_labels, [key]: event.target.value } }))} />
-                          <input id={`import-pr-${key}-signer`} aria-label={label} disabled={loading} readOnly={capturedOnly} list={capturedOnly ? undefined : 'approved-pr-active-employees'} value={capturedOnly ? absentFromSource ? '' : capturedSignerName(detection, key) : edits[`${key}_name`] || ''} onChange={capturedOnly ? undefined : event => setEdits(current => ({ ...current, [`${key}_name`]: event.target.value }))} placeholder={capturedOnly ? 'Not detected' : 'Select signer'} />
-                          {absentFromSource ? <span className="procurement-import-review__signature-status">Not on document</span> : automaticallyDetected ? <span className="procurement-import-review__verified"><CheckCircleIcon aria-hidden="true" />Detected</span> : documentSignedOff ? <span className="procurement-import-review__signature-status">Not detected</span> : <label className="procurement-import-review__verify"><input type="checkbox" disabled={loading} aria-label={manuallyVerified ? 'Signature verified in PDF' : 'Verify signature in PDF'} checked={manuallyVerified} onChange={event => setManualSignatures(current => ({ ...current, [key]: event.target.checked }))} /><span>Verify</span></label>}
-                          {sourceRows.map((row, index) => (row.remarks || sourceRows.length > 1) && <p key={index} className="procurement-import-review__source-approval-note">{sourceRows.length > 1 && <span>{row.source_role || label}: {row.name || row.raw_name || 'Name not detected'} — {row.signature_detected ? 'Signature detected' : 'Signature not detected'}. </span>}{row.remarks && <span>Remarks: {row.remarks}</span>}</p>)}
-                          {(unknownSource || sourceApprovalReview.approver_notes?.[key]) && <label className="procurement-import-review__signer-note">Special note
-                            <textarea id={`import-pr-${key}-note`} aria-label={`${label} special note`} rows={1} maxLength={2000} disabled={loading} value={sourceApprovalReview.approver_notes?.[key] || ''} placeholder="Explain any name or Level correction" onChange={event => setSourceApprovalReview(current => ({ ...current, approver_notes: { ...current.approver_notes, [key]: event.target.value } }))} />
-                          </label>}
-                        </div>;
-                      })}
-                      {sourceApprovalRows.filter(row => !Object.hasOwn(ROLE_LABELS, row.role_key)).map((row, index) => <div key={`additional-${index}`} className="procurement-import-review__signer">
-                        <label htmlFor={`import-pr-source-signer-${index}`}>{row.source_role || 'Additional source signer'}</label>
-                        <span className="procurement-import-review__captured-level" aria-label={`${row.source_role || 'Source signer'} level`}>{isLevelZeroApprover(row.name || row.raw_name) ? '0' : row.approval_label || '—'}</span>
-                        <input id={`import-pr-source-signer-${index}`} readOnly value={row.name || row.raw_name || ''} placeholder="Not detected" />
-                        {row.signature_detected ? <span className="procurement-import-review__verified"><CheckCircleIcon aria-hidden="true" />Detected</span> : <span className="procurement-import-review__signature-status">Not detected</span>}
-                        {row.remarks && <p className="procurement-import-review__source-approval-note">Remarks: {row.remarks}</p>}
-                      </div>)}
-                      <div className="procurement-import-review__signer procurement-import-review__additional-signer">
-                        <div><label htmlFor="import-pr-additional-signer">Additional</label><small className="procurement-import-review__source-role">Optional</small></div>
-                        <input className="procurement-import-review__approval-level" aria-label="Additional approver level" title="Level label shown in the PDF" maxLength={20} disabled={loading} readOnly={isLevelZeroApprover(additionalApprover.name)} value={isLevelZeroApprover(additionalApprover.name) ? '0' : additionalApprover.approval_label} placeholder="Level" onChange={event => { setAdditionalApproverError(''); setSourceApprovalReview(current => ({ ...current, additional_approver: { ...additionalApprover, approval_label: event.target.value } })); }} />
-                        <input id="import-pr-additional-signer" aria-label="Additional approver" aria-invalid={Boolean(additionalApproverError)} aria-describedby={additionalApproverError ? 'import-pr-additional-error' : undefined} list="approved-pr-active-employees" maxLength={200} disabled={loading} value={additionalApprover.name} placeholder="Select signer" onChange={event => { setAdditionalApproverError(''); setSourceApprovalReview(current => ({ ...current, additional_approver: { ...additionalApprover, name: event.target.value, signature_verified: false } })); }} />
-                        <div className="procurement-import-review__additional-actions">
-                          <label className="procurement-import-review__verify"><input type="checkbox" disabled={loading || !additionalApprover.name.trim()} aria-label="Verify additional approver signature in PDF" checked={additionalApprover.signature_verified} onChange={event => setSourceApprovalReview(current => ({ ...current, additional_approver: { ...additionalApprover, signature_verified: event.target.checked } }))} /><span>Verify</span></label>
-                          {hasAdditionalApprover && <button type="button" aria-label="Clear additional approver" disabled={loading} onClick={() => { setSourceApprovalReview(current => ({ ...current, additional_approver: null })); setAdditionalApproverError(''); }}>Clear</button>}
-                        </div>
-                        {hasAdditionalApprover && <label className="procurement-import-review__signer-note">Special note
-                          <textarea id="import-pr-additional-note" aria-label="Additional approver special note" rows={1} maxLength={2000} disabled={loading} value={additionalApprover.special_note || ''} placeholder="Explain any name or Level correction" onChange={event => { setAdditionalApproverError(''); setSourceApprovalReview(current => ({ ...current, additional_approver: { ...additionalApprover, special_note: event.target.value } })); }} />
-                        </label>}
-                        {additionalApproverError && <p id="import-pr-additional-error" role="alert" className="procurement-import-review__field-error">{additionalApproverError}</p>}
-                      </div>
+                      <ProcurementImportSigners detection={detection}
+                        review={sourceApprovalReview} setReview={setSourceApprovalReview} edits={edits} setEdits={setEdits}
+                        manualSignatures={manualSignatures} setManualSignatures={setManualSignatures} loading={loading}
+                        sourceRowEdits={sourceRowEdits} setSourceRowEdits={setSourceRowEdits}
+                        defaultApprover={preview?.default_level_zero_approver} expectedReview={normalizeSourceApprovalReview(preview?.source_approval_review)}
+                        error={additionalApproverError} clearError={() => setAdditionalApproverError('')} />
                       <label className="procurement-import-review__field procurement-import-review__approval-date"><span>PR Approval date</span><input disabled={loading} aria-invalid={Boolean(detection.approval_date_evidence?.review_required && !edits.approval_date)} type="date" value={edits.approval_date || ''} onChange={event => setEdits(current => ({ ...current, approval_date: event.target.value }))} /></label>
                       {detection.approval_date_evidence?.review_required && !edits.approval_date && <p className="procurement-import-review__field-error">Enter the approval date shown in the PDF.</p>}
                       {capturedApprovalDateText && <p className="procurement-import-review__source-approval-note">Captured date text: {capturedApprovalDateText}</p>}

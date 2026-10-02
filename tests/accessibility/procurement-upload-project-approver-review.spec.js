@@ -83,10 +83,15 @@ test('a missing project acknowledgment keeps the attachment and reviewed numbers
 })
 
 test('unknown signed-off approver names and Levels require a Special note without changing signatures', async ({ page }) => {
-  const state = await recommendationPdfImportHarness(page, { documentSignedOff: true, approvalDetection: {
+  const approvalDetection = {
     signatures: { pm: true, moe: false, mop: false, vp: false }, approver_names: { pm: '90712' }, approval_date: '2026-09-15',
     approval_rows: [{ role_key: 'pm', source_role: 'PM', name: '90712', signature_detected: true }],
-  } })
+  }
+  const note = 'The OCR captured an employee number; the original PDF identifies this reviewer.'
+  const state = await recommendationPdfImportHarness(page, { documentSignedOff: true, approvalDetection,
+    savedApprovalDetection: { ...approvalDetection, approver_names: { pm: 'Corrected project reviewer' },
+      approval_rows: [{ ...approvalDetection.approval_rows[0], name: 'Corrected project reviewer', approval_label: '1', special_note: note }] },
+  })
   await preview(page)
   await expect(field(page, 'Project Manager')).toBeEditable()
   await field(page, 'Project Manager').fill('Corrected project reviewer')
@@ -94,11 +99,62 @@ test('unknown signed-off approver names and Levels require a Special note withou
   await save(page).click()
   await expect(dialog(page).getByRole('alert')).toContainText('Special note')
   expect(state.saveRequests).toEqual([])
-  await field(page, 'Project Manager special note').fill('The OCR captured an employee number; the original PDF identifies this reviewer.')
+  await field(page, 'Project Manager special note').fill(note)
   await save(page).click()
   await expect(dialog(page)).toContainText('created from the reviewed PDF')
-  expect(state.saveRequests[0].pm_name).toBe('Corrected project reviewer')
+  expect(state.saveRequests[0]).not.toHaveProperty('pm_name')
   expect(state.saveRequests[0]).not.toHaveProperty('manual_signature_overrides')
-  expect(JSON.parse(state.saveRequests[0].source_approval_review)).toMatchObject({ approval_labels: { pm: '1' }, approver_notes: { pm: 'The OCR captured an employee number; the original PDF identifies this reviewer.' } })
+  expect(JSON.parse(state.saveRequests[0].source_row_corrections)).toEqual([expect.objectContaining({ row_index: 0, expected_row: approvalDetection.approval_rows[0], approver_name: 'Corrected project reviewer', approval_label: '1', special_note: note })])
+  clean(state)
+})
+
+test('a signer missed by detection can be edited and explicitly verified even when the PDF is signed off', async ({ page }) => {
+  const approvalDetection = {
+    signatures: { pm: true, moe: true, mop: true, vp: false },
+    approver_names: { pm: 'Captured Project Manager', moe: 'Captured Engineering Manager', mop: 'Captured Projects Manager' },
+    approval_date: '2026-09-15',
+    approval_rows: [
+      { role_key: 'pm', source_role: 'PM', name: 'Captured Project Manager', signature_detected: true },
+      { role_key: 'moe', source_role: 'MoE', name: 'Captured Engineering Manager', signature_detected: true },
+      { role_key: 'mop', source_role: 'MoP', name: 'Captured Projects Manager', signature_detected: true },
+    ],
+  }
+  const state = await recommendationPdfImportHarness(page, { documentSignedOff: true, approvalDetection,
+    savedApprovalDetection: { ...approvalDetection, signatures: { ...approvalDetection.signatures, vp: true }, approver_names: { ...approvalDetection.approver_names, vp: 'Verified Operations Reviewer' } },
+  })
+  await preview(page)
+  for (const role of ['Project Manager', 'Manager of Engineering', 'Manager of Projects']) {
+    await expect(field(page, role)).toHaveJSProperty('readOnly', true)
+    await expect(dialog(page).getByRole('button', { name: `Edit ${role} signer`, exact: true })).toHaveCount(0)
+  }
+  const signer = field(page, 'VP Operations')
+  const edit = dialog(page).getByRole('button', { name: 'Edit VP Operations signer', exact: true })
+  await expect(signer).toHaveValue('')
+  await edit.click()
+  await expect(signer).toBeFocused()
+  await signer.fill('Unverified Operations Reviewer')
+  const verify = dialog(page).getByRole('checkbox', { name: /^(Verify signature in PDF|Signature verified in PDF)$/ })
+  await verify.check()
+  await signer.fill('Verified Operations Reviewer')
+  await expect(verify).not.toBeChecked()
+  await verify.check()
+  await save(page).click()
+  await expect(dialog(page).getByRole('alert')).toContainText('Special note')
+  expect(state.saveRequests).toEqual([])
+  await field(page, 'VP Operations special note').fill('The original PDF contains this signer and signature, missed during extraction.')
+  state.saveError = { status: 503, body: { error: 'The source PDF could not be saved.' } }
+  await save(page).click()
+  await expect(dialog(page).getByRole('alert')).toContainText('could not be saved')
+  await expect(signer).toHaveValue('Verified Operations Reviewer')
+  await expect(dialog(page).getByRole('checkbox', { name: 'Signature verified in PDF', exact: true })).toBeChecked()
+  expect(state.saveRequests[0].vp_name).toBe('Verified Operations Reviewer')
+  expect(JSON.parse(state.saveRequests[0].manual_signature_overrides)).toEqual({ vp: true })
+  expect(JSON.parse(state.saveRequests[0].source_approval_review)).toMatchObject({ approver_notes: { vp: 'The original PDF contains this signer and signature, missed during extraction.' } })
+  for (const field of ['pm_name', 'moe_name', 'mop_name']) expect(state.saveRequests[0]).not.toHaveProperty(field)
+  state.saveError = null
+  await save(page).click()
+  await expect(dialog(page)).toContainText('created from the reviewed PDF')
+  expect(state.saveRequests[1]).toEqual(state.saveRequests[0])
+  expect(state.requests.filter(request => /\/(submit|approve|workflow)(\/|$)/.test(request.path) && request.method === 'POST')).toEqual([])
   clean(state)
 })

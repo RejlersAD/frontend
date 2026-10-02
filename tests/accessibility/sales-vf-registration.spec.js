@@ -26,6 +26,7 @@ async function manual(page, config = {}) {
       return route.fulfill({ json: state.records[0] })
     }
     if (url.pathname.endsWith('/deals/vf-one/')) return route.fulfill({ json: state.records[0] || record })
+    if (url.pathname.endsWith('/deals/vf-one/workspace/')) return route.fulfill({ json: { opportunity_id: 'vf-one', status: 'not_configured', folders: [], can_manage: false, can_upload: false, web_url: '' } })
     if (url.pathname.endsWith('/deals/')) return route.fulfill({ json: paginated(state.records) })
     if (url.pathname.endsWith('/clients/')) return route.fulfill({ json: paginated([canonicalClient()]) })
     return route.fulfill({ json: paginated([]) })
@@ -95,7 +96,9 @@ test('register shows VF and title, unknown value, and allows completing commerci
   await expect(row).toContainText('Registered package')
   await expect(row).toContainText('Not provided')
   await expect(row).toContainText('Open')
-  await row.getByRole('button', { name: 'View', exact: true }).click()
+  await row.getByRole('button', { name: 'Q-102101', exact: true }).click()
+  await page.getByLabel('More opportunity actions').click()
+  await page.getByRole('button', { name: 'Open full record', exact: true }).click()
   const drawer = page.getByRole('dialog', { name: 'Opportunity record', exact: true })
   await drawer.getByRole('button', { name: 'Edit', exact: true }).click()
   await drawer.getByLabel('Estimated value', { exact: true }).fill('50000')

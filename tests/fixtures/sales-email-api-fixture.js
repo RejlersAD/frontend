@@ -50,6 +50,7 @@ async function prepare(page, options = {}) {
   }
   page.on('pageerror', error => state.errors.push(error.message))
   await page.addInitScript(({ collapsed }) => {
+    if (window.location.pathname === '/login') return
     localStorage.setItem('radai_access_token', 'mailbox-fixture-user-11')
     localStorage.setItem('radai_user_data', JSON.stringify({ id: 900, user: { id: 11 }, email: 'first-admin@example.test' }))
     localStorage.setItem('radai.sidebar.collapsed', String(Boolean(collapsed)))
@@ -61,6 +62,9 @@ async function prepare(page, options = {}) {
       state.unexpected.push(`External request: ${url.origin}`)
       return route.abort()
     }
+    // Keep the real interceptor's logout navigation in this isolated fixture.
+    // Authentication form rendering is outside the mailbox assertions.
+    if (url.pathname === '/login') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Authentication required</title><main>Sign in required</main>' })
     if (!url.pathname.startsWith('/api/v1/')) return route.continue()
     state.requests.push({ path: url.pathname, method: request.method(), query: url.search, authorization: request.headers().authorization, body: request.method() === 'POST' ? request.postDataJSON() : null })
     if (request.method() !== 'GET') {

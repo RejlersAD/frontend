@@ -139,7 +139,7 @@ export async function recommendationFormHarness(page, options = {}) {
       if (options.concurrency && body.expected_updated_at !== state.record.updated_at) {
         return reply(route, { code: 'stale_requisition', error: 'This purchase recommendation changed since you opened it. Reload the latest version before saving or submitting.' }, 409)
       }
-      const snapshot = state.record.source_approval_review || { approval_labels: {}, additional_approver: null }
+      const snapshot = state.record.source_approval_review || { approval_labels: {}, additional_approvers: [] }
       if (!isDeepStrictEqual(body.expected_source_approval_review, snapshot)) return reply(route, { detail: 'The source review changed. Reload it before editing.' }, 409)
       if (!state.saveSourceReview) return reply(route, { detail: 'No isolated source-review response configured.' }, 400)
       const saved = await state.saveSourceReview(body, state.record)

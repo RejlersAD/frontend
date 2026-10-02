@@ -10,6 +10,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import ProjectControlHeader from './components/ProjectControlHeader'
 import ProjectPortfolio from './ProjectPortfolio'
+import SharedRecordsWorkspace from './SharedRecordsWorkspace'
 import PhaseStubCard from './components/PhaseStubCard'
 import ProjectFormModal from './components/ProjectFormModal'
 import { AgreementSetupDialog } from './components/AgreementWorkspace'
@@ -80,6 +81,7 @@ const TAB_COMPONENTS = {
 export default function ProjectsPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
+  const isSharedRecords = searchParams.get('view') === 'shared-records'
   const isPortfolio = searchParams.get('view') === 'portfolio'
     || (!searchParams.get('project') && !searchParams.get('view'))
   const [projects, setProjects] = useState([])
@@ -177,7 +179,7 @@ export default function ProjectsPage() {
   // The portfolio endpoint returns a compact row. Hydrate the selected project
   // so the overview and header receive the complete controlled record.
   useEffect(() => {
-    if (isPortfolio || loadingProjects || !selectedProjectId) return
+    if (isPortfolio || isSharedRecords || loadingProjects || !selectedProjectId) return
     let cancelled = false
     PC.getProject(selectedProjectId)
       .then((detail) => {
@@ -188,7 +190,7 @@ export default function ProjectsPage() {
       })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [isPortfolio, loadingProjects, selectedProjectId, refreshVersion])
+  }, [isPortfolio, isSharedRecords, loadingProjects, selectedProjectId, refreshVersion])
 
   useEffect(() => {
     if (!toast) return
@@ -241,8 +243,8 @@ export default function ProjectsPage() {
   }
 
   const selectedProject = useMemo(
-    () => isPortfolio ? null : projects.find((p) => String(p.id) === String(selectedProjectId)) || null,
-    [isPortfolio, projects, selectedProjectId]
+    () => isPortfolio || isSharedRecords ? null : projects.find((p) => String(p.id) === String(selectedProjectId)) || null,
+    [isPortfolio, isSharedRecords, projects, selectedProjectId]
   )
   const agreementWorkspace = useAgreementWorkspace(selectedProject?.id, () => setRefreshVersion(value => value + 1))
   const agreementJob = agreementWorkspace.data?.active_job || agreementWorkspace.data?.latest_job
@@ -357,11 +359,14 @@ export default function ProjectsPage() {
     else handleSelectView(nextView || PROJECT_DEFAULT_VIEW)
   }
 
+  if (isSharedRecords) return <SharedRecordsWorkspace onBack={() => setSearchParams({ view: 'portfolio' })} />
+
   return (
     <div className={`project-control-workspace project-performance-workspace${isPortfolio ? ' pp-portfolio-workspace' : ` pp-details-workspace${view === 'plan-baseline' ? ` pp-schedule-workspace${scheduleMode === 'planner' ? ' pp-planning-workspace' : ''}` : view === 'commercial-dashboard' ? ' pp-commercial-workspace' : view === 'milestones' ? ' pp-milestone-workspace' : view === 'risk' ? ' pp-risk-workspace' : view === 'estimates' ? ' pp-estimate-workspace' : view === 'documents' ? ' pp-document-workspace' : ''}`}`}>
       {isPortfolio ? <ProjectPortfolio projects={projects} loading={loadingProjects} error={error}
         onCreate={handleOpenCreate} onOpen={handleOpenPortfolioProject}
-        onRefresh={() => reloadProjects({})} onImport={() => setQhseImportOpen(true)} /> : <>
+        onRefresh={() => reloadProjects({})} onImport={() => setQhseImportOpen(true)}
+        onSharedRecords={() => setSearchParams({ view: 'shared-records' })} /> : <>
       <ProjectControlHeader
         projects={projects}
         selectedProject={selectedProject}

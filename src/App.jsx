@@ -77,6 +77,7 @@ import SiteVisits from './pages/HR/SiteVisits'
 import InvoiceApproval from './pages/Finance/InvoiceApproval'
 import InternalSalesDashboard from './pages/Sales/EnterpriseSalesWorkspace'
 import SalesLifecycleArea from './pages/Sales/SalesLifecycleArea'
+import SalesProposalPreviewPage from './pages/Sales/SalesProposalPreviewPage'
 import SalesEmailIntake from './pages/Sales/SalesEmailIntake'
 import AdminDashboard from './pages/AdminDashboard'
 import UserManagement from './pages/UserManagement'
@@ -857,6 +858,14 @@ function App() {
           element={
             <ModuleProtectedRoute moduleCode="sales">
               <SalesEmailIntake />
+            </ModuleProtectedRoute>
+          }
+        />
+        <Route
+          path="sales/proposals/:proposalId/preview"
+          element={
+            <ModuleProtectedRoute moduleCode="sales">
+              <SalesProposalPreviewPage />
             </ModuleProtectedRoute>
           }
         />

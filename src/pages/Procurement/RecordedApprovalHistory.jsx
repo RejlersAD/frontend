@@ -38,7 +38,7 @@ export default function RecordedApprovalHistory({ requisition, expectedUpdatedAt
     const rawRow = row.source_review_annotation ? row : sourceRows[row.source_row_index];
     setReviewSnapshot({ documentSha: verification.document_sha256, row: JSON.parse(JSON.stringify(rawRow)),
       rowIndex: row.source_row_index, sourceReview: recommendationSourceReview(requisition),
-      additional: Boolean(row.source_review_annotation), expectedUpdatedAt });
+      additional: Boolean(row.source_review_annotation), additionalId: row.source_review_id, expectedUpdatedAt });
     setDraft({ name: approverName(row), level: String(row.approval_label ?? row.level ?? ''), specialNote: '', date: String(row.approved_at || verification.approval_date || '').slice(0, 10), verified: approved(row) });
     setEditingIndex(index);
     setError('');
@@ -49,8 +49,9 @@ export default function RecordedApprovalHistory({ requisition, expectedUpdatedAt
     if (saving || disabled || !canEdit) return;
     const additional = reviewSnapshot.additional;
     const confirmingSignature = !additional && draft.verified && !approved(reviewSnapshot.row);
-    const nameOrLevelChanged = draft.name.trim() !== reviewSnapshot.sourceReview.additional_approver?.name
-      || draft.level.trim() !== (reviewSnapshot.sourceReview.additional_approver?.approval_label || '');
+    const previousAdditional = reviewSnapshot.sourceReview.additional_approvers.find(row => row.id === reviewSnapshot.additionalId);
+    const nameOrLevelChanged = draft.name.trim() !== previousAdditional?.name
+      || draft.level.trim() !== (previousAdditional?.approval_label || '');
     if (isUnknownApprover(draft.name)) {
       setError('Enter the approver name shown on the original PDF.');
       return;
@@ -67,9 +68,10 @@ export default function RecordedApprovalHistory({ requisition, expectedUpdatedAt
     setError('');
     try {
       const review = additional ? normalizeSourceApprovalReview({ ...reviewSnapshot.sourceReview,
-        additional_approver: { name: draft.name.trim(), approval_label: draft.level.trim(), signature_verified: draft.verified,
+        additional_approvers: reviewSnapshot.sourceReview.additional_approvers.map(row => row.id !== reviewSnapshot.additionalId ? row : {
+          id: row.id, name: draft.name.trim(), approval_label: draft.level.trim(), signature_verified: draft.verified,
           ...(draft.specialNote.trim() ? { special_note: draft.specialNote.trim() }
-            : reviewSnapshot.sourceReview.additional_approver?.special_note ? { special_note: reviewSnapshot.sourceReview.additional_approver.special_note } : {}) } }) : null;
+            : row.special_note ? { special_note: row.special_note } : {}) }) }) : null;
       const response = await apiClient.post(`/procurement/requisitions/${requisition.id}/${additional ? 'source-review' : 'source-approvals'}/`, {
         document_sha256: reviewSnapshot.documentSha,
         ...(reviewSnapshot.expectedUpdatedAt !== undefined ? { expected_updated_at: reviewSnapshot.expectedUpdatedAt } : {}),

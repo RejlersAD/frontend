@@ -4,6 +4,8 @@
  */
 
 import apiClient from "./api.service";
+import { API_TIMEOUT_UPLOAD } from '../config/api.config';
+import { responseFilename } from '../utils/downloadFilename';
 
 const BASE_URL = "/sales";
 
@@ -219,6 +221,52 @@ class SalesService {
   async getDeal(dealId) {
     const response = await apiClient.get(`${BASE_URL}/deals/${dealId}/`);
     return response.data;
+  }
+
+  async getOpportunityWorkspace(dealId) {
+    const response = await apiClient.get(`${BASE_URL}/deals/${encodeURIComponent(dealId)}/workspace/`, EMAIL_REQUEST_OPTIONS);
+    return response.data;
+  }
+
+  async setupOpportunityWorkspace(dealId) {
+    const response = await apiClient.post(`${BASE_URL}/deals/${encodeURIComponent(dealId)}/workspace/setup/`, {}, EMAIL_REQUEST_OPTIONS);
+    return response.data;
+  }
+
+  async getOpportunityWorkspaceFiles(dealId, folderKey, cursor = null, storage = 'sharepoint') {
+    const response = await apiClient.get(`${BASE_URL}/deals/${encodeURIComponent(dealId)}/workspace/folders/${encodeURIComponent(folderKey)}/files/`, { ...EMAIL_REQUEST_OPTIONS, params: { ...(cursor ? { cursor } : {}), ...(storage === 'radai' ? { storage } : {}) } });
+    return response.data;
+  }
+
+  async uploadOpportunityWorkspaceFile(dealId, folderKey, file, requestId, storage = 'sharepoint', options = {}) {
+    const body = new FormData();
+    body.append('file', file);
+    body.append('upload_request_id', requestId);
+    if (storage === 'radai') body.append('storage', storage);
+    const response = await apiClient.post(`${BASE_URL}/deals/${encodeURIComponent(dealId)}/workspace/folders/${encodeURIComponent(folderKey)}/upload/`, body, { ...EMAIL_REQUEST_OPTIONS, timeout: API_TIMEOUT_UPLOAD, onUploadProgress: options.onUploadProgress, signal: options.signal });
+    return response.data;
+  }
+
+  async getOpportunityWorkspaceFile(dealId, folderKey, fileId, { signal } = {}) {
+    const response = await apiClient.get(`${BASE_URL}/deals/${encodeURIComponent(dealId)}/workspace/folders/${encodeURIComponent(folderKey)}/files/${encodeURIComponent(fileId)}/`, { ...EMAIL_REQUEST_OPTIONS, signal });
+    return response.data;
+  }
+
+  async getOpportunityWorkspaceVersions(dealId, folderKey, fileId, cursor = null) {
+    const response = await apiClient.get(`${BASE_URL}/deals/${encodeURIComponent(dealId)}/workspace/folders/${encodeURIComponent(folderKey)}/files/${encodeURIComponent(fileId)}/versions/`, { ...EMAIL_REQUEST_OPTIONS, params: cursor ? { cursor } : {} });
+    return response.data;
+  }
+
+  async downloadOpportunityWorkspaceFile(dealId, folderKey, fileId, { signal } = {}) {
+    try {
+      const response = await apiClient.get(`${BASE_URL}/deals/${encodeURIComponent(dealId)}/workspace/folders/${encodeURIComponent(folderKey)}/files/${encodeURIComponent(fileId)}/download/`, { ...EMAIL_REQUEST_OPTIONS, responseType: 'blob', timeout: API_TIMEOUT_UPLOAD, signal });
+      return { blob: response.data, filename: responseFilename(response.headers?.['content-disposition']) };
+    } catch (error) {
+      if (error.response?.data instanceof Blob) {
+        try { error.response.data = JSON.parse(await error.response.data.text()); } catch { /* Keep the safe generic message for a non-JSON response. */ }
+      }
+      throw error;
+    }
   }
 
   /**
@@ -609,9 +657,9 @@ class SalesService {
     return response.data;
   }
 
-  async submitQualification(dealId) {
+  async submitQualification(dealId, payload = {}) {
     return (
-      await apiClient.post(`${BASE_URL}/deals/${dealId}/submit-qualification/`)
+      await apiClient.post(`${BASE_URL}/deals/${dealId}/submit-qualification/`, payload)
     ).data;
   }
 
@@ -622,6 +670,19 @@ class SalesService {
         reason,
       })
     ).data;
+  }
+
+  async recordCeoDecision(dealId, decision, reason = "") {
+    return (
+      await apiClient.post(`${BASE_URL}/deals/${dealId}/ceo-decision/`, {
+        decision,
+        reason,
+      })
+    ).data;
+  }
+
+  async draftBidDecisionJustification(dealId, payload, { signal } = {}) {
+    return (await apiClient.post(`${BASE_URL}/deals/${encodeURIComponent(dealId)}/bid-decision-justification/`, payload, { ...EMAIL_REQUEST_OPTIONS, signal })).data;
   }
 
   async closeOpportunity(dealId, outcome, reason) {
@@ -707,6 +768,38 @@ class SalesService {
         comment,
       })
     ).data;
+  }
+
+  async getProposalReview(proposalId, params = {}, signal) {
+    return (await apiClient.get(`${BASE_URL}/quotes/${encodeURIComponent(proposalId)}/review/`, { ...EMAIL_REQUEST_OPTIONS, params, signal })).data;
+  }
+
+  async bindProposalReviewDocument(proposalId, payload) {
+    return (await apiClient.post(`${BASE_URL}/quotes/${encodeURIComponent(proposalId)}/review/documents/`, payload, { ...EMAIL_REQUEST_OPTIONS, timeout: API_TIMEOUT_UPLOAD })).data;
+  }
+
+  async getProposalReviewPdf(proposalId, documentId, download = false, signal) {
+    try {
+      const response = await apiClient.get(`${BASE_URL}/quotes/${encodeURIComponent(proposalId)}/review/documents/${encodeURIComponent(documentId)}/${download ? 'download' : 'content'}/`, { ...EMAIL_REQUEST_OPTIONS, timeout: API_TIMEOUT_UPLOAD, responseType: 'blob', signal });
+      return { blob: response.data, filename: responseFilename(response.headers?.['content-disposition']) };
+    } catch (error) {
+      if (error.response?.data instanceof Blob) {
+        try { error.response.data = JSON.parse(await error.response.data.text()); } catch { /* Do not expose HTML/provider errors. */ }
+      }
+      throw error;
+    }
+  }
+
+  async addProposalReviewComment(proposalId, documentId, payload) {
+    return (await apiClient.post(`${BASE_URL}/quotes/${encodeURIComponent(proposalId)}/review/documents/${encodeURIComponent(documentId)}/comments/`, payload, EMAIL_REQUEST_OPTIONS)).data;
+  }
+
+  async resolveProposalReviewComment(proposalId, documentId, commentId, payload) {
+    return (await apiClient.post(`${BASE_URL}/quotes/${encodeURIComponent(proposalId)}/review/documents/${encodeURIComponent(documentId)}/comments/${encodeURIComponent(commentId)}/resolve/`, payload, EMAIL_REQUEST_OPTIONS)).data;
+  }
+
+  async submitProposalReview(proposalId, documentId, payload) {
+    return (await apiClient.post(`${BASE_URL}/quotes/${encodeURIComponent(proposalId)}/review/documents/${encodeURIComponent(documentId)}/submit/`, payload, EMAIL_REQUEST_OPTIONS)).data;
   }
 
   async submitProposal(proposalId, payload) {
@@ -797,6 +890,50 @@ class SalesService {
 
   async exportDeals(ids) {
     const response = await apiClient.post(`${BASE_URL}/deals/export/`, { ids: ids.join(',') }, { responseType: 'blob' });
+    return response.data;
+  }
+
+  async getPreparationOpportunities(params = {}, { signal } = {}) {
+    return (await apiClient.get(`${BASE_URL}/quotes/preparation-opportunities/`, { ...EMAIL_REQUEST_OPTIONS, params, signal })).data;
+  }
+
+  async draftProposalField({ opportunityId, quoteId }, payload, { signal } = {}) {
+    const path = quoteId ? `quotes/${encodeURIComponent(quoteId)}/draft-field` : `deals/${encodeURIComponent(opportunityId)}/proposal-draft-field`;
+    return (await apiClient.post(`${BASE_URL}/${path}/`, payload, { ...EMAIL_REQUEST_OPTIONS, signal })).data;
+  }
+
+  async getOpportunityDocumentClassification(dealId, folderKey, fileId, { signal } = {}) {
+    const response = await apiClient.get(`${BASE_URL}/deals/${encodeURIComponent(dealId)}/workspace/folders/${encodeURIComponent(folderKey)}/files/${encodeURIComponent(fileId)}/classification/`, { ...EMAIL_REQUEST_OPTIONS, signal });
+    return response.data;
+  }
+
+  async updateOpportunityDocumentType(dealId, folderKey, fileId, payload) {
+    const response = await apiClient.post(`${BASE_URL}/deals/${encodeURIComponent(dealId)}/workspace/folders/${encodeURIComponent(folderKey)}/files/${encodeURIComponent(fileId)}/classification/`, payload, EMAIL_REQUEST_OPTIONS);
+    return response.data;
+  }
+
+  async retryOpportunityClassification(dealId, folderKey, fileId, payload) {
+    const response = await apiClient.post(`${BASE_URL}/deals/${encodeURIComponent(dealId)}/workspace/folders/${encodeURIComponent(folderKey)}/files/${encodeURIComponent(fileId)}/classification/retry/`, payload, EMAIL_REQUEST_OPTIONS);
+    return response.data;
+  }
+
+  async uploadOpportunityDocumentVersion(dealId, folderKey, fileId, file, requestId, expectedToken, revisionNote, options = {}) {
+    const body = new FormData();
+    body.append('file', file);
+    body.append('upload_request_id', requestId);
+    body.append('expected_token', expectedToken);
+    body.append('revision_note', revisionNote);
+    const response = await apiClient.post(`${BASE_URL}/deals/${encodeURIComponent(dealId)}/workspace/folders/${encodeURIComponent(folderKey)}/files/${encodeURIComponent(fileId)}/versions/upload/`, body, { ...EMAIL_REQUEST_OPTIONS, timeout: API_TIMEOUT_UPLOAD, onUploadProgress: options.onUploadProgress });
+    return response.data;
+  }
+
+  async updateOpportunityFolderTag(dealId, folderKey, payload) {
+    const response = await apiClient.patch(`${BASE_URL}/deals/${encodeURIComponent(dealId)}/workspace/folders/${encodeURIComponent(folderKey)}/tag/`, payload, EMAIL_REQUEST_OPTIONS);
+    return response.data;
+  }
+
+  async exportQuotes(ids) {
+    const response = await apiClient.post(`${BASE_URL}/quotes/export/`, { ids: ids.join(',') }, { responseType: 'blob' });
     return response.data;
   }
 
