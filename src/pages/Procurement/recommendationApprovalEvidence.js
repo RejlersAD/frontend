@@ -29,16 +29,20 @@ export const isUnknownApprover = value => !text(value)
 export function normalizeSourceApprovalReview(review) {
   const approval_labels = Object.fromEntries(ROLES.map(role => [role, text(review?.approval_labels?.[role])]).filter(([, label]) => label));
   const approver_notes = Object.fromEntries(ROLES.map(role => [role, text(review?.approver_notes?.[role])]).filter(([, note]) => note));
-  const additional = review?.additional_approver;
-  const name = text(additional?.name);
-  const approval_label = text(additional?.approval_label);
-  const signature_verified = additional?.signature_verified === true;
-  const special_note = text(additional?.special_note);
+  const additionalRows = Array.isArray(review?.additional_approvers) ? review.additional_approvers
+    : review?.additional_approver ? [{ ...review.additional_approver, id: 'legacy-additional' }] : [];
+  const additional_approvers = additionalRows.map(additional => {
+    const id = text(additional?.id);
+    const name = text(additional?.name);
+    const approval_label = text(additional?.approval_label);
+    const signature_verified = additional?.signature_verified === true;
+    const special_note = text(additional?.special_note);
+    return { id, name, approval_label, signature_verified, ...(special_note ? { special_note } : {}) };
+  }).filter(row => row.name || row.approval_label || row.signature_verified || row.special_note);
   return {
     approval_labels,
     ...(Object.keys(approver_notes).length ? { approver_notes } : {}),
-    additional_approver: name || approval_label || signature_verified || special_note
-      ? { name, approval_label, signature_verified, ...(special_note ? { special_note } : {}) } : null,
+    additional_approvers,
   };
 }
 
@@ -70,21 +74,25 @@ const canonicalRole = row => {
 export function recommendationDisplayApprovals(requisition, displayedWorkflow = []) {
   const review = recommendationSourceReview(requisition);
   const sourceRows = recommendationSourceApprovals(requisition);
+  const sourceRoleCounts = sourceRows.reduce((counts, row) => {
+    const role = canonicalRole(row);
+    if (role) counts[role] = (counts[role] || 0) + 1;
+    return counts;
+  }, {});
   const rows = (displayedWorkflow.length ? displayedWorkflow : sourceRows)
     .filter(row => row && typeof row === 'object' && !Array.isArray(row)).map(row => {
     const role = canonicalRole(row);
     const source = row.external && sourceRows.find(item => item.step === row.step
       && item.role === row.role && item.user_name === row.user_name);
     return { ...row, ...(source ? { source_row_index: source.source_row_index } : {}),
-      ...(role && review.approval_labels[role] ? { approval_label: review.approval_labels[role] } : {}),
-      ...(role && review.approver_notes?.[role] ? { special_note: review.approver_notes[role] } : {}) };
+      ...(role && !(sourceRoleCounts[role] > 1) && review.approval_labels[role] ? { approval_label: review.approval_labels[role] } : {}),
+      ...(role && !(sourceRoleCounts[role] > 1) && review.approver_notes?.[role] ? { special_note: review.approver_notes[role] } : {}) };
   });
-  if (review.additional_approver) {
-    const additional = review.additional_approver;
+  for (const additional of review.additional_approvers) {
     rows.push({ role: 'Additional', user_name: additional.name, approval_label: additional.approval_label,
       special_note: additional.special_note || '', signature_verified: additional.signature_verified,
       status: additional.signature_verified ? 'verified' : 'not_recorded', approved_at: null,
-      source_review_annotation: true });
+      source_review_annotation: true, source_review_id: additional.id });
   }
   const reference = requisition?.default_level_zero_approver;
   const referenceId = reference?.id || reference?.user_id;

@@ -33,9 +33,10 @@ export async function recommendationPdfImportHarness(page, options = {}) {
     importNumber: options.extracted?.pr_number || (options.existing ? existingImportNumber : missingImportNumber),
     saveError: null, savePending: null, deferSave: false,
     linkRequests: [], linkError: null,
-    sourceApprovalReview: structuredClone(options.sourceApprovalReview || { approval_labels: {}, additional_approver: null }),
+    sourceApprovalReview: structuredClone(options.sourceApprovalReview || { approval_labels: {}, additional_approvers: [] }),
     sourceApprovalReviewResponse: undefined,
     projectNumbersResponse: undefined,
+    approvalDetection: null,
   })
   await page.route('**/api/v1/procurement/orders/?*', async route => {
     if (!options.poOptions) return route.fallback()
@@ -74,7 +75,7 @@ export async function recommendationPdfImportHarness(page, options = {}) {
       field_confidence: { pr_number: 'high', issued_by: 'high', supplier: 'high', price: 'high' },
       ...(options.extracted || {}),
     }
-    const approvalDetection = {
+    const approvalDetection = state.approvalDetection || {
       signatures: { pm: false, moe: false, mop: false, vp: false },
       approver_names: {}, approval_date: '',
       ...(options.approvalDetection || {}),
@@ -98,6 +99,7 @@ export async function recommendationPdfImportHarness(page, options = {}) {
     state.saveRequests.push(body)
     if (state.deferSave) await new Promise(resolve => { state.savePending = resolve })
     if (state.saveError) return reply(route, state.saveError.body, state.saveError.status || 400)
+    if (options.savedApprovalDetection) state.approvalDetection = structuredClone(options.savedApprovalDetection)
     if (body.source_approval_review) state.sourceApprovalReview = JSON.parse(body.source_approval_review)
     const overrides = JSON.parse(body.manual_overrides || '{}')
     const number = body.expected_pr_number || overrides.pr_number || extracted.pr_number

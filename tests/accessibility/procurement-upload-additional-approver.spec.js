@@ -7,7 +7,7 @@ import { recommendationNumber } from '../fixtures/purchase-recommendations.fixtu
 test.setTimeout(150000)
 test.use({ serviceWorkers: 'block', viewport: { width: 1672, height: 941 } })
 
-const emptyReview = { approval_labels: {}, additional_approver: null }
+const emptyReview = { approval_labels: {}, additional_approvers: [] }
 const roleLabels = { pm: 'Project Manager', moe: 'Manager of Engineering', mop: 'Manager of Projects', vp: 'VP Operations' }
 const recommendationPdfImportHarness = (page, options = {}) => baseImportHarness(page, {
   approvalDetection: { approver_names: { pm: 'Captured project reviewer', moe: 'Captured engineering reviewer', mop: 'Captured projects reviewer', vp: 'Captured operations reviewer' } },
@@ -15,10 +15,12 @@ const recommendationPdfImportHarness = (page, options = {}) => baseImportHarness
 })
 const dialog = page => page.getByRole('dialog', { name: 'Upload PR, PO and Vendor', exact: true })
 const approvals = page => dialog(page).getByRole('region', { name: 'Approval & signatories', exact: true })
-const additional = page => approvals(page).getByLabel('Additional approver', { exact: true })
-const additionalLevel = page => approvals(page).getByLabel('Additional approver level', { exact: true })
+const additional = (page, index = 1) => approvals(page).getByRole('combobox', { name: `Additional signer ${index}`, exact: true })
+const additionalLevel = (page, index = 1) => approvals(page).getByLabel(`Additional signer ${index} level`, { exact: true })
 const level = (page, role) => approvals(page).getByLabel(`${roleLabels[role]} level`, { exact: true })
-const additionalVerify = page => approvals(page).getByRole('checkbox', { name: /^(Verify additional approver signature in PDF|Additional approver signature verified in PDF)$/ })
+const additionalVerify = (page, index = 1) => approvals(page).getByRole('checkbox', { name: `Verify additional signer ${index} signature in PDF`, exact: true })
+const addSigner = page => approvals(page).getByRole('button', { name: 'Add signer', exact: true })
+const removeSigner = (page, index) => approvals(page).getByRole('button', { name: `Remove additional signer ${index}`, exact: true })
 const save = (page, label = 'Upload PR') => dialog(page).getByRole('button', { name: label, exact: true })
 const progress = page => dialog(page).getByRole('list', { name: 'Document review progress' }).getByRole('listitem').filter({ hasText: 'Approval & signatures' })
 const clean = state => { expect(state.unknown).toEqual([]); expect(state.pageErrors).toEqual([]) }
@@ -49,7 +51,7 @@ async function preview(page, { number, paired = false } = {}) {
   await expect(approvals(page)).toBeVisible()
 }
 
-test('the optional Additional row and Level column leave an unchanged PR import payload and evidence intact', async ({ page }) => {
+test('the empty additional list shows only Add signer and leaves an unchanged PR import payload and evidence intact', async ({ page }) => {
   const state = await recommendationPdfImportHarness(page)
   await preview(page)
   for (const heading of ['Role', 'Level', 'Signer', 'Signature']) await expect(approvals(page).getByText(heading, { exact: true })).toBeVisible()
@@ -60,11 +62,8 @@ test('the optional Additional row and Level column leave an unchanged PR import 
   await level(page, 'pm').fill('A source label longer than twenty characters')
   await expect(level(page, 'pm')).toHaveValue('A source label longe')
   await level(page, 'pm').fill('')
-  await expect(additional(page)).toHaveValue('')
-  await expect(additional(page)).toHaveAttribute('maxlength', '200')
-  await expect(additional(page)).not.toHaveAttribute('required', '')
-  await expect(additionalVerify(page)).not.toBeChecked()
-  await expect(additionalVerify(page)).toBeDisabled()
+  await expect(additional(page)).toHaveCount(0)
+  await expect(addSigner(page)).toBeVisible()
   await expect(approvals(page).getByRole('checkbox', { name: 'Verify signature in PDF', exact: true })).toHaveCount(4)
   await save(page).click()
   await expect(dialog(page)).toContainText('Status: draft')
@@ -79,11 +78,13 @@ test('the optional Additional row and Level column leave an unchanged PR import 
 test('Additional requires its source name, keeps explicit verification separate, and retains labels through a rejected save and retry', async ({ page }) => {
   const state = await recommendationPdfImportHarness(page)
   await preview(page)
+  await addSigner(page).click()
+  await expect(additional(page)).toHaveAttribute('maxlength', '200')
   await level(page, 'pm').fill('L1 reviewer')
   await additionalLevel(page).fill('L5 reviewer')
   await expect(additionalVerify(page)).toBeDisabled()
   await save(page).click()
-  await expect(dialog(page).getByRole('alert')).toContainText(/additional approver.*name|name.*additional approver/i)
+  await expect(dialog(page).getByRole('alert')).toContainText(/additional (?:approver|signer).*name|name.*additional (?:approver|signer)/i)
   expect(state.saveRequests).toEqual([])
   await expect(additionalLevel(page)).toHaveValue('L5 reviewer')
   await additional(page).fill('Additional source reviewer')
@@ -99,7 +100,9 @@ test('Additional requires its source name, keeps explicit verification separate,
   await expect(additionalVerify(page)).toBeChecked()
   await expect(level(page, 'pm')).toHaveValue('L1 reviewer')
   expect(state.sourceApprovalReview).toEqual(emptyReview)
-  const expected = { approval_labels: { pm: 'L1 reviewer' }, additional_approver: { name: 'Corrected source reviewer', approval_label: 'L5 reviewer', signature_verified: true } }
+  const submitted = JSON.parse(state.saveRequests[0].source_approval_review)
+  expect(submitted.additional_approvers[0].id).toEqual(expect.any(String))
+  const expected = { approval_labels: { pm: 'L1 reviewer' }, additional_approvers: [{ id: submitted.additional_approvers[0].id, name: 'Corrected source reviewer', approval_label: 'L5 reviewer', signature_verified: true }] }
   expect(JSON.parse(state.saveRequests[0].source_approval_review)).toEqual(expected)
   expect(JSON.parse(state.saveRequests[0].expected_source_approval_review)).toEqual(emptyReview)
   expect(JSON.parse(state.saveRequests[0].manual_signature_overrides)).toEqual({})
@@ -124,11 +127,12 @@ test('an unacknowledged source review retains edits and the original snapshot fo
   // preserves the draft; the fixture must not infer approval from record existence.
   const state = await recommendationPdfImportHarness(page, { savedStatus: 'draft' })
   await preview(page)
+  await addSigner(page).click()
   await additional(page).fill('Reviewer awaiting acknowledgement')
   await level(page, 'vp').fill('Final review')
   state.sourceApprovalReviewResponse = emptyReview
   await save(page).click()
-  await expect(dialog(page).getByRole('alert')).toContainText(/source approval review|additional approver|approval review/i)
+  await expect(dialog(page).getByRole('alert')).toContainText(/source approval review|additional signer|approval review/i)
   await expect(additional(page)).toHaveValue('Reviewer awaiting acknowledgement')
   await expect(additionalVerify(page)).not.toBeChecked()
   await expect(level(page, 'vp')).toHaveValue('Final review')
@@ -143,6 +147,83 @@ test('an unacknowledged source review retains edits and the original snapshot fo
   clean(state)
 })
 
+test('repeated Add signer keeps every row before Special note, preserves identities on removal, and restores all saved rows', async ({ page }) => {
+  const state = await recommendationPdfImportHarness(page)
+  await preview(page)
+  for (let index = 1; index <= 4; index += 1) {
+    await addSigner(page).press('Enter')
+    await expect(additional(page, index)).toBeFocused()
+    await additional(page, index).fill(`Source reviewer ${index}`)
+    await additionalLevel(page, index).fill(`L${index + 4}`)
+    if (index % 2) await additionalVerify(page, index).check()
+    await expect(addSigner(page)).toBeVisible()
+  }
+  const order = await approvals(page).evaluate(section => {
+    const add = section.querySelector('[aria-label="Add signer"]')
+      || [...section.querySelectorAll('button')].find(button => button.textContent.includes('Add signer'))
+    const signers = [...section.querySelectorAll('input')].filter(input => /^Additional signer \d+$/.test(input.getAttribute('aria-label') || ''))
+    const notes = [...section.querySelectorAll('textarea')]
+    return { signerCount: signers.length, signersBeforeAdd: signers.every(input => Boolean(input.compareDocumentPosition(add) & Node.DOCUMENT_POSITION_FOLLOWING)), notesAfterAdd: notes.every(note => Boolean(add.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING)) }
+  })
+  expect(order).toEqual({ signerCount: 4, signersBeforeAdd: true, notesAfterAdd: true })
+  await save(page).click()
+  await expect(dialog(page)).toContainText('Status: draft')
+  const initialReview = JSON.parse(state.saveRequests[0].source_approval_review)
+  const initialRows = initialReview.additional_approvers
+  expect(initialRows).toHaveLength(4)
+  expect(new Set(initialRows.map(row => row.id)).size).toBe(4)
+  expect(initialRows.map(row => row.signature_verified)).toEqual([true, false, true, false])
+  await dialog(page).getByRole('button', { name: 'Close', exact: true }).click()
+  await preview(page)
+  for (let index = 1; index <= 4; index += 1) await expect(additional(page, index)).toHaveValue(`Source reviewer ${index}`)
+  await removeSigner(page, 2).click()
+  await expect(additional(page, 2)).toHaveValue('Source reviewer 3')
+  await expect(additionalVerify(page, 2)).toBeChecked()
+  await addSigner(page).click()
+  await additional(page, 4).fill('Replacement source reviewer')
+  await save(page, 'Attach signed PDF').click()
+  await expect(dialog(page)).toContainText('Existing recommendation values were kept.')
+  const nextReview = JSON.parse(state.saveRequests[1].source_approval_review)
+  expect(JSON.parse(state.saveRequests[1].expected_source_approval_review)).toEqual(initialReview)
+  expect(nextReview.additional_approvers.slice(0, 3)).toEqual([initialRows[0], initialRows[2], initialRows[3]])
+  expect(nextReview.additional_approvers[3].id).not.toBe(initialRows[1].id)
+  expect(nextReview.additional_approvers[3]).toMatchObject({ name: 'Replacement source reviewer', signature_verified: false })
+  expect(JSON.parse(state.saveRequests[1].manual_signature_overrides)).toEqual({})
+  noWorkflowCommands(state)
+  clean(state)
+})
+
+test('permission denial and storage failure retain all additional signers without partially saving a row', async ({ page }) => {
+  const state = await recommendationPdfImportHarness(page)
+  await preview(page)
+  for (let index = 1; index <= 3; index += 1) {
+    await addSigner(page).click()
+    await additional(page, index).fill(`Retained signer ${index}`)
+    await additionalLevel(page, index).fill(`L${index}`)
+    await additionalVerify(page, index).check()
+  }
+  for (const [status, message] of [[403, 'You cannot update this source review.'], [503, 'Source document storage is unavailable.']]) {
+    state.saveError = { status, body: { error: message } }
+    await save(page).click()
+    await expect(dialog(page).getByRole('alert')).toContainText(message)
+    for (let index = 1; index <= 3; index += 1) {
+      await expect(additional(page, index)).toHaveValue(`Retained signer ${index}`)
+      await expect(additionalLevel(page, index)).toHaveValue(`L${index}`)
+      await expect(additionalVerify(page, index)).toBeChecked()
+    }
+    expect(state.sourceApprovalReview).toEqual(emptyReview)
+  }
+  state.saveError = null
+  await save(page).click()
+  await expect(dialog(page)).toContainText('Status: draft')
+  expect(state.saveRequests).toHaveLength(3)
+  expect(state.saveRequests[1]).toEqual(state.saveRequests[0])
+  expect(state.saveRequests[2]).toEqual(state.saveRequests[0])
+  expect(state.sourceApprovalReview.additional_approvers).toHaveLength(3)
+  noWorkflowCommands(state)
+  clean(state)
+})
+
 test('signed-off attachments round-trip editable annotations while preserving captured signers, saved PR values and workflow', async ({ page }) => {
   const number = recommendationNumber(6)
   const originalReview = { approval_labels: { pm: 'L1', mop: 'L3', vp: 'L4' }, additional_approver: { name: 'Stored source reviewer', approval_label: 'L5', signature_verified: false } }
@@ -150,22 +231,22 @@ test('signed-off attachments round-trip editable annotations while preserving ca
   const before = structuredClone(state.props.requisitions.find(record => record.pr_number === number))
   await preview(page, { number })
   for (const [role, label] of Object.entries(roleLabels)) {
-    await expect(approvals(page).getByLabel(label, { exact: true })).toHaveJSProperty('readOnly', true)
+    await expect(approvals(page).getByLabel(label, { exact: true })).toHaveJSProperty('readOnly', role !== 'moe')
     await expect(level(page, role)).toBeEditable()
   }
   await expect(additional(page)).toHaveValue('Stored source reviewer')
   await expect(additional(page)).toBeEditable()
-  await expect(approvals(page).getByRole('checkbox', { name: 'Verify signature in PDF', exact: true })).toHaveCount(0)
+  await expect(approvals(page).getByRole('checkbox', { name: 'Verify signature in PDF', exact: true })).toHaveCount(1)
   await expect(progress(page)).toContainText('complete')
   await additional(page).fill('Updated optional source reviewer')
-  await approvals(page).getByLabel('Additional approver special note', { exact: true }).fill('Corrected spelling against the source PDF.')
+  await approvals(page).getByLabel('Additional signer 1 special note', { exact: true }).fill('Corrected spelling against the source PDF.')
   await level(page, 'pm').fill('Director review')
   await save(page, 'Attach signed PDF').click()
   await expect(dialog(page)).toContainText('Existing recommendation values were kept.')
   const request = state.saveRequests[0]
   expect(request).toMatchObject({ attach_only: 'true', expected_pr_number: number, manual_overrides: '{}' })
-  expect(JSON.parse(request.expected_source_approval_review)).toEqual(originalReview)
-  expect(JSON.parse(request.source_approval_review)).toEqual({ approval_labels: { pm: 'Director review', mop: 'L3', vp: 'L4' }, additional_approver: { name: 'Updated optional source reviewer', approval_label: 'L5', signature_verified: false, special_note: 'Corrected spelling against the source PDF.' } })
+  expect(JSON.parse(request.expected_source_approval_review)).toEqual({ approval_labels: originalReview.approval_labels, additional_approvers: [{ id: 'legacy-additional', ...originalReview.additional_approver }] })
+  expect(JSON.parse(request.source_approval_review)).toEqual({ approval_labels: { pm: 'Director review', mop: 'L3', vp: 'L4' }, additional_approvers: [{ id: 'legacy-additional', name: 'Updated optional source reviewer', approval_label: 'L5', signature_verified: false, special_note: 'Corrected spelling against the source PDF.' }] })
   for (const field of ['pm_name', 'moe_name', 'mop_name', 'vp_name', 'manual_signature_overrides']) expect(request).not.toHaveProperty(field)
   expect(state.props.requisitions.find(record => record.id === before.id)).toMatchObject({ product_service: before.product_service, total_price: before.total_price, status: before.status, approval_workflow_config: before.approval_workflow_config })
   await dialog(page).getByRole('button', { name: 'Close', exact: true }).click()
@@ -181,14 +262,13 @@ test('signed-off attachments round-trip editable annotations while preserving ca
   await dialog(page).getByRole('button', { name: 'Close', exact: true }).click()
   await preview(page, { number })
   const storedReview = structuredClone(state.sourceApprovalReview)
-  await approvals(page).getByRole('button', { name: 'Clear additional approver', exact: true }).click()
-  await expect(additional(page)).toHaveValue('')
-  await expect(additionalLevel(page)).toHaveValue('')
-  await expect(additionalVerify(page)).toBeDisabled()
+  await removeSigner(page, 1).click()
+  await expect(additional(page)).toHaveCount(0)
+  await expect(addSigner(page)).toBeVisible()
   await save(page, 'Attach signed PDF').click()
   await expect(dialog(page)).toContainText('Existing recommendation values were kept.')
   expect(state.saveRequests).toHaveLength(3)
-  expect(JSON.parse(state.saveRequests[2].source_approval_review)).toEqual({ approval_labels: storedReview.approval_labels, additional_approver: null })
+  expect(JSON.parse(state.saveRequests[2].source_approval_review)).toEqual({ approval_labels: storedReview.approval_labels, additional_approvers: [] })
   expect(JSON.parse(state.saveRequests[2].expected_source_approval_review)).toEqual(storedReview)
   noWorkflowCommands(state)
   clean(state)
@@ -197,6 +277,7 @@ test('signed-off attachments round-trip editable annotations while preserving ca
 test('paired import saves PR annotations independently of PO signature, stamp and one-request retry', async ({ page }) => {
   const state = await pairedImportHarness(page)
   await preview(page, { paired: true })
+  await addSigner(page).click()
   await additional(page).fill('PR-only additional source signer')
   await additionalLevel(page).fill('L5 PR')
   await additionalVerify(page).check()
@@ -218,7 +299,7 @@ test('paired import saves PR annotations independently of PO signature, stamp an
   expect(state.pairSaves).toHaveLength(2)
   expect(state.pairSaves[1]).toEqual(state.pairSaves[0])
   const request = state.pairSaves[1]
-  expect(JSON.parse(request.source_approval_review)).toEqual({ approval_labels: { moe: 'L2 engineering' }, approver_notes: { moe: 'Engineering review level confirmed from PDF.' }, additional_approver: { name: 'PR-only additional source signer', approval_label: 'L5 PR', signature_verified: true } })
+  expect(JSON.parse(request.source_approval_review)).toEqual({ approval_labels: { moe: 'L2 engineering' }, approver_notes: { moe: 'Engineering review level confirmed from PDF.' }, additional_approvers: [{ id: expect.any(String), name: 'PR-only additional source signer', approval_label: 'L5 PR', signature_verified: true }] })
   expect(JSON.parse(request.expected_source_approval_review)).toEqual(emptyReview)
   expect(request).toMatchObject({ po_signature_verified: 'false', po_stamp_verified: 'true', po_approved_by_name: 'PO Approver Only' })
   expect(JSON.parse(request.po_reviewed_fields)).not.toHaveProperty('source_approval_review')
@@ -234,6 +315,7 @@ test('Level and Additional controls remain accessible inside the resizable main 
   const sidebarBefore = await sidebar.evaluate(element => ({ width: element.getBoundingClientRect().width, x: element.getBoundingClientRect().x, background: getComputedStyle(element).backgroundColor }))
   await preview(page)
   await expect(dialog(page).getByRole('img', { name: 'Approved PR source PDF, page 1 of 1', exact: true })).toBeVisible({ timeout: 30000 })
+  await addSigner(page).press('Enter')
   await additional(page).fill('Optional reviewer retained across widths')
   await additionalLevel(page).fill('L5 optional')
   await level(page, 'pm').fill('L1 source')
@@ -260,6 +342,12 @@ test('Level and Additional controls remain accessible inside the resizable main 
   const input = await additional(page).boundingBox()
   const footer = await dialog(page).locator('.procurement-import-review__footer').boundingBox()
   expect(input.y + input.height).toBeLessThanOrEqual(footer.y + 1)
+  await addSigner(page).scrollIntoViewIfNeeded()
+  await expect(addSigner(page)).toBeInViewport()
+  await addSigner(page).press('Enter')
+  await expect(additional(page, 2)).toBeFocused()
+  await additional(page, 2).fill('Second mobile source reviewer')
+  await expect(additional(page)).toHaveValue('Optional reviewer retained across widths')
   await page.screenshot({ path: testInfo.outputPath('additional-approver-mobile.png') })
   const scan = await new AxeBuilder({ page }).include('.procurement-import-review').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()
   expect(scan.violations).toEqual([])

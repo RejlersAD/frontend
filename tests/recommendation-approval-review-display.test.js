@@ -39,7 +39,7 @@ test('saved Additional and labels appear with Level 0 while raw authority stays 
 test('another PDF cannot inherit retained review annotations', () => {
   const pr = record();
   pr.price_remarks_data.signed_document_verification.document_sha256 = 'b'.repeat(64);
-  assert.equal(recommendationSourceReview(pr).additional_approver, null);
+  assert.deepEqual(recommendationSourceReview(pr).additional_approvers, []);
   assert.equal(recommendationDisplayApprovals(pr).some(row => row.source_review_annotation), false);
 });
 
@@ -57,7 +57,7 @@ test('the saved API projection and correction note survive display normalization
   const pr = record();
   pr.source_approval_review = { ...reviewed, approver_notes: { pm: ' Captured number replaced with name. ' } };
   assert.equal(recommendationDisplayApprovals(pr)[1].special_note, 'Captured number replaced with name.');
-  assert.deepEqual(normalizeSourceApprovalReview(), { approval_labels: {}, additional_approver: null });
+  assert.deepEqual(normalizeSourceApprovalReview(), { approval_labels: {}, additional_approvers: [] });
   const vp = recommendationDisplayApprovals({ source_approval_review: { approval_labels: { vp: '4' }, approver_notes: { vp: 'Level confirmed from PDF.' } } }, [{ role: 'VP', user_name: 'Operations Reviewer', status: 'approved' }])[1];
   assert.equal(approvalLevelLabel(vp), 'Level 4');
   assert.equal(vp.special_note, 'Level confirmed from PDF.');
@@ -66,4 +66,30 @@ test('the saved API projection and correction note survive display normalization
 test('unknown identifiers can be corrected without treating a real recorded name as unknown', () => {
   for (const name of ['', 'Unknown', 'Unknown #123', 'Unknown Number', 'Not detected', 'N/A', '1234', '??']) assert.equal(isUnknownApprover(name), true, name);
   for (const name of ['Project Reviewer', 'Richa Thomas', 'John 2 Smith']) assert.equal(isUnknownApprover(name), false, name);
+});
+
+test('legacy source review has a stable identity and repeated normalization does not duplicate it', () => {
+  const normalized = normalizeSourceApprovalReview(reviewed);
+  assert.deepEqual(normalized, { approval_labels: reviewed.approval_labels, additional_approvers: [{ id: 'legacy-additional', ...reviewed.additional_approver }] });
+  assert.deepEqual(normalizeSourceApprovalReview(normalized), normalized);
+});
+
+test('all additional source reviewers display independently in saved order without mutating workflow authority', () => {
+  const pr = record();
+  pr.source_approval_review = {
+    approval_labels: { pm: '1' },
+    additional_approvers: [
+      { id: 'project-second', name: 'Second Project Reviewer', approval_label: 'PM,PD', signature_verified: true },
+      { id: 'project-third', name: 'Third Project Reviewer', approval_label: 'PM', signature_verified: false },
+      { id: 'operations-extra', name: 'Additional Operations Reviewer', approval_label: '6', signature_verified: true, special_note: 'Verified against source page 2.' },
+    ],
+  };
+  const before = structuredClone(pr);
+  const additional = recommendationDisplayApprovals(pr).filter(row => row.source_review_annotation);
+  assert.deepEqual(additional.map(row => row.user_name), pr.source_approval_review.additional_approvers.map(row => row.name));
+  assert.deepEqual(additional.map(row => row.status), ['verified', 'not_recorded', 'verified']);
+  assert.deepEqual(additional.map(row => row.approved_at), [null, null, null]);
+  assert.equal(additional[2].special_note, 'Verified against source page 2.');
+  assert.deepEqual(pr, before);
+  assert.deepEqual(pr.approval_workflow_config, []);
 });

@@ -74,7 +74,7 @@ async function save(page, state) {
   return JSON.parse(state.saveRequests[0].manual_overrides)
 }
 
-test('shows business values, source approval rows and genuine conflicts without optional-field warnings', async ({ page }) => {
+test('shows business values, source approval rows and genuine conflicts without optional-field warnings', async ({ page }, testInfo) => {
   const state = await preview(page)
   await expect(field(page, 'Entered price')).toHaveValue('225608.00')
   await expect(field(page, 'Currency')).toHaveValue('USD')
@@ -101,20 +101,20 @@ test('shows business values, source approval rows and genuine conflicts without 
   await expect(modal(page).getByRole('textbox', { name: 'Price line 1 remarks', exact: true })).toHaveValue('Sales Budget USD 225,608.00')
   await expect(field(page, 'Project Manager')).toHaveValue('Maya Hassan')
   await expect(field(page, 'PR Approval date')).toBeVisible()
-  await expect(modal(page).getByRole('checkbox', { name: 'Verify signature in PDF', exact: true })).toHaveCount(2)
+  await expect(modal(page).getByRole('checkbox', { name: 'Verify signature in PDF', exact: true })).toHaveCount(4)
   await expect(field(page, 'VP Operations')).toHaveValue('Samir Ali')
   for (const label of ['Manager of Engineering', 'Manager of Projects']) {
-    await expect(field(page, label)).toHaveJSProperty('readOnly', true)
-    await expect(field(page, label).locator('..')).toContainText('Not on document')
+    await expect(field(page, label)).toBeEditable()
+    await expect(modal(page).getByRole('group', { name: `${label} source signer`, exact: true }).getByRole('checkbox')).toBeDisabled()
   }
   await expect(modal(page)).toContainText('Source row requires signature review')
-  for (const label of ['Project Manager', 'VP Operations']) await field(page, label).locator('..').getByRole('checkbox').check()
+  for (const label of ['Project Manager', 'VP Operations']) await modal(page).getByRole('group', { name: `${label} source signer`, exact: true }).getByRole('checkbox').check()
   await field(page, 'PR Approval date').fill('2026-01-20')
   const approvalProgress = modal(page).getByRole('list', { name: 'Document review progress' }).getByRole('listitem').filter({ hasText: 'Approval & signatures' })
   await expect(approvalProgress).toContainText('Approval & signatures: complete')
   expect(state.saveRequests).toEqual([])
   await field(page, 'Entered price').scrollIntoViewIfNeeded()
-  await modal(page).screenshot({ path: '../artifacts/purchase-recommendation-extraction-quality.png' })
+  await modal(page).screenshot({ path: testInfo.outputPath('purchase-recommendation-extraction-quality.png') })
   await modal(page).getByRole('button', { name: 'Cancel', exact: true }).click()
   expect(state.saveRequests).toEqual([])
   clean(state)

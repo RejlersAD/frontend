@@ -181,6 +181,17 @@
 .procurement-import-review__form .procurement-import-review__approval-level { padding-inline: 5px; text-align: center; }
 .procurement-import-review__additional-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
 .procurement-import-review__additional-actions > button { color: var(--import-blue); font-size: var(--text-caption-size); text-decoration: underline; }
+.procurement-import-review__signer-name { display: flex; min-width: 0; gap: 4px; align-items: center; }
+.procurement-import-review__signer-name > input { width: 100%; min-width: 0; }
+.procurement-import-review__signer-edit, .procurement-import-review__signer-remove { display: inline-flex; flex: 0 0 32px; align-items: center; justify-content: center; width: 32px; min-height: 32px; border-radius: 4px; color: var(--import-blue); }
+.procurement-import-review__signer-edit svg, .procurement-import-review__signer-remove svg { width: 18px; height: 18px; }
+.procurement-import-review__add-signer-row { display: flex; justify-content: flex-end; }
+.procurement-import-review__add-signer { display: inline-flex; align-items: center; justify-content: center; width: 44px; min-height: 44px; color: var(--import-blue); border: 1px solid var(--import-border); border-radius: 6px; background: white; }
+.procurement-import-review__add-signer svg { width: 25px; height: 25px; }
+.procurement-import-review__signer-notes { display: grid; gap: 8px; border-top: 1px solid var(--import-border); padding-top: 8px; }
+.procurement-import-review__notes-heading { margin: 0; font-weight: 600; color: var(--import-blue); }
+.procurement-import-review__signer-notes .procurement-import-review__signer-note { grid-column: auto; }
+.procurement-import-review__signer-edit:focus-visible, .procurement-import-review__signer-remove:focus-visible, .procurement-import-review__add-signer:focus-visible { outline: 2px solid var(--import-blue); outline-offset: 2px; }
 .procurement-import-review__verify, .procurement-import-review__verified { display: flex; align-items: center; gap: 8px; font-size: var(--text-caption-size); }
 .procurement-import-review__verified { color: #14734a; }
 .procurement-import-review__verified svg { width: 17px; height: 17px; }
