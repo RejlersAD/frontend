@@ -657,15 +657,24 @@ class SalesService {
     return response.data;
   }
 
-  async submitQualification(dealId) {
+  async submitQualification(dealId, payload = {}) {
     return (
-      await apiClient.post(`${BASE_URL}/deals/${dealId}/submit-qualification/`)
+      await apiClient.post(`${BASE_URL}/deals/${dealId}/submit-qualification/`, payload)
     ).data;
   }
 
   async recordBidDecision(dealId, decision, reason = "") {
     return (
       await apiClient.post(`${BASE_URL}/deals/${dealId}/bid-decision/`, {
+        decision,
+        reason,
+      })
+    ).data;
+  }
+
+  async recordCeoDecision(dealId, decision, reason = "") {
+    return (
+      await apiClient.post(`${BASE_URL}/deals/${dealId}/ceo-decision/`, {
         decision,
         reason,
       })
