@@ -47,11 +47,11 @@ test('three signed source roles remain visible without requiring a fourth signat
   for (const [role, label] of Object.entries(roleLabels)) {
     const signer = approvals(page).getByLabel(label, { exact: true })
     await expect(signer).toHaveValue(signed.approvalDetection.approver_names[role] || '')
-    await expect(signer).toHaveJSProperty('readOnly', true)
+    await expect(signer).toHaveJSProperty('readOnly', Boolean(signed.approvalDetection.approver_names[role]))
   }
   await expect(approvals(page).getByText('Detected', { exact: true })).toHaveCount(3)
-  await expect(approvals(page).getByLabel('Manager of Engineering', { exact: true }).locator('..')).toContainText('Not on document')
-  await expect(canonicalChecks(page)).toHaveCount(0)
+  await expect(approvals(page).getByRole('group', { name: 'Manager of Engineering source signer', exact: true })).toContainText('Verify')
+  await expect(canonicalChecks(page)).toHaveCount(1)
   await expect(modal(page)).toContainText('Enter the approval date shown in the PDF.')
   await expect(modal(page).getByRole('button', { name: 'Upload PR', exact: true })).toBeEnabled()
   await modal(page).getByLabel('PR Approval date', { exact: true }).fill('2026-01-20')
@@ -84,19 +84,24 @@ test('signed-off three-role approval with a captured date remains visible when a
   await preview(page, number, { ...syntheticApprovedPdf, buffer: readableApprovedPdf.buffer })
   await expect(modal(page).getByRole('img', { name: 'Approved PR source PDF, page 1 of 1', exact: true })).toBeVisible({ timeout: 30000 })
   await expect(approvals(page)).toBeVisible()
-  for (const [role, value] of Object.entries({ pm: 'Captured Project Director; Second captured project reviewer', moe: '', mop: 'Captured Projects Manager', vp: 'Captured Operations VP' })) {
+  for (const [role, value] of Object.entries({ moe: '', mop: 'Captured Projects Manager', vp: 'Captured Operations VP' })) {
     const signer = approvals(page).getByLabel(roleLabels[role], { exact: true })
     await expect(signer).toHaveValue(value)
-    await expect(signer).toHaveJSProperty('readOnly', true)
+    await expect(signer).toHaveJSProperty('readOnly', Boolean(value))
   }
-  for (const role of ['pm', 'mop', 'vp']) await expect(approvals(page).getByLabel(roleLabels[role], { exact: true }).locator('..')).toContainText('Detected')
-  await expect(approvals(page).getByLabel('Manager of Engineering', { exact: true }).locator('..')).toContainText('Not on document')
-  await expect(approvals(page).getByLabel('Project Manager', { exact: true }).locator('..')).toContainText('PD')
-  await expect(canonicalChecks(page)).toHaveCount(0)
-  for (const sourceText of ['Second captured project reviewer', 'Second explicitly captured source row']) await expect(approvals(page)).toContainText(sourceText)
+  for (const [index, name] of [[1, 'Captured Project Director'], [4, 'Second captured project reviewer']]) {
+    await expect(approvals(page).getByRole('textbox', { name: `Source signer ${index}`, exact: true })).toHaveValue(name)
+    await expect(approvals(page).getByRole('textbox', { name: `Source signer ${index}`, exact: true })).toHaveJSProperty('readOnly', true)
+    await expect(approvals(page).getByRole('group', { name: `Source signer ${index}`, exact: true })).toContainText('Detected')
+  }
+  for (const role of ['mop', 'vp']) await expect(approvals(page).getByRole('group', { name: `${roleLabels[role]} source signer`, exact: true })).toContainText('Detected')
+  await expect(approvals(page).getByRole('group', { name: 'Manager of Engineering source signer', exact: true })).toContainText('Verify')
+  await expect(approvals(page).getByRole('group', { name: 'Source signer 1', exact: true })).toContainText('PD')
+  await expect(canonicalChecks(page)).toHaveCount(1)
+  await expect(approvals(page)).toContainText('Second explicitly captured source row')
   await expect(approvals(page)).toContainText('Captured date text: 20 / 01 / 2026')
-  await expect(approvals(page).getByLabel('Additional approver', { exact: true })).toHaveValue('')
-  await expect(approvals(page).getByRole('checkbox', { name: 'Verify additional approver signature in PDF', exact: true })).not.toBeChecked()
+  await expect(approvals(page).getByLabel('Additional signer 1', { exact: true })).toHaveCount(0)
+  await expect(approvals(page).getByRole('button', { name: 'Add signer', exact: true })).toBeVisible()
   const date = approvals(page).getByLabel('PR Approval date', { exact: true })
   await expect(date).toHaveValue('2026-01-20')
   await expect(date).toBeEditable()
@@ -126,12 +131,12 @@ test('signed-off four-role approval remains visible without inventing an unreada
   for (const [role, label] of Object.entries(roleLabels)) {
     const signer = approvals(page).getByLabel(label, { exact: true })
     await expect(signer).toHaveValue(approvalDetection.approver_names[role] || '')
-    await expect(signer).toHaveJSProperty('readOnly', true)
+    await expect(signer).toHaveJSProperty('readOnly', Boolean(approvalDetection.approver_names[role]))
   }
   await expect(approvals(page).getByText('Detected', { exact: true })).toHaveCount(4)
   await expect(canonicalChecks(page)).toHaveCount(0)
-  await expect(approvals(page).getByLabel('Additional approver', { exact: true })).toHaveValue('')
-  await expect(approvals(page).getByRole('checkbox', { name: 'Verify additional approver signature in PDF', exact: true })).not.toBeChecked()
+  await expect(approvals(page).getByLabel('Additional signer 1', { exact: true })).toHaveCount(0)
+  await expect(approvals(page).getByRole('button', { name: 'Add signer', exact: true })).toBeVisible()
   await expect(approvals(page).getByLabel('PR Approval date', { exact: true })).toHaveValue('2026-01-21')
   await expect(approvals(page).getByLabel('PR Approval date', { exact: true })).toBeEditable()
   await modal(page).getByRole('button', { name: 'Upload PR', exact: true }).click()
@@ -156,7 +161,8 @@ test('unsigned signer review keeps manual evidence explicit and preserves signer
   await expect(signer).toBeEditable()
   await expect(approvals(page).getByRole('checkbox', { name: 'Verify signature in PDF', exact: true })).toHaveCount(4)
   await signer.fill('Reviewed source signer')
-  await signer.locator('..').getByRole('checkbox', { name: 'Verify signature in PDF', exact: true }).check()
+  await approvals(page).getByRole('group', { name: 'Project Manager source signer', exact: true }).getByRole('checkbox', { name: 'Verify signature in PDF', exact: true }).check()
+  await approvals(page).getByLabel('Project Manager special note', { exact: true }).fill('Corrected the source signer spelling against the original PDF.')
   const date = approvals(page).getByLabel('PR Approval date', { exact: true })
   await date.fill('2026-01-22')
   state.saveError = { status: 409, body: { error: 'The source review changed. Your signer review is retained.' } }
@@ -175,41 +181,61 @@ test('unsigned signer review keeps manual evidence explicit and preserves signer
   clean(state)
 })
 
-test('an unsigned duplicate source role requires explicit verification despite a detected canonical summary', async ({ page }) => {
-  const state = await recommendationPdfImportHarness(page, { approvalDetection: {
+test('a missed duplicate source signer is corrected and verified individually with retry and re-preview', async ({ page }) => {
+  const originalRows = [
+    { source_role: 'PD', role_key: 'pm', name: 'First source project director', signature_detected: true },
+    { source_role: 'PM', role_key: 'pm', name: '', signature_detected: false },
+  ]
+  const approvalDetection = {
     signatures: { pm: true, moe: false, mop: false, vp: false },
-    approver_names: { pm: 'First source project director' }, approval_date: '',
-    approval_rows: [
-      { source_role: 'PD', role_key: 'pm', name: 'First source project director', signature_detected: true },
-      { source_role: 'PM', role_key: 'pm', name: 'Second source project manager', signature_detected: false },
-    ],
-  } })
-  const initialCount = state.props.requisitions.length
+    approver_names: { pm: 'First source project director' }, approval_date: '2026-01-24', approval_rows: originalRows,
+  }
+  const correctedRow = { ...originalRows[1], name: 'Second source project manager', approval_label: 'PM', special_note: 'The second PM signer and signature were missed by extraction.', signature_verified: true, signature_source: 'manual' }
+  const state = await recommendationPdfImportHarness(page, { approvalDetection, documentSignedOff: true, savedStatus: 'draft',
+    savedApprovalDetection: { ...approvalDetection, approval_rows: [originalRows[0], correctedRow] },
+  })
   await preview(page, undefined, { ...syntheticApprovedPdf, buffer: readableApprovedPdf.buffer })
-  await expect(modal(page).getByRole('img', { name: 'Approved PR source PDF, page 1 of 1', exact: true })).toBeVisible({ timeout: 30000 })
-  const signer = approvals(page).getByLabel('Project Manager', { exact: true })
-  await expect(signer).toHaveValue('First source project director; Second source project manager')
-  await expect(signer).toHaveJSProperty('readOnly', true)
-  await expect(signer.locator('..')).toContainText('Signature not detected')
-  await expect(signer.locator('..').getByText('Detected', { exact: true })).toHaveCount(0)
-  const verify = signer.locator('..').getByRole('checkbox', { name: 'Verify signature in PDF', exact: true })
-  await expect(verify).not.toBeChecked()
-  await expect(canonicalChecks(page)).toHaveCount(1)
-  const progress = modal(page).getByRole('list', { name: 'Document review progress' }).getByRole('listitem').filter({ hasText: 'Approval & signatures' })
-  await approvals(page).getByLabel('PR Approval date', { exact: true }).fill('2026-01-24')
-  await expect(progress).toContainText('Approval & signatures: pending review')
+  const first = approvals(page).getByRole('textbox', { name: 'Source signer 1', exact: true })
+  const second = approvals(page).getByRole('combobox', { name: 'Source signer 2', exact: true })
+  await expect(first).toHaveValue('First source project director')
+  await expect(first).toHaveJSProperty('readOnly', true)
+  await expect(approvals(page).getByRole('button', { name: 'Edit source signer 1', exact: true })).toHaveCount(0)
+  await approvals(page).getByRole('button', { name: 'Edit source signer 2', exact: true }).click()
+  await expect(second).toBeFocused()
+  await second.fill('Preliminary second reviewer')
+  const verify = approvals(page).getByRole('checkbox', { name: 'Verify source signer 2 signature in PDF', exact: true })
   await verify.check()
-  await expect(progress).toContainText('Approval & signatures: complete')
-  state.saveError = { status: 409, body: { error: 'The source review changed. Check the current record before retrying.' } }
+  await second.fill(correctedRow.name)
+  await expect(verify).not.toBeChecked()
+  await verify.check()
+  await approvals(page).getByLabel('Source signer 2 level', { exact: true }).fill('PM')
   await modal(page).getByRole('button', { name: 'Upload PR', exact: true }).click()
-  await expect(modal(page).getByRole('alert')).toContainText('Check the current record before retrying.')
+  await expect(modal(page).getByRole('alert')).toContainText('Special note')
+  expect(state.saveRequests).toEqual([])
+  await approvals(page).getByLabel('Source signer 2 special note', { exact: true }).fill(correctedRow.special_note)
+  state.saveError = { status: 409, body: { error: 'This source row changed. Your edits are retained.' } }
+  await modal(page).getByRole('button', { name: 'Upload PR', exact: true }).click()
+  await expect(modal(page).getByRole('alert')).toContainText('Your edits are retained.')
+  await expect(second).toHaveValue(correctedRow.name)
+  await expect(verify).toBeChecked()
   expect(state.saveRequests).toHaveLength(1)
-  expect(JSON.parse(state.saveRequests[0].manual_signature_overrides)).toEqual({ pm: true })
-  // The full source list is visible; the canonical name sent to the existing command stays unchanged.
-  expect(state.saveRequests[0]).toMatchObject({ pm_name: 'First source project director', approval_date: '2026-01-24' })
-  expect(state.props.requisitions).toHaveLength(initialCount)
-  await expect(signer).toHaveValue('First source project director; Second source project manager')
-  await expect(approvals(page).getByRole('checkbox', { name: 'Signature verified in PDF', exact: true })).toBeChecked()
+  expect(JSON.parse(state.saveRequests[0].source_row_corrections)).toEqual([{ row_index: 1, expected_row: originalRows[1], approver_name: correctedRow.name,
+    approval_label: 'PM', special_note: correctedRow.special_note, signature_verified: true }])
+  expect(state.saveRequests[0]).not.toHaveProperty('pm_name')
+  expect(state.saveRequests[0]).not.toHaveProperty('manual_signature_overrides')
+  expect(state.approvalDetection).toBeNull()
+  state.saveError = null
+  await modal(page).getByRole('button', { name: 'Upload PR', exact: true }).click()
+  await expect(modal(page)).toContainText('Status: draft')
+  expect(state.saveRequests[1]).toEqual(state.saveRequests[0])
+  expect(state.approvalDetection.approval_rows[0]).toEqual(originalRows[0])
+  expect(state.approvalDetection.approval_rows[1].signature_detected).toBe(false)
+  await modal(page).getByRole('button', { name: 'Close', exact: true }).click()
+  await preview(page, undefined, { ...syntheticApprovedPdf, buffer: readableApprovedPdf.buffer })
+  await expect(approvals(page).getByRole('textbox', { name: 'Source signer 2', exact: true })).toHaveValue(correctedRow.name)
+  await expect(approvals(page).getByRole('group', { name: 'Source signer 2', exact: true })).toContainText('Verified')
+  await expect(approvals(page).getByRole('button', { name: 'Edit source signer 2', exact: true })).toHaveCount(0)
+  expect(state.requests.filter(request => /\/(submit|approve|workflow)(\/|$)/.test(request.path) && request.method === 'POST')).toEqual([])
   clean(state)
 })
 

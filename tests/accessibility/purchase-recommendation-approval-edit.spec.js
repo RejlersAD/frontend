@@ -80,7 +80,7 @@ const open = async (page, prepare, options = {}) => {
   return state;
 };
 
-test('only an incomplete source approval offers inline editing and cancel leaves the record unchanged on mobile', async ({ page }) => {
+test('only an incomplete source approval offers inline editing and cancel leaves the record unchanged on mobile', async ({ page }, testInfo) => {
   const state = await open(page);
   await expect(history(page).getByRole('button', { name: /^Edit .* approval record$/ })).toHaveCount(1);
   await page.setViewportSize({ width: 390, height: 844 });
@@ -94,7 +94,7 @@ test('only an incomplete source approval offers inline editing and cancel leaves
   const bounds = await name.boundingBox();
   expect(bounds.x).toBeGreaterThanOrEqual(0);
   expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
-  await page.screenshot({ path: '../artifacts/pr-approval-inline-edit-mobile.png' });
+  await page.screenshot({ path: testInfo.outputPath('pr-approval-inline-edit-mobile.png') });
   await history(page).getByRole('button', { name: 'Cancel approval edit', exact: true }).click();
   await expect(name).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Save', exact: true }).first()).toBeEnabled();
@@ -124,7 +124,7 @@ test('saving an approver name alone does not verify the signature or approve the
   assertIsolated(state);
 });
 
-test('verified source completion refreshes history while retaining unsaved form fields and later save preserves the new evidence', async ({ page }) => {
+test('verified source completion refreshes history while retaining unsaved form fields and later save preserves the new evidence', async ({ page }, testInfo) => {
   const state = await open(page);
   await step(page, 'Request');
   await page.getByRole('textbox', { name: 'Product / service', exact: true }).fill('Unsaved clarified software request');
@@ -135,7 +135,7 @@ test('verified source completion refreshes history while retaining unsaved form 
   await history(page).getByRole('textbox', { name: 'Approver name', exact: true }).fill('Verified source reviewer');
   await history(page).getByRole('checkbox', { name: 'I verified this signature on the original PDF', exact: true }).check();
   await history(page).getByLabel('Approval date', { exact: true }).fill('2026-01-29');
-  await page.screenshot({ path: '../artifacts/pr-approval-inline-edit-desktop.png' });
+  await page.screenshot({ path: testInfo.outputPath('pr-approval-inline-edit-desktop.png') });
   await history(page).getByRole('textbox', { name: 'Special note', exact: true }).fill('Corrected against the original signed document.');
   await history(page).getByRole('button', { name: 'Save approval record', exact: true }).click();
   await expect.poll(() => sourceSaves(state).length).toBe(1);
@@ -276,12 +276,12 @@ test('a changed recommendation blocks source approval without blessing newer com
   assertIsolated(state);
 });
 
-const sourceReview = () => ({ approval_labels: { pm: '1', vp: '4' }, additional_approver: { name: 'Saved Additional Reviewer', approval_label: '5', signature_verified: true } });
+const sourceReview = () => ({ approval_labels: { pm: '1', vp: '4' }, additional_approvers: [{ id: 'additional-original', name: 'Saved Additional Reviewer', approval_label: '5', signature_verified: true }] });
 const detailPath = `/procurement/requisitions/${formRecordId}`;
 const ribbon = page => page.getByRole('region', { name: 'Approval history', exact: true });
 const sourceReviewSaves = state => state.requests.filter(request => request.method === 'POST' && request.path.endsWith('/source-review/'));
 
-test('saved detail shows Additional, all project numbers and Richa Level 0 without manufacturing approval authority', async ({ page }) => {
+test('saved detail shows Additional, all project numbers and Richa Level 0 without manufacturing approval authority', async ({ page }, testInfo) => {
   const state = await open(page, state => {
     state.record.source_approval_review = sourceReview();
     state.record.project_numbers = ['PRJ-001', 'PRJ-002', 'DPT-03'];
@@ -306,11 +306,11 @@ test('saved detail shows Additional, all project numbers and Richa Level 0 witho
   await expect(page.locator('dl').filter({ hasText: 'Project numbers' }).first()).toContainText('PRJ-001, PRJ-002, DPT-03');
   await expect(page.getByRole('button', { name: 'Approve', exact: true })).toHaveCount(0);
   expect(state.record.approval_workflow_config).toEqual([]);
-  await page.screenshot({ path: '../artifacts/procurement-saved-approvers-projects-20260925/saved-approval-ribbon.png' });
+  await page.screenshot({ path: testInfo.outputPath('saved-approval-ribbon.png') });
   assertIsolated(state);
 });
 
-test('saved detail corrects an unknown signed approver name and level only with a special note, retaining failed mobile edits', async ({ page }) => {
+test('saved detail corrects an unknown signed approver name and level only with a special note, retaining failed mobile edits', async ({ page }, testInfo) => {
   const originalVp = { ...sourceRows[3], user_name: 'Unknown approver', status: 'approved', signature_verified: true, approved_at: '2026-01-29T12:00:00Z' };
   const state = await open(page, state => {
     state.record.price_remarks_data.signed_document_verification.source_approval_rows[3] = originalVp;
@@ -340,7 +340,7 @@ test('saved detail corrects an unknown signed approver name and level only with 
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
   await note.scrollIntoViewIfNeeded();
   expect((await history(page).getByRole('button', { name: 'Save approval record', exact: true }).boundingBox()).height).toBeGreaterThanOrEqual(44);
-  await page.screenshot({ path: '../artifacts/procurement-saved-approvers-projects-20260925/unknown-approver-mobile.png' });
+  await page.screenshot({ path: testInfo.outputPath('unknown-approver-mobile.png') });
   state.sourceApprovalError = null;
   await history(page).getByRole('button', { name: 'Save approval record', exact: true }).click();
   await expect(name).toHaveCount(0);
@@ -381,7 +381,7 @@ test('saved Additional review requires a correction note and round trips indepen
   await history(page).getByRole('button', { name: 'Save approval record', exact: true }).click();
   await expect(name).toHaveCount(0);
   expect(sourceReviewSaves(state)[1].body).toMatchObject({ document_sha256: digest, expected_updated_at: originalVersion, expected_source_approval_review: before,
-    source_approval_review: { approval_labels: before.approval_labels, additional_approver: { name: 'Corrected Additional Reviewer', approval_label: '6', signature_verified: true, special_note: 'Corrected the extra source signer and level against the original.' } } });
+    source_approval_review: { approval_labels: before.approval_labels, additional_approvers: [{ id: 'additional-original', name: 'Corrected Additional Reviewer', approval_label: '6', signature_verified: true, special_note: 'Corrected the extra source signer and level against the original.' }] } });
   expect(state.record.price_remarks_data.signed_document_verification).toEqual(canonicalBefore);
   expect(state.record.approval_workflow_config).toEqual([]);
   await page.reload();
@@ -402,5 +402,42 @@ test('read-only saved detail shows source annotations without offering approver 
   await expect(history(page).getByRole('button', { name: /^Edit .* approval record$/ })).toHaveCount(0);
   expect(sourceSaves(state)).toEqual([]);
   expect(sourceReviewSaves(state)).toEqual([]);
+  assertIsolated(state);
+});
+
+test('correcting the middle of several saved source signers preserves every other reviewer and survives reload', async ({ page }) => {
+  const before = {
+    approval_labels: { pm: '1' },
+    additional_approvers: [
+      { id: 'first-extra', name: 'First Extra Reviewer', approval_label: '5', signature_verified: true },
+      { id: 'middle-extra', name: 'Middle Extra Reviewer', approval_label: '6', signature_verified: false },
+      { id: 'last-extra', name: 'Last Extra Reviewer', approval_label: '7', signature_verified: true },
+    ],
+  };
+  const state = await open(page, state => {
+    state.record.source_approval_review = structuredClone(before);
+    state.saveSourceReview = (body, record) => ({ ...record, source_approval_review: body.source_approval_review });
+  }, { initialPath: detailPath });
+  for (const row of before.additional_approvers) await expect(ribbon(page)).toContainText(row.name);
+  await ribbon(page).getByRole('button', { name: 'Review source approvers', exact: true }).click();
+  const middle = history(page).locator(':scope > div').filter({ hasText: 'Middle Extra Reviewer' });
+  await middle.getByRole('button', { name: /^Edit Additional.*approval record$/ }).click();
+  await history(page).getByRole('textbox', { name: 'Approver name', exact: true }).fill('Corrected Middle Reviewer');
+  await history(page).getByRole('textbox', { name: 'Special note', exact: true }).fill('Source document spelling confirmed.');
+  await history(page).getByRole('button', { name: 'Save approval record', exact: true }).click();
+  await expect.poll(() => sourceReviewSaves(state).length).toBe(1);
+  const saved = sourceReviewSaves(state)[0].body;
+  expect(saved.expected_source_approval_review).toEqual(before);
+  expect(saved.source_approval_review.additional_approvers).toEqual([
+    before.additional_approvers[0],
+    { ...before.additional_approvers[1], name: 'Corrected Middle Reviewer', special_note: 'Source document spelling confirmed.' },
+    before.additional_approvers[2],
+  ]);
+  await expect(history(page).getByRole('textbox', { name: 'Approver name', exact: true })).toHaveCount(0);
+  await page.reload();
+  for (const name of ['First Extra Reviewer', 'Corrected Middle Reviewer', 'Last Extra Reviewer']) await expect(ribbon(page)).toContainText(name);
+  expect(state.record.approval_workflow_config).toEqual([]);
+  expect(sourceSaves(state)).toEqual([]);
+  expect(ordinarySaves(state)).toEqual([]);
   assertIsolated(state);
 });
