@@ -199,7 +199,19 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
     if (!silent) setLoading(true)
     try {
       const rows = await listLegends(activeSection, projectId || undefined)
-      setLegends(Array.isArray(rows) ? rows : [])
+      const next = Array.isArray(rows) ? rows : []
+      // Diff before setState — background polls/syncs return identical data
+      // most of the time. Replacing the array unconditionally created new
+      // references on every poll, re-rendering the list + editor and making
+      // the uploaded-file thumbnails visibly shake every 15s. Returning the
+      // previous reference when nothing changed skips that render entirely.
+      setLegends(prev => {
+        const same = prev.length === next.length
+          && prev.every((p, i) => p.legend_id === next[i]?.legend_id
+            && p.updated_at === next[i]?.updated_at
+            && p.is_active === next[i]?.is_active)
+        return same ? prev : next
+      })
       // Clear selection when switching sections so the editor doesn't show a
       // stale legend belonging to a different section. Only do this for a
       // user-driven load (tab click / modal open) — a silent background
@@ -211,11 +223,11 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
       // notify parent about active state (only when viewing the section the
       // parent originally opened us with)
       if (onActiveChange && activeSection === section) {
-        const active = (rows || []).find(l => l.is_active) || null
+        const active = next.find(l => l.is_active) || null
         onActiveChange(active)
       }
     } catch (err) {
-      toast.error('Failed to load legends')
+      if (!silent) toast.error('Failed to load legends')
     } finally {
       if (!silent) setLoading(false)
     }

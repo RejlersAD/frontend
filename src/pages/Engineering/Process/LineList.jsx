@@ -38,6 +38,7 @@ import LineListWorkflowDocs from './components/LineListWorkflowDocs';
 import LegendSheetsModal from './components/LegendSheetsModal';
 import ProjectLegendPanel from '../../../components/Engineering/ProjectLegendPanel';
 import { listLegends } from '../../../services/pidCheckerV2API';
+import { publishChatContext, clearChatContext } from '../../../services/chatContext.store';
 import { getApiBaseUrl } from '../../../config/environment.config';
 import { STORAGE_KEYS } from '../../../config/app.config';
 // Shared Project Organizer — soft-coded workspace (same pattern as HMB Extractor)
@@ -354,6 +355,15 @@ const LineList = () => {
     } catch { /* non-fatal — legend is optional */ }
   }, []);
 
+  // Stable handler for the modal's active-legend callback. MUST be a
+  // useCallback — an inline arrow here is a new reference every render, which
+  // retriggers the modal's refresh effect (its `refresh` depends on this) and
+  // caused the legends endpoint to be hammered in a loop ("bouncing" UI).
+  const handleLegendActiveChange = useCallback((legend) => {
+    setActiveLegend(legend);
+    refreshActiveLegend();
+  }, [refreshActiveLegend]);
+
   useEffect(() => { if (LL_LEGENDS.enabled) refreshActiveLegend(); }, [refreshActiveLegend]);
 
   const [isProcessing, setIsProcessing] = useState(false);
@@ -376,6 +386,32 @@ const LineList = () => {
   const pollTimerRef = useRef(null);
   const pollStartRef = useRef(null);
   const elapsedTimerRef = useRef(null);
+
+  // ── RADAI Chat context — publish the current page's data so the floating
+  // assistant can answer questions about it. Re-publishes whenever the
+  // extracted rows, uploaded P&ID, or active project change; clears on unmount.
+  useEffect(() => {
+    const rows = extractedData?.data || [];
+    publishChatContext({
+      page: 'Line List',
+      project: activeProject
+        ? { id: activeProject.project_id, name: activeProject.name || '', code: activeProject.code || '' }
+        : null,
+      document: pidDocument
+        ? { name: pidDocument.name, type: 'P&ID PDF', sizeLabel: `${(pidDocument.size / 1024 / 1024).toFixed(2)} MB` }
+        : null,
+      columns: COLUMNS.map(c => ({ key: c.key, label: c.label })),
+      rows,
+      row_count: extractedData?.total_lines ?? rows.length,
+      summary: extractedData ? {
+        total_lines: extractedData.total_lines,
+        columns: extractedData.columns,
+        format: formatType,
+      } : null,
+      notes: 'Line list extracted from a P&ID. Columns: ' + COLUMNS.map(c => c.label).join(', '),
+    })
+    return () => clearChatContext()
+  }, [extractedData, pidDocument, activeProject, formatType])
 
   // -------------------------------------------------------------------------
   // File selection
@@ -1764,7 +1800,7 @@ const LineList = () => {
           onClose={() => setLegendModalOpen(false)}
           section={LL_LEGENDS.section}
           projectId={activeProject?.project_id}
-          onActiveChange={(legend) => { setActiveLegend(legend); refreshActiveLegend(); }}
+          onActiveChange={handleLegendActiveChange}
         />
       )}
     </>
