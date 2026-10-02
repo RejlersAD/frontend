@@ -67,43 +67,18 @@ const AREAS = {
       "deal_code",
       "deal_name",
       "opportunity_type",
-      "client_name",
       "open_date",
-      "owner_name",
-      "created_by_name",
-      "created_at",
-      "client_reference",
-      "description",
-      "stage",
-      "probability",
-      "estimated_value",
-      "currency",
-      "scope_type",
-      "risk_level",
       "submission_due_date",
-      "expected_close_date",
-      "next_action",
+      "owner_name",
+      "client_reference",
+      "stage",
     ],
     editFields: [
       ["deal_name", "Opportunity name"],
       ["opportunity_type", "Opportunity type", "select", ["", "tender", "rfq", "eoi", "direct_enquiry", "other"]],
       ["open_date", "Open date", "date"],
+      ["submission_due_date", "Due date", "date"],
       ["client_reference", "Client reference"],
-      ["estimated_value", "Estimated value", "number"],
-      ["currency", "Currency", "select", ["", "AED", "USD", "EUR", "GBP", "SAR", "QAR", "OMR"]],
-      ["scope_type", "Scope type", "select", ["", "conceptual", "pre_feed", "feed", "basic_engineering", "detailed_engineering", "epcm", "epc", "pmc", "owner_engineer", "feasibility", "other"]],
-      ["description", "Scope summary", "textarea"],
-      ["next_action", "Next action"],
-      ["next_action_date", "Next-action date", "date"],
-      ["submission_due_date", "Proposal deadline", "date"],
-      ["expected_close_date", "Expected award date", "date"],
-      ["priority", "Priority", "select", ["low", "medium", "high", "critical"]],
-      [
-        "risk_level",
-        "Risk level",
-        "select",
-        ["low", "medium", "high", "critical"],
-      ],
     ],
     columns: [
       "VF code",
@@ -467,6 +442,81 @@ const money = (value, currency = "AED") =>
         maximumFractionDigits: 0,
       }).format(Number(value || 0));
 
+const opportunityTypeText = (typeValue) => {
+  const value = String(typeValue || "").toLowerCase();
+  if (value === "eoi") return "EOI (Expression of Interest)";
+  if (value === "rfq") return "RFQ";
+  return label(typeValue || "Not provided");
+};
+
+const dateTimeText = (value, fallbackTime = "12:00 PM") => {
+  if (!value) return "Not provided";
+  const raw = String(value);
+  const dateOnly = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnly) {
+    const year = Number(dateOnly[1]);
+    const month = Number(dateOnly[2]) - 1;
+    const day = Number(dateOnly[3]);
+    const date = new Date(year, month, day);
+    if (Number.isNaN(date.getTime())) return "Not provided";
+    const datePart = new Intl.DateTimeFormat("en-GB", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    }).format(date);
+    return `${datePart} at ${fallbackTime}`;
+  }
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return "Not provided";
+  const datePart = new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(parsed);
+  const timePart = new Intl.DateTimeFormat("en-GB", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  })
+    .format(parsed)
+    .replace("am", "AM")
+    .replace("pm", "PM");
+  return `${datePart} at ${timePart}`;
+};
+
+const buildQualificationSpecialNote = (record) => {
+  const eventType =
+    record?.qualification_data?.event_type ||
+    record?.custom_fields?.event_type ||
+    record?.qualification_data?.request_type ||
+    record?.custom_fields?.request_type ||
+    opportunityTypeText(record?.opportunity_type);
+  const publishedAt =
+    record?.qualification_data?.published_at ||
+    record?.custom_fields?.published_at ||
+    record?.created_at;
+  const submissionDeadline =
+    record?.qualification_data?.submission_deadline_at ||
+    record?.custom_fields?.submission_deadline_at ||
+    record?.submission_due_date;
+  const dueDate =
+    record?.qualification_data?.due_date ||
+    record?.custom_fields?.due_date ||
+    submissionDeadline;
+  const owner = record?.owner_name || "Not assigned";
+  return [
+    `A new ${opportunityTypeText(record?.opportunity_type)} has been received from ${record?.client_name || "Not provided"}.`,
+    `Opportunity/Reference Number: ${record?.deal_code || "Not provided"}`,
+    `Project Name: ${record?.deal_name || "Not provided"}`,
+    `Submission Deadline: ${dateTimeText(submissionDeadline)}`,
+    `Owner: ${owner}`,
+    `Event Type: ${eventType}`,
+    `Published: ${dateTimeText(publishedAt)}`,
+    `Due Date: ${dateTimeText(dueDate)}`,
+    "Special Note: Prioritize this for Monday kickoff.",
+  ].join("\n");
+};
+
 function Metric({ label: metricLabel, value, tone = "blue" }) {
   const tones =
     tone === "amber"
@@ -502,6 +552,8 @@ const lifecycleActions = (area, record) => {
       actions.push({ id: "qualify", label: "Submit qualification" });
     if (record.stage === "qualified")
       actions.push({ id: "bid_decision", label: "Record bid/no-bid" });
+    if (record.stage === "proposal")
+      actions.push({ id: "ceo_decision", label: "Record CEO go/no-go" });
     if (record.stage === "proposal")
       actions.push({ id: "negotiate", label: "Enter negotiation" });
     if (record.stage === "negotiation")
@@ -1040,7 +1092,29 @@ export default function SalesLifecycleArea() {
     setSaving(true);
     setError("");
     try {
-      const payload = area === "opportunities" ? { ...draft, estimated_value: draft.estimated_value === "" ? null : draft.estimated_value, expected_close_date: draft.expected_close_date || null, submission_due_date: draft.submission_due_date || null, open_date: draft.open_date || null, next_action_date: draft.next_action_date || null } : area === 'proposals' ? proposalEditPayload(draft, editBaseline.current || record) : draft;
+      let payload;
+      if (area === "opportunities") {
+        payload = { ...draft };
+        if (Object.prototype.hasOwnProperty.call(draft, "estimated_value")) {
+          payload.estimated_value = draft.estimated_value === "" ? null : draft.estimated_value;
+        }
+        if (Object.prototype.hasOwnProperty.call(draft, "expected_close_date")) {
+          payload.expected_close_date = draft.expected_close_date || null;
+        }
+        if (Object.prototype.hasOwnProperty.call(draft, "submission_due_date")) {
+          payload.submission_due_date = draft.submission_due_date || null;
+        }
+        if (Object.prototype.hasOwnProperty.call(draft, "open_date")) {
+          payload.open_date = draft.open_date || null;
+        }
+        if (Object.prototype.hasOwnProperty.call(draft, "next_action_date")) {
+          payload.next_action_date = draft.next_action_date || null;
+        }
+      } else if (area === "proposals") {
+        payload = proposalEditPayload(draft, editBaseline.current || record);
+      } else {
+        payload = draft;
+      }
       const updated = await config.update(selectedId, payload);
       if (request !== recordRequest.current) return;
       setRecord(updated);
@@ -1359,10 +1433,28 @@ export default function SalesLifecycleArea() {
     const confirm = (title, description, execute, submitLabel = title) =>
       showAction({ title, description, execute, submitLabel, fields: [] });
     if (actionId === "qualify")
-      return confirm(
-        "Submit qualification",
-        "Validates scope, value, owner and key dates before moving the lead to qualification.",
-        () => salesService.submitQualification(record.id),
+      return showAction(
+        {
+          title: "Submit qualification",
+          submitLabel: "Submit qualification",
+          description:
+            "Validates required details and required files, then notifies the Sales team with your special note.",
+          fields: [
+            {
+              name: "special_note",
+              label: "Special note to Sales team",
+              type: "textarea",
+              rows: 4,
+              full: true,
+              placeholder: "Add context, urgency, or handover notes for the team.",
+            },
+          ],
+          execute: (values) =>
+            salesService.submitQualification(record.id, {
+              special_note: (values.special_note || "").trim(),
+            }),
+        },
+        { special_note: buildQualificationSpecialNote(record) },
       );
     if (actionId === "bid_decision")
       return showAction(
@@ -1395,6 +1487,38 @@ export default function SalesLifecycleArea() {
             ),
         },
         { decision: "bid" },
+      );
+    if (actionId === "ceo_decision")
+      return showAction(
+        {
+          title: "Record CEO go/no-go",
+          submitLabel: "Record CEO decision",
+          description:
+            "CEO decision is required before proposal drafting can proceed for this opportunity.",
+          fields: [
+            {
+              name: "decision",
+              label: "CEO decision",
+              type: "select",
+              required: true,
+              options: ["go", "no_go"],
+            },
+            {
+              name: "reason",
+              label: "Reason",
+              type: "textarea",
+              full: true,
+              placeholder: "Required when CEO decides no-go.",
+            },
+          ],
+          execute: (values) =>
+            salesService.recordCeoDecision(
+              record.id,
+              values.decision,
+              values.reason,
+            ),
+        },
+        { decision: "go" },
       );
     if (actionId === "negotiate")
       return showAction({

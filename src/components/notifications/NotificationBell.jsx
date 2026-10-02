@@ -2,6 +2,7 @@ import { radaiPrompt, radaiConfirm } from '../../services/radaiDialog'
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useSelector } from 'react-redux'
+import { useNavigate } from 'react-router-dom'
 import { BellIcon } from '@heroicons/react/24/outline'
 import { BellAlertIcon } from '@heroicons/react/24/solid'
 import notificationService from '../../services/notification.service'
@@ -9,6 +10,7 @@ import notificationAlertService from '../../services/notificationAlert.service'
 import pushNotificationService from '../../services/pushNotification.service'
 import NotificationDropdown from './NotificationDropdown'
 import { canDecideOffboardingNotification } from '../../utils/approvalCapabilities'
+import { resolveNotificationTarget } from '../../utils/notificationNavigation'
 
 /**
  * NotificationBell Component
@@ -38,6 +40,7 @@ const notificationError = (error, action) => {
 }
 
 const NotificationBell = () => {
+  const navigate = useNavigate()
   const { isAuthenticated, user } = useSelector((state) => state.auth)
   const pushUserId = user?.user?.id ?? user?.id
   const [unreadCount, setUnreadCount] = useState(0)
@@ -53,6 +56,9 @@ const NotificationBell = () => {
   const [decisionMessage, setDecisionMessage] = useState('')
   const [soundEnabled, setSoundEnabled] = useState(notificationAlertService.isSoundEnabled())
   const [pushState, setPushState] = useState({ supported: true, available: true, enabled: false, busy: false, error: '' })
+  const [salesPopupNotification, setSalesPopupNotification] = useState(null)
+  const [salesPopupBusy, setSalesPopupBusy] = useState(false)
+  const [salesPopupError, setSalesPopupError] = useState('')
   const dropdownRef = useRef(null)
   const bellRef = useRef(null)
   const errorCountRef = useRef(0)
@@ -62,12 +68,56 @@ const NotificationBell = () => {
   const lastUnreadCountRef = useRef(null)
   const notificationsRef = useRef(notifications)
   const openRef = useRef(showDropdown)
+  const salesPopupRef = useRef(salesPopupNotification)
   const sessionRef = useRef(0)
   const revisionRef = useRef(0)
   const busyRef = useRef(new Set())
   const bulkBusyRef = useRef(false)
   notificationsRef.current = notifications
   openRef.current = showDropdown
+  salesPopupRef.current = salesPopupNotification
+
+  const isSalesPersistentPopup = useCallback((notification) => {
+    if (!notification || notification.is_read) return false
+    const metadata = notification.metadata || {}
+    if (metadata.department === 'sales' || metadata.module === 'sales') return true
+    const target = resolveNotificationTarget(notification)
+    if (target?.isExternal) return false
+    return String(target?.href || '').toLowerCase().startsWith('/sales')
+  }, [])
+
+  const salesPopupBadgeLabel = useCallback((notification) => {
+    const metadata = notification?.metadata || {}
+    const actionType = String(metadata.action_type || '').toLowerCase()
+    if (actionType.includes('qualification')) return 'Qualification'
+    if (actionType.includes('bid')) return 'Go/No-Go'
+    if (actionType.includes('approval')) return 'Approval'
+    if (actionType.includes('proposal')) return 'Draft Proposal'
+    if (String(metadata.event_type || '').toLowerCase() === 'qualification_submitted') return 'Internal Notification'
+    const target = resolveNotificationTarget(notification)
+    const href = String(target?.href || '').toLowerCase()
+    if (href.includes('/approvals')) return 'Approval'
+    if (href.includes('/sales/proposals')) return 'Draft Proposal'
+    if (href.includes('/sales')) return 'Sales Workflow'
+    return 'Sales Workflow'
+  }, [])
+
+  const fetchSalesPopupCandidate = useCallback(async () => {
+    const current = salesPopupRef.current
+    if (current && !current.is_read && isSalesPersistentPopup(current)) return
+    try {
+      const data = await notificationService.getNotifications(
+        { status: 'unread', ordering: '-created_at', page_size: 20 },
+        { silentTimeout: true },
+      )
+      const items = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
+      const candidate = items.find(isSalesPersistentPopup) || null
+      setSalesPopupNotification(candidate)
+      if (!candidate) setSalesPopupError('')
+    } catch {
+      // Keep the existing popup state when refresh fails.
+    }
+  }, [isSalesPersistentPopup])
 
   const updateCount = useCallback((count) => {
     const next = Math.max(0, Number(count) || 0)
@@ -125,6 +175,11 @@ const NotificationBell = () => {
         if (openRef.current) void fetchNotifications()
       }
       updateCount(count)
+      if (count > 0) void fetchSalesPopupCandidate()
+      else {
+        setSalesPopupNotification(null)
+        setSalesPopupError('')
+      }
       errorCountRef.current = 0
     } catch (error) {
       if (controller.signal.aborted || session !== sessionRef.current) return
@@ -138,7 +193,7 @@ const NotificationBell = () => {
     } finally {
       if (unreadAbortRef.current === controller) unreadAbortRef.current = null
     }
-  }, [fetchNotifications, updateCount])
+  }, [fetchNotifications, fetchSalesPopupCandidate, updateCount])
 
   useEffect(() => {
     notificationAlertService.installUnlockListeners()
@@ -169,6 +224,9 @@ const NotificationBell = () => {
     setErrorMessage('')
     setDecisionMessage('')
     setDecisionLoadingId(null)
+    setSalesPopupNotification(null)
+    setSalesPopupBusy(false)
+    setSalesPopupError('')
     setHasMore(false)
     if (isAuthenticated) {
       void fetchUnreadCount()
@@ -283,6 +341,62 @@ const NotificationBell = () => {
 
   const handleMarkAsRead = (notificationId) => mutateNotification(notificationId, 'read')
   const handleDelete = (notificationId) => mutateNotification(notificationId, 'delete')
+
+  const handleSalesPopupMarkAsRead = async () => {
+    const notification = salesPopupRef.current
+    if (!notification || salesPopupBusy) return
+    setSalesPopupBusy(true)
+    setSalesPopupError('')
+    try {
+      await notificationService.markAsRead(notification.id)
+      setSalesPopupNotification(null)
+      await fetchUnreadCount()
+    } catch (error) {
+      setSalesPopupError(notificationError(error, 'mark this notification as read'))
+    } finally {
+      setSalesPopupBusy(false)
+    }
+  }
+
+  const handleSalesPopupActNow = async () => {
+    const notification = salesPopupRef.current
+    if (!notification || salesPopupBusy) return
+    setSalesPopupBusy(true)
+    setSalesPopupError('')
+    try {
+      await notificationService.markAsRead(notification.id)
+      setSalesPopupNotification(null)
+      await fetchUnreadCount()
+      const target = resolveNotificationTarget(notification)
+      if (!target) return
+      if (target.isExternal) {
+        window.location.assign(target.href)
+      } else {
+        navigate(target.href)
+      }
+    } catch (error) {
+      setSalesPopupError(notificationError(error, 'open this notification'))
+    } finally {
+      setSalesPopupBusy(false)
+    }
+  }
+
+  const handleSalesPopupNavigate = async (path) => {
+    const notification = salesPopupRef.current
+    if (!notification || salesPopupBusy) return
+    setSalesPopupBusy(true)
+    setSalesPopupError('')
+    try {
+      await notificationService.markAsRead(notification.id)
+      setSalesPopupNotification(null)
+      await fetchUnreadCount()
+      navigate(path)
+    } catch (error) {
+      setSalesPopupError(notificationError(error, 'open this panel'))
+    } finally {
+      setSalesPopupBusy(false)
+    }
+  }
 
   const handleMarkAllAsRead = async () => {
     if (bulkBusyRef.current || busyRef.current.size) return
@@ -443,6 +557,26 @@ const NotificationBell = () => {
           onTogglePush={handleTogglePush}
         />
         </>,
+        document.body,
+      )}
+
+      {salesPopupNotification && createPortal(
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="sales-popup-title">
+          <section className="w-full max-w-2xl rounded-xl border border-blue-200 bg-white p-5 shadow-2xl">
+            <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Sales Notification</p>
+            <p className="mt-2 inline-flex rounded-full bg-blue-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-blue-800">{salesPopupBadgeLabel(salesPopupNotification)}</p>
+            <h2 id="sales-popup-title" className="mt-1 text-lg font-bold text-slate-900">{salesPopupNotification.title || 'Action required'}</h2>
+            <pre className="mt-3 max-h-[45vh] overflow-auto whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800">{salesPopupNotification.message}</pre>
+            {salesPopupError && <p className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{salesPopupError}</p>}
+            <p className="mt-3 text-xs text-slate-500">This popup stays visible until you act on it.</p>
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <button type="button" onClick={() => handleSalesPopupNavigate('/approvals')} disabled={salesPopupBusy} className="rounded-md border border-blue-300 px-4 py-2 text-sm font-semibold text-blue-700 disabled:opacity-60">{salesPopupBusy ? 'Processing...' : 'Go to Approval panel'}</button>
+              <button type="button" onClick={() => handleSalesPopupNavigate('/notifications')} disabled={salesPopupBusy} className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60">{salesPopupBusy ? 'Processing...' : 'Go to Notification panel'}</button>
+              <button type="button" onClick={handleSalesPopupMarkAsRead} disabled={salesPopupBusy} className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60">{salesPopupBusy ? 'Processing...' : 'Mark as read'}</button>
+              <button type="button" onClick={handleSalesPopupActNow} disabled={salesPopupBusy} className="rounded-md bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-60">{salesPopupBusy ? 'Opening...' : (salesPopupNotification.action_label || 'Act now')}</button>
+            </div>
+          </section>
+        </div>,
         document.body,
       )}
     </div>
