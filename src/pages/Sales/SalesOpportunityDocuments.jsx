@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
-import { ArrowDown, ArrowUp, ChevronDown, Download, ExternalLink, Eye, FileText, Filter, Folder, FolderPlus, Info, MoreHorizontal, RefreshCw, Search, Upload, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, Download, ExternalLink, Eye, FileText, Filter, Folder, FolderPlus, Info, MoreHorizontal, RefreshCw, Search, Trash2, Upload, X } from 'lucide-react';
 import salesService from '../../services/sales.service';
 import SalesOpportunityFilePreview from './SalesOpportunityFilePreview';
 import SalesDocumentType, { SalesDocumentTag } from './SalesDocumentType';
@@ -26,6 +26,8 @@ function DocumentDetails({ recordId, folder, file, onClose, onPreview, onVersion
   const [versionsError, setVersionsError] = useState('');
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const alive = useRef(true);
   const detailRequest = useRef(0);
   const versionRequest = useRef(0);
@@ -76,6 +78,24 @@ function DocumentDetails({ recordId, folder, file, onClose, onPreview, onVersion
     } }
     finally { if (alive.current) setDownloading(false); }
   };
+  const removeVersion = async (version = null) => {
+    if (!detail?.can_delete || deleting) return;
+    const targetLabel = version ? `version ${version.id}` : 'this document';
+    const confirmed = globalThis.confirm(`Delete ${targetLabel}? This keeps newer and older revisions that still exist.`);
+    if (!confirmed) return;
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      const response = await salesService.deleteOpportunityWorkspaceFile(recordId, folder.key, version?.file_id || file.id);
+      if (!response?.deleted_id || !response.current?.id) throw new Error('The delete result could not be verified.');
+      if (!alive.current) return;
+      onVersionSaved({ _deleted: true, id: response.deleted_id, document_id: response.document_id, current: response.current });
+    } catch (failure) {
+      if (alive.current) setDeleteError(workspaceError(failure, 'The selected version could not be deleted.'));
+    } finally {
+      if (alive.current) setDeleting(false);
+    }
+  };
   const modified = documentDate(detail?.modified_at);
   const type = documentType(detail || file);
   return <aside className="sod-details" aria-label="Document details" aria-busy={loading}>
@@ -89,7 +109,7 @@ function DocumentDetails({ recordId, folder, file, onClose, onPreview, onVersion
         {tab === 'Details' && <dl className="sod-facts"><div><dt>{detail.storage_provider === 'radai' ? 'Storage' : 'SharePoint status'}</dt><dd>{detail.storage_provider === 'radai' ? 'RADAI attachment' : publicationLabel(detail.publication_level)}</dd></div><div><dt>Version</dt><dd>{detail.version || 'Not available'}</dd></div><div><dt>Folder</dt><dd>{folder.name}</dd></div><div><dt>Created by</dt><dd>{detail.created_by || 'Not available'}</dd></div><div><dt>Modified</dt><dd title="Time shown in Asia/Dubai">{modified.date}{modified.time && `, ${modified.time}`}</dd></div><div><dt>Modified by</dt><dd>{detail.modified_by || 'Not available'}</dd></div></dl>}
         <section className="sod-versions" aria-label="Version history"><h4>Version history</h4>
           {versionsError && <div className="sow-message sow-error" role="alert"><span>{versionsError}</span><button type="button" onClick={() => loadVersions()}>Retry versions</button></div>}
-          <ol>{versions.versions.slice(0, tab === 'Details' ? 3 : undefined).map(version => { const date = documentDate(version.modified_at); return <li key={version.id}><strong>Version {version.id}{version.is_current === true && <span> · Current</span>}</strong><span>{date.date}{date.time && `, ${date.time}`}</span>{tab === 'Versions' && <><span>{version.modified_by || 'Modified by unavailable'} · {fileSize(version.size)}</span>{version.name && <span>{version.name}</span>}{version.revision_note && <p className="sdc-revision-note">{version.revision_note}</p>}</>}{version.file_id && detail.can_download && <div className="sdc-version-actions"><button type="button" className="sod-text-button" aria-label={`Preview version ${version.id}`} onClick={() => onPreview(version)}>Preview</button><button type="button" className="sod-text-button" aria-label={`Download version ${version.id}`} disabled={downloading} onClick={() => download(version)}>Download</button></div>}</li>; })}</ol>
+          <ol>{versions.versions.slice(0, tab === 'Details' ? 3 : undefined).map(version => { const date = documentDate(version.modified_at); return <li key={version.id}><strong>Version {version.id}{version.is_current === true && <span> · Current</span>}</strong><span>{date.date}{date.time && `, ${date.time}`}</span>{tab === 'Versions' && <><span>{version.modified_by || 'Modified by unavailable'} · {fileSize(version.size)}</span>{version.name && <span>{version.name}</span>}{version.revision_note && <p className="sdc-revision-note">{version.revision_note}</p>}</>}{version.file_id && (detail.can_download || detail.can_delete) && <div className="sdc-version-actions"><button type="button" className="sod-text-button" aria-label={`Preview version ${version.id}`} onClick={() => onPreview(version)}>Preview</button><button type="button" className="sod-text-button" aria-label={`Download version ${version.id}`} disabled={downloading || !detail.can_download} onClick={() => download(version)}>Download</button>{detail.can_delete && <button type="button" className="sod-text-button" aria-label={`Delete version ${version.id}`} disabled={deleting} onClick={() => removeVersion(version)}>Delete</button>}</div>}</li>; })}</ol>
           {versionsLoading && <p className="sow-muted" role="status">Loading versions…</p>}
           {!versionsLoading && !versionsError && !versions.versions.length && <p className="sow-muted">{detail.storage_provider === 'radai' ? 'No version history is available.' : 'No version history returned by SharePoint.'}</p>}
           {tab === 'Details' && (versions.versions.length > 3 || versions.next_cursor) && <button type="button" className="sod-text-button" onClick={() => setTab('Versions')}>View all versions</button>}
@@ -97,7 +117,7 @@ function DocumentDetails({ recordId, folder, file, onClose, onPreview, onVersion
         </section>
       </div>
       </div>
-      <footer>{detail.storage_provider === 'radai' && typeof detail.can_upload_version === 'boolean' && <SalesDocumentVersionUpload recordId={recordId} folderKey={folder.key} file={file} detail={detail} onSaved={onVersionSaved} />}<button type="button" className="sow-upload" onClick={() => onPreview()} disabled={!detail.can_download}><Eye />Preview</button>{sharePointUrl(detail.web_url) && <a className="sod-open" href={sharePointUrl(detail.web_url)} target="_blank" rel="noopener noreferrer"><ExternalLink />Open document</a>}<button type="button" className={`sow-upload ${detail.storage_provider === 'radai' ? 'sod-primary' : ''}`} onClick={() => download()} disabled={!detail.can_download || downloading}><Download />{downloading ? 'Downloading…' : 'Download'}</button>{!detail.can_download && <p className="sow-muted">{detail.storage_provider === 'radai' ? 'Download is unavailable with your RADAI access or the file size.' : 'Download is unavailable with your access or the file size. Use SharePoint if permitted.'}</p>}{downloadError && <p className="sow-message sow-error" role="alert">{downloadError}</p>}</footer>
+      <footer>{detail.storage_provider === 'radai' && typeof detail.can_upload_version === 'boolean' && <SalesDocumentVersionUpload recordId={recordId} folderKey={folder.key} file={file} detail={detail} onSaved={onVersionSaved} />}{detail.storage_provider === 'radai' && detail.can_delete && <button type="button" className="sow-upload" onClick={() => removeVersion()} disabled={deleting}><Trash2 />{deleting ? 'Deleting…' : 'Delete file'}</button>}<button type="button" className="sow-upload" onClick={() => onPreview()} disabled={!detail.can_download}><Eye />Preview</button>{sharePointUrl(detail.web_url) && <a className="sod-open" href={sharePointUrl(detail.web_url)} target="_blank" rel="noopener noreferrer"><ExternalLink />Open document</a>}<button type="button" className={`sow-upload ${detail.storage_provider === 'radai' ? 'sod-primary' : ''}`} onClick={() => download()} disabled={!detail.can_download || downloading}><Download />{downloading ? 'Downloading…' : 'Download'}</button>{!detail.can_download && <p className="sow-muted">{detail.storage_provider === 'radai' ? 'Download is unavailable with your RADAI access or the file size.' : 'Download is unavailable with your access or the file size. Use SharePoint if permitted.'}</p>}{downloadError && <p className="sow-message sow-error" role="alert">{downloadError}</p>}{deleteError && <p className="sow-message sow-error" role="alert">{deleteError}</p>}</footer>
     </>}
   </aside>;
 }
@@ -117,7 +137,7 @@ export default function SalesOpportunityDocuments({ record, workspace, storage =
   });
   const selectedFile = ready && visible.find(file => file.id === selectedId && !file.is_folder);
   useDocumentClassificationPolling({ recordId: record.id, folderKey, storage, files: visible, onUpdated: onDocumentUpdated });
-  const previewFile = selectedFile && previewTarget?.selectedId === selectedFile.id && previewTarget.recordId === record.id && previewTarget.folderKey === folderKey && previewTarget.storage === storage ? previewTarget.file : null;
+  const previewFile = previewTarget && previewTarget.recordId === record.id && previewTarget.folderKey === folderKey && previewTarget.storage === storage ? previewTarget.file : null;
   const openPreview = (file, row) => {
     if (!ready || file.is_folder) return;
     row?.querySelector('.sod-file-cell button')?.focus();
@@ -128,7 +148,12 @@ export default function SalesOpportunityDocuments({ record, workspace, storage =
     if (!selectedFile || !version?.file_id || !version.name) return;
     setPreviewTarget({ file: { ...version, id: version.file_id }, selectedId: selectedFile.id, recordId: record.id, folderKey, storage });
   };
-  const versionSaved = result => { onDocumentUpdated(result); setSelectedId(result.id); setPreviewTarget(null); };
+  const versionSaved = result => {
+    onDocumentUpdated(result);
+    if (result?._deleted) setSelectedId(result.current?.id || null);
+    else setSelectedId(result.id);
+    setPreviewTarget(null);
+  };
   const changeSort = key => setSort(previous => ({ key, direction: previous.key === key && previous.direction === 'asc' ? 'desc' : 'asc' }));
   return <div className={`sod-explorer ${selectedFile ? 'sod-has-selection' : ''}`}>
     <nav className="sod-folders" aria-label="Opportunity folders"><h3>Folders</h3><div className="sod-folder-root"><ChevronDown /><Folder /><strong>{record.deal_code}</strong></div>{folders.map(folder => <button type="button" key={folder.key} className={folderKey === folder.key ? 'sod-folder-selected' : ''} aria-current={folderKey === folder.key ? 'page' : undefined} aria-label={`Open ${folder.name}`} onClick={() => { setPreviewTarget(null); setSelectedId(null); setKind('all'); onFolder(folder.key); }}><Folder /><span>{folder.name}</span><span className="sod-folder-count">{ready && folder.item_count != null ? folder.item_count : '—'}</span></button>)}</nav>

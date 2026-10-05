@@ -55,6 +55,12 @@ export const ROUTES = {
   HMB_EXTRACTOR: '/engineering/process/hmb-extractor',
 
   /**
+   * HMB Stream Table Consolidator
+   * Browser-only, session-scoped cross-case HYSYS workbook comparison
+   */
+  HMB_STREAM_TABLE_CONSOLIDATOR: '/engineering/process/hmb-stream-table-consolidator',
+
+  /**
    * Manage Projects
    * Standalone, shared cross-tool project registry (no nav entry yet)
    */

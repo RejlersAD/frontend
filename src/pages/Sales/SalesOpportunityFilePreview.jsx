@@ -58,9 +58,9 @@ export default function SalesOpportunityFilePreview({ recordId, folderKey, stora
         const type = filePreviewType(current);
         if (type.kind === 'unsupported') { setContent(type); return; }
         if (['xlsx', 'docx', 'msg'].includes(type.kind) && current.size > OFFICE_PREVIEW_MAX_BYTES) throw new Error('This file is too large for the browser preview. Download the original to open it.');
-        const { blob, filename } = await salesService.downloadOpportunityWorkspaceFile(recordId, folderKey, file.id, { signal: controller.signal });
+        const { blob } = await salesService.downloadOpportunityWorkspaceFile(recordId, folderKey, file.id, { signal: controller.signal });
         if (disposed) return;
-        if (!(blob instanceof Blob) || (Number.isSafeInteger(current.size) && blob.size !== current.size) || (filename && filename !== current.name)) throw new Error('The file changed while loading. Retry the preview to load its current content.');
+        if (!(blob instanceof Blob) || (Number.isSafeInteger(current.size) && blob.size !== current.size)) throw new Error('The file changed while loading. Retry the preview to load its current content.');
         const result = await previewContent(blob, type, { signal: controller.signal });
         if (disposed) return;
         if (result.blob) { assetUrl.current = URL.createObjectURL(result.blob); result.url = assetUrl.current; }

@@ -59,18 +59,27 @@
 .sow-file-list li > div { min-width: 0; display: grid; gap: 4px; }
 .sow-file-list a, .sow-file-list strong { overflow-wrap: anywhere; font-size: 13px; font-weight: 500; }
 .sow-file-list span { color: #556789; font-size: 12px; }
-.sow-upload-dialog { width: min(600px, calc(100vw - 28px)); max-height: calc(100dvh - 40px); margin: auto; padding: 22px; border: 1px solid #d5deec; border-radius: 10px; color: #152344; box-shadow: 0 20px 80px #12203c30; }
+.sow-upload-dialog { width: min(680px, calc(100vw - 28px)); max-height: calc(100dvh - 40px); margin: auto; padding: 0; border: 1px solid #d5deec; border-radius: 12px; color: #152344; box-shadow: 0 20px 80px #12203c30; }
 .sow-upload-dialog::backdrop { background: #091e3a66; }
-.sow-upload-dialog header, .sow-upload-dialog footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.sow-upload-dialog header h3 { margin: 0; font-size: 20px; font-weight: 700; }
+.sow-upload-form { display: grid; gap: 14px; padding: 22px; }
+.sow-upload-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 8px; border-bottom: 1px solid #e8edf5; }
+.sow-upload-dialog header h3 { margin: 0; font-size: 22px; font-weight: 700; line-height: 1.2; }
+.sow-upload-subtitle { margin: 8px 0 0; color: #4d6086; font-size: 13px; line-height: 1.5; }
 .sow-upload-dialog p { font-size: 13px; overflow-wrap: anywhere; }
-.sow-upload-dialog fieldset { border: 0; margin: 18px 0; padding: 0; display: grid; gap: 16px; }
+.sow-upload-fields { border: 0; margin: 0; padding: 0; display: grid; gap: 14px; }
+.sow-upload-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .sow-upload-dialog label { display: grid; gap: 7px; font-size: 13px; font-weight: 600; }
 .sow-upload-dialog select, .sow-upload-dialog input { width: 100%; min-width: 0; max-width: none; font-size: 13px; }
-.sow-upload-dialog select { padding: 9px; border: 1px solid #d1dbeb; border-radius: 5px; background: #fff; }
+.sow-upload-dialog select { min-height: 38px; padding: 9px; border: 1px solid #d1dbeb; border-radius: 7px; background: #fff; }
+.sow-upload-dialog input[type="file"] { min-height: 38px; padding: 8px; border: 1px dashed #c6d3ea; border-radius: 7px; background: #f8fbff; }
+.sow-upload-selection { border: 1px solid #dde5f2; border-radius: 10px; background: linear-gradient(180deg, #f9fbff, #f5f8ff); padding: 12px; }
+.sow-upload-selection-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.sow-upload-selection-head h4 { margin: 0; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .02em; color: #2d436e; }
+.sow-upload-selection-head span { font-size: 12px; color: #536a95; }
 .sow-upload-dialog footer { justify-content: flex-end; flex-wrap: wrap; }
+.sow-upload-footer { padding-top: 8px; border-top: 1px solid #e8edf5; }
 .sow-selected-file { margin: 0; color: #506281; font-weight: 400; }
-.sow-upload-queue { list-style: none; padding: 0; margin: 0 0 18px; display: grid; gap: 10px; }
+.sow-upload-queue { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
 .sow-upload-queue li { min-width: 0; padding: 12px; border: 1px solid #dce4ef; border-radius: 6px; background: #f9faff; }
 .sow-upload-file-heading { display: flex; align-items: flex-start; gap: 8px; justify-content: space-between; }
 .sow-upload-file-heading p { min-width: 0; overflow-wrap: anywhere; }
@@ -83,4 +92,4 @@
 .sow-storage-choice { display: flex; align-items: center; gap: 8px; color: #4b608c; font-size: 13px; }
 .sow-storage-choice select { min-height: 32px; max-width: 170px; padding: 4px 9px; border: 1px solid #d7e1f3; border-radius: 5px; background: #fff; color: #20365f; font: inherit; }
 @media (max-width: 1250px) and (min-width: 1001px) { .sow-toolbar { flex-wrap: wrap; } .sow-search { flex-basis: 100%; } }
-@media (max-width: 600px) { .sow-toolbar { flex-wrap: wrap; } .sow-search { flex-basis: 100%; } .sow-location { padding: 10px; } .sow-location > a { margin-left: 0; } .sow-folder-row { min-height: 54px; } }
+@media (max-width: 600px) { .sow-toolbar { flex-wrap: wrap; } .sow-search { flex-basis: 100%; } .sow-location { padding: 10px; } .sow-location > a { margin-left: 0; } .sow-folder-row { min-height: 54px; } .sow-upload-form { padding: 16px; } .sow-upload-grid { grid-template-columns: 1fr; } }
