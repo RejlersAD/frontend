@@ -21,16 +21,31 @@ export function verifiedClassification(value) {
 }
 
 export function patchDocument(files, result) {
+  if (result?._deleted) {
+    const remaining = files.filter(file => file.id !== result.id);
+    if (!result.current) return remaining;
+    const current = result.current;
+    const index = remaining.findIndex(file => file.id === current.id);
+    if (index < 0) return [current, ...remaining];
+    const next = [...remaining];
+    const classification = next[index].classification?.revision > current.classification?.revision
+      ? next[index].classification
+      : current.classification || next[index].classification;
+    next[index] = { ...next[index], ...current, classification };
+    return next;
+  }
   let matched = false;
   const next = files.map(file => {
-    if (file.id === result.id || (result.document_id && file.document_id === result.document_id)) {
+    if (file.id === result.id) {
       matched = true;
-      const classification = file.id === result.id && file.classification?.revision > result.classification?.revision ? file.classification : result.classification || file.classification;
+      const classification = file.classification?.revision > result.classification?.revision
+        ? file.classification
+        : result.classification || file.classification;
       return { ...file, ...result, classification };
     }
     return file;
   });
-  return matched ? next : files;
+  return matched ? next : [result, ...files];
 }
 
 export function commandIdentity(previous, payload) {

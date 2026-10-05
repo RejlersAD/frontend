@@ -132,16 +132,26 @@ export const ENGINEERING_DISCIPLINES = {
         description: 'Extract stream data from Heat & Material Balance documents',
         moduleCode: 'hmb_extractor',
         badge: ''
-      }
-    ,      {        id: 'lineList',
+      },
+      {
+        id: 'hmbStreamTableConsolidator',
+        name: 'HMB Consolidator',
+        fullName: 'HMB Stream Table Consolidator',
+        icon: CircleStackIcon,
+        path: ROUTES.HMB_STREAM_TABLE_CONSOLIDATOR,
+        description: 'Compare HYSYS stream tables locally across multiple cases',
+        moduleCode: 'hmb_extractor',
+        badge: 'NEW'
+      },
+      {
+        id: 'lineList',
         name: 'Line List',
         fullName: 'Line List - Base Extraction',
         icon: TableCellsIcon,
         path: '/engineering/process/line-list',
         description: 'Extract 8 base columns from P&ID (P&ID-only, no enrichment)',
         moduleCode: 'pid_line_list'
-      }
-      ,
+      },
       {
         id: 'equipmentList',
         name: 'Equipment List',

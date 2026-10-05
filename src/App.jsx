@@ -147,6 +147,7 @@ import LegendSheetsCanvas from './pages/Engineering/Process/LegendSheetsCanvas'
 import LegendManagerPage from './pages/Engineering/Legends/LegendManagerPage'
 import PFDQualityChecker from './pages/Engineering/Process/PFDQualityChecker'
 import HMBExtractor from './pages/Engineering/Process/HMBExtractor'
+import HMBStreamTableConsolidator from './pages/Engineering/Process/HMBStreamTableConsolidator/HMBStreamTableConsolidator'
 import ManageProjectsPage from './pages/ProjectOrganizer/ManageProjectsPage'
 import CriticalLineList from './pages/Engineering/Piping/CriticalLineList'
 // Electrical Datasheet Components
@@ -1198,6 +1199,15 @@ function App() {
           element={
             <ModuleProtectedRoute moduleCode="process_datasheet">
               <HMBExtractor />
+            </ModuleProtectedRoute>
+          }
+        />
+        {/* Browser-only HYSYS stream-table comparison; separate from the persisted HMB Extractor */}
+        <Route
+          path="engineering/process/hmb-stream-table-consolidator"
+          element={
+            <ModuleProtectedRoute moduleCode="process_datasheet">
+              <HMBStreamTableConsolidator />
             </ModuleProtectedRoute>
           }
         />

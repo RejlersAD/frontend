@@ -264,28 +264,24 @@ export default function SalesOpportunityWorkspace({ record, active = true, explo
     </>}
     {explorer && notice && <p className="sow-message sow-success" role="status"><CheckCircle2 aria-hidden="true" />{notice}</p>}
     <dialog ref={uploadDialog} className="sow-upload-dialog" aria-label="Upload opportunity file" onCancel={event => { event.preventDefault(); closeUpload(); }}>
-      <form onSubmit={upload}>
-        <header><h3>Upload files</h3><button type="button" className="sow-icon" onClick={closeUpload} disabled={uploading} aria-label="Close upload"><X aria-hidden="true" /></button></header>
-        <p>{record.deal_code} · Choose files of any type for this folder. Files upload one at a time.</p>
+      <form className="sow-upload-form" onSubmit={upload}>
+        <header className="sow-upload-header"><div><h3>Upload files</h3><p className="sow-upload-subtitle">{record.deal_code} · Choose files of any type for this folder. Files upload one at a time.</p></div><button type="button" className="sow-icon" onClick={closeUpload} disabled={uploading} aria-label="Close upload"><X aria-hidden="true" /></button></header>
         {uploadBlockedReason && <p className="sow-message" role="status">{uploadBlockedReason} Your selected files are kept while this workspace stays open.</p>}
         {uploadError && <p className="sow-message sow-error" role="alert">{uploadError}</p>}
         {uploadDestinationNotice && <p className="sow-message" role="status">{uploadDestinationNotice}</p>}
-        <fieldset disabled={uploading}>
+        <fieldset className="sow-upload-fields" disabled={uploading}>
           {workspace?.radai_storage && <label>Save to<select value={uploadStorage} onChange={event => changeUploadDestination(uploadFolder, event.target.value)}><option value="radai">RADAI files</option><option value="sharepoint">SharePoint files</option></select></label>}
-          {uploadStorage === 'radai' && <p className="sow-muted">The attachment is saved in RADAI. SharePoint access is not required.</p>}
-          {uploadStorage === 'radai' && uploadSource?.automatic_compression === 'lossless_if_smaller' && <p className="sow-muted">Automatic lossless compression when it reduces file size. Downloads retain the original data.</p>}
-          <label>Destination folder<select value={uploadFolder} onChange={event => changeUploadDestination(event.target.value, uploadStorage)}>{WORKSPACE_FOLDERS.map(folder => <option key={folder.key} value={folder.key}>{folder.name}</option>)}</select></label>
-          <label>File<input ref={fileInput} type="file" multiple onChange={selectUploadFiles} /></label>
+          <div className="sow-upload-grid"><label>Destination folder<select value={uploadFolder} onChange={event => changeUploadDestination(event.target.value, uploadStorage)}>{WORKSPACE_FOLDERS.map(folder => <option key={folder.key} value={folder.key}>{folder.name}</option>)}</select></label><label>File<input ref={fileInput} type="file" multiple onChange={selectUploadFiles} /></label></div>
           {uploadLimit > 0 && <p className="sow-muted">Maximum file size: {fileSize(uploadLimit)}.</p>}
         </fieldset>
-        {!!uploadQueue.length && <ul className="sow-upload-queue" aria-label="Selected files">{uploadQueue.map(item => <li key={item.id} aria-label={item.file.name}>
+        {!!uploadQueue.length && <section className="sow-upload-selection"><div className="sow-upload-selection-head"><h4>Selected files</h4><span>{retainedUploads.length} pending</span></div><ul className="sow-upload-queue" aria-label="Selected files">{uploadQueue.map(item => <li key={item.id} aria-label={item.file.name}>
           <div className="sow-upload-file-heading"><p className="sow-selected-file">Selected: <strong>{item.file.name}</strong> · {fileSize(item.file.size)}</p>{item.status !== 'succeeded' && <button type="button" className="sow-icon" aria-label={`Remove ${item.file.name}`} disabled={uploading} onClick={() => { setUploadQueue(previous => previous.filter(current => current.id !== item.id)); setUploadError(''); }}><X aria-hidden="true" /></button>}</div>
           <span className={`sow-upload-state sow-upload-state-${item.status}`} role="status">{item.status === 'succeeded' ? `Uploaded to ${item.destination}` : item.status === 'failed' ? 'Needs retry' : item.status === 'processing' ? 'Processing on the server…' : item.status === 'uploading' ? item.progress == null ? 'Uploading…' : `Uploading ${item.progress}%` : 'Waiting'}</span>
           {['uploading', 'processing'].includes(item.status) && <progress aria-label={`Upload progress for ${item.file.name}`} max="100" {...(item.progress == null ? {} : { value: item.progress })} />}
           {item.error && <p className="sow-upload-file-error">{item.error}</p>}
           {item.status === 'succeeded' && item.result?.storage_encoding === 'gzip' && Number.isSafeInteger(item.result.stored_size) && <p className="sow-muted">Stored size: {fileSize(item.result.stored_size)} with lossless compression.</p>}
-        </li>)}</ul>}
-        <footer>{uploading && <button type="button" className="sor-button" disabled={stoppingUpload} onClick={() => { uploadStop.current = true; setStoppingUpload(true); }}>{stoppingUpload ? 'Stopping after this file…' : 'Stop after this file'}</button>}<button type="button" className="sor-button" onClick={closeUpload} disabled={uploading}>Cancel</button><button type="submit" className="sow-upload" disabled={!uploadOpen || !retainedUploads.length || uploading || !canSubmitUpload}><Upload aria-hidden="true" />{uploading ? 'Uploading…' : uploadError ? retainedUploads.length > 1 ? 'Retry remaining files' : 'Retry upload' : retainedUploads.length > 1 ? `Upload ${retainedUploads.length} files` : 'Upload file'}</button></footer>
+        </li>)}</ul></section>}
+        <footer className="sow-upload-footer">{uploading && <button type="button" className="sor-button" disabled={stoppingUpload} onClick={() => { uploadStop.current = true; setStoppingUpload(true); }}>{stoppingUpload ? 'Stopping after this file…' : 'Stop after this file'}</button>}<button type="button" className="sor-button" onClick={closeUpload} disabled={uploading}>Cancel</button><button type="submit" className="sow-upload" disabled={!uploadOpen || !retainedUploads.length || uploading || !canSubmitUpload}><Upload aria-hidden="true" />{uploading ? 'Uploading…' : uploadError ? retainedUploads.length > 1 ? 'Retry remaining files' : 'Retry upload' : retainedUploads.length > 1 ? `Upload ${retainedUploads.length} files` : 'Upload file'}</button></footer>
       </form>
     </dialog>
   </section>;

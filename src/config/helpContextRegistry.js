@@ -206,6 +206,74 @@ const SALES_CONTEXTS = {
   'project-handovers': salesContext('project-handover', 6),
 }
 
+const HMB_EXTRACTOR_CONTEXT = {
+  ...context({
+    id: 'engineering.hmb-extractor',
+    moduleCode: 'engineering',
+    moduleLabel: 'Engineering',
+    featureLabel: 'Engineering',
+    summary: 'Set up, validate, compare, and export project-scoped Heat & Material Balance case data.',
+    articles: [
+      article('hmb-workflow', 'HMB Extractor workflow', 'Follow the controlled path from project selection to an exported comparison workbook.', [
+        { heading: '1. Select the project', steps: ['Select or create the correct project before opening the extractor workspace.', 'Templates and imported records remain project-scoped and are available only to authorised project users.'] },
+        { heading: '2. Configure the mapping master', steps: ['Open Template setup and select an existing active master, or upload an XLSX or XLSM master workbook.', 'Review the detected streams, sections, properties, and alignment score before using the profile for case imports.', 'Avoid placeholder profiles with no mapped streams.'] },
+        { heading: '3. Analyse case files', steps: ['Upload up to 12 XLSX, XLSM, CSV, or PDF case files, each within the displayed size limit.', 'Choose whether to use only master streams or extract all source streams.', 'Analyse the files to create a reviewable preview; analysis alone does not import records.'] },
+        { heading: '4. Review and execute', steps: ['Confirm each detected case slot, mapping warning, blocking error, and sample value.', 'Select the review confirmation only after the preview is correct.', 'Execute the import explicitly. Replacing a case with the same assigned name requires separate replacement approval.'] },
+        { heading: '5. Compare and trace values', steps: ['Select a stream and review property values across imported cases.', 'Use Differences only and property filters to focus the table.', 'Select any value or source reference to inspect its workbook, worksheet, source cell, original value, and normalization status.'] },
+        { heading: '6. Export', steps: ['Save the required final XLSX output template in Template setup.', 'Resolve blocking duplicate conflicts and complete the required setup.', 'Choose the selected-stream or all-stream scope, then export the controlled workbook.'] },
+      ]),
+      article('hmb-template-columns', 'Templates and comparison columns', 'Understand how the master workbook controls alignment and presentation.', [
+        { heading: 'Master template', steps: ['The selected master defines the expected phase sections, property rows, engineering units, and stream identifiers.', 'Imported case values are normalized against this profile without changing the retained source evidence.', 'Sync streams from data only when imported source stream identifiers need to be added to the active profile.'] },
+        { heading: 'Comparison table', steps: ['Stream identifies the selected process stream.', 'Description comes from the active master when available.', 'Property and Unit identify the normalized attribute.', 'Each case column shows the imported value for that case.', 'Validation identifies missing values; Source opens retained extraction evidence.'] },
+        { heading: 'Final output template', steps: ['The final template is separate from the mapping master.', 'It defines the controlled workbook layout and available case slots used by final export.', 'Only XLSX output templates within the displayed upload limit are accepted.'] },
+      ]),
+      article('hmb-validation', 'Validation and review practices', 'Reduce mapping errors before committing case records.', [
+        { heading: 'Before analysis', steps: ['Confirm the active project and mapping master.', 'Use source files that belong to the same engineering basis and intended comparison.', 'Prefer structured XLSX or XLSM workbooks when available.'] },
+        { heading: 'Before import', steps: ['Check detected format, stream count, record count, case assignment, and all warnings.', 'Use a unique case slot for every file in the preview.', 'Do not execute while blocking mapping or unit errors remain.'] },
+        { heading: 'Before export', steps: ['Review missing attributes, unit conflicts, and duplicate extracted values.', 'Inspect source-cell evidence for unexpected values.', 'Confirm that the final output template is configured and that the chosen export scope is correct.'] },
+      ]),
+      article('hmb-troubleshooting', 'HMB troubleshooting', 'Resolve common setup, import, comparison, and export problems.', [
+        { heading: 'Analyse files is unavailable', steps: ['Confirm that a project is selected.', 'Open Template setup and select or analyse a mapping master.', 'Confirm at least one supported case file is selected.'] },
+        { heading: 'A section or stream is missing', steps: ['Verify that the case was imported under the intended mapping master.', 'Review the template canvas and alignment audit.', 'If required, enable Extract all source streams and analyse the files again before confirming a replacement import.'] },
+        { heading: 'Values or units do not align', steps: ['Open the source details from the comparison cell.', 'Compare the original source value and unit with the normalized value.', 'Correct the source or template mapping, then analyse and review again; do not treat a model result as engineering approval.'] },
+        { heading: 'Export is disabled', steps: ['Load a comparison with imported case records.', 'Configure the final XLSX output template.', 'Resolve blocking duplicate conflicts and retry the export.'] },
+      ]),
+      article('hmb-file-formats', 'Supported HMB file formats', 'Choose the correct source format for each stage.', [
+        { heading: 'Mapping master', steps: ['XLSX is the preferred mapping-master format.', 'XLSM is accepted for macro-enabled master workbooks.', 'CSV and PDF cannot be used as mapping masters.'] },
+        { heading: 'Case files', steps: ['XLSX and XLSM provide the most structured case mapping.', 'CSV is accepted for structured case data.', 'PDF is accepted for case intake and uses document extraction; review its mapped values carefully.'] },
+        { heading: 'Final output', steps: ['The controlled final output template must be XLSX.', 'The generated comparison is downloaded as an XLSX workbook.'] },
+      ]),
+    ],
+  }),
+  searchableArticles: true,
+  selectedArticleId: 'hmb-workflow',
+}
+
+const HMB_STREAM_CONSOLIDATOR_CONTEXT = {
+  ...context({
+    id: 'engineering.hmb-stream-table-consolidator',
+    moduleCode: 'engineering',
+    moduleLabel: 'Engineering',
+    featureLabel: 'HMB Stream Table Consolidator',
+    summary: 'Compare HYSYS stream-table workbooks locally, with an explicit option to save and reopen the generated comparison.',
+    articles: [
+      article('hmb-consolidator-workflow', 'Consolidator workflow', 'Import, review, compare, and export browser-session HMB data.', [
+        { heading: '1. Add case workbooks', steps: ['Add one XLSX, XLSM, XLS, or CSV workbook per operating case.', 'The browser detects classic, transposed, and supported multi-sheet HYSYS layouts.', 'Source workbooks and extracted values remain in this browser session.'] },
+        { heading: '2. Review extracted values', steps: ['Select a case from the case panel.', 'Include or exclude streams using the column checkboxes.', 'Select an extracted value to record a reviewed manual override; overrides are visibly flagged.'] },
+        { heading: '3. Compare cases', steps: ['Open Comparison to align streams by case-insensitive name.', 'Filter by stream or property and optionally show only differing rows.', 'Amber rows identify cross-case variation; missing properties remain explicitly blank.'] },
+        { heading: '4. Export', steps: ['Choose whether to include the summary sheet, variation formatting, and override formatting.', 'Download the generated XLSX workbook before closing or resetting the session.', 'Review the workbook before using it as an engineering deliverable.'] },
+        { heading: '5. Save and reopen', steps: ['Choose Save project workbook to store only the generated comparison in RADAI private storage.', 'Open Saved project workbook and select Open workbook to rebuild an editable Review session.', 'Reopening restores values from the saved comparison; excluded source-only values and prior override flags are not recreated.'] },
+      ]),
+      article('hmb-consolidator-privacy', 'Session data and privacy', 'Understand what this utility does and does not retain.', [
+        { heading: 'Processing and storage boundary', body: 'Source workbook parsing, review changes, comparison generation, and ordinary export happen in the browser. The backend is used only when you explicitly save the generated comparison workbook or reopen a saved project workbook.' },
+        { heading: 'Session limits', steps: ['Refreshing, closing, or resetting the page discards the active browser session unless its generated comparison was saved.', 'Use the existing HMB Extractor when project-scoped source evidence, controlled templates, or shared extracted records are required.'] },
+      ]),
+    ],
+  }),
+  searchableArticles: true,
+  selectedArticleId: 'hmb-consolidator-workflow',
+}
+
 const MODULE_CONTEXTS = {
   application: context({
     id: 'application.general', moduleCode: 'application', moduleLabel: 'RADAI', featureLabel: 'Application',
@@ -334,6 +402,8 @@ export const HELP_ROUTE_RULES = [
   { id: 'finance', test: path => path.startsWith('/finance/') || path === '/finance', resolve: () => MODULE_CONTEXTS.finance },
   { id: 'procurement', test: path => path.startsWith('/procurement/') || path === '/procurement', resolve: () => MODULE_CONTEXTS.procurement },
   { id: 'qhse', test: path => path.startsWith('/qhse/') || path === '/qhse', resolve: () => MODULE_CONTEXTS.qhse },
+  { id: 'hmb-stream-table-consolidator', test: path => path === '/engineering/process/hmb-stream-table-consolidator', resolve: () => HMB_STREAM_CONSOLIDATOR_CONTEXT },
+  { id: 'hmb-extractor', test: path => path === '/engineering/process/hmb-extractor', resolve: () => HMB_EXTRACTOR_CONTEXT },
   { id: 'engineering', test: path => path.startsWith('/engineering/'), resolve: () => MODULE_CONTEXTS.engineering },
   { id: 'pid-analysis', test: path => path.startsWith('/pid/'), resolve: () => MODULE_CONTEXTS.pid },
   { id: 'pfd-conversion', test: path => path.startsWith('/pfd/'), resolve: () => MODULE_CONTEXTS.pfd },
@@ -352,4 +422,4 @@ export function resolveHelpContext(pathname, search = '') {
   return rule?.resolve(searchParams, path) || MODULE_CONTEXTS.application
 }
 
-export { MODULE_CONTEXTS, PROJECT_CONTROL_CONTEXTS }
+export { HMB_EXTRACTOR_CONTEXT, MODULE_CONTEXTS, PROJECT_CONTROL_CONTEXTS }
