@@ -68,6 +68,11 @@ const RadAIChatWidget = () => {
   const [apiKey, setApiKey] = useState(() => readSS(CHAT_CFG.ssApiKey))
   const [useOwnKey, setUseOwnKey] = useState(() => readSS(CHAT_CFG.ssUseOwnKey) === '1')
   const [showKeyForm, setShowKeyForm] = useState(false)
+  // Key panel view: 'status' shows the active-key summary, 'entry' shows the
+  // input form.  MUST be separate state — keying the view off `apiKey` makes
+  // the form unmount on the FIRST typed character (apiKey becomes truthy),
+  // which made it impossible to enter a replacement key.
+  const [keyView, setKeyView] = useState('status')
 
   // Auto-select the provider that has a ready managed key (server-side), so
   // the widget never defaults to a provider with no configured credential
@@ -105,7 +110,10 @@ const RadAIChatWidget = () => {
   // key never flash the form.
   const providerStatusLoaded = providerStatus?.loading === false
   useEffect(() => {
-    if (open && providerStatusLoaded && !useManagedKey && !apiKey) setShowKeyForm(true)
+    if (open && providerStatusLoaded && !useManagedKey && !apiKey) {
+      setKeyView('entry')
+      setShowKeyForm(true)
+    }
   }, [open, providerStatusLoaded, useManagedKey, apiKey])
 
   // Stable per-tab conversation id for S3 archiving (survives re-renders,
@@ -170,6 +178,7 @@ const RadAIChatWidget = () => {
     // Saving a key while a managed key exists means the user wants THEIR key.
     setUseOwnKey(true)
     writeSS(CHAT_CFG.ssUseOwnKey, '1')
+    setKeyView('status')
     setShowKeyForm(false)
     toast.success('AI key saved for this session')
   }, [provider, apiKey])
@@ -185,11 +194,19 @@ const RadAIChatWidget = () => {
   const switchToManaged = useCallback(() => {
     setUseOwnKey(false)
     writeSS(CHAT_CFG.ssUseOwnKey, '')
+    setKeyView('status')
     setShowKeyForm(false)
     toast.info("Using the platform's managed key")
   }, [])
 
   if (!CHAT_CFG.enabled) return null
+
+  // Key panel mode: entry form / managed-key status / custom-key status.
+  // Driven by keyView (UI state), NOT by apiKey — otherwise the form unmounts
+  // on the first typed character.
+  const keyPanelMode = (keyView === 'entry' || (!apiKey && !useManagedKey)) ? 'entry'
+    : (useManagedKey && !useOwnKey) ? 'managed'
+    : 'active'
 
   const ctxSummary = context && (context.rows?.length || context.document?.name)
     ? `${context.page || 'This page'} · ${context.row_count ?? context.rows?.length ?? 0} rows${context.document?.name ? ` · ${context.document.name}` : ''}`
@@ -248,7 +265,10 @@ const RadAIChatWidget = () => {
               <div style={{ fontSize: 14, fontWeight: 800, lineHeight: 1.1 }}>{CHAT_CFG.title}</div>
               <div style={{ fontSize: 11, opacity: 0.9 }}>{CHAT_CFG.subtitle}</div>
             </div>
-            <button onClick={() => setShowKeyForm(v => !v)} title="AI key settings" aria-label="AI key settings"
+            <button onClick={() => {
+                if (!showKeyForm) setKeyView((!apiKey && !useManagedKey) ? 'entry' : 'status')
+                setShowKeyForm(v => !v)
+              }} title="AI key settings" aria-label="AI key settings"
               style={{ background: 'rgba(255,255,255,0.16)', border: 'none', borderRadius: 8, padding: 6, cursor: 'pointer', color: '#fff' }}>
               <KeyRound size={16} />
             </button>
@@ -280,13 +300,13 @@ const RadAIChatWidget = () => {
           {/* Key form (BYOK fallback) */}
           {showKeyForm && (
             <div style={{ padding: '12px 14px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
-              {useManagedKey && !useOwnKey ? (
+              {keyPanelMode === 'managed' ? (
                 <>
                   <div style={{ fontSize: 12, color: '#15803d', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
                     <KeyRound size={13} /> Using the platform's managed {provider === 'claude' ? 'Claude' : 'OpenAI'} key.
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <button onClick={() => setUseOwnKey(true)}
+                    <button onClick={() => { setUseOwnKey(true); setKeyView('entry') }}
                       style={{
                         flex: 1, padding: '7px 0', fontSize: 12, fontWeight: 700, cursor: 'pointer',
                         borderRadius: 8, border: `1px solid ${CHAT_CFG.accentFrom}`,
@@ -300,7 +320,7 @@ const RadAIChatWidget = () => {
                     </button>
                   </div>
                 </>
-              ) : apiKey ? (
+              ) : keyPanelMode === 'active' ? (
                 // A custom BYOK key is already active — show status + actions
                 // instead of the bare entry form (key stays hidden).
                 <>
@@ -308,7 +328,7 @@ const RadAIChatWidget = () => {
                     <KeyRound size={13} /> Using your {provider === 'claude' ? 'Claude' : 'OpenAI'} key — this session only.
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <button onClick={() => setApiKey('')}
+                    <button onClick={() => { setApiKey(''); setKeyView('entry') }}
                       style={{
                         flex: 1, padding: '7px 0', fontSize: 12, fontWeight: 700, cursor: 'pointer',
                         borderRadius: 8, border: 'none', color: '#fff',
@@ -371,7 +391,7 @@ const RadAIChatWidget = () => {
                       }}>
                       Save key
                     </button>
-                    <button onClick={() => { setApiKey(readSS(CHAT_CFG.ssApiKey)); setShowKeyForm(false) }}
+                    <button onClick={() => { setApiKey(readSS(CHAT_CFG.ssApiKey)); setKeyView('status'); setShowKeyForm(false) }}
                       style={{ padding: '7px 12px', fontSize: 12, cursor: 'pointer', borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', color: '#64748b' }}>
                       Cancel
                     </button>
