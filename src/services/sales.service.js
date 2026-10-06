@@ -252,6 +252,11 @@ class SalesService {
     return response.data;
   }
 
+  async deleteOpportunityWorkspaceFile(dealId, folderKey, fileId, { signal } = {}) {
+    const response = await apiClient.delete(`${BASE_URL}/deals/${encodeURIComponent(dealId)}/workspace/folders/${encodeURIComponent(folderKey)}/files/${encodeURIComponent(fileId)}/`, { ...EMAIL_REQUEST_OPTIONS, signal });
+    return response.data;
+  }
+
   async getOpportunityWorkspaceVersions(dealId, folderKey, fileId, cursor = null) {
     const response = await apiClient.get(`${BASE_URL}/deals/${encodeURIComponent(dealId)}/workspace/folders/${encodeURIComponent(folderKey)}/files/${encodeURIComponent(fileId)}/versions/`, { ...EMAIL_REQUEST_OPTIONS, params: cursor ? { cursor } : {} });
     return response.data;

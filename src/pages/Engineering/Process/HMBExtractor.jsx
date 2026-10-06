@@ -39,7 +39,8 @@ import apiClient from '../../../services/api.service';
 import { PROJECT_ORGANIZER_CONFIG } from '../../../config/projectOrganizer.config';
 import projectOrganizerService from '../../../services/projectOrganizerService';
 import { ProjectCard, ProjectFormModal, ProjectSwitcher, useActiveProject } from '../../../components/ProjectOrganizer';
-import HMBWorkflowDocs from './components/HMBWorkflowDocs';
+import './HMBExtractor.css';
+import HMBComparisonWorkspace from './components/HMBComparisonWorkspace';
 
 const ACTIVE_PROJECT_STORAGE_KEY = 'hmbExtractorActiveProject';
 
@@ -93,10 +94,9 @@ const CASE_UPLOAD_CFG = {
 
 // Soft-coded UI visibility toggles for page sections.
 const HMB_UI_CFG = {
+  referenceComparisonWorkspace: true,
   showSmartWorkflowManager: false,
   showUpdateCrossCheck: false,
-  // HMB Extractor Workflow diagram + Smart Documentation split-screen panel.
-  showWorkflowDocs: true,
 };
 
 // Soft-coded default template selection strategy.
@@ -199,6 +199,9 @@ const HMBExtractorPage = () => {
   const [outputBusy, setOutputBusy] = useState(false);
   const [outputError, setOutputError] = useState('');
   const [exportScope, setExportScope] = useState('selected');
+  const [comparisonQuery, setComparisonQuery] = useState('');
+  const [comparisonSection, setComparisonSection] = useState('all');
+  const [differencesOnly, setDifferencesOnly] = useState(false);
   const activeProjectIdRef = useRef(activeProject?.project_id);
   activeProjectIdRef.current = activeProject?.project_id;
   const selectionRef = useRef('');
@@ -1206,10 +1209,6 @@ const HMBExtractorPage = () => {
           Select or create a project before opening the extractor workspace.
         </p>
 
-        {/* ═══ HMB EXTRACTOR WORKFLOW + SMART DOCUMENTATION (guidance on the gate) ═══
-            Soft-coded: components/HMBWorkflowDocs.jsx (HMB_DOCS_CONFIG) */}
-        {HMB_UI_CFG.showWorkflowDocs && <HMBWorkflowDocs />}
-
         {activeProject && (
           <div style={{
             marginBottom: 14,
@@ -1295,7 +1294,41 @@ const HMBExtractorPage = () => {
     );
   }
 
-  // ── Active project selected: show the extractor with a switcher header ──
+  if (HMB_UI_CFG.referenceComparisonWorkspace) {
+    return (
+      <HMBComparisonWorkspace
+        context={{
+          activeProject, projects, loadingProjects, workspaceView, setWorkspaceView,
+          setActiveProject, clearActiveProject, setProjectConfirmed, navigate, showCreate, setShowCreate,
+          busy, handleCreate, caseFileInputRef, caseFiles, caseBusy, caseError,
+          caseNotice, caseAnalysisResult, caseAssignments, setCaseAssignments,
+          casePreviewConfirmed, setCasePreviewConfirmed, replaceExisting,
+          setReplaceExisting, extractAllStreams, setExtractAllStreams,
+          handleCaseFileSelection, handleAnalyzeCases, handleExecuteCases,
+          removeCaseFile, clearCaseFiles, projectCaseSlots, projectSummary,
+          casePreviewFileOptions, comparisonData, comparisonBusy, comparisonError,
+          comparisonStreamId, setComparisonStreamId, loadStreamComparison,
+          inspectedValue, setInspectedValue, exportScope, setExportScope,
+          exportStreamComparison, outputTemplate, outputTemplateFile,
+          setOutputTemplateFile, outputBusy, outputError, saveOutputTemplate,
+          templateProfiles, selectedTemplateProfileId, setSelectedTemplateProfileId,
+          loadingProfiles, templateAnalysis, setTemplateAnalysis, templateName,
+          setTemplateName, masterTemplateFile, setMasterTemplateFile, templateBusy,
+          templateError, setTemplateError, templateNotice, setTemplateNotice,
+          handleAnalyzeTemplate, handleSyncTemplateStreams, syncStreamsBusy,
+          templateCanvasModel, templateCanvasBusy, templateAlignmentAudit,
+          casePreviewName, setCasePreviewName, casePreviewResolvedName,
+          setCasePreviewResolvedName, casePreviewOptions, casePreviewBusy,
+          casePreviewError, loadCasePreview, exportTemplateCanvasExcel,
+          canvasExportError, reviewChecklist, importExceptions, caseImportResult,
+          comparisonQuery, setComparisonQuery, comparisonSection,
+          setComparisonSection, differencesOnly, setDifferencesOnly,
+        }}
+      />
+    );
+  }
+
+  // ── Legacy workspace fallback retained while the reference UI is active. ──
   return (
     <>
       <div style={{
@@ -1388,10 +1421,6 @@ const HMBExtractorPage = () => {
             })}
           </div>
         </div>
-
-        {/* ═══ HMB EXTRACTOR WORKFLOW + SMART DOCUMENTATION — V1 split-screen ═══
-            Soft-coded: components/HMBWorkflowDocs.jsx (HMB_DOCS_CONFIG) */}
-        {HMB_UI_CFG.showWorkflowDocs && <HMBWorkflowDocs />}
 
         <div
           style={{
