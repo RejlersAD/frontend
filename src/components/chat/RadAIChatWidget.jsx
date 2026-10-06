@@ -166,7 +166,19 @@ const RadAIChatWidget = () => {
       }
     } catch (err) {
       const msg = err?.response?.data?.error || 'The assistant could not answer. Check your AI key.'
-      setMessages(prev => [...prev, { role: 'assistant', content: `⚠️ ${msg}`, ts: Date.now(), error: true }])
+      // Auth failure (401): the credential in use was rejected. If the
+      // platform's managed key failed, push the user to their own BYOK key;
+      // if their own key failed, say so and reopen the form for replacement.
+      const authFailed = /401|authentication|credential/i.test(msg)
+      let display = msg
+      if (authFailed) {
+        display = useManagedKey
+          ? "⚠️ The platform's managed AI key was rejected (401). You can chat immediately by adding your own Claude/OpenAI key — opening the key settings."
+          : '⚠️ Your AI key was rejected (401 authentication). Please check it and enter a valid key — opening the key settings.'
+        setKeyView(apiKey ? 'status' : 'entry')
+        setShowKeyForm(true)
+      }
+      setMessages(prev => [...prev, { role: 'assistant', content: display.startsWith('⚠️') ? display : `⚠️ ${display}`, ts: Date.now(), error: true }])
     } finally {
       setBusy(false)
     }
