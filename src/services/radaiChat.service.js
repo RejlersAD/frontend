@@ -33,4 +33,36 @@ export async function askRadAIChat({ question, context = {}, history = [], provi
   return res.data
 }
 
-export default { askRadAIChat }
+// Soft-coded: conversation archive endpoint (project S3 data lake)
+const CHAT_ARCHIVE_ENDPOINT = '/pid-checker-v2/chat/archive/'
+const ARCHIVE_TIMEOUT_MS = 15000
+
+/**
+ * Archive the conversation transcript to the project's S3 archive.
+ * Fire-and-forget: resolves to {archived: bool} but never throws — archiving
+ * must never break the chat UX.
+ * @param {object} args
+ * @param {string} args.sessionId  stable per-tab conversation id
+ * @param {Array}  args.messages   [{role, content, ts}]
+ * @param {object} args.context    page context (project/page/document used)
+ */
+export async function archiveRadAIChat({ sessionId, messages = [], context = {} }) {
+  try {
+    const ctx = context || {}
+    const project = ctx.project?.code || ctx.project?.name || ctx.project?.id || ''
+    const res = await apiClient.post(CHAT_ARCHIVE_ENDPOINT, {
+      session_id: sessionId,
+      messages: messages.map(m => ({
+        role: m.role, content: String(m.content ?? ''), ts: m.ts,
+      })),
+      project: String(project || ''),
+      page: ctx.page || '',
+      document: ctx.document || null,
+    }, { timeout: ARCHIVE_TIMEOUT_MS, suppressErrorToast: true })
+    return res.data || { archived: false }
+  } catch {
+    return { archived: false }
+  }
+}
+
+export default { askRadAIChat, archiveRadAIChat }

@@ -17,7 +17,7 @@ import {
   MessageSquare, X, Send, Sparkles, Trash2, Minimize2, Loader2,
   KeyRound, FileText, Database, Bot, User as UserIcon,
 } from 'lucide-react'
-import { askRadAIChat } from '../../services/radaiChat.service'
+import { askRadAIChat, archiveRadAIChat } from '../../services/radaiChat.service'
 import apiClient from '../../services/api.service'
 import {
   getChatContext, subscribeChatContext, getChatContextVersion,
@@ -41,6 +41,11 @@ const CHAT_CFG = {
     { id: 'openai', label: 'OpenAI' },
   ],
   maxHistory: 20,           // turns kept in the panel + sent for continuity
+  // Conversation archiving to the project's S3 data lake (backend:
+  // pid_checker_v2 RadAIChatArchiveView → designiq s3_utils archive layout).
+  // Fire-and-forget after each completed exchange; never blocks the UI.
+  archiveEnabled: true,
+  ssSessionId: 'radai_chat_session_id',
   welcomeMessage:
     "Hi! I'm the RADAI assistant. Ask me anything about the data on this page — counts, specific tags, summaries, or what's in the uploaded document.",
 }
@@ -89,6 +94,15 @@ const RadAIChatWidget = () => {
   const hasManagedKey = Boolean(providerStatus?.managed && providerStatus?.ready)
   const needsKey = !hasManagedKey && !apiKey
 
+  // Stable per-tab conversation id for S3 archiving (survives re-renders,
+  // resets when the tab closes)
+  const sessionIdRef = useRef(null)
+  if (!sessionIdRef.current) {
+    sessionIdRef.current = readSS(CHAT_CFG.ssSessionId)
+      || `chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+    writeSS(CHAT_CFG.ssSessionId, sessionIdRef.current)
+  }
+
   const endRef = useRef(null)
   useEffect(() => subscribeChatContext(v => setCtxVersion(v)), [])
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, open])
@@ -113,12 +127,21 @@ const RadAIChatWidget = () => {
         provider,
         apiKey: hasManagedKey ? '' : apiKey,   // managed key resolves server-side
       })
-      setMessages(prev => [...prev, {
+      const assistantMsg = {
         role: 'assistant',
         content: res.answer || '(no answer)',
         ts: Date.now(),
         usage: res.token_usage,
-      }].slice(-CHAT_CFG.maxHistory))
+      }
+      setMessages(prev => [...prev, assistantMsg].slice(-CHAT_CFG.maxHistory))
+      // Archive the conversation to the project's S3 data lake (fire-and-forget)
+      if (CHAT_CFG.archiveEnabled) {
+        archiveRadAIChat({
+          sessionId: sessionIdRef.current,
+          messages: [...messages, userMsg, assistantMsg],
+          context,
+        })
+      }
     } catch (err) {
       const msg = err?.response?.data?.error || 'The assistant could not answer. Check your AI key.'
       setMessages(prev => [...prev, { role: 'assistant', content: `⚠️ ${msg}`, ts: Date.now(), error: true }])
