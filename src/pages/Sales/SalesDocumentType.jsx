@@ -30,7 +30,7 @@ export default function SalesDocumentType({ recordId, folderKey, file, onSaved }
       if (!alive.current) return;
       onSaved({ id: file.id, classification: result.classification });
       command.current = null; setStale(false); setDenied(false);
-      setNotice('Updated. Click AI to classify again.');
+      setNotice('Updated. Automatic classification is available to retry.');
     } catch (failure) { if (alive.current) setError(workspaceError(failure, 'Classification could not be refreshed. Please retry.')); }
     finally { running.current = false; if (alive.current) setBusy(false); }
   };
@@ -58,7 +58,7 @@ export default function SalesDocumentType({ recordId, folderKey, file, onSaved }
   return <div className="sdc-type-cell">
     <div className="sdc-type-actions" onClick={stop} onDoubleClick={stop}>
       <span className={`sdc-badge sdc-badge-${classificationTone(value?.color)}`} title={evidence || undefined}>{value?.label || 'Unclassified'}</span>
-      {value && <button type="button" className="sdc-ai-button" aria-label={`AI classify ${file.name}`} title={pending ? 'Classification is pending' : !value.can_retry ? 'Classification is unavailable with current access' : 'Suggest a document type using rules and configured AI'} disabled={busy || pending || stale || denied || !value.can_retry} onClick={event => { stop(event); classify(); }} onDoubleClick={stop}>{busy || pending ? <Loader2 className="sdc-spin" aria-hidden="true" /> : <Sparkles aria-hidden="true" />}</button>}
+      {value && <button type="button" className="sdc-ai-button" aria-label={`Automatically classify ${file.name}`} title={pending ? 'Automatic classification is pending' : !value.can_retry ? 'Classification is unavailable with current access' : 'Automatically classify from the filename, content and folder'} disabled={busy || pending || stale || denied || !value.can_retry} onClick={event => { stop(event); classify(); }} onDoubleClick={stop}>{busy || pending ? <Loader2 className="sdc-spin" aria-hidden="true" /> : <Sparkles aria-hidden="true" />}</button>}
     </div>
     <span className="sdc-type-state" role={busy || pending ? 'status' : undefined}>{busy ? 'Starting classification…' : classificationState(value)}</span>
     {error && <p className="sdc-inline-error" role="alert">{error}</p>}
@@ -132,6 +132,7 @@ export function SalesDocumentTag({ recordId, folderKey, file, onSaved }) {
   return <form className="sdc-tag-editor" aria-label={`Custom tag for ${file.name}`} onSubmit={save} onClick={stop} onDoubleClick={stop} onKeyDown={event => { stop(event); if (event.key === 'Escape') { event.preventDefault(); cancel(); } }}>
     <label className="sod-sr-only" htmlFor={inputId}>Custom tag for {file.name}</label>
     <input id={inputId} value={draft} onChange={event => setDraft(event.target.value)} maxLength={80} placeholder="Type a custom tag" disabled={busy} autoFocus />
+    {!!value?.intelligence?.tags?.length && <div className="sdc-tag-suggestions" aria-label="Automatic tag suggestions"><span>Suggestions:</span>{value.intelligence.tags.filter(tag => !tag.includes(':')).slice(0, 6).map(tag => <button key={tag} type="button" disabled={busy} onClick={() => setDraft(tag)}>{tag}</button>)}</div>}
     <div className="sdc-tag-actions"><button type="submit" aria-label={`Save custom tag for ${file.name}`} title="Save tag (Enter)" disabled={busy || stale || denied || !value?.can_edit}>{busy ? <Loader2 className="sdc-spin" aria-hidden="true" /> : <Check aria-hidden="true" />}</button><button type="button" aria-label={`Cancel custom tag for ${file.name}`} title="Cancel (Escape)" disabled={busy} onClick={cancel}><X aria-hidden="true" /></button></div>
     {error && <p className="sdc-inline-error" role="alert">{error}</p>}
     {(stale || denied) && <button type="button" className="sdc-inline-refresh" disabled={busy} onClick={refresh}>Refresh tag</button>}
