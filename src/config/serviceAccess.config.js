@@ -92,7 +92,7 @@ export const resolveRouteModule = (moduleCode, pathname, search = '') => {
 // to enter the Sales workspace; the API remains the authority for actions.
 export const isSalesDepartment = department => {
   const normalized = String(department || '').trim().toLowerCase().replace(/&/g, 'and').replace(/\s+/g, ' ');
-  return ['sales', 'sales and business development', 'sales business development'].includes(normalized);
+  return normalized === 'sales' || normalized.includes('sales') || normalized.includes('business development');
 };
 
 export const canAccessRouteModule = (codes, code, department = '') =>
