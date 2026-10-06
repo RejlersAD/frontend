@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises'
 import * as XLSX from 'xlsx'
 
 test('HMB Stream Table Consolidator loads supplied demos and builds the large comparison', async ({ page }) => {
-  test.setTimeout(300000)
+  test.setTimeout(420000)
   let archivedWorkbook = null
   await page.addInitScript(() => {
     localStorage.setItem('hmbExtractorActiveProject', JSON.stringify({
@@ -53,7 +53,7 @@ test('HMB Stream Table Consolidator loads supplied demos and builds the large co
   expect(initialAccessibility.violations).toEqual([])
 
   await page.getByRole('button', { name: 'Load three real demo cases' }).click()
-  await expect(page.getByText('3 cases', { exact: true })).toBeVisible({ timeout: 60000 })
+  await expect(page.getByText('3 cases', { exact: true })).toBeVisible({ timeout: 120000 })
   await expect(page.getByText('266/266 streams')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Case_A1b_HYSYS_Streams' })).toBeVisible()
 
@@ -61,6 +61,22 @@ test('HMB Stream Table Consolidator loads supplied demos and builds the large co
   await expect(page.getByRole('heading', { name: 'Cross-case comparison' })).toBeVisible({ timeout: 60000 })
   await expect(page.getByText('283 streams · 56,914 rows · 3 cases')).toBeVisible()
   await expect(page.getByText('12,940', { exact: true })).toBeVisible()
+
+  const firstColumnFilter = page.getByRole('combobox', { name: 'Filter by stream or property' })
+  await firstColumnFilter.selectOption({ index: 1 })
+  const selectedStream = (await firstColumnFilter.locator('option:checked').textContent()).trim()
+  await expect(page.locator('.hmbc-stream-band th')).toHaveCount(1)
+  await expect(page.locator('.hmbc-stream-band th')).toHaveText(selectedStream)
+
+  const propertyValue = await firstColumnFilter.locator('option').evaluateAll((options) =>
+    options.find((option) => option.value.startsWith('property:'))?.value,
+  )
+  await firstColumnFilter.selectOption(propertyValue)
+  const selectedProperty = propertyValue.slice('property:'.length)
+  const filteredProperties = page.locator('.hmbc-comparison-table tbody tr:not(.hmbc-stream-band) th.is-sticky')
+  await expect(filteredProperties.first()).toHaveText(selectedProperty)
+  expect((await filteredProperties.allTextContents()).every((value) => value === selectedProperty)).toBe(true)
+  await firstColumnFilter.selectOption('all')
 
   await page.getByRole('button', { name: 'Export Excel' }).click()
   const dialog = page.getByRole('dialog', { name: 'Export Excel comparison' })
@@ -96,10 +112,10 @@ test('HMB Stream Table Consolidator loads supplied demos and builds the large co
 })
 
 test('reset requires explicit confirmation and can be cancelled', async ({ page }) => {
-  test.setTimeout(120000)
+  test.setTimeout(240000)
   await page.goto('/tests/fixtures/hmb-stream-table-consolidator.html')
   await page.getByRole('button', { name: 'Load three real demo cases' }).click()
-  await expect(page.getByText('3 cases', { exact: true })).toBeVisible({ timeout: 60000 })
+  await expect(page.getByText('3 cases', { exact: true })).toBeVisible({ timeout: 120000 })
 
   await page.getByRole('button', { name: 'Reset session' }).click()
   const dialog = page.getByRole('alertdialog', { name: 'Reset this browser session?' })

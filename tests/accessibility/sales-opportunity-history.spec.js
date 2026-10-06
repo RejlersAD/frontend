@@ -66,6 +66,17 @@ async function prepare(page, options = {}) {
     }
     if (!url.pathname.startsWith('/api/v1/')) return route.continue()
     state.requests.push({ path: url.pathname, method: request.method() })
+    if (options.allowQualification && request.method() === 'POST' && url.pathname === `/api/v1/sales/deals/${recordId}/submit-qualification/`) {
+      state.record = { ...state.record, stage: 'qualified', stage_display: 'Qualified Lead' }
+      return route.fulfill({ json: {
+        success: true,
+        opportunity: structuredClone(state.record),
+        warnings: [{
+          field: 'required_attachment',
+          message: 'No attachment has been provided. You may continue with the submission.',
+        }],
+      } })
+    }
     if (request.method() !== 'GET') {
       state.unexpected.push(`${request.method()} ${url.pathname}`)
       return route.fulfill({ status: 405, json: { detail: 'This fixture allows reads only.' } })
@@ -241,4 +252,22 @@ test('readable history preserves existing qualification, close, edit and cancel 
   await expect(drawer(page)).not.toContainText('Unsaved local edit')
   await expect(history(page)).toBeVisible()
   clean(state)
+})
+
+test('qualification warning is non-blocking and the opportunity advances', async ({ page }) => {
+  const state = await prepare(page, { allowQualification: true })
+  await drawer(page).getByRole('button', { name: 'Submit qualification', exact: true }).click()
+  const qualification = page.getByRole('dialog', { name: 'Submit qualification', exact: true })
+  await qualification.getByRole('button', { name: 'Submit qualification', exact: true }).click()
+
+  await expect(page.getByText('No attachment has been provided. You may continue with the submission.')).toBeVisible()
+  await expect(drawer(page).getByRole('button', { name: 'Submit qualification', exact: true })).toHaveCount(0)
+  expect(state.record.stage).toBe('qualified')
+  expect(state.requests).toContainEqual({
+    path: `/api/v1/sales/deals/${recordId}/submit-qualification/`,
+    method: 'POST',
+  })
+  expect(state.errors).toEqual([])
+  expect(state.keyWarnings).toEqual([])
+  expect(state.unexpected).toEqual([])
 })

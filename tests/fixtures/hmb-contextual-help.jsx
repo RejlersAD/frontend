@@ -8,10 +8,10 @@ import { HelpContextProvider } from '../../src/components/help/HelpContext'
 import '../../src/index.css'
 
 createRoot(document.getElementById('root')).render(
-  <MemoryRouter initialEntries={['/engineering/process/hmb-extractor']}>
+  <MemoryRouter initialEntries={['/engineering/process/hmb-stream-table-consolidator']}>
     <HelpContextProvider>
       <main className="p-6">
-        <h1>HMB Extractor fixture</h1>
+        <h1>HMB Stream Table Consolidator fixture</h1>
         <ContextualHelpButton />
         <ContextualHelpDrawer />
       </main>

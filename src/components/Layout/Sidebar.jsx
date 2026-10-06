@@ -793,7 +793,7 @@ const Sidebar = ({
 
     // Check if user has the required module (soft-coded RBAC)
     if (item.moduleCode) {
-      return canAccessRouteModule(userModules, resolveRouteModule(item.moduleCode, item.path?.split('?')[0] || '', item.path?.split('?')[1] || ''));
+      return canAccessRouteModule(userModules, resolveRouteModule(item.moduleCode, item.path?.split('?')[0] || '', item.path?.split('?')[1] || ''), userData?.department);
     }
 
     // Items without moduleCode are accessible by default

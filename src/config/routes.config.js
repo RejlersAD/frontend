@@ -49,14 +49,8 @@ export const ROUTES = {
   PFD_QUALITY_CHECKER: '/engineering/process/pfd-quality',
 
   /**
-   * HMB Extractor
-   * Standalone Heat & Material Balance stream data extraction
-   */
-  HMB_EXTRACTOR: '/engineering/process/hmb-extractor',
-
-  /**
    * HMB Stream Table Consolidator
-   * Browser-only, session-scoped cross-case HYSYS workbook comparison
+   * Cross-case HYSYS workbook comparison with optional project archive
    */
   HMB_STREAM_TABLE_CONSOLIDATOR: '/engineering/process/hmb-stream-table-consolidator',
 
