@@ -34,6 +34,7 @@ import EquipmentListWorkflowDocs from './components/EquipmentListWorkflowDocs';
 import { PROJECT_ORGANIZER_CONFIG } from '../../../config/projectOrganizer.config';
 import projectOrganizerService from '../../../services/projectOrganizerService';
 import { ProjectCard, ProjectFormModal, useActiveProject } from '../../../components/ProjectOrganizer';
+import useRadaiChatPage from '../../../hooks/useRadaiChatPage';
 
 // ---------------------------------------------------------------------------
 // Soft-coded column definitions — add/remove columns here only.
@@ -577,6 +578,25 @@ const EquipmentList = () => {
   const pollTimerRef = useRef(null);
   const pollStartRef = useRef(null);
   const elapsedRef   = useRef(null);
+
+  // ── RADAI Chat context — publish extracted equipment rows so the floating
+  // assistant verifies/validates within THIS tool's data (profile: soft-coded
+  // in config/radaiChatPages.config.js → 'equipment_list'). Clears on unmount.
+  useRadaiChatPage('equipment_list', {
+    project: activeProject
+      ? { id: activeProject.project_id, name: activeProject.name || '', code: activeProject.code || '' }
+      : null,
+    document: files.length
+      ? { name: files.map(f => f.name).join(', '), type: 'P&ID PDF' }
+      : null,
+    columns: COLUMNS.map(c => ({ key: c.key, label: c.label })),
+    rows: results?.equipment || [],
+    rowCount: results?.equipment?.length || 0,
+    summary: results ? {
+      total_equipment: results.equipment?.length || 0,
+      drawing_ref: results.drawing_ref || '',
+    } : null,
+  });
 
   // ── Project Organizer — load projects + handlers (soft-coded via EQ_PROJECTS) ──
   useEffect(() => {
