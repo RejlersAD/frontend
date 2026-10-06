@@ -77,3 +77,23 @@ export function registerChatActionHandler(fn) {
 export function getChatActionHandler() {
   return _actionHandler
 }
+
+// ─── Chat file-upload handler (soft-coded, per page) ──────────────────────
+// A page registers ONE handler so the assistant's 📎 button can hand an
+// uploaded file (e.g. a P&ID PDF) straight into the page's own pipeline.
+let _uploadHandler = null
+
+/**
+ * Register the active page's chat-upload handler.
+ * @param {(file: File) => Promise<{ok: boolean, message?: string}>} fn
+ * @returns {() => void} unregister (call on unmount)
+ */
+export function registerChatUploadHandler(fn) {
+  _uploadHandler = fn
+  return () => { if (_uploadHandler === fn) _uploadHandler = null }
+}
+
+/** Current handler or null. */
+export function getChatUploadHandler() {
+  return _uploadHandler
+}

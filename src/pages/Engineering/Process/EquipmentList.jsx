@@ -35,7 +35,7 @@ import { PROJECT_ORGANIZER_CONFIG } from '../../../config/projectOrganizer.confi
 import projectOrganizerService from '../../../services/projectOrganizerService';
 import { ProjectCard, ProjectFormModal, useActiveProject } from '../../../components/ProjectOrganizer';
 import useRadaiChatPage from '../../../hooks/useRadaiChatPage';
-import { registerChatActionHandler } from '../../../services/chatContext.store';
+import { registerChatActionHandler, registerChatUploadHandler } from '../../../services/chatContext.store';
 
 // ---------------------------------------------------------------------------
 // Soft-coded column definitions — add/remove columns here only.
@@ -917,6 +917,29 @@ const EquipmentList = () => {
     );
     setIsProcessing(false);
   };
+
+  // ── RADAI Chat file upload — the assistant's 📎 button drops a P&ID into
+  // this page's own extraction pipeline and auto-starts it (soft-coded:
+  // profile `upload` in config/radaiChatPages.config.js).
+  const chatAutoExtractRef = useRef(false);
+  const handleExtractRef   = useRef(null);
+  handleExtractRef.current = handleExtract;
+  useEffect(() => registerChatUploadHandler(async (file) => {
+    if (!file?.name?.toLowerCase().endsWith('.pdf')) {
+      return { ok: false, message: 'Only PDF files are supported' };
+    }
+    chatAutoExtractRef.current = true;
+    setFiles([file]);
+    setResults(null);
+    setError(null);
+    return { ok: true, message: `Received "${file.name}" — starting extraction…` };
+  }), []);
+  useEffect(() => {
+    if (chatAutoExtractRef.current && files.length && !isProcessing) {
+      chatAutoExtractRef.current = false;
+      handleExtractRef.current?.();
+    }
+  }, [files, isProcessing]);
 
   // Sorted + filtered rows
   const displayRows = React.useMemo(() => {

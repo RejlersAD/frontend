@@ -15,13 +15,13 @@ import { createPortal } from 'react-dom'
 import { toast } from 'react-toastify'
 import {
   MessageSquare, X, Send, Sparkles, Trash2, Minimize2, Loader2,
-  KeyRound, FileText, Database, Bot, User as UserIcon,
+  KeyRound, FileText, Database, Bot, User as UserIcon, Paperclip,
 } from 'lucide-react'
 import { askRadAIChat, archiveRadAIChat } from '../../services/radaiChat.service'
 import apiClient from '../../services/api.service'
 import {
   getChatContext, subscribeChatContext, getChatContextVersion,
-  getChatActionHandler,
+  getChatActionHandler, getChatUploadHandler,
 } from '../../services/chatContext.store'
 import useAIProviderStatus from '../../hooks/useAIProviderStatus'
 
@@ -180,8 +180,10 @@ const RadAIChatWidget = () => {
     if (el) el.scrollTop = el.scrollHeight
   }, [messages, open])
 
-  const send = useCallback(async () => {
-    const question = input.trim()
+  const send = useCallback(async (overrideText) => {
+    // overrideText lets soft-coded quick-action chips send a preset prompt
+    // (events passed by onClick are objects — never treat them as text).
+    const question = (typeof overrideText === 'string' ? overrideText : input).trim()
     if (!question || busy) return
     if (needsKey) { setShowKeyForm(true); toast.warn('Add your AI key to chat (or ask an admin to configure one).'); return }
 
@@ -295,6 +297,39 @@ const RadAIChatWidget = () => {
       toast.error('Failed to apply the change')
     }
   }, [messages])
+
+  // 📎 Chat file upload — handed to the active page's registered handler
+  // (soft-coded: page profiles declare `upload`, pages register via
+  // registerChatUploadHandler). The widget never processes the file itself.
+  const fileInputRef = useRef(null)
+  const [uploadBusy, setUploadBusy] = useState(false)
+  const handleChatFile = useCallback(async (file) => {
+    if (!file) return
+    const handler = getChatUploadHandler()
+    if (!handler) {
+      toast.warn('This page does not accept files from the assistant')
+      return
+    }
+    setUploadBusy(true)
+    setMessages(prev => [...prev, { role: 'user', content: `📎 ${file.name}`, ts: Date.now() }].slice(-CHAT_CFG.maxHistory))
+    try {
+      const res = await handler(file)
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: res?.ok
+          ? `📎 ${res.message || `Received "${file.name}"`}`
+          : `⚠️ ${res?.message || `Could not use "${file.name}" on this page`}`,
+        ts: Date.now(), error: !(res?.ok),
+      }].slice(-CHAT_CFG.maxHistory))
+      if (res?.ok) toast.success(res.message || 'File received')
+      else toast.warn(res?.message || 'File not accepted')
+    } catch (e) {
+      setMessages(prev => [...prev, { role: 'assistant', content: `⚠️ Upload failed: ${String(e?.message || e).slice(0, 120)}`, ts: Date.now(), error: true }].slice(-CHAT_CFG.maxHistory))
+    } finally {
+      setUploadBusy(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }, [])
 
   if (!CHAT_CFG.enabled) return null
 
@@ -583,7 +618,51 @@ const RadAIChatWidget = () => {
 
           {/* Input */}
           <div style={{ padding: '10px 12px', borderTop: '1px solid #e2e8f0', flexShrink: 0, background: '#fff' }}>
+            {/* Quick actions — soft-coded per page profile (verify/recommend) */}
+            {Array.isArray(context?.quick_actions) && context.quick_actions.length > 0 && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                {context.quick_actions.map(qa => (
+                  <button key={qa.id} onClick={() => send(qa.prompt)} disabled={busy}
+                    title={qa.label}
+                    style={{
+                      padding: '5px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                      borderRadius: 999, border: '1px solid rgba(59,130,246,0.35)',
+                      background: 'rgba(59,130,246,0.06)', color: '#1d4ed8',
+                      opacity: busy ? 0.5 : 1,
+                    }}>
+                    {qa.label}
+                  </button>
+                ))}
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+              {/* 📎 upload (soft-coded per page profile `upload`) */}
+              {context?.upload?.enabled && (
+                <>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept={context.upload.accept || ''}
+                    style={{ display: 'none' }}
+                    onChange={e => handleChatFile(e.target.files?.[0])}
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadBusy || busy}
+                    aria-label="Upload file"
+                    title={`Upload ${context.upload.note || 'file'} to this page`}
+                    style={{
+                      width: 40, height: 40, borderRadius: 10, cursor: 'pointer', flexShrink: 0,
+                      border: '1px solid #e2e8f0', background: '#f8fafc',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      opacity: (uploadBusy || busy) ? 0.5 : 1,
+                    }}>
+                    {uploadBusy
+                      ? <Loader2 size={16} color="#64748b" style={{ animation: 'spin 1s linear infinite' }} />
+                      : <Paperclip size={16} color="#475569" />}
+                  </button>
+                </>
+              )}
               <textarea
                 value={input}
                 onChange={e => setInput(e.target.value)}

@@ -41,6 +41,8 @@ export default function useRadaiChatPage(profileKey, {
       domain_prompt: profile.domainPrompt,   // backend: appended to grounding
       row_name: profile.rowName,
       actions: profile.actions || null,      // edit-control ops (see config)
+      quick_actions: profile.quickActions || null,  // one-tap chips in the chat
+      upload: profile.upload || null,        // 📎 chat file upload capability
       project,
       document,
       columns,
