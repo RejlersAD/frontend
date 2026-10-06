@@ -597,6 +597,7 @@ const EquipmentList = () => {
       total_equipment: results.equipment?.length || 0,
       drawing_ref: results.drawing_ref || '',
     } : null,
+    documentExcerpt: results?.document_excerpt || '',
   });
 
   // ── RADAI Chat edit control — the assistant can PROPOSE row edits
@@ -784,7 +785,7 @@ const EquipmentList = () => {
           clearTimeout(pollTimerRef.current);
           apiClient.get(`/pid/equipment/results/${uploadId}/`)
             .then(({ data: r }) => {
-              setResults({ equipment: r.equipment, total: r.total, drawing_ref: r.drawing_ref, upload_id: uploadId });
+              setResults({ equipment: r.equipment, total: r.total, drawing_ref: r.drawing_ref, upload_id: uploadId, document_excerpt: r.document_excerpt || '' });
               setSelectedRows(new Set());
               setProgress(100);
               setStatusMessage('Extraction complete!');
@@ -832,6 +833,13 @@ const EquipmentList = () => {
     } else {
       formData.append('file', files[0]);
     }
+    // Soft-coded project label — backend archives the source P&ID, extracted
+    // equipment JSON, legend format and document text to the project's S3
+    // archive (radai_projects/<project>/…).
+    if (activeProject) {
+      formData.append('project_code', activeProject.code || '');
+      formData.append('project_name', activeProject.name || '');
+    }
 
     const token   = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
     let lastErr   = null;
@@ -870,7 +878,7 @@ const EquipmentList = () => {
 
         // Synchronous result (HTTP 200)
         if (data.success && data.equipment !== undefined) {
-          setResults({ equipment: data.equipment, total: data.total, drawing_ref: data.drawing_ref, upload_id: data.upload_id });
+          setResults({ equipment: data.equipment, total: data.total, drawing_ref: data.drawing_ref, upload_id: data.upload_id, document_excerpt: data.document_excerpt || '' });
           setSelectedRows(new Set());
           if (data.debug_info) setDebugInfo(data.debug_info);
           setProgress(100);
