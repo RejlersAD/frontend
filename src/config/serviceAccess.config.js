@@ -88,7 +88,11 @@ export const resolveRouteModule = (moduleCode, pathname, search = '') => {
   if (moduleCode === 'project_control' && (new URLSearchParams(search).get('view') === 'plan-baseline' || pathname.startsWith('/planning-'))) return 'planning_package';
   return moduleCode;
 };
-export const canAccessRouteModule = (codes, code) => hasAssignedModule(codes, code);
+// Sales is one business area. A user granted any Sales service must be able
+// to enter the Sales workspace; the API remains the authority for actions.
+export const canAccessRouteModule = (codes, code) =>
+  hasAssignedModule(codes, code) ||
+  (String(code).startsWith('sales_') && codes.some(item => String(item).startsWith('sales_')));
 
 export const viewableModuleCodes = (profile) => (profile?.modules || [])
   .filter(module => profile.module_actions?.[module.code]?.includes('read'))
