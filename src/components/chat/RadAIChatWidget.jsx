@@ -129,8 +129,16 @@ const RadAIChatWidget = () => {
   }
 
   const endRef = useRef(null)
+  const listRef = useRef(null)
   useEffect(() => subscribeChatContext(v => setCtxVersion(v)), [])
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, open])
+  // Scroll ONLY the message list — never scrollIntoView: on a portaled,
+  // fixed-position panel it also scrolls every scrollable ancestor including
+  // the main page, which made page content (e.g. extraction results)
+  // "disappear" when the assistant was opened.
+  useEffect(() => {
+    const el = listRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [messages, open])
 
   const send = useCallback(async () => {
     const question = input.trim()
@@ -423,7 +431,7 @@ const RadAIChatWidget = () => {
           )}
 
           {/* Messages */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '14px 14px 8px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div ref={listRef} style={{ flex: 1, overflowY: 'auto', padding: '14px 14px 8px', display: 'flex', flexDirection: 'column', gap: 10 }}>
             {messages.map((m, i) => (
               <div key={m.ts + '-' + i} style={{
                 display: 'flex', gap: 8, alignItems: 'flex-start',
