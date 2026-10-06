@@ -36,6 +36,7 @@ const CHAT_CFG = {
   // server key is preferred — these are only a fallback for unmanaged setups.
   ssProvider: 'radai_chat_byok_provider',
   ssApiKey: 'radai_chat_byok_apikey',
+  ssUseOwnKey: 'radai_chat_byok_use_own',   // '1' = user opted to override the managed key
   providers: [
     { id: 'claude', label: 'Claude' },
     { id: 'openai', label: 'OpenAI' },
@@ -61,9 +62,11 @@ const RadAIChatWidget = () => {
     { role: 'assistant', content: CHAT_CFG.welcomeMessage, ts: Date.now() },
   ])
 
-  // BYOK fallback (only used when the platform has no managed key)
+  // BYOK fallback (only used when the platform has no managed key — or when
+  // the user explicitly opts to use their own key instead)
   const [provider, setProvider] = useState(() => readSS(CHAT_CFG.ssProvider) || 'claude')
   const [apiKey, setApiKey] = useState(() => readSS(CHAT_CFG.ssApiKey))
+  const [useOwnKey, setUseOwnKey] = useState(() => readSS(CHAT_CFG.ssUseOwnKey) === '1')
   const [showKeyForm, setShowKeyForm] = useState(false)
 
   // Auto-select the provider that has a ready managed key (server-side), so
@@ -89,10 +92,12 @@ const RadAIChatWidget = () => {
   const [ctxVersion, setCtxVersion] = useState(getChatContextVersion())
   const context = useMemo(() => getChatContext(), [ctxVersion]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Managed-key readiness (server-side). canUseAI true → no BYOK key needed.
+  // Managed-key readiness (server-side). A user's saved custom key takes
+  // precedence only when they explicitly opted in (useOwnKey).
   const providerStatus = useAIProviderStatus(provider)
   const hasManagedKey = Boolean(providerStatus?.managed && providerStatus?.ready)
-  const needsKey = !hasManagedKey && !apiKey
+  const useManagedKey = hasManagedKey && !(useOwnKey && apiKey)
+  const needsKey = !useManagedKey && !apiKey
 
   // Auto-open the BYOK setup when the panel opens and no usable key exists —
   // the header key icon alone was too subtle and users never found it.
@@ -100,8 +105,8 @@ const RadAIChatWidget = () => {
   // key never flash the form.
   const providerStatusLoaded = providerStatus?.loading === false
   useEffect(() => {
-    if (open && providerStatusLoaded && !hasManagedKey && !apiKey) setShowKeyForm(true)
-  }, [open, providerStatusLoaded, hasManagedKey, apiKey])
+    if (open && providerStatusLoaded && !useManagedKey && !apiKey) setShowKeyForm(true)
+  }, [open, providerStatusLoaded, useManagedKey, apiKey])
 
   // Stable per-tab conversation id for S3 archiving (survives re-renders,
   // resets when the tab closes)
@@ -134,7 +139,7 @@ const RadAIChatWidget = () => {
         context: context || {},
         history,
         provider,
-        apiKey: hasManagedKey ? '' : apiKey,   // managed key resolves server-side
+        apiKey: useManagedKey ? '' : apiKey,   // managed key resolves server-side unless the user opted into their own
       })
       const assistantMsg = {
         role: 'assistant',
@@ -157,19 +162,31 @@ const RadAIChatWidget = () => {
     } finally {
       setBusy(false)
     }
-  }, [input, busy, needsKey, messages, context, provider, apiKey, hasManagedKey])
+  }, [input, busy, needsKey, messages, context, provider, apiKey, useManagedKey])
 
   const saveKey = useCallback(() => {
     writeSS(CHAT_CFG.ssProvider, provider)
     writeSS(CHAT_CFG.ssApiKey, apiKey.trim())
+    // Saving a key while a managed key exists means the user wants THEIR key.
+    setUseOwnKey(true)
+    writeSS(CHAT_CFG.ssUseOwnKey, '1')
     setShowKeyForm(false)
     toast.success('AI key saved for this session')
   }, [provider, apiKey])
 
   const clearKey = useCallback(() => {
     writeSS(CHAT_CFG.ssApiKey, '')
+    writeSS(CHAT_CFG.ssUseOwnKey, '')
     setApiKey('')
+    setUseOwnKey(false)
     toast.info('AI key removed')
+  }, [])
+
+  const switchToManaged = useCallback(() => {
+    setUseOwnKey(false)
+    writeSS(CHAT_CFG.ssUseOwnKey, '')
+    setShowKeyForm(false)
+    toast.info("Using the platform's managed key")
   }, [])
 
   if (!CHAT_CFG.enabled) return null
@@ -263,10 +280,26 @@ const RadAIChatWidget = () => {
           {/* Key form (BYOK fallback) */}
           {showKeyForm && (
             <div style={{ padding: '12px 14px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
-              {hasManagedKey ? (
-                <div style={{ fontSize: 12, color: '#15803d', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <KeyRound size={13} /> Using the platform's managed {provider === 'claude' ? 'Claude' : 'OpenAI'} key — nothing to enter.
-                </div>
+              {useManagedKey && !useOwnKey ? (
+                <>
+                  <div style={{ fontSize: 12, color: '#15803d', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                    <KeyRound size={13} /> Using the platform's managed {provider === 'claude' ? 'Claude' : 'OpenAI'} key.
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button onClick={() => setUseOwnKey(true)}
+                      style={{
+                        flex: 1, padding: '7px 0', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                        borderRadius: 8, border: `1px solid ${CHAT_CFG.accentFrom}`,
+                        background: '#fff', color: CHAT_CFG.accentFrom,
+                      }}>
+                      Use my own key instead
+                    </button>
+                    <button onClick={() => setShowKeyForm(false)}
+                      style={{ padding: '7px 12px', fontSize: 12, cursor: 'pointer', borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', color: '#64748b' }}>
+                      Close
+                    </button>
+                  </div>
+                </>
               ) : apiKey ? (
                 // A custom BYOK key is already active — show status + actions
                 // instead of the bare entry form (key stays hidden).
@@ -287,10 +320,17 @@ const RadAIChatWidget = () => {
                       style={{ padding: '7px 12px', fontSize: 12, cursor: 'pointer', borderRadius: 8, border: '1px solid #fecaca', background: '#fff', color: '#dc2626' }}>
                       Remove
                     </button>
-                    <button onClick={() => setShowKeyForm(false)}
-                      style={{ padding: '7px 12px', fontSize: 12, cursor: 'pointer', borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', color: '#64748b' }}>
-                      Close
-                    </button>
+                    {hasManagedKey ? (
+                      <button onClick={switchToManaged}
+                        style={{ padding: '7px 12px', fontSize: 12, cursor: 'pointer', borderRadius: 8, border: '1px solid #bbf7d0', background: '#f0fdf4', color: '#15803d' }}>
+                        Use platform key
+                      </button>
+                    ) : (
+                      <button onClick={() => setShowKeyForm(false)}
+                        style={{ padding: '7px 12px', fontSize: 12, cursor: 'pointer', borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', color: '#64748b' }}>
+                        Close
+                      </button>
+                    )}
                   </div>
                 </>
               ) : (
@@ -335,6 +375,12 @@ const RadAIChatWidget = () => {
                       style={{ padding: '7px 12px', fontSize: 12, cursor: 'pointer', borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', color: '#64748b' }}>
                       Cancel
                     </button>
+                    {hasManagedKey && (
+                      <button onClick={switchToManaged}
+                        style={{ padding: '7px 12px', fontSize: 12, cursor: 'pointer', borderRadius: 8, border: '1px solid #bbf7d0', background: '#f0fdf4', color: '#15803d' }}>
+                        Use platform key
+                      </button>
+                    )}
                   </div>
                 </>
               )}
