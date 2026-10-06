@@ -274,7 +274,19 @@ export default function LegendSheetsModal({
           }
         }
       }
-      setLegends(filteredRows)
+      // Diff before setState — background polls/syncs return identical data
+      // most of the time. Replacing the array unconditionally created new
+      // references on every poll, re-rendering the list + editor and making
+      // the uploaded-file thumbnails visibly shake every 15s. Returning the
+      // previous reference when nothing changed skips that render entirely.
+      setLegends(prev => {
+        const next = filteredRows
+        const same = prev.length === next.length
+          && prev.every((p, i) => p.legend_id === next[i]?.legend_id
+            && p.updated_at === next[i]?.updated_at
+            && p.is_active === next[i]?.is_active)
+        return same ? prev : next
+      })
       // Clear selection when switching sections so the editor doesn't show a
       // stale legend belonging to a different section. Only do this for a
       // user-driven load (tab click / modal open) — a silent background
@@ -293,7 +305,7 @@ export default function LegendSheetsModal({
         onActiveChange(active)
       }
     } catch (err) {
-      toast.error('Failed to load legends')
+      if (!silent) toast.error('Failed to load legends')
     } finally {
       if (!silent) setLoading(false)
     }
@@ -1078,22 +1090,48 @@ function FormEditor({ definition, onChange, onError, jsonError, activeSection, s
   // active section's lookup names this project hasn't uploaded its own
   // image for — keyed by the raw symbol name (matches the batch request).
   const [defaultImages, setDefaultImages] = useState({})
-  useEffect(() => {
+
+  // Memoize the SET of names we actually need to fetch. Without this the
+  // effect refires on every keystroke in the JSON editor (`definition` is a
+  // string that changes per keystroke), refetching + re-setting images and
+  // making the uploaded-symbol thumbnails visibly flicker/shake.
+  const neededNamesKey = useMemo(() => {
     const parsed = parseDefinitionSafely(definition)
     const names = []
     for (const f of (parsed?.fields || [])) {
       for (const value of Object.values(f.lookup || {})) {
         const key = `${activeSection}::${normaliseSymbolName(value)}`
-        if (!symbolImages?.[key]) names.push(value)
+        if (!symbolImages?.[key]) names.push(normaliseSymbolName(value))
       }
     }
-    if (names.length === 0) { setDefaultImages({}); return undefined }
+    // Sorted join → stable key that only changes when the name SET changes.
+    return Array.from(new Set(names)).sort().join('|')
+  }, [activeSection, definition, symbolImages])
+
+  useEffect(() => {
+    if (!neededNamesKey) {
+      // Only clear if there's something to clear (avoid a redundant render).
+      setDefaultImages(prev => (Object.keys(prev).length ? {} : prev))
+      return undefined
+    }
+    const names = neededNamesKey.split('|')
     let cancelled = false
     getDefaultSymbolImages(activeSection, names)
-      .then((data) => { if (!cancelled) setDefaultImages(data?.results || {}) })
-      .catch(() => { if (!cancelled) setDefaultImages({}) })
+      .then((data) => {
+        if (cancelled) return
+        const next = data?.results || {}
+        // Diff — skip the state update (and the re-render/flicker) when the
+        // fetched map is identical to what we already have.
+        setDefaultImages(prev => {
+          const pKeys = Object.keys(prev)
+          const nKeys = Object.keys(next)
+          const same = pKeys.length === nKeys.length && nKeys.every(k => prev[k] === next[k])
+          return same ? prev : next
+        })
+      })
+      .catch(() => { if (!cancelled) setDefaultImages(prev => (Object.keys(prev).length ? {} : prev)) })
     return () => { cancelled = true }
-  }, [activeSection, definition, symbolImages])
+  }, [activeSection, neededNamesKey])
 
   // Scroll positions captured just before a symbol cell is clicked, so the
   // "Right: editor" pane (and any scrollable ancestor up to it) can be

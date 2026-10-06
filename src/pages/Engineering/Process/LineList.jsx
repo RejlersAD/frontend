@@ -29,6 +29,7 @@
  */
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { DocumentTextIcon, CloudArrowUpIcon, CheckCircleIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon, BookOpenIcon, Cog6ToothIcon } from '@heroicons/react/24/outline';
 import apiClient from '../../../services/api.service';
 import * as XLSX from 'xlsx';
@@ -38,6 +39,7 @@ import LineListWorkflowDocs from './components/LineListWorkflowDocs';
 import LegendSheetsModal from './components/LegendSheetsModal';
 import ProjectLegendPanel from '../../../components/Engineering/ProjectLegendPanel';
 import { listLegends } from '../../../services/pidCheckerV2API';
+import { publishChatContext, clearChatContext } from '../../../services/chatContext.store';
 import { getApiBaseUrl } from '../../../config/environment.config';
 import { STORAGE_KEYS } from '../../../config/app.config';
 // Shared Project Organizer — soft-coded workspace (same pattern as HMB Extractor)
@@ -59,9 +61,10 @@ const POLL_INTERVAL_MS   = Number(API_CONFIG.retry_delay)              || 3000;
 
 // Maximum total polling window — give up after this (ms)
 // SOFT-CODED: environments.json → api.timeout_extraction_poll
-// Default 60 min — Railway OCR on dense multi-page P&IDs can take 30-45 min.
+// Default 100 min — dense/scanned multi-page P&IDs (25+ pages) can exceed 60 min.
+// Must stay >= backend DESIGNIQ_TASK_HARD_LIMIT (Celery, 6000 s).
 // Change this in environments.json without touching code.
-const POLL_MAX_WAIT_MS   = Number(API_CONFIG.timeout_extraction_poll)  || 3600000;  // 60 min
+const POLL_MAX_WAIT_MS   = Number(API_CONFIG.timeout_extraction_poll)  || 6000000;  // 100 min
 
 // Timeout for the initial filing POST (upload + broker dispatch, NOT OCR time).
 // Uses AbortController so it cannot be bypassed by Axios instance settings.
@@ -96,6 +99,7 @@ const FORMAT_OPTIONS = [
   { value: 'offshore',   label: 'Offshore',               hint: 'AREA-FLUID-SIZE-CLASS-SEQ'         },
   { value: 'general',    label: 'General (Auto-detect)',  hint: 'Tries all formats automatically'   },
   { value: 'adnoc',      label: 'SIZE\"-FLUID-CLASS-SEQ', hint: 'ADNOC / compact format'           },
+  { value: 'linelist',   label: 'Line List',              hint: 'SIZE-UNIT-FLUID-SERIAL-CLASS-COAT (Phase 2)' },
 ];
 
 // Soft-coded table columns — key maps directly to row fields.
@@ -195,6 +199,44 @@ const LL_HEADER_STYLE = 'v1';
 const LL_SHOW_FORMATS_REFERENCE = false;   // "Supported Line Number Formats" card — hidden
 const LL_SHOW_WHAT_GETS_EXTRACTED = false; // "What Gets Extracted" info panel — hidden
 
+// SOFT-CODED: upload rules — shown in the "Before you upload" card on the
+// upload step AND enforced client-side (page count) + server-side
+// (BASE_EXTRACTION_MAX_PAGES in designiq/views.py — keep both in sync).
+const LL_UPLOAD_RULES = {
+  enabled: true,
+  maxPages: 12,                 // hard cap — matches backend BASE_EXTRACTION_MAX_PAGES
+  title: 'Before you upload',
+  rules: [
+    { icon: '📄', text: 'Upload a maximum of {maxPages} pages per P&ID document. Split larger packages into single-sheet or smaller PDFs.' },
+    { icon: '🧭', text: 'Line tags at any angle are supported (horizontal and vertical).' },
+  ],
+  formatsTitle: 'Supported Line List formats',
+  formats: [
+    { key: 'a', label: 'Phase 1',            pattern: 'XX-XX-XXXX-XXXX-X' },
+    { key: 'b', label: 'Phase 2 (Line List)', pattern: 'XX-XX-XX-AXXXX-XXXXXXX-XX' },
+  ],
+  // Item c — BYOK note for the RADAI Assistant
+  assistantNote: {
+    key: 'c',
+    icon: '🔑',
+    label: 'RADAI Assistant (optional)',
+    text: 'To verify & validate results with the RADAI Assistant, you need your own Claude or OpenAI API key.',
+  },
+};
+
+// Count PDF pages client-side (dependency-free heuristic: counts page
+// objects in the raw file). Returns null when the count can't be read.
+const countPdfPages = async (file) => {
+  try {
+    const buf = await file.arrayBuffer();
+    const text = new TextDecoder('latin1').decode(buf);
+    const matches = text.match(/\/Type\s*\/Page(?![sA-Za-z])/g);
+    return matches ? matches.length : null;
+  } catch {
+    return null;
+  }
+};
+
 // V1-style light header config (mirrors PIDVerification.jsx header constants)
 const LL_HEADER = {
   icon:         'doc',          // 'doc' | 'layers' — header icon tile
@@ -276,7 +318,7 @@ const LL_PROC_TIP_ROTATE_MS = 5000;
 // CLL / PFD Quality Checker.  Flip `enabled: false` to hide without
 // touching JSX.  Line List only consumes PDFs.
 const LL_AI_ASSIST_CONFIG = {
-  enabled:         true,
+  enabled:         false,   // "AI Document Assist" section hidden — flip to true to restore
   title:           'AI Document Assist',
   subtitleTag:     '(Wrench · optional)',
   subtitle:        'Let RAD AI pick & recommend the right P&ID PDF for this Line List from Wrench DMS',
@@ -354,6 +396,15 @@ const LineList = () => {
     } catch { /* non-fatal — legend is optional */ }
   }, []);
 
+  // Stable handler for the modal's active-legend callback. MUST be a
+  // useCallback — an inline arrow here is a new reference every render, which
+  // retriggers the modal's refresh effect (its `refresh` depends on this) and
+  // caused the legends endpoint to be hammered in a loop ("bouncing" UI).
+  const handleLegendActiveChange = useCallback((legend) => {
+    setActiveLegend(legend);
+    refreshActiveLegend();
+  }, [refreshActiveLegend]);
+
   useEffect(() => { if (LL_LEGENDS.enabled) refreshActiveLegend(); }, [refreshActiveLegend]);
 
   const [isProcessing, setIsProcessing] = useState(false);
@@ -377,12 +428,45 @@ const LineList = () => {
   const pollStartRef = useRef(null);
   const elapsedTimerRef = useRef(null);
 
+  // ── RADAI Chat context — publish the current page's data so the floating
+  // assistant can answer questions about it. Re-publishes whenever the
+  // extracted rows, uploaded P&ID, or active project change; clears on unmount.
+  useEffect(() => {
+    const rows = extractedData?.data || [];
+    publishChatContext({
+      page: 'Line List',
+      project: activeProject
+        ? { id: activeProject.project_id, name: activeProject.name || '', code: activeProject.code || '' }
+        : null,
+      document: pidDocument
+        ? { name: pidDocument.name, type: 'P&ID PDF', sizeLabel: `${(pidDocument.size / 1024 / 1024).toFixed(2)} MB` }
+        : null,
+      columns: COLUMNS.map(c => ({ key: c.key, label: c.label })),
+      rows,
+      row_count: extractedData?.total_lines ?? rows.length,
+      summary: extractedData ? {
+        total_lines: extractedData.total_lines,
+        columns: extractedData.columns,
+        format: formatType,
+      } : null,
+      notes: 'Line list extracted from a P&ID. Columns: ' + COLUMNS.map(c => c.label).join(', '),
+    })
+    return () => clearChatContext()
+  }, [extractedData, pidDocument, activeProject, formatType])
+
   // -------------------------------------------------------------------------
   // File selection
   // -------------------------------------------------------------------------
-  const handlePIDSelect = (e) => {
+  const handlePIDSelect = async (e) => {
     const file = e.target.files[0];
     if (file && file.type === 'application/pdf') {
+      // Soft-coded page limit (LL_UPLOAD_RULES.maxPages) — client-side guard
+      const pages = await countPdfPages(file);
+      if (LL_UPLOAD_RULES.enabled && pages !== null && pages > LL_UPLOAD_RULES.maxPages) {
+        setPidDocument(null);
+        setError(`This PDF has ${pages} pages — the maximum is ${LL_UPLOAD_RULES.maxPages} pages per upload. Please split the document and try again.`);
+        return;
+      }
       setPidDocument(file);
       setError(null);
       setExtractedData(null);
@@ -557,6 +641,12 @@ const LineList = () => {
     formData.append('pid_file', pidDocument);
     formData.append('format_type', formatType);
     formData.append('include_area', includeArea);
+    // Soft-coded: project label so the backend archives source + output to the
+    // project's S3 folder (s3_utils ARCHIVE layout)
+    if (activeProject) {
+      formData.append('project_code', activeProject.code || '');
+      formData.append('project_name', activeProject.name || '');
+    }
     if (legendDocument) {
       formData.append('legend_file', legendDocument);
     }
@@ -1065,7 +1155,7 @@ const LineList = () => {
                 {[
                   { k: COLUMNS.length, v: 'Columns' },
                   { k: FORMAT_OPTIONS.length, v: 'Formats' },
-                  { k: '≤ 60m', v: 'Time Budget' },
+                  { k: '≤ 100m', v: 'Time Budget' },
                 ].map((s, i) => (
                   <div key={i} className="px-3 py-2 rounded-xl text-center"
                     style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.22)', backdropFilter: 'blur(6px)' }}>
@@ -1136,6 +1226,58 @@ const LineList = () => {
               <h2 className="text-sm font-semibold text-slate-700 tracking-wide">Upload P&amp;ID Document</h2>
             </div>
 
+            {/* ── Upload rules card — soft-coded (LL_UPLOAD_RULES) ────────── */}
+            {LL_UPLOAD_RULES.enabled && (
+              <div className="mb-5 rounded-xl px-4 py-3.5" style={{
+                background: 'rgba(245,158,11,0.06)',
+                border: '1px solid rgba(245,158,11,0.28)',
+              }}>
+                <p className="text-xs font-bold uppercase tracking-wider text-amber-700 mb-2">
+                  {LL_UPLOAD_RULES.title}
+                </p>
+                <ul className="space-y-1.5 mb-3">
+                  {LL_UPLOAD_RULES.rules.map((rule, i) => (
+                    <li key={i} className="flex items-start gap-2 text-xs text-slate-600 leading-relaxed">
+                      <span>{rule.icon}</span>
+                      <span>{rule.text.replace('{maxPages}', LL_UPLOAD_RULES.maxPages)}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                  {LL_UPLOAD_RULES.formatsTitle}
+                </p>
+                <div className="space-y-1">
+                  {LL_UPLOAD_RULES.formats.map(f => (
+                    <div key={f.key} className="flex items-center gap-2 text-xs">
+                      <span className="w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
+                        style={{ background: '#2563eb' }}>
+                        {f.key}
+                      </span>
+                      <code className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 font-mono text-[11px]">
+                        {f.pattern}
+                      </code>
+                      <span className="text-slate-400">— {f.label}</span>
+                    </div>
+                  ))}
+                  {/* Item c — BYOK note for the RADAI Assistant */}
+                  {LL_UPLOAD_RULES.assistantNote && (
+                    <div className="flex items-start gap-2 text-xs pt-1.5 mt-1.5"
+                      style={{ borderTop: '1px dashed rgba(245,158,11,0.35)' }}>
+                      <span className="w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0 mt-0.5"
+                        style={{ background: '#8b5cf6' }}>
+                        {LL_UPLOAD_RULES.assistantNote.key}
+                      </span>
+                      <span className="text-slate-600 leading-relaxed">
+                        {LL_UPLOAD_RULES.assistantNote.icon}{' '}
+                        <span className="font-semibold">{LL_UPLOAD_RULES.assistantNote.label}:</span>{' '}
+                        {LL_UPLOAD_RULES.assistantNote.text}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* ── AI Document Assist (Wrench) — soft-coded, optional ─────── */}
             {LL_AI_ASSIST_CONFIG.enabled && (
               <div className="mb-5">
@@ -1148,7 +1290,14 @@ const LineList = () => {
                   topN={LL_AI_ASSIST_CONFIG.topN}
                   acceptedExts={LL_AI_ASSIST_CONFIG.acceptedExts}
                   projectName=""
-                  onFileSelected={(f) => {
+                  onFileSelected={async (f) => {
+                    // Same soft-coded page limit as the manual picker
+                    const pages = await countPdfPages(f);
+                    if (LL_UPLOAD_RULES.enabled && pages !== null && pages > LL_UPLOAD_RULES.maxPages) {
+                      setPidDocument(null);
+                      setError(`This PDF has ${pages} pages — the maximum is ${LL_UPLOAD_RULES.maxPages} pages per upload. Please split the document and try again.`);
+                      return;
+                    }
                     setPidDocument(f);
                     setError(null);
                     setExtractedData(null);
@@ -1239,6 +1388,18 @@ const LineList = () => {
                     <option key={opt.value} value={opt.value}>{opt.label} — {opt.hint}</option>
                   ))}
                 </select>
+                <p className="text-xs text-slate-500 mt-2" style={{ margin: '0.5rem 0 0' }}>
+                  Line List sequence not available?{' '}
+                  <Link
+                    to="/my-enquiries"
+                    style={{ color: '#2563eb', fontWeight: 600, textDecoration: 'none' }}
+                    onMouseEnter={e => { e.target.style.textDecoration = 'underline'; }}
+                    onMouseLeave={e => { e.target.style.textDecoration = 'none'; }}
+                  >
+                    Send us an enquiry
+                  </Link>
+                  {' '}to align a new sequence for extraction.
+                </p>
               </div>
 
               <div className="flex items-center">
@@ -1764,7 +1925,7 @@ const LineList = () => {
           onClose={() => setLegendModalOpen(false)}
           section={LL_LEGENDS.section}
           projectId={activeProject?.project_id}
-          onActiveChange={(legend) => { setActiveLegend(legend); refreshActiveLegend(); }}
+          onActiveChange={handleLegendActiveChange}
         />
       )}
     </>
