@@ -24,6 +24,7 @@ import { PROJECT_ORGANIZER_CONFIG } from "../../../../config/projectOrganizer.co
 import { createProject as createOrganizerProject } from "../../../../services/projectOrganizerService";
 import { buildComparison, formatValue, rowVaries } from "./compare.ts";
 import { useCases } from "./useCases";
+import useRadaiChatPage from "../../../../hooks/useRadaiChatPage";
 import "./HMBStreamTableConsolidator.css";
 
 const PROJECT_STORAGE_KEY = "hmbExtractorActiveProject";
@@ -957,6 +958,48 @@ export default function HMBStreamTableConsolidator() {
       ),
     [casesState.cases],
   );
+
+  // ── RADAI Chat context — publish flattened stream-table rows so the
+  // floating assistant verifies/validates within THIS tool's data (profile:
+  // soft-coded in config/radaiChatPages.config.js → 'hmb_consolidator').
+  const chatRows = useMemo(
+    () =>
+      casesState.cases.flatMap((item) =>
+        item.streams.flatMap((stream) =>
+          (stream.properties || []).map((prop) => ({
+            case: item.name,
+            stream: stream.name,
+            property: prop.name,
+            value: prop.value,
+            unit: prop.unit || '',
+            edited: Boolean(prop.edited),
+            included: stream.included !== false,
+          })),
+        ),
+      ),
+    [casesState.cases],
+  );
+  useRadaiChatPage('hmb_consolidator', {
+    document: casesState.cases.length
+      ? { name: casesState.cases.map((c) => c.fileName || c.name).join(', '), type: 'HYSYS stream table workbook' }
+      : null,
+    columns: [
+      { key: 'case', label: 'Case' },
+      { key: 'stream', label: 'Stream' },
+      { key: 'property', label: 'Property' },
+      { key: 'value', label: 'Value' },
+      { key: 'unit', label: 'Unit' },
+      { key: 'edited', label: 'Edited' },
+    ],
+    rows: chatRows,
+    rowCount: chatRows.length,
+    summary: casesState.cases.length ? {
+      cases: casesState.cases.length,
+      case_names: casesState.cases.map((c) => c.name),
+      streams_included: includedStreamCount,
+      edited_values: casesState.editedCount,
+    } : null,
+  });
 
   const reset = () => {
     casesState.resetAll();

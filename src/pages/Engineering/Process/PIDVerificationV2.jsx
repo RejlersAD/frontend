@@ -1,4 +1,5 @@
 import { PlatformAIStatusDialog } from '../../../components/ai/PlatformAIStatus';
+import useRadaiChatPage from '../../../hooks/useRadaiChatPage';
 import { radaiConfirm } from '../../../services/radaiDialog'
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -3113,6 +3114,35 @@ const PIDVerificationV2 = () => {
   const totalIssues   = results?.total_issues ?? allIssues.length;
   const criticalCount = allIssues.filter(f => getVal(f, 'severity') === 'critical').length;
   const majorCount    = allIssues.filter(f => getVal(f, 'severity') === 'major').length;
+
+  // ── RADAI Chat context — publish QC findings so the floating assistant
+  // verifies/validates within THIS tool's data (profile: soft-coded in
+  // config/radaiChatPages.config.js → 'pid_qc'). Clears on unmount.
+  useRadaiChatPage('pid_qc', {
+    project: selectedProject
+      ? { id: selectedProject.project_id || selectedProject.id, name: selectedProject.name || '', code: selectedProject.code || '' }
+      : null,
+    document: results?.file_name
+      ? { name: results.file_name, type: 'P&ID PDF' }
+      : (file ? { name: file.name, type: 'P&ID PDF' } : null),
+    columns: [
+      { key: 'severity', label: 'Severity' },
+      { key: 'category', label: 'Check / Category' },
+      { key: 'issue_observed', label: 'Finding' },
+      { key: 'drawing_number', label: 'Drawing' },
+      { key: 'tag', label: 'Affected Tag' },
+    ],
+    rows: allIssues,
+    rowCount: totalIssues,
+    summary: results ? {
+      total_issues: totalIssues,
+      critical: criticalCount,
+      major: majorCount,
+      drawings: results.drawings?.length ?? 0,
+      comparison_findings: results.comparison_findings?.length ?? 0,
+      overridden: (results.drawings ?? []).reduce((s, d) => s + (d.overrides_applied ?? 0), 0),
+    } : null,
+  });
 
   // Soft-coded overlay helpers (frontend only): infer confidence and pseudo-position from evidence.
   const bandRank = { low: 1, medium: 2, high: 3 };

@@ -40,6 +40,7 @@ import LegendSheetsModal from './components/LegendSheetsModal';
 import ProjectLegendPanel from '../../../components/Engineering/ProjectLegendPanel';
 import { listLegends } from '../../../services/pidCheckerV2API';
 import { publishChatContext, clearChatContext } from '../../../services/chatContext.store';
+import { CHAT_PAGE_PROFILES } from '../../../config/radaiChatPages.config';
 import { getApiBaseUrl } from '../../../config/environment.config';
 import { STORAGE_KEYS } from '../../../config/app.config';
 // Shared Project Organizer — soft-coded workspace (same pattern as HMB Extractor)
@@ -435,6 +436,8 @@ const LineList = () => {
     const rows = extractedData?.data || [];
     publishChatContext({
       page: 'Line List',
+      domain_prompt: CHAT_PAGE_PROFILES.line_list.domainPrompt,
+      row_name: CHAT_PAGE_PROFILES.line_list.rowName,
       project: activeProject
         ? { id: activeProject.project_id, name: activeProject.name || '', code: activeProject.code || '' }
         : null,
