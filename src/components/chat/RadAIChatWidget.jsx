@@ -77,8 +77,11 @@ const RadAIChatWidget = () => {
   // Auto-select the provider that has a ready managed key (server-side), so
   // the widget never defaults to a provider with no configured credential
   // (e.g. only OpenAI is configured on this deployment → use it).
+  // Never override a user's saved BYOK provider choice — their key belongs
+  // to the provider THEY picked.
   useEffect(() => {
     let live = true
+    if (readSS(CHAT_CFG.ssApiKey)) return undefined  // user has their own key+provider
     apiClient.get('/rbac/ai-provider-status/', { suppressErrorToast: true, timeout: 30000 })
       .then(({ data }) => {
         if (!live) return
@@ -126,8 +129,16 @@ const RadAIChatWidget = () => {
   }
 
   const endRef = useRef(null)
+  const listRef = useRef(null)
   useEffect(() => subscribeChatContext(v => setCtxVersion(v)), [])
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, open])
+  // Scroll ONLY the message list — never scrollIntoView: on a portaled,
+  // fixed-position panel it also scrolls every scrollable ancestor including
+  // the main page, which made page content (e.g. extraction results)
+  // "disappear" when the assistant was opened.
+  useEffect(() => {
+    const el = listRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [messages, open])
 
   const send = useCallback(async () => {
     const question = input.trim()
@@ -420,7 +431,7 @@ const RadAIChatWidget = () => {
           )}
 
           {/* Messages */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '14px 14px 8px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div ref={listRef} style={{ flex: 1, overflowY: 'auto', padding: '14px 14px 8px', display: 'flex', flexDirection: 'column', gap: 10 }}>
             {messages.map((m, i) => (
               <div key={m.ts + '-' + i} style={{
                 display: 'flex', gap: 8, alignItems: 'flex-start',
