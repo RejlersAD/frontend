@@ -932,12 +932,13 @@ export default function SalesLifecycleArea() {
   const [actionValues, setActionValues] = useState({});
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState("");
+  const [actionWarnings, setActionWarnings] = useState([]);
 
   useEffect(() => {
     ++recordRequest.current;
     setRecord(null); setRecordError(""); setRecordLoading(false); setFullRecordOpen(false);
     setRows([]); setQuery(""); setError(""); setEditing(false); setSaving(false);
-    setRegistrationOpen(false); setActionDialog(null);
+    setRegistrationOpen(false); setActionDialog(null); setActionWarnings([]);
   }, [area]);
 
   const load = useCallback(async () => {
@@ -1135,6 +1136,7 @@ export default function SalesLifecycleArea() {
     setActionDialog(definition);
     setActionValues(initialValues);
     setActionError("");
+    setActionWarnings([]);
   };
 
   const openCreate = async (preselectedOpportunity = null) => {
@@ -1438,7 +1440,7 @@ export default function SalesLifecycleArea() {
           title: "Submit qualification",
           submitLabel: "Submit qualification",
           description:
-            "Validates required details and required files, then notifies the Sales team with your special note.",
+            "Submits the opportunity for Internal Sales Review. Missing scope type or attachments are reported as warnings and do not block submission.",
           fields: [
             {
               name: "special_note",
@@ -1780,6 +1782,12 @@ export default function SalesLifecycleArea() {
     const request = recordRequest.current;
     try {
       const result = await actionDialog.execute(actionValues);
+      setActionWarnings((result?.warnings || [])
+        .map(warning => typeof warning === 'string' ? warning : warning?.message)
+        .filter(Boolean));
+      if (actionDialog.title === 'Submit qualification') {
+        window.dispatchEvent(new Event('notifications-updated'));
+      }
       setActionDialog(null);
       await load();
       if (area === 'proposals' && actionDialog.requiresOpportunity && result?.id) { await openRecord(String(result.id), false); return; }
@@ -1833,6 +1841,11 @@ export default function SalesLifecycleArea() {
 
   return (
     <div className={area === "opportunities" ? "sales-opportunities-route" : area === "proposals" ? "sales-proposals-route" : area === "clients" ? "sales-clients-route" : area === "forecasts" ? "sales-forecasts-route" : area === "frameworks" ? "sales-frameworks-route" : "min-h-full bg-slate-100 p-4 text-slate-950 sm:p-5"}>
+      {actionWarnings.length > 0 && (
+        <div role="status" className="m-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {actionWarnings.map(warning => <p key={warning}>{warning}</p>)}
+        </div>
+      )}
       {area === "opportunities" ? (
         <SalesOpportunityRegister
           rows={rows} loading={loading} error={error}

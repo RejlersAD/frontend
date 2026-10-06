@@ -117,6 +117,33 @@ async function reopen(page) {
   await expect(drawer(page)).toBeVisible()
 }
 
+test('notification update event refreshes the unread badge immediately', async ({ page }) => {
+  const state = await prepare(page)
+  await page.goto('/tests/fixtures/notification-drawer.html')
+  await expect(bell(page)).toHaveText('3')
+  const initialCountRequests = state.requests.filter(request => request.path.endsWith('/notifications/unread_count/')).length
+  state.notifications.unshift({
+    id: 106,
+    title: 'New Opportunity Submitted',
+    message: 'Opportunity Pump Study has been submitted for Internal Sales Review.',
+    category_name: 'APPROVAL',
+    status: 'SENT',
+    priority: 'NORMAL',
+    is_read: false,
+    created_at: new Date().toISOString(),
+    action_url: '/sales/opportunities?record=opportunity-106',
+    action_label: 'Open Opportunity Record',
+    metadata: { opportunity_id: 'opportunity-106' },
+  })
+
+  await page.evaluate(() => window.dispatchEvent(new Event('notifications-updated')))
+
+  await expect(bell(page)).toHaveText('4')
+  await expect.poll(() => state.requests.filter(request => request.path.endsWith('/notifications/unread_count/')).length)
+    .toBeGreaterThan(initialCountRequests)
+  expect(state.errors).toEqual([])
+})
+
 test('reopening after a network failure clears the stale loading error when notifications load', async ({ page }) => {
   const key = 'GET /api/v1/notifications/'
   const state = await prepare(page, { failures: { [key]: { abort: 'failed' } } })

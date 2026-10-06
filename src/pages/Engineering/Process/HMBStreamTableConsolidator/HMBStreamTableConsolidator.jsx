@@ -438,6 +438,7 @@ function ReviewView({ caseData, onToggleStream, onSetCell }) {
 
 function ComparisonView({ cases }) {
   const [query, setQuery] = useState("");
+  const [firstColumnFilter, setFirstColumnFilter] = useState("all");
   const [highlight, setHighlight] = useState(true);
   const [differencesOnly, setDifferencesOnly] = useState(false);
   const [limit, setLimit] = useState(1500);
@@ -445,6 +446,13 @@ function ComparisonView({ cases }) {
   const sentinelRef = useRef(null);
   const comparison = useMemo(() => buildComparison(cases), [cases]);
   const caseIds = useMemo(() => cases.map((item) => item.id), [cases]);
+  const propertyNames = useMemo(
+    () =>
+      [...new Set(comparison.rows.map((row) => row.propertyName))].sort(
+        (left, right) => left.localeCompare(right, undefined, { numeric: true }),
+      ),
+    [comparison.rows],
+  );
   const varyingCount = useMemo(
     () => comparison.rows.filter((row) => rowVaries(row, caseIds)).length,
     [comparison.rows, caseIds],
@@ -453,13 +461,23 @@ function ComparisonView({ cases }) {
     const normalized = query.trim().toLowerCase();
     return comparison.rows.filter((row) => {
       if (differencesOnly && !rowVaries(row, caseIds)) return false;
+      if (
+        firstColumnFilter.startsWith("stream:") &&
+        row.streamName !== firstColumnFilter.slice(7)
+      )
+        return false;
+      if (
+        firstColumnFilter.startsWith("property:") &&
+        row.propertyName !== firstColumnFilter.slice(9)
+      )
+        return false;
       return (
         !normalized ||
         row.streamName.toLowerCase().includes(normalized) ||
         row.propertyName.toLowerCase().includes(normalized)
       );
     });
-  }, [comparison.rows, differencesOnly, caseIds, query]);
+  }, [comparison.rows, differencesOnly, caseIds, firstColumnFilter, query]);
 
   useEffect(() => setLimit(1500), [visibleRows]);
   useEffect(() => {
@@ -528,7 +546,35 @@ function ComparisonView({ cases }) {
         <table className="hmbc-table hmbc-comparison-table">
           <thead>
             <tr>
-              <th className="is-sticky">Stream / property</th>
+              <th className="is-sticky">
+                <label className="hmbc-column-filter">
+                  <span>Stream / property</span>
+                  <select
+                    aria-label="Filter by stream or property"
+                    value={firstColumnFilter}
+                    onChange={(event) => setFirstColumnFilter(event.target.value)}
+                  >
+                    <option value="all">All streams / properties</option>
+                    <optgroup label="Streams">
+                      {comparison.streamNames.map((streamName) => (
+                        <option key={streamName} value={`stream:${streamName}`}>
+                          {streamName}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Properties">
+                      {propertyNames.map((propertyName) => (
+                        <option
+                          key={propertyName}
+                          value={`property:${propertyName}`}
+                        >
+                          {propertyName}
+                        </option>
+                      ))}
+                    </optgroup>
+                  </select>
+                </label>
+              </th>
               <th>Unit</th>
               {cases.map((item) => (
                 <th key={item.id}>

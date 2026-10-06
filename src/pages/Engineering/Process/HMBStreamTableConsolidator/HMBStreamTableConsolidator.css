@@ -205,6 +205,12 @@
 .hmbc-table thead th:nth-child(2) { min-width: 80px; text-align: left; }
 .hmbc-table .is-sticky { position: sticky; z-index: 10; left: 0; min-width: 210px; text-align: left; }
 .hmbc-table thead .is-sticky { z-index: 50; background: #172b4d; }
+.hmbc-column-filter { display: grid; gap: 4px; }
+.hmbc-column-filter select { width: 100%; height: 28px; border: 1px solid rgba(255, 255, 255, .45); border-radius: 5px; padding: 0 26px 0 7px; background: #fff; color: var(--hmbc-ink); font: inherit; font-weight: var(--font-medium); outline: 0; }
+.hmbc-column-filter select:focus { border-color: #fff; box-shadow: 0 0 0 2px rgba(255, 255, 255, .3); }
+.hmbc-column-filter select,
+.hmbc-column-filter select option,
+.hmbc-column-filter select optgroup { color: var(--hmbc-ink) !important; -webkit-text-fill-color: var(--hmbc-ink); }
 .hmbc-table tbody th.is-sticky { color: var(--hmbc-ink); font-weight: var(--font-medium); }
 .hmbc-table tbody tr:hover > :not(.hmbc-stream-band *) { background: #f8fafc; }
 .hmbc-unit { min-width: 80px !important; color: var(--hmbc-muted); font-size: var(--text-caption-size); }

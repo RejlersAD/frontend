@@ -247,6 +247,13 @@ const NotificationBell = () => {
     }
   }, [showDropdown, fetchNotifications])
 
+  useEffect(() => {
+    if (!isAuthenticated) return undefined
+    const refreshNotifications = () => void fetchUnreadCount()
+    window.addEventListener('notifications-updated', refreshNotifications)
+    return () => window.removeEventListener('notifications-updated', refreshNotifications)
+  }, [fetchUnreadCount, isAuthenticated])
+
   // Portal avoids clipping inside sticky headers. Keep keyboard focus in the drawer.
   useEffect(() => {
     if (!showDropdown) return undefined

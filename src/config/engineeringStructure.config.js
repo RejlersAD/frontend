@@ -124,16 +124,6 @@ export const ENGINEERING_DISCIPLINES = {
         enabled: false
       },
       {
-        id: 'hmbExtractor',
-        name: 'HMB Extractor',
-        fullName: 'Heat & Material Balance Extractor',
-        icon: DocumentMagnifyingGlassIcon,
-        path: ROUTES.HMB_EXTRACTOR,
-        description: 'Extract stream data from Heat & Material Balance documents',
-        moduleCode: 'hmb_extractor',
-        badge: ''
-      },
-      {
         id: 'hmbStreamTableConsolidator',
         name: 'HMB Consolidator',
         fullName: 'HMB Stream Table Consolidator',
@@ -556,7 +546,6 @@ export const hasAccess = (moduleCode, userModules, isAdmin) => {
 }
 
 export default ENGINEERING_DISCIPLINES
-
 
 
 

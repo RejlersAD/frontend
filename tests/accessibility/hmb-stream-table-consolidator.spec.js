@@ -62,6 +62,22 @@ test('HMB Stream Table Consolidator loads supplied demos and builds the large co
   await expect(page.getByText('283 streams · 56,914 rows · 3 cases')).toBeVisible()
   await expect(page.getByText('12,940', { exact: true })).toBeVisible()
 
+  const firstColumnFilter = page.getByRole('combobox', { name: 'Filter by stream or property' })
+  await firstColumnFilter.selectOption({ index: 1 })
+  const selectedStream = (await firstColumnFilter.locator('option:checked').textContent()).trim()
+  await expect(page.locator('.hmbc-stream-band th')).toHaveCount(1)
+  await expect(page.locator('.hmbc-stream-band th')).toHaveText(selectedStream)
+
+  const propertyValue = await firstColumnFilter.locator('option').evaluateAll((options) =>
+    options.find((option) => option.value.startsWith('property:'))?.value,
+  )
+  await firstColumnFilter.selectOption(propertyValue)
+  const selectedProperty = propertyValue.slice('property:'.length)
+  const filteredProperties = page.locator('.hmbc-comparison-table tbody tr:not(.hmbc-stream-band) th.is-sticky')
+  await expect(filteredProperties.first()).toHaveText(selectedProperty)
+  expect((await filteredProperties.allTextContents()).every((value) => value === selectedProperty)).toBe(true)
+  await firstColumnFilter.selectOption('all')
+
   await page.getByRole('button', { name: 'Export Excel' }).click()
   const dialog = page.getByRole('dialog', { name: 'Export Excel comparison' })
   await expect(dialog).toBeVisible()
