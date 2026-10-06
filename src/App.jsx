@@ -18,6 +18,7 @@ import FirstLoginCheck from "./components/Auth/FirstLoginCheck";
 import ChangePasswordModal from "./components/Auth/ChangePasswordModal";
 import PasswordExpiryBanner from "./components/PasswordExpiryBanner";
 import ProfileCompletionGuard from "./components/ProfileCompletionGuard";
+import RadAIChatWidget from "./components/chat/RadAIChatWidget";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import SetupPassword from "./pages/SetupPassword";
@@ -505,6 +506,9 @@ function App() {
       )}
 
       {isAuthenticated && !mustChangePassword && <ProfileCompletionGuard />}
+
+      {/* RADAI Chat — global floating assistant (BYOK, grounded in page context) */}
+      {isAuthenticated && <RadAIChatWidget />}
 
       <FirstLoginCheck onPasswordChanged={handlePasswordChangeSuccess}>
         <Routes>
