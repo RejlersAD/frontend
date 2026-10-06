@@ -39,6 +39,7 @@ export default function useRadaiChatPage(profileKey, {
       page: profile.page,
       domain_prompt: profile.domainPrompt,   // backend: appended to grounding
       row_name: profile.rowName,
+      actions: profile.actions || null,      // edit-control ops (see config)
       project,
       document,
       columns,

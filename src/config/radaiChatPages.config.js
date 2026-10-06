@@ -15,6 +15,11 @@
  *   notes         — describes the dataset (columns/units/origin)
  *   domainPrompt  — verification & validation rules injected into the answer
  *                   grounding (backend appends it to the system prompt)
+ *   actions       — optional EDIT CONTROL the assistant may propose and the
+ *                   user applies from the chat (requires the page to register
+ *                   a handler via registerChatActionHandler):
+ *                     { rowKey: '<column key identifying a row>',
+ *                       ops: ['update_row', 'delete_row'] }
  */
 
 export const CHAT_PAGE_PROFILES = {
@@ -84,6 +89,10 @@ export const CHAT_PAGE_PROFILES = {
       'tags exactly; classify/count by equipment type when asked; flag ' +
       'duplicate tags, missing types or missing operating data as gaps; ' +
       'never invent equipment that is not in the context.',
+    actions: {
+      rowKey: 'tag',                        // rows are identified by equipment tag
+      ops: ['update_row', 'delete_row'],    // assistant may propose these edits
+    },
   },
 }
 
