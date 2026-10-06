@@ -315,7 +315,7 @@ const RadAIChatWidget = () => {
               {keyPanelMode === 'managed' ? (
                 <>
                   <div style={{ fontSize: 12, color: '#15803d', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                    <KeyRound size={13} /> Using the platform's managed {provider === 'claude' ? 'Claude' : 'OpenAI'} key.
+                    <KeyRound size={13} /> Using the platform&apos;s managed {provider === 'claude' ? 'Claude' : 'OpenAI'} key.
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button onClick={() => { setUseOwnKey(true); setKeyView('entry') }}
