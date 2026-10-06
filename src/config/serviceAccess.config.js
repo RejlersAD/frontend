@@ -90,9 +90,14 @@ export const resolveRouteModule = (moduleCode, pathname, search = '') => {
 };
 // Sales is one business area. A user granted any Sales service must be able
 // to enter the Sales workspace; the API remains the authority for actions.
-export const canAccessRouteModule = (codes, code) =>
+export const isSalesDepartment = department => {
+  const normalized = String(department || '').trim().toLowerCase().replace(/&/g, 'and').replace(/\s+/g, ' ');
+  return ['sales', 'sales and business development', 'sales business development'].includes(normalized);
+};
+
+export const canAccessRouteModule = (codes, code, department = '') =>
   hasAssignedModule(codes, code) ||
-  (String(code).startsWith('sales_') && codes.some(item => String(item).startsWith('sales_')));
+  (String(code).startsWith('sales_') && (codes.some(item => String(item).startsWith('sales_')) || isSalesDepartment(department)));
 
 export const viewableModuleCodes = (profile) => (profile?.modules || [])
   .filter(module => profile.module_actions?.[module.code]?.includes('read'))

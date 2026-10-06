@@ -258,7 +258,7 @@ function LoginRedirect() {
   );
 }
 function ModuleProtectedRoute({ children, moduleCode }) {
-  const { isAuthenticated, modulesLoaded, userModules } =
+  const { isAuthenticated, modulesLoaded, userModules, user } =
     React.useContext(ModuleAccessContext);
   const routeLocation = useLocation();
   const requiredModule = resolveRouteModule(
@@ -283,7 +283,7 @@ function ModuleProtectedRoute({ children, moduleCode }) {
   }
 
   // Check if user has access to the required module
-  if (canAccessRouteModule(userModules, requiredModule)) {
+  if (canAccessRouteModule(userModules, requiredModule, user?.department || user?.user?.department)) {
     return children;
   }
 
