@@ -94,6 +94,15 @@ const RadAIChatWidget = () => {
   const hasManagedKey = Boolean(providerStatus?.managed && providerStatus?.ready)
   const needsKey = !hasManagedKey && !apiKey
 
+  // Auto-open the BYOK setup when the panel opens and no usable key exists —
+  // the header key icon alone was too subtle and users never found it.
+  // Waits until the managed-key probe finishes so deployments WITH a managed
+  // key never flash the form.
+  const providerStatusLoaded = providerStatus?.loading === false
+  useEffect(() => {
+    if (open && providerStatusLoaded && !hasManagedKey && !apiKey) setShowKeyForm(true)
+  }, [open, providerStatusLoaded, hasManagedKey, apiKey])
+
   // Stable per-tab conversation id for S3 archiving (survives re-renders,
   // resets when the tab closes)
   const sessionIdRef = useRef(null)
@@ -156,6 +165,12 @@ const RadAIChatWidget = () => {
     setShowKeyForm(false)
     toast.success('AI key saved for this session')
   }, [provider, apiKey])
+
+  const clearKey = useCallback(() => {
+    writeSS(CHAT_CFG.ssApiKey, '')
+    setApiKey('')
+    toast.info('AI key removed')
+  }, [])
 
   if (!CHAT_CFG.enabled) return null
 
@@ -252,6 +267,32 @@ const RadAIChatWidget = () => {
                 <div style={{ fontSize: 12, color: '#15803d', display: 'flex', alignItems: 'center', gap: 6 }}>
                   <KeyRound size={13} /> Using the platform's managed {provider === 'claude' ? 'Claude' : 'OpenAI'} key — nothing to enter.
                 </div>
+              ) : apiKey ? (
+                // A custom BYOK key is already active — show status + actions
+                // instead of the bare entry form (key stays hidden).
+                <>
+                  <div style={{ fontSize: 12, color: '#15803d', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                    <KeyRound size={13} /> Using your {provider === 'claude' ? 'Claude' : 'OpenAI'} key — this session only.
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button onClick={() => setApiKey('')}
+                      style={{
+                        flex: 1, padding: '7px 0', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                        borderRadius: 8, border: 'none', color: '#fff',
+                        background: `linear-gradient(135deg, ${CHAT_CFG.accentFrom}, ${CHAT_CFG.accentTo})`,
+                      }}>
+                      Change key
+                    </button>
+                    <button onClick={clearKey}
+                      style={{ padding: '7px 12px', fontSize: 12, cursor: 'pointer', borderRadius: 8, border: '1px solid #fecaca', background: '#fff', color: '#dc2626' }}>
+                      Remove
+                    </button>
+                    <button onClick={() => setShowKeyForm(false)}
+                      style={{ padding: '7px 12px', fontSize: 12, cursor: 'pointer', borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', color: '#64748b' }}>
+                      Close
+                    </button>
+                  </div>
+                </>
               ) : (
                 <>
                   <div style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', marginBottom: 8 }}>
@@ -290,7 +331,7 @@ const RadAIChatWidget = () => {
                       }}>
                       Save key
                     </button>
-                    <button onClick={() => setShowKeyForm(false)}
+                    <button onClick={() => { setApiKey(readSS(CHAT_CFG.ssApiKey)); setShowKeyForm(false) }}
                       style={{ padding: '7px 12px', fontSize: 12, cursor: 'pointer', borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', color: '#64748b' }}>
                       Cancel
                     </button>
