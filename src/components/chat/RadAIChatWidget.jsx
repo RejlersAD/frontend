@@ -77,8 +77,11 @@ const RadAIChatWidget = () => {
   // Auto-select the provider that has a ready managed key (server-side), so
   // the widget never defaults to a provider with no configured credential
   // (e.g. only OpenAI is configured on this deployment → use it).
+  // Never override a user's saved BYOK provider choice — their key belongs
+  // to the provider THEY picked.
   useEffect(() => {
     let live = true
+    if (readSS(CHAT_CFG.ssApiKey)) return undefined  // user has their own key+provider
     apiClient.get('/rbac/ai-provider-status/', { suppressErrorToast: true, timeout: 30000 })
       .then(({ data }) => {
         if (!live) return
