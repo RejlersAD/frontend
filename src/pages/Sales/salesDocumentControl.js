@@ -5,7 +5,7 @@ export function classificationState(classification) {
   if (processing) return classification.status === 'queued' ? 'Queued' : 'Classifying…';
   if (classification.status === 'failed') return 'Failed';
   if (classification.status === 'blocked') return 'Unavailable';
-  if (classification.origin === 'ai') return 'AI suggestion';
+  if (classification.origin === 'ai') return 'Automatic suggestion';
   if (classification.origin === 'rule') return 'Auto';
   return 'Unclassified';
 }

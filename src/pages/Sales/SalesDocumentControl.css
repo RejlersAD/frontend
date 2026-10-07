@@ -2,6 +2,10 @@
 .sod-table-scroll th.sod-column-name { width: 23%; }
 .sod-column-document_type { width: 20%; }
 .sod-column-custom_tag { width: 18%; }
+.sdc-tag-suggestions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 6px; font-size: 0.72rem; }
+.sdc-tag-suggestions > span { color: var(--muted, #64748b); }
+.sdc-tag-suggestions button { border: 1px solid #cbd5e1; border-radius: 999px; background: #f8fafc; color: #334155; padding: 2px 7px; cursor: pointer; }
+.sdc-tag-suggestions button:hover, .sdc-tag-suggestions button:focus-visible { border-color: #2563eb; color: #1d4ed8; outline: 2px solid #bfdbfe; outline-offset: 1px; }
 .sod-column-version { width: 7%; }
 .sod-column-publication_level { width: 10%; }
 .sod-column-modified_at { width: 12%; }
