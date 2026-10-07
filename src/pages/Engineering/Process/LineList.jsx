@@ -489,6 +489,32 @@ const LineList = () => {
   const [regView, setRegView] = useState('extract');
   useEffect(() => { if (extractedData) setRegView('register'); }, [extractedData]);
 
+  // ── Review & approval workflow (page-level, persisted per project) ──────
+  // Steps 1-3 auto-complete from real data (extraction, validation, per-row
+  // reviews). Steps 4-5 are actionable: submit → manager approve/reject →
+  // issue for design. State persists in localStorage per project.
+  const reviewStorageKey = `lineListReview_${activeProject?.project_id || 'default'}`;
+  const [reviewState, setReviewState] = useState({ status: 'in_review', comment: '', history: [] });
+  const [reviewComment, setReviewComment] = useState('');
+
+  // Hydrate when the project changes
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(reviewStorageKey);
+      setReviewState(raw ? JSON.parse(raw) : { status: 'in_review', comment: '', history: [] });
+    } catch { setReviewState({ status: 'in_review', comment: '', history: [] }); }
+  }, [reviewStorageKey]);
+
+  // Persist on change
+  useEffect(() => {
+    try { localStorage.setItem(reviewStorageKey, JSON.stringify(reviewState)); } catch { /* quota — non-fatal */ }
+  }, [reviewState, reviewStorageKey]);
+
+  const pushReviewEvent = (text) => ({
+    text,
+    at: new Date().toISOString().slice(0, 16).replace('T', ' '),
+  });
+
   // ── Saved outputs (persist & re-download later) ─────────────────────────
   // Uses the existing backend endpoints: save_output / previous_outputs /
   // download_output / output_data. Fail-safe: saving never blocks export.
@@ -1031,6 +1057,45 @@ const LineList = () => {
     return acc;
   }, { total: 0, newCount: 0, errors: 0, warnings: 0, changed: 0 });
   regKpis.reviewPending = regKpis.errors + regKpis.warnings + regKpis.newCount + regKpis.changed;
+
+  // ── Derived workflow state (display + gating for the Reviews tab) ───────
+  const regWfSteps = [
+    { step: 'Extraction complete',          by: 'RAD AI Engine',        done: !!extractedData },
+    { step: 'Data-quality validation',      by: 'Automated rules',      done: !!extractedData && (regKpis.errors + regKpis.warnings) === 0 },
+    { step: 'Process engineering review',   by: 'Process Lead',         done: !!extractedData && regKpis.reviewPending === 0 },
+    { step: 'Engineering manager approval', by: 'Engineering Manager',  done: reviewState.status === 'approved' || reviewState.status === 'issued' },
+    { step: 'Issue Rev 04 for design',      by: 'Document Control',     done: reviewState.status === 'issued' },
+  ];
+  const regWfReadyToSubmit = regWfSteps[0].done && regWfSteps[1].done && regWfSteps[2].done;
+
+  const REG_REV_STATUS = {
+    in_review:        { label: 'In Review',        fg: '#0f766e', bg: 'rgba(15,118,110,0.09)',  border: 'rgba(15,118,110,0.25)' },
+    pending_approval: { label: 'Pending Approval', fg: '#b45309', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)' },
+    approved:         { label: 'Approved',         fg: '#047857', bg: 'rgba(16,185,129,0.1)',  border: 'rgba(16,185,129,0.28)' },
+    rejected:         { label: 'Rejected',         fg: '#b91c1c', bg: 'rgba(239,68,68,0.1)',   border: 'rgba(239,68,68,0.28)' },
+    issued:           { label: 'Issued for Design',fg: '#1d4ed8', bg: 'rgba(59,130,246,0.1)',  border: 'rgba(59,130,246,0.28)' },
+  };
+  const regRev       = reviewState.status === 'issued' ? '04' : LL_REGISTER.revision;
+  const regRevStatus = REG_REV_STATUS[reviewState.status] || REG_REV_STATUS.in_review;
+
+  const handleReviewSubmit = () => {
+    setReviewState(s => ({ ...s, status: 'pending_approval', comment: '',
+      history: [pushReviewEvent(`Rev ${regRev} submitted for engineering manager approval`), ...s.history] }));
+    setSavedNotice(`Rev ${regRev} submitted for approval.`);
+  };
+  const handleReviewDecide = (decision) => {
+    setReviewState(s => ({ ...s, status: decision, comment: reviewComment,
+      history: [pushReviewEvent(
+        `${decision === 'approved' ? 'Approved' : 'Rejected'} by Engineering Manager${reviewComment ? ` — "${reviewComment}"` : ''}`
+      ), ...s.history] }));
+    setReviewComment('');
+    setSavedNotice(decision === 'approved' ? `Rev ${regRev} approved.` : `Rev ${regRev} rejected — back to review.`);
+  };
+  const handleReviewIssue = () => {
+    setReviewState(s => ({ ...s, status: 'issued',
+      history: [pushReviewEvent('Rev 04 issued for design by Document Control'), ...s.history] }));
+    setSavedNotice('Rev 04 issued for design.');
+  };
 
   const regResetPage = () => setRegPage(1);
 
@@ -2118,10 +2183,10 @@ const LineList = () => {
                       <div className="flex items-center gap-2.5 text-xs text-slate-500">
                         <span>Register: <span className="font-semibold text-slate-700">{LL_REGISTER.registerNo}</span></span>
                         <span className="text-slate-300">|</span>
-                        <span>Rev: <span className="font-semibold text-slate-700">{LL_REGISTER.revision}</span></span>
+                        <span>Rev: <span className="font-semibold text-slate-700">{regRev}</span></span>
                         <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold"
-                          style={{ background: 'rgba(15,118,110,0.09)', color: LL_REGISTER.accent, border: '1px solid rgba(15,118,110,0.25)' }}>
-                          {LL_REGISTER.revisionStatus}
+                          style={{ background: regRevStatus.bg, color: regRevStatus.fg, border: `1px solid ${regRevStatus.border}` }}>
+                          {regRevStatus.label}
                         </span>
                       </div>
                       <button title="Help"
@@ -2736,14 +2801,8 @@ const LineList = () => {
               {regTab === 'Reviews' && (
                 <div className="grid gap-4" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.2fr)' }}>
                   <div className="rounded-2xl p-5" style={{ background: 'white', border: '1px solid #e2e8f0' }}>
-                    <h3 className="text-sm font-bold text-slate-800 mb-4" style={{ margin: '0 0 16px' }}>Approval workflow — Rev {LL_REGISTER.revision}</h3>
-                    {[
-                      { step: 'Extraction complete',        done: true,  by: 'RAD AI Engine' },
-                      { step: 'Data-quality validation',    done: regKpis.errors + regKpis.warnings === 0, by: 'Automated rules' },
-                      { step: 'Process engineering review', done: regKpis.reviewPending === 0, by: 'Process Lead' },
-                      { step: 'Engineering manager approval', done: false, by: 'Engineering Manager' },
-                      { step: 'Issue Rev 04 for design',    done: false, by: 'Document Control' },
-                    ].map((s, i, arr) => (
+                    <h3 className="text-sm font-bold text-slate-800 mb-4" style={{ margin: '0 0 16px' }}>Approval workflow — Rev {regRev}</h3>
+                    {regWfSteps.map((s, i, arr) => (
                       <div key={s.step} className="flex gap-3 pb-5 relative">
                         {i < arr.length - 1 && <div className="absolute left-[11px] top-7 bottom-0 w-px" style={{ background: '#e2e8f0' }} />}
                         <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold"
@@ -2752,12 +2811,85 @@ const LineList = () => {
                             : { background: '#f8fafc', color: '#94a3b8', border: '1.5px solid #e2e8f0' }}>
                           {s.done ? '✓' : i + 1}
                         </div>
-                        <div>
+                        <div className="flex-1">
                           <p className="text-xs font-bold" style={{ margin: 0, color: s.done ? '#047857' : '#334155' }}>{s.step}</p>
                           <p className="text-[11px] text-slate-400" style={{ margin: '2px 0 0' }}>{s.by}</p>
+                          {/* Contextual blockers / status hints */}
+                          {i === 1 && extractedData && !s.done && (
+                            <p className="text-[11px] mt-1" style={{ color: '#b45309', margin: '4px 0 0' }}>
+                              {regKpis.errors + regKpis.warnings} open data-quality issue(s) — resolve in the Validation tab
+                            </p>
+                          )}
+                          {i === 2 && extractedData && !s.done && (
+                            <p className="text-[11px] mt-1" style={{ color: '#b45309', margin: '4px 0 0' }}>
+                              {regKpis.reviewPending} line(s) still pending — use "Review changes" on each row
+                            </p>
+                          )}
+                          {i === 3 && reviewState.status === 'rejected' && (
+                            <p className="text-[11px] mt-1" style={{ color: '#b91c1c', margin: '4px 0 0' }}>
+                              Rejected{reviewState.comment ? `: "${reviewState.comment}"` : ''} — address comments and resubmit
+                            </p>
+                          )}
                         </div>
                       </div>
                     ))}
+
+                    {/* ── Workflow actions ── */}
+                    <div className="pt-2" style={{ borderTop: '1px solid #f1f5f9' }}>
+                      {(reviewState.status === 'in_review' || reviewState.status === 'rejected') && (
+                        <button onClick={handleReviewSubmit} disabled={!regWfReadyToSubmit}
+                          className="w-full px-4 py-2.5 rounded-xl text-xs font-bold transition-all"
+                          style={regWfReadyToSubmit
+                            ? { background: LL_REGISTER.accent, color: 'white', border: 'none', cursor: 'pointer', boxShadow: '0 4px 12px rgba(15,118,110,0.25)' }
+                            : { background: '#f1f5f9', color: '#94a3b8', border: '1px solid #e2e8f0', cursor: 'not-allowed' }}
+                          title={regWfReadyToSubmit ? 'Submit to Engineering Manager' : 'Complete the steps above first'}>
+                          Submit for engineering manager approval
+                        </button>
+                      )}
+
+                      {reviewState.status === 'pending_approval' && (
+                        <div>
+                          <p className="text-[11px] font-semibold text-slate-500 mb-2" style={{ margin: '0 0 8px' }}>
+                            Awaiting Engineering Manager decision
+                          </p>
+                          <textarea
+                            value={reviewComment}
+                            onChange={e => setReviewComment(e.target.value)}
+                            placeholder="Approval comment (optional)…"
+                            rows={2}
+                            className="w-full px-3 py-2 text-xs rounded-lg outline-none mb-2"
+                            style={{ border: '1px solid #e2e8f0', background: '#f8fafc', color: '#334155', resize: 'vertical' }}
+                          />
+                          <div className="flex gap-2">
+                            <button onClick={() => handleReviewDecide('rejected')}
+                              className="flex-1 px-4 py-2.5 rounded-xl text-xs font-bold transition-all hover:bg-red-50"
+                              style={{ border: '1px solid rgba(239,68,68,0.35)', color: '#b91c1c', background: 'white', cursor: 'pointer' }}>
+                              Reject
+                            </button>
+                            <button onClick={() => handleReviewDecide('approved')}
+                              className="flex-1 px-4 py-2.5 rounded-xl text-xs font-bold text-white transition-all"
+                              style={{ background: '#047857', border: 'none', cursor: 'pointer', boxShadow: '0 4px 12px rgba(4,120,87,0.25)' }}>
+                              Approve
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {reviewState.status === 'approved' && (
+                        <button onClick={handleReviewIssue}
+                          className="w-full px-4 py-2.5 rounded-xl text-xs font-bold text-white transition-all"
+                          style={{ background: '#1d4ed8', border: 'none', cursor: 'pointer', boxShadow: '0 4px 12px rgba(29,78,216,0.25)' }}>
+                          Issue Rev 04 for design
+                        </button>
+                      )}
+
+                      {reviewState.status === 'issued' && (
+                        <div className="rounded-xl p-3 text-center text-xs font-bold"
+                          style={{ background: 'rgba(59,130,246,0.08)', color: '#1d4ed8', border: '1px solid rgba(59,130,246,0.25)' }}>
+                          ✓ Rev 04 issued for design — workflow complete
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <div className="rounded-2xl p-5" style={{ background: 'white', border: '1px solid #e2e8f0' }}>
                     <h3 className="text-sm font-bold text-slate-800 mb-1" style={{ margin: '0 0 4px' }}>Revision history & activity</h3>
@@ -2769,6 +2901,15 @@ const LineList = () => {
                         <p className="text-[11px] text-slate-400" style={{ margin: 0 }}>{regKpis.total} lines · {regKpis.reviewPending} pending review</p>
                       </div>
                     </div>
+                    {/* Live workflow events (persisted per project) */}
+                    {reviewState.history.map((h, i) => (
+                      <div key={`h${i}`} className="flex items-center justify-between py-2.5" style={{ borderBottom: '1px solid #f8fafc' }}>
+                        <div>
+                          <p className="text-xs font-bold text-slate-800" style={{ margin: 0 }}>{h.text}</p>
+                          <p className="text-[11px] text-slate-400" style={{ margin: '2px 0 0' }}>{h.at}</p>
+                        </div>
+                      </div>
+                    ))}
                     {LL_REVISIONS.map(r => (
                       <div key={r.rev} className="flex items-center justify-between py-2.5" style={{ borderBottom: '1px solid #f8fafc' }}>
                         <div>
