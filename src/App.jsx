@@ -19,6 +19,9 @@ import ChangePasswordModal from "./components/Auth/ChangePasswordModal";
 import PasswordExpiryBanner from "./components/PasswordExpiryBanner";
 import ProfileCompletionGuard from "./components/ProfileCompletionGuard";
 import RadAIChatWidget from "./components/chat/RadAIChatWidget";
+
+// SOFT-CODED: global RADAI Assistant chatbot visibility (false = removed app-wide)
+const RADAI_CHAT_ENABLED = false;
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import SetupPassword from "./pages/SetupPassword";
@@ -507,8 +510,9 @@ function App() {
 
       {isAuthenticated && !mustChangePassword && <ProfileCompletionGuard />}
 
-      {/* RADAI Chat — global floating assistant (BYOK, grounded in page context) */}
-      {isAuthenticated && <RadAIChatWidget />}
+      {/* RADAI Chat — global floating assistant (BYOK, grounded in page context)
+          SOFT-CODED: disabled app-wide — set RADAI_CHAT_ENABLED to true to restore */}
+      {RADAI_CHAT_ENABLED && isAuthenticated && <RadAIChatWidget />}
 
       <FirstLoginCheck onPasswordChanged={handlePasswordChangeSuccess}>
         <Routes>

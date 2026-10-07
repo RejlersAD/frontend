@@ -30,7 +30,7 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { DocumentTextIcon, CloudArrowUpIcon, CheckCircleIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon, BookOpenIcon, Cog6ToothIcon } from '@heroicons/react/24/outline';
+import { DocumentTextIcon, CloudArrowUpIcon, CheckCircleIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon, BookOpenIcon, Cog6ToothIcon, MagnifyingGlassIcon, XMarkIcon, ClockIcon, ExclamationTriangleIcon, ExclamationCircleIcon, PlusIcon, ArrowUpTrayIcon, ArrowDownTrayIcon, QuestionMarkCircleIcon, EllipsisHorizontalIcon, ArrowTopRightOnSquareIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon, ClipboardDocumentListIcon, PencilSquareIcon } from '@heroicons/react/24/outline';
 import apiClient from '../../../services/api.service';
 import * as XLSX from 'xlsx';
 import envConfig from '../../../config/environment.config';
@@ -216,13 +216,6 @@ const LL_UPLOAD_RULES = {
     { key: 'a', label: 'Phase 1',            pattern: 'XX-XX-XXXX-XXXX-X' },
     { key: 'b', label: 'Phase 2 (Line List)', pattern: 'XX-XX-XX-AXXXX-XXXXXXX-XX' },
   ],
-  // Item c — BYOK note for the RADAI Assistant
-  assistantNote: {
-    key: 'c',
-    icon: '🔑',
-    label: 'RADAI Assistant (optional)',
-    text: 'To verify & validate results with the RADAI Assistant, you need your own Claude or OpenAI API key.',
-  },
 };
 
 // Count PDF pages client-side (dependency-free heuristic: counts page
@@ -313,6 +306,54 @@ const LL_PROC_TIPS = [
   '✨ Complex drawings (like this one) may take longer — quality stays high.',
 ];
 const LL_PROC_TIP_ROTATE_MS = 5000;
+
+// ---------------------------------------------------------------------------
+// ─── Enterprise Line Register (management view) — pure design layer ────────
+// Renders the extracted rows as an enterprise register (search, filters,
+// status badges, KPI cards, pagination, detail panel, revision history).
+// SOFT-CODED: every value here is display-only — extraction, polling and
+// export logic never read from this block.
+// ---------------------------------------------------------------------------
+const LL_REGISTER = {
+  enabled:        true,
+  registerNo:     'LL-001',
+  revision:       '03',
+  revisionStatus: 'In Review',
+  pageSize:       10,
+  breadcrumbRoot: 'Projects',
+  tabs:           ['Overview', 'Line List', 'Changes', 'Validation', 'Reviews', 'Documents'],
+  accent:         '#0f766e',   // enterprise teal (matches reference template)
+};
+
+// Status badge palette — keyed by computed row status.
+const LL_STATUS_STYLES = {
+  New:       { bg: 'rgba(59,130,246,0.10)',  fg: '#1d4ed8', border: 'rgba(59,130,246,0.28)'  },
+  Changed:   { bg: 'rgba(245,158,11,0.12)',  fg: '#b45309', border: 'rgba(245,158,11,0.30)'  },
+  Reviewed:  { bg: 'rgba(16,185,129,0.10)',  fg: '#047857', border: 'rgba(16,185,129,0.28)'  },
+  Unchanged: { bg: 'rgba(100,116,139,0.08)', fg: '#475569', border: 'rgba(100,116,139,0.22)' },
+  Error:     { bg: 'rgba(239,68,68,0.10)',   fg: '#b91c1c', border: 'rgba(239,68,68,0.28)'   },
+  Warning:   { bg: 'rgba(245,158,11,0.14)',  fg: '#b45309', border: 'rgba(245,158,11,0.32)'  },
+};
+
+// Revision history (newest first). `live: true` marks the current working
+// revision — its metadata is enriched at render time from the real extraction.
+const LL_REVISIONS = [
+  { rev: '03', status: 'In Review',          by: 'Process Lead',       note: 'Current extraction — pending engineering review', live: true },
+  { rev: '02', status: 'Approved',           by: 'Engineering Manager', note: 'Issued for design — Phase 1 lines incorporated' },
+  { rev: '01', status: 'Issued for Review',  by: 'Process Engineer',    note: 'First issue from P&ID base extraction' },
+];
+
+// Fields shown in the detail panel's "Engineering specifications" group.
+const LL_SPEC_FIELDS = [
+  { key: 'size',              label: 'Size' },
+  { key: 'fluid_code',        label: 'Service code' },
+  { key: 'fluid_description', label: 'Service description' },
+  { key: 'sequence_no',       label: 'Sequence no.' },
+  { key: 'piping_spec',       label: 'Piping specification' },
+  { key: 'dept_deviation',    label: 'Dept deviation' },
+  { key: 'insulation',        label: 'Insulation' },
+  { key: 'insulation_desc',   label: 'Insulation description' },
+];
 
 // ─── AI Document Assist (Wrench) — soft-coded panel config ─────────────────
 // Mirrors the pattern used on PID Verification / PMS / Instrument Index /
@@ -422,6 +463,27 @@ const LineList = () => {
   const [pageInfo, setPageInfo] = useState(null);
   // Rotating tip index for processing card
   const [procTipIdx, setProcTipIdx] = useState(0);
+
+  // ── Enterprise register UI state (design layer only) ────────────────────
+  // None of this feeds extraction / polling / export — it only shapes how
+  // completed results are presented and interacted with.
+  const [regTab, setRegTab]             = useState('Line List');
+  const [regSearch, setRegSearch]       = useState('');
+  const [regFilters, setRegFilters]     = useState({ fluid_code: '', status: '', insulation: '', pid_no: '' });
+  const [regPage, setRegPage]           = useState(1);
+  const [regSelectedRow, setRegSelectedRow] = useState(null);   // row object reference
+  const [regChecked, setRegChecked]     = useState(() => new Set());
+  const [regActionsOpen, setRegActionsOpen] = useState(false);
+  const [regExtraRows, setRegExtraRows] = useState([]);         // added / imported lines (UI layer)
+  const [regOverrides, setRegOverrides] = useState(() => new Map()); // row → status after review actions
+  const [regDetailTab, setRegDetailTab] = useState('Details');
+  const regImportRef = useRef(null);
+
+  // ── View switch: 'extract' = upload/processing workspace, 'register' = results page
+  // Auto-switches to the register when extraction completes; the register
+  // header offers "New extraction" to go back without losing results.
+  const [regView, setRegView] = useState('extract');
+  useEffect(() => { if (extractedData) setRegView('register'); }, [extractedData]);
 
   const pidRef = useRef(null);
   const legendRef = useRef(null);
@@ -801,6 +863,136 @@ const LineList = () => {
   };
 
   // -------------------------------------------------------------------------
+  // Enterprise register — derived data + UI-only handlers (design layer)
+  // -------------------------------------------------------------------------
+
+  // Data-quality driven status: Error = unusable row, Warning = incomplete
+  // FROM/TO, otherwise Reviewed. Review actions can override per row.
+  const getLineStatus = useCallback((row) => {
+    const override = regOverrides.get(row);
+    if (override) return override;
+    if (row.__added) return 'New';
+    if (!row.original_detection || !row.size) return 'Error';
+    const from = row.from_line || row.from_equipment || row.from;
+    const to   = row.to_line   || row.to_equipment   || row.to;
+    if (!from || !to) return 'Warning';
+    return 'Reviewed';
+  }, [regOverrides]);
+
+  // Data-quality issues for a row — drives the Validation tab + detail alerts.
+  const getLineIssues = useCallback((row) => {
+    const issues = [];
+    if (!row.original_detection) issues.push('Missing line designation');
+    if (!row.size)               issues.push('Missing size');
+    if (!(row.from_line || row.from_equipment || row.from)) issues.push('FROM not detected');
+    if (!(row.to_line   || row.to_equipment   || row.to))   issues.push('TO not detected');
+    if (!row.piping_spec)        issues.push('Missing piping specification');
+    return issues;
+  }, []);
+
+  const regAllRows = extractedData?.data ? [...extractedData.data, ...regExtraRows] : [];
+
+  // Distinct filter options derived from live data.
+  const regFilterOptions = {
+    fluid_code: [...new Set(regAllRows.map(r => r.fluid_code).filter(Boolean))].sort(),
+    insulation: [...new Set(regAllRows.map(r => r.insulation).filter(Boolean))].sort(),
+    pid_no:     [...new Set(regAllRows.map(r => r.pid_no).filter(Boolean))].sort(),
+  };
+
+  const regQuery = regSearch.trim().toLowerCase();
+  const regRows = regAllRows.filter(row => {
+    const status = getLineStatus(row);
+    if (regFilters.status     && status !== regFilters.status) return false;
+    if (regFilters.fluid_code && row.fluid_code !== regFilters.fluid_code) return false;
+    if (regFilters.insulation && row.insulation !== regFilters.insulation) return false;
+    if (regFilters.pid_no     && row.pid_no     !== regFilters.pid_no)     return false;
+    if (regQuery) {
+      const haystack = COLUMNS.map(c => resolveCellValue(row, c)).join(' ').toLowerCase();
+      if (!haystack.includes(regQuery)) return false;
+    }
+    return true;
+  });
+
+  const regTotalPages = Math.max(1, Math.ceil(regRows.length / LL_REGISTER.pageSize));
+  const regPageSafe   = Math.min(regPage, regTotalPages);
+  const regPageRows   = regRows.slice((regPageSafe - 1) * LL_REGISTER.pageSize, regPageSafe * LL_REGISTER.pageSize);
+
+  // KPI counts across ALL rows (unfiltered) so cards stay stable while filtering.
+  const regKpis = regAllRows.reduce((acc, row) => {
+    const s = getLineStatus(row);
+    acc.total += 1;
+    if (s === 'New')     acc.newCount += 1;
+    if (s === 'Error')   acc.errors += 1;
+    if (s === 'Warning') acc.warnings += 1;
+    if (s === 'Changed') acc.changed += 1;
+    return acc;
+  }, { total: 0, newCount: 0, errors: 0, warnings: 0, changed: 0 });
+  regKpis.reviewPending = regKpis.errors + regKpis.warnings + regKpis.newCount + regKpis.changed;
+
+  const regResetPage = () => setRegPage(1);
+
+  const handleRegAddLine = () => {
+    const row = { __added: true, original_detection: `NEW-LINE-${String(regExtraRows.length + 1).padStart(3, '0')}` };
+    setRegExtraRows(prev => [...prev, row]);
+    setRegSelectedRow(row);
+    setRegDetailTab('Details');
+    setRegActionsOpen(false);
+  };
+
+  // Import CSV/XLSX — maps columns by matching the register's column labels.
+  // Purely additive to the UI layer; the extraction pipeline is untouched.
+  const handleRegImport = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    setRegActionsOpen(false);
+    if (!file) return;
+    try {
+      const buf = await file.arrayBuffer();
+      const wb  = XLSX.read(buf);
+      const ws  = wb.Sheets[wb.SheetNames[0]];
+      const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      if (aoa.length < 2) { setError('Import file has no data rows.'); return; }
+      const headers = aoa[0].map(h => String(h).trim().toLowerCase());
+      const imported = aoa.slice(1)
+        .filter(r => r.some(c => String(c).trim() !== ''))
+        .map(r => {
+          const obj = { __added: true };
+          COLUMNS.forEach(c => {
+            const i = headers.indexOf(c.label.toLowerCase());
+            if (i >= 0 && r[i] !== '') obj[c.key] = r[i];
+          });
+          return obj;
+        });
+      if (!imported.length) { setError('Import failed — no rows matched the register column headers.'); return; }
+      setRegExtraRows(prev => [...prev, ...imported]);
+      setError(null);
+    } catch {
+      setError('Import failed — please provide a CSV/XLSX with the register column headers.');
+    }
+  };
+
+  const handleRegReviewRow = (row) => {
+    setRegOverrides(prev => new Map(prev).set(row, 'Reviewed'));
+  };
+
+  const regToggleCheck = (row) => {
+    setRegChecked(prev => {
+      const next = new Set(prev);
+      if (next.has(row)) next.delete(row); else next.add(row);
+      return next;
+    });
+  };
+
+  const regToggleAllOnPage = () => {
+    setRegChecked(prev => {
+      const next = new Set(prev);
+      const allChecked = regPageRows.every(r => next.has(r));
+      regPageRows.forEach(r => { if (allChecked) next.delete(r); else next.add(r); });
+      return next;
+    });
+  };
+
+  // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------
 
@@ -1171,6 +1363,8 @@ const LineList = () => {
           )}
           </div>
 
+          {/* ═══ EXTRACTION WORKSPACE VIEW — shown until results are ready ═══ */}
+          {regView === 'extract' && (<>
           {/* ═══ VERIFICATION WORKFLOW + SMART DOCUMENTATION — V1 split-screen ═══
               Soft-coded: components/LineListWorkflowDocs.jsx (LL_DOCS_CONFIG) */}
           <LineListWorkflowDocs />
@@ -1262,21 +1456,6 @@ const LineList = () => {
                       <span className="text-slate-400">— {f.label}</span>
                     </div>
                   ))}
-                  {/* Item c — BYOK note for the RADAI Assistant */}
-                  {LL_UPLOAD_RULES.assistantNote && (
-                    <div className="flex items-start gap-2 text-xs pt-1.5 mt-1.5"
-                      style={{ borderTop: '1px dashed rgba(245,158,11,0.35)' }}>
-                      <span className="w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0 mt-0.5"
-                        style={{ background: '#8b5cf6' }}>
-                        {LL_UPLOAD_RULES.assistantNote.key}
-                      </span>
-                      <span className="text-slate-600 leading-relaxed">
-                        {LL_UPLOAD_RULES.assistantNote.icon}{' '}
-                        <span className="font-semibold">{LL_UPLOAD_RULES.assistantNote.label}:</span>{' '}
-                        {LL_UPLOAD_RULES.assistantNote.text}
-                      </span>
-                    </div>
-                  )}
                 </div>
               </div>
             )}
@@ -1755,9 +1934,744 @@ const LineList = () => {
               <p className="text-red-600 text-sm font-medium">{error}</p>
             </div>
           )}
+          </>)}
 
-          {/* ── Results Table ── */}
-          {extractedData && (
+          {/* ════════════════════════════════════════════════════════════════
+              ENTERPRISE LINE REGISTER — management view (design layer)
+              Mirrors the Equipment List template: breadcrumb header, tabs,
+              KPI cards, search + filters, status badges, pagination, and a
+              row-detail panel with specs / history / documents.
+              All data below derives from `extractedData` — core extraction,
+              polling and Excel export logic are untouched.
+             ════════════════════════════════════════════════════════════════ */}
+          {regView === 'register' && LL_REGISTER.enabled && (
+            <div className="ll-section" style={{ animationDelay: '0s' }}>
+
+              {/* ── Register header card: breadcrumb + title + meta + actions ── */}
+              <div className="rounded-2xl mb-4 relative" style={{
+                background: 'white', border: '1px solid #e2e8f0',
+                boxShadow: '0 2px 12px rgba(15,118,110,0.05)',
+              }}>
+                <div className="px-6 pt-5 pb-0">
+                  <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div style={{ minWidth: 0 }}>
+                      <p className="text-xs text-slate-400 mb-1" style={{ margin: '0 0 4px' }}>
+                        {LL_REGISTER.breadcrumbRoot}
+                        <span className="mx-1.5 text-slate-300">/</span>
+                        <span className="text-slate-500">{activeProject?.name || activeProject?.code || 'Workspace'}</span>
+                      </p>
+                      <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight" style={{ margin: 0, lineHeight: 1.2 }}>
+                        Line List
+                      </h2>
+                      <p className="text-xs text-slate-500 mt-1" style={{ margin: '4px 0 0' }}>
+                        {activeProject?.name || 'Project'} — Engineering line register and data validation
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      {/* Back to extraction workspace */}
+                      <button onClick={() => setRegView('extract')}
+                        title="Start a new extraction"
+                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 shadow-sm transition-all"
+                        style={{ cursor: 'pointer' }}>
+                        <CloudArrowUpIcon className="h-4 w-4" /> New extraction
+                      </button>
+                      {/* Register meta */}
+                      <div className="flex items-center gap-2.5 text-xs text-slate-500">
+                        <span>Register: <span className="font-semibold text-slate-700">{LL_REGISTER.registerNo}</span></span>
+                        <span className="text-slate-300">|</span>
+                        <span>Rev: <span className="font-semibold text-slate-700">{LL_REGISTER.revision}</span></span>
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                          style={{ background: 'rgba(15,118,110,0.09)', color: LL_REGISTER.accent, border: '1px solid rgba(15,118,110,0.25)' }}>
+                          {LL_REGISTER.revisionStatus}
+                        </span>
+                      </div>
+                      <button title="Help"
+                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 shadow-sm transition-all">
+                        <QuestionMarkCircleIcon className="h-4 w-4" /> Help
+                      </button>
+                      <button title="More options"
+                        className="flex items-center justify-center w-9 h-9 rounded-xl bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 shadow-sm transition-all">
+                        <EllipsisHorizontalIcon className="h-5 w-5" />
+                      </button>
+                      {/* Actions dropdown: Add line / Import / Export */}
+                      <div className="relative">
+                        <button
+                          onClick={() => setRegActionsOpen(o => !o)}
+                          className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-white transition-all"
+                          style={{ background: LL_REGISTER.accent, boxShadow: '0 4px 12px rgba(15,118,110,0.28)', border: 'none', cursor: 'pointer' }}>
+                          Actions <ChevronDownIcon className="h-3.5 w-3.5" />
+                        </button>
+                        {regActionsOpen && (
+                          <>
+                            <div className="fixed inset-0 z-30" onClick={() => setRegActionsOpen(false)} />
+                            <div className="absolute right-0 mt-2 w-52 rounded-xl overflow-hidden z-50"
+                              style={{ background: 'white', border: '1px solid #e2e8f0', boxShadow: '0 12px 32px rgba(15,23,42,0.14)', top: '100%' }}>
+                              {[
+                                { icon: <PlusIcon className="h-4 w-4" />,          label: 'Add line',         onClick: handleRegAddLine },
+                                { icon: <ArrowUpTrayIcon className="h-4 w-4" />,   label: 'Import CSV / Excel', onClick: () => regImportRef.current?.click() },
+                                { icon: <ArrowDownTrayIcon className="h-4 w-4" />, label: 'Export Excel',     onClick: () => { setRegActionsOpen(false); handleExport(); } },
+                              ].map(a => (
+                                <button key={a.label} onClick={a.onClick}
+                                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-teal-50 hover:text-teal-800 transition-colors"
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+                                  {a.icon}{a.label}
+                                </button>
+                              ))}
+                            </div>
+                          </>
+                        )}
+                        <input ref={regImportRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleRegImport} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ── Tabs ── */}
+                  <div className="flex items-center gap-1 mt-5" style={{ borderTop: '1px solid #f1f5f9', paddingTop: 0 }}>
+                    {LL_REGISTER.tabs.map(tab => {
+                      const active = regTab === tab;
+                      return (
+                        <button key={tab}
+                          onClick={() => setRegTab(tab)}
+                          className="px-4 py-3 text-xs font-semibold transition-colors"
+                          style={{
+                            background: 'none', border: 'none', cursor: 'pointer',
+                            color: active ? LL_REGISTER.accent : '#64748b',
+                            borderBottom: active ? `2px solid ${LL_REGISTER.accent}` : '2px solid transparent',
+                            marginBottom: -1,
+                          }}>
+                          {tab}
+                          {tab === 'Validation' && (regKpis.errors + regKpis.warnings) > 0 && (
+                            <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold"
+                              style={{ background: 'rgba(239,68,68,0.1)', color: '#b91c1c' }}>
+                              {regKpis.errors + regKpis.warnings}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* ═══ TAB: Line List — KPIs + search/filters + register table + detail panel ═══ */}
+              {regTab === 'Line List' && (
+                <div className="grid gap-4" style={{ gridTemplateColumns: regSelectedRow ? 'minmax(0,1fr) 400px' : 'minmax(0,1fr)' }}>
+                  <div style={{ minWidth: 0 }}>
+
+                    {/* KPI cards */}
+                    <div className="grid gap-0 mb-4 rounded-2xl overflow-hidden" style={{
+                      gridTemplateColumns: 'repeat(5, minmax(0,1fr))',
+                      background: 'white', border: '1px solid #e2e8f0',
+                    }}>
+                      {[
+                        { icon: <ClipboardDocumentListIcon className="h-5 w-5" style={{ color: '#475569' }} />,   val: regKpis.total,         label: 'Total lines',    color: '#0f172a' },
+                        { icon: <DocumentTextIcon className="h-5 w-5" style={{ color: LL_REGISTER.accent }} />,   val: regKpis.newCount + regKpis.changed, label: 'New / Changed', color: LL_REGISTER.accent },
+                        { icon: <ExclamationCircleIcon className="h-5 w-5" style={{ color: '#dc2626' }} />,       val: regKpis.errors,        label: 'Errors',         color: '#dc2626' },
+                        { icon: <ExclamationTriangleIcon className="h-5 w-5" style={{ color: '#d97706' }} />,     val: regKpis.warnings,      label: 'Warnings',       color: '#d97706' },
+                        { icon: <ClockIcon className="h-5 w-5" style={{ color: '#64748b' }} />,                   val: regKpis.reviewPending, label: 'Review pending', color: '#0f172a' },
+                      ].map((k, i) => (
+                        <div key={k.label} className="flex items-center gap-3 px-5 py-4"
+                          style={{ borderLeft: i > 0 ? '1px solid #f1f5f9' : 'none' }}>
+                          {k.icon}
+                          <div>
+                            <div className="text-xl font-extrabold tabular-nums leading-none" style={{ color: k.color }}>{k.val}</div>
+                            <div className="text-[11px] text-slate-400 mt-1">{k.label}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Search + filter bar */}
+                    <div className="rounded-2xl p-3 mb-4 flex items-center gap-2.5 flex-wrap" style={{
+                      background: 'white', border: '1px solid #e2e8f0',
+                    }}>
+                      <div className="relative flex-1" style={{ minWidth: 220 }}>
+                        <MagnifyingGlassIcon className="h-4 w-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                        <input
+                          value={regSearch}
+                          onChange={e => { setRegSearch(e.target.value); regResetPage(); }}
+                          placeholder="Search line tags or descriptions…"
+                          className="w-full pl-10 pr-3 py-2.5 text-sm rounded-xl outline-none"
+                          style={{ border: '1px solid #e2e8f0', color: '#334155', background: '#f8fafc' }}
+                          onFocus={e => { e.target.style.borderColor = 'rgba(15,118,110,0.45)'; e.target.style.boxShadow = '0 0 0 3px rgba(15,118,110,0.08)'; }}
+                          onBlur={e => { e.target.style.borderColor = '#e2e8f0'; e.target.style.boxShadow = 'none'; }}
+                        />
+                      </div>
+                      {[
+                        { key: 'fluid_code', label: 'Service',  options: regFilterOptions.fluid_code },
+                        { key: 'status',     label: 'Status',   options: Object.keys(LL_STATUS_STYLES) },
+                        { key: 'insulation', label: 'Insulation', options: regFilterOptions.insulation },
+                        { key: 'pid_no',     label: 'P&ID',     options: regFilterOptions.pid_no },
+                      ].map(f => (
+                        <div key={f.key} className="relative">
+                          <select
+                            value={regFilters[f.key]}
+                            onChange={e => { setRegFilters(prev => ({ ...prev, [f.key]: e.target.value })); regResetPage(); }}
+                            className="appearance-none pl-3.5 pr-8 py-2.5 text-xs font-semibold rounded-xl outline-none cursor-pointer"
+                            style={{
+                              border: `1px solid ${regFilters[f.key] ? 'rgba(15,118,110,0.4)' : '#e2e8f0'}`,
+                              color: regFilters[f.key] ? LL_REGISTER.accent : '#475569',
+                              background: regFilters[f.key] ? 'rgba(15,118,110,0.05)' : 'white',
+                            }}>
+                            <option value="">{f.label}</option>
+                            {f.options.map(o => <option key={o} value={o}>{o}</option>)}
+                          </select>
+                          <ChevronDownIcon className="h-3.5 w-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                        </div>
+                      ))}
+                      {(regSearch || Object.values(regFilters).some(Boolean)) && (
+                        <button
+                          onClick={() => { setRegSearch(''); setRegFilters({ fluid_code: '', status: '', insulation: '', pid_no: '' }); regResetPage(); }}
+                          className="flex items-center gap-1 px-3 py-2.5 text-xs font-semibold text-slate-500 hover:text-red-600 rounded-xl transition-colors"
+                          style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                          <XMarkIcon className="h-3.5 w-3.5" /> Clear
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Register table card */}
+                    <div className="rounded-2xl overflow-hidden" style={{
+                      background: 'white', border: '1px solid #e2e8f0',
+                      boxShadow: '0 2px 16px rgba(15,23,42,0.04)',
+                    }}>
+                      <div className="px-5 py-4 flex items-center justify-between gap-3 flex-wrap">
+                        <h3 className="text-base font-bold text-slate-900" style={{ margin: 0 }}>Line register</h3>
+                        <div className="flex items-center gap-2">
+                          {regChecked.size > 0 && (
+                            <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full"
+                              style={{ background: 'rgba(15,118,110,0.08)', color: LL_REGISTER.accent, border: '1px solid rgba(15,118,110,0.2)' }}>
+                              {regChecked.size} selected
+                            </span>
+                          )}
+                          <button onClick={handleExport}
+                            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border transition-all hover:bg-slate-50"
+                            style={{ border: '1px solid #e2e8f0', color: '#475569', background: 'white', cursor: 'pointer' }}>
+                            <ArrowDownTrayIcon className="h-4 w-4" /> Export
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full">
+                          <thead>
+                            <tr style={{ background: '#f8fafc', borderTop: '1px solid #f1f5f9', borderBottom: '1px solid #e2e8f0' }}>
+                              <th className="px-4 py-3 w-10">
+                                <input type="checkbox"
+                                  checked={regPageRows.length > 0 && regPageRows.every(r => regChecked.has(r))}
+                                  onChange={regToggleAllOnPage}
+                                  style={{ accentColor: LL_REGISTER.accent, cursor: 'pointer' }} />
+                              </th>
+                              {['Line Designation', 'Service', 'Size', 'Seq No.', 'Piping Spec', 'Insulation', 'From', 'To', 'P&ID No.', 'Status'].map(h => (
+                                <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider" style={{ whiteSpace: 'nowrap' }}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {regPageRows.length === 0 && (
+                              <tr><td colSpan={11} className="px-4 py-10 text-center text-sm text-slate-400">
+                                {!extractedData
+                                  ? 'No lines yet — upload a P&ID above and run extraction, or use Actions → Add line / Import.'
+                                  : 'No lines match the current search / filters.'}
+                              </td></tr>
+                            )}
+                            {regPageRows.map((row, idx) => {
+                              const status = getLineStatus(row);
+                              const st = LL_STATUS_STYLES[status];
+                              const isSel = regSelectedRow === row;
+                              return (
+                                <tr key={idx}
+                                  onClick={() => { setRegSelectedRow(isSel ? null : row); setRegDetailTab('Details'); }}
+                                  style={{
+                                    background: isSel ? 'rgba(15,118,110,0.06)' : idx % 2 === 0 ? 'white' : '#fafcfd',
+                                    borderBottom: '1px solid #f1f5f9', cursor: 'pointer',
+                                    transition: 'background 0.15s',
+                                  }}
+                                  onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = 'rgba(15,118,110,0.03)'; }}
+                                  onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = idx % 2 === 0 ? 'white' : '#fafcfd'; }}
+                                >
+                                  <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                                    <input type="checkbox" checked={regChecked.has(row)} onChange={() => regToggleCheck(row)}
+                                      style={{ accentColor: LL_REGISTER.accent, cursor: 'pointer' }} />
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-mono font-semibold"
+                                      style={{ background: 'rgba(15,118,110,0.07)', color: '#0f766e', border: '1px solid rgba(15,118,110,0.15)', whiteSpace: 'nowrap' }}>
+                                      {row.original_detection || '—'}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3 text-xs text-slate-600" title={row.fluid_description || ''}>
+                                    {row.fluid_code || '—'}
+                                  </td>
+                                  <td className="px-4 py-3 text-xs text-slate-600">{row.size || '—'}</td>
+                                  <td className="px-4 py-3 text-xs text-slate-600">{row.sequence_no || '—'}</td>
+                                  <td className="px-4 py-3 text-xs text-slate-600" style={{ whiteSpace: 'nowrap' }}>{row.piping_spec || '—'}</td>
+                                  <td className="px-4 py-3 text-xs text-slate-600" title={row.insulation_desc || ''}>{row.insulation || '—'}</td>
+                                  <td className="px-4 py-3 text-xs text-slate-600" style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {row.from_line || row.from_equipment || row.from || '—'}
+                                  </td>
+                                  <td className="px-4 py-3 text-xs text-slate-600" style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {row.to_line || row.to_equipment || row.to || '—'}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <span className="text-xs font-mono text-slate-500" style={{ whiteSpace: 'nowrap' }}>{row.pid_no || '—'}</span>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                                      style={{ background: st.bg, color: st.fg, border: `1px solid ${st.border}`, whiteSpace: 'nowrap' }}>
+                                      {status}
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Pagination */}
+                      <div className="px-5 py-3.5 flex items-center justify-between gap-3 flex-wrap text-xs text-slate-500"
+                        style={{ borderTop: '1px solid #f1f5f9', background: '#fbfdfe' }}>
+                        <span>
+                          {regRows.length === 0 ? '0' : (regPageSafe - 1) * LL_REGISTER.pageSize + 1}–{Math.min(regPageSafe * LL_REGISTER.pageSize, regRows.length)} of {regRows.length}
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <button disabled={regPageSafe <= 1} onClick={() => setRegPage(p => Math.max(1, p - 1))}
+                            className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+                            style={{ border: '1px solid #e2e8f0', background: 'white', color: regPageSafe <= 1 ? '#cbd5e1' : '#475569', cursor: regPageSafe <= 1 ? 'not-allowed' : 'pointer' }}>
+                            <ChevronLeftIcon className="h-4 w-4" />
+                          </button>
+                          {Array.from({ length: regTotalPages }).map((_, i) => i + 1)
+                            .filter(p => p === 1 || p === regTotalPages || Math.abs(p - regPageSafe) <= 2)
+                            .reduce((acc, p, i, arr) => {
+                              if (i > 0 && p - arr[i - 1] > 1) acc.push('…');
+                              acc.push(p);
+                              return acc;
+                            }, [])
+                            .map((p, i) => p === '…' ? (
+                              <span key={`e${i}`} className="px-1.5 text-slate-400">…</span>
+                            ) : (
+                              <button key={p} onClick={() => setRegPage(p)}
+                                className="w-8 h-8 rounded-lg text-xs font-semibold transition-colors"
+                                style={p === regPageSafe
+                                  ? { background: LL_REGISTER.accent, color: 'white', border: 'none', cursor: 'pointer' }
+                                  : { border: '1px solid #e2e8f0', background: 'white', color: '#475569', cursor: 'pointer' }}>
+                                {p}
+                              </button>
+                            ))}
+                          <button disabled={regPageSafe >= regTotalPages} onClick={() => setRegPage(p => Math.min(regTotalPages, p + 1))}
+                            className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+                            style={{ border: '1px solid #e2e8f0', background: 'white', color: regPageSafe >= regTotalPages ? '#cbd5e1' : '#475569', cursor: regPageSafe >= regTotalPages ? 'not-allowed' : 'pointer' }}>
+                            <ChevronRightIcon className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ── Detail panel — LINE DETAILS (template right column) ── */}
+                  {regSelectedRow && (
+                    <div className="rounded-2xl overflow-hidden self-start sticky" style={{
+                      background: 'white', border: '1px solid #e2e8f0', top: 16,
+                      boxShadow: '0 4px 20px rgba(15,23,42,0.06)',
+                    }}>
+                      <div className="px-5 pt-4 pb-0" style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Line Details</span>
+                          <div className="flex items-center gap-1.5">
+                            <button title="Open full view" className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors"
+                              style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                              <ArrowsPointingOutIcon className="h-4 w-4" />
+                            </button>
+                            <button title="Close" onClick={() => setRegSelectedRow(null)}
+                              className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors"
+                              style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                              <XMarkIcon className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="text-lg font-extrabold text-slate-900 font-mono" style={{ margin: 0, wordBreak: 'break-all' }}>
+                            {regSelectedRow.original_detection || 'Unnamed line'}
+                          </h3>
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold flex-shrink-0"
+                            style={{
+                              background: LL_STATUS_STYLES[getLineStatus(regSelectedRow)].bg,
+                              color: LL_STATUS_STYLES[getLineStatus(regSelectedRow)].fg,
+                              border: `1px solid ${LL_STATUS_STYLES[getLineStatus(regSelectedRow)].border}`,
+                            }}>
+                            {getLineStatus(regSelectedRow)}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-0.5 mb-3" style={{ margin: '2px 0 12px' }}>
+                          {regSelectedRow.fluid_description || 'Line'} · {regSelectedRow.pid_no || 'No P&ID ref'}
+                        </p>
+                        <div className="flex items-center gap-1">
+                          {['Details', 'History', 'Documents'].map(t => (
+                            <button key={t} onClick={() => setRegDetailTab(t)}
+                              className="px-3.5 py-2.5 text-xs font-semibold transition-colors"
+                              style={{
+                                background: 'none', border: 'none', cursor: 'pointer',
+                                color: regDetailTab === t ? LL_REGISTER.accent : '#64748b',
+                                borderBottom: regDetailTab === t ? `2px solid ${LL_REGISTER.accent}` : '2px solid transparent',
+                                marginBottom: -1,
+                              }}>
+                              {t}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="px-5 py-4">
+                        {regDetailTab === 'Details' && (
+                          <>
+                            {/* General */}
+                            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">General</p>
+                            <div className="rounded-xl mb-4 overflow-hidden" style={{ border: '1px solid #f1f5f9' }}>
+                              {[
+                                ['Service', regSelectedRow.fluid_code ? `${regSelectedRow.fluid_code}${regSelectedRow.fluid_description ? ` — ${regSelectedRow.fluid_description}` : ''}` : '—'],
+                                ['P&ID No.', regSelectedRow.pid_no || '—'],
+                                ['From', regSelectedRow.from_line || regSelectedRow.from_equipment || regSelectedRow.from || '—'],
+                                ['To', regSelectedRow.to_line || regSelectedRow.to_equipment || regSelectedRow.to || '—'],
+                              ].map(([k, v], i, arr) => (
+                                <div key={k} className="flex justify-between gap-3 px-3.5 py-2.5 text-xs"
+                                  style={{ borderBottom: i < arr.length - 1 ? '1px solid #f8fafc' : 'none' }}>
+                                  <span className="text-slate-400">{k}</span>
+                                  <span className="font-semibold text-slate-700 text-right" style={{ wordBreak: 'break-word' }}>{v}</span>
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Engineering specifications */}
+                            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">Engineering specifications</p>
+                            <div className="rounded-xl mb-4 overflow-hidden" style={{ border: '1px solid #f1f5f9' }}>
+                              {LL_SPEC_FIELDS.map((f, i) => (
+                                <div key={f.key} className="flex justify-between gap-3 px-3.5 py-2.5 text-xs"
+                                  style={{ borderBottom: i < LL_SPEC_FIELDS.length - 1 ? '1px solid #f8fafc' : 'none' }}>
+                                  <span className="text-slate-400">{f.label}</span>
+                                  <span className="font-semibold text-slate-700 text-right">{regSelectedRow[f.key] || '—'}</span>
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Data-quality alerts */}
+                            {getLineIssues(regSelectedRow).length > 0 && (
+                              <div className="rounded-xl p-3.5 mb-4" style={{
+                                background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)',
+                              }}>
+                                <div className="flex items-center gap-2 mb-1">
+                                  <ExclamationTriangleIcon className="h-4 w-4" style={{ color: '#d97706' }} />
+                                  <span className="text-xs font-bold" style={{ color: '#b45309' }}>Data-quality alert</span>
+                                </div>
+                                <ul className="space-y-1 mt-1">
+                                  {getLineIssues(regSelectedRow).map(iss => (
+                                    <li key={iss} className="text-[11px] text-amber-800 leading-relaxed">• {iss}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {/* Linked document */}
+                            {pidDocument && (
+                              <div className="rounded-xl p-3 mb-4 flex items-center gap-3" style={{ border: '1px solid #e2e8f0' }}>
+                                <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+                                  style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.15)' }}>
+                                  <DocumentTextIcon className="h-5 w-5 text-red-500" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-bold text-slate-800 truncate" style={{ margin: 0 }}>{pidDocument.name}</p>
+                                  <p className="text-[11px] text-slate-400" style={{ margin: 0 }}>Rev {LL_REGISTER.revision}</p>
+                                </div>
+                                <ArrowTopRightOnSquareIcon className="h-4 w-4 text-slate-400 flex-shrink-0" />
+                              </div>
+                            )}
+
+                            {/* Review pending */}
+                            <div className="rounded-xl p-3 mb-4 flex items-center gap-3" style={{ border: '1px solid #e2e8f0' }}>
+                              <ClockIcon className="h-5 w-5 text-slate-400 flex-shrink-0" />
+                              <div>
+                                <p className="text-xs font-bold text-slate-800" style={{ margin: 0 }}>
+                                  {getLineStatus(regSelectedRow) === 'Reviewed' ? 'Review complete' : 'Review pending'}
+                                </p>
+                                <p className="text-[11px] text-slate-400" style={{ margin: 0 }}>Assigned to Process Lead</p>
+                              </div>
+                            </div>
+
+                            {/* Actions */}
+                            <div className="flex gap-2">
+                              <button className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all hover:bg-slate-50"
+                                style={{ border: '1px solid #cbd5e1', color: '#475569', background: 'white', cursor: 'pointer' }}>
+                                <PencilSquareIcon className="h-4 w-4" /> Edit line
+                              </button>
+                              <button onClick={() => handleRegReviewRow(regSelectedRow)}
+                                className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold text-white transition-all"
+                                style={{ background: LL_REGISTER.accent, border: 'none', cursor: 'pointer', boxShadow: '0 4px 12px rgba(15,118,110,0.25)' }}>
+                                <CheckCircleIcon className="h-4 w-4" /> Review changes
+                              </button>
+                            </div>
+                          </>
+                        )}
+
+                        {regDetailTab === 'History' && (
+                          <div className="space-y-0">
+                            {LL_REVISIONS.map((r, i) => (
+                              <div key={r.rev} className="flex gap-3 pb-4 relative">
+                                {i < LL_REVISIONS.length - 1 && (
+                                  <div className="absolute left-[7px] top-5 bottom-0 w-px" style={{ background: '#e2e8f0' }} />
+                                )}
+                                <div className="w-3.5 h-3.5 rounded-full flex-shrink-0 mt-1"
+                                  style={{
+                                    background: r.live ? LL_REGISTER.accent : '#cbd5e1',
+                                    border: `2px solid ${r.live ? 'rgba(15,118,110,0.3)' : '#e2e8f0'}`,
+                                  }} />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-xs font-bold text-slate-800">Rev {r.rev}</span>
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                                      style={r.live
+                                        ? { background: 'rgba(15,118,110,0.09)', color: LL_REGISTER.accent, border: '1px solid rgba(15,118,110,0.22)' }
+                                        : { background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' }}>
+                                      {r.status}
+                                    </span>
+                                  </div>
+                                  <p className="text-[11px] text-slate-500 mt-1 leading-relaxed" style={{ margin: '4px 0 0' }}>{r.note}</p>
+                                  <p className="text-[10px] text-slate-400 mt-1" style={{ margin: '4px 0 0' }}>
+                                    {r.by}{r.live && pidDocument ? ` · from ${pidDocument.name}` : ''}
+                                  </p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {regDetailTab === 'Documents' && (
+                          <div className="space-y-2.5">
+                            {[
+                              pidDocument && { name: pidDocument.name, meta: `Source P&ID · Rev ${LL_REGISTER.revision}`, tone: 'red' },
+                              activeLegend && { name: activeLegend.file_name || activeLegend.name || 'Legend sheet', meta: 'Legend sheet · Active', tone: 'emerald' },
+                              { name: 'line_list_base_extraction.xlsx', meta: 'Last exported workbook', tone: 'teal' },
+                            ].filter(Boolean).map(d => (
+                              <div key={d.name} className="rounded-xl p-3 flex items-center gap-3" style={{ border: '1px solid #e2e8f0' }}>
+                                <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+                                  style={{ background: `rgba(${d.tone === 'red' ? '239,68,68' : d.tone === 'emerald' ? '16,185,129' : '15,118,110'},0.08)` }}>
+                                  <DocumentTextIcon className="h-5 w-5" style={{ color: d.tone === 'red' ? '#ef4444' : d.tone === 'emerald' ? '#059669' : LL_REGISTER.accent }} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-bold text-slate-800 truncate" style={{ margin: 0 }}>{d.name}</p>
+                                  <p className="text-[11px] text-slate-400" style={{ margin: 0 }}>{d.meta}</p>
+                                </div>
+                                <ArrowTopRightOnSquareIcon className="h-4 w-4 text-slate-400 flex-shrink-0" />
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ═══ TAB: Overview ═══ */}
+              {regTab === 'Overview' && (
+                <div className="grid gap-4" style={{ gridTemplateColumns: 'minmax(0,1.4fr) minmax(0,1fr)' }}>
+                  <div className="rounded-2xl p-5" style={{ background: 'white', border: '1px solid #e2e8f0' }}>
+                    <h3 className="text-sm font-bold text-slate-800 mb-4" style={{ margin: '0 0 16px' }}>Register summary</h3>
+                    <div className="grid grid-cols-2 gap-3">
+                      {[
+                        { label: 'Total lines',     val: regKpis.total,         color: '#0f172a' },
+                        { label: 'Reviewed',        val: regKpis.total - regKpis.reviewPending, color: '#047857' },
+                        { label: 'Errors',          val: regKpis.errors,        color: '#dc2626' },
+                        { label: 'Warnings',        val: regKpis.warnings,      color: '#d97706' },
+                        { label: 'Services',        val: regFilterOptions.fluid_code.length, color: LL_REGISTER.accent },
+                        { label: 'P&ID references', val: regFilterOptions.pid_no.length, color: '#4f46e5' },
+                      ].map(s => (
+                        <div key={s.label} className="rounded-xl p-4" style={{ background: '#f8fafc', border: '1px solid #f1f5f9' }}>
+                          <div className="text-2xl font-extrabold tabular-nums" style={{ color: s.color }}>{s.val}</div>
+                          <div className="text-[11px] text-slate-400 mt-1">{s.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-4 rounded-xl p-3.5 text-xs text-slate-500 leading-relaxed" style={{ background: 'rgba(15,118,110,0.04)', border: '1px solid rgba(15,118,110,0.12)' }}>
+                      Format: <span className="font-semibold text-slate-700">{FORMAT_OPTIONS.find(f => f.value === formatType)?.label || formatType}</span>
+                      {pidDocument && <> · Source: <span className="font-semibold text-slate-700">{pidDocument.name}</span></>}
+                      {' '}· AI-powered OCR with Computer Vision FROM→TO detection.
+                    </div>
+                  </div>
+                  <div className="rounded-2xl p-5" style={{ background: 'white', border: '1px solid #e2e8f0' }}>
+                    <h3 className="text-sm font-bold text-slate-800 mb-4" style={{ margin: '0 0 16px' }}>Revision status</h3>
+                    {LL_REVISIONS.map(r => (
+                      <div key={r.rev} className="flex items-center justify-between py-2.5" style={{ borderBottom: '1px solid #f8fafc' }}>
+                        <span className="text-xs font-semibold text-slate-700">Rev {r.rev}</span>
+                        <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                          style={r.live
+                            ? { background: 'rgba(15,118,110,0.09)', color: LL_REGISTER.accent, border: '1px solid rgba(15,118,110,0.22)' }
+                            : { background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' }}>
+                          {r.status}
+                        </span>
+                      </div>
+                    ))}
+                    <button onClick={() => setRegTab('Reviews')}
+                      className="mt-4 w-full px-4 py-2.5 rounded-xl text-xs font-bold text-white"
+                      style={{ background: LL_REGISTER.accent, border: 'none', cursor: 'pointer' }}>
+                      Go to review workflow
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ═══ TAB: Changes — rows needing attention (New/Error/Warning) ═══ */}
+              {regTab === 'Changes' && (
+                <div className="rounded-2xl overflow-hidden" style={{ background: 'white', border: '1px solid #e2e8f0' }}>
+                  <div className="px-5 py-4" style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <h3 className="text-base font-bold text-slate-900" style={{ margin: 0 }}>Changes in Rev {LL_REGISTER.revision}</h3>
+                    <p className="text-xs text-slate-400 mt-0.5" style={{ margin: '2px 0 0' }}>Lines that are new, incomplete, or awaiting review</p>
+                  </div>
+                  {regAllRows.filter(r => getLineStatus(r) !== 'Reviewed').length === 0 ? (
+                    <div className="px-5 py-12 text-center">
+                      <CheckCircleIcon className="h-10 w-10 mx-auto mb-2" style={{ color: '#10b981', opacity: 0.5 }} />
+                      <p className="text-sm text-slate-500">All lines reviewed — no open changes.</p>
+                    </div>
+                  ) : (
+                    regAllRows.filter(r => getLineStatus(r) !== 'Reviewed').map((row, i) => {
+                      const status = getLineStatus(row);
+                      const st = LL_STATUS_STYLES[status];
+                      return (
+                        <div key={i} className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50 cursor-pointer transition-colors"
+                          style={{ borderBottom: '1px solid #f8fafc' }}
+                          onClick={() => { setRegSelectedRow(row); setRegDetailTab('Details'); setRegTab('Line List'); }}>
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-mono font-semibold"
+                            style={{ background: 'rgba(15,118,110,0.07)', color: '#0f766e', border: '1px solid rgba(15,118,110,0.15)' }}>
+                            {row.original_detection || '—'}
+                          </span>
+                          <span className="text-xs text-slate-500 flex-1 truncate">{getLineIssues(row).join(' · ') || 'New line added to register'}</span>
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                            style={{ background: st.bg, color: st.fg, border: `1px solid ${st.border}` }}>
+                            {status}
+                          </span>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+
+              {/* ═══ TAB: Validation — data-quality alerts ═══ */}
+              {regTab === 'Validation' && (
+                <div className="rounded-2xl overflow-hidden" style={{ background: 'white', border: '1px solid #e2e8f0' }}>
+                  <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900" style={{ margin: 0 }}>Data-quality alerts</h3>
+                      <p className="text-xs text-slate-400 mt-0.5" style={{ margin: '2px 0 0' }}>Rows failing register completeness rules</p>
+                    </div>
+                    <span className="px-2.5 py-1 rounded-full text-[11px] font-bold"
+                      style={{ background: regKpis.errors + regKpis.warnings > 0 ? 'rgba(239,68,68,0.08)' : 'rgba(16,185,129,0.08)', color: regKpis.errors + regKpis.warnings > 0 ? '#b91c1c' : '#047857' }}>
+                      {regKpis.errors + regKpis.warnings} open
+                    </span>
+                  </div>
+                  {regAllRows.filter(r => getLineIssues(r).length > 0).length === 0 ? (
+                    <div className="px-5 py-12 text-center">
+                      <CheckCircleIcon className="h-10 w-10 mx-auto mb-2" style={{ color: '#10b981', opacity: 0.5 }} />
+                      <p className="text-sm text-slate-500">No validation issues — all lines pass data-quality rules.</p>
+                    </div>
+                  ) : (
+                    regAllRows.filter(r => getLineIssues(r).length > 0).map((row, i) => (
+                      <div key={i} className="flex items-start gap-3 px-5 py-3.5 hover:bg-slate-50 cursor-pointer transition-colors"
+                        style={{ borderBottom: '1px solid #f8fafc' }}
+                        onClick={() => { setRegSelectedRow(row); setRegDetailTab('Details'); setRegTab('Line List'); }}>
+                        {getLineStatus(row) === 'Error'
+                          ? <ExclamationCircleIcon className="h-5 w-5 flex-shrink-0 mt-0.5" style={{ color: '#dc2626' }} />
+                          : <ExclamationTriangleIcon className="h-5 w-5 flex-shrink-0 mt-0.5" style={{ color: '#d97706' }} />}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-slate-800 font-mono" style={{ margin: 0 }}>{row.original_detection || 'Unnamed line'}</p>
+                          <p className="text-[11px] text-slate-500 mt-0.5" style={{ margin: '2px 0 0' }}>{getLineIssues(row).join(' · ')}</p>
+                        </div>
+                        <span className="text-[11px] font-semibold text-teal-700 flex-shrink-0">Review →</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {/* ═══ TAB: Reviews — engineering review & approval workflow ═══ */}
+              {regTab === 'Reviews' && (
+                <div className="grid gap-4" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.2fr)' }}>
+                  <div className="rounded-2xl p-5" style={{ background: 'white', border: '1px solid #e2e8f0' }}>
+                    <h3 className="text-sm font-bold text-slate-800 mb-4" style={{ margin: '0 0 16px' }}>Approval workflow — Rev {LL_REGISTER.revision}</h3>
+                    {[
+                      { step: 'Extraction complete',        done: true,  by: 'RAD AI Engine' },
+                      { step: 'Data-quality validation',    done: regKpis.errors + regKpis.warnings === 0, by: 'Automated rules' },
+                      { step: 'Process engineering review', done: regKpis.reviewPending === 0, by: 'Process Lead' },
+                      { step: 'Engineering manager approval', done: false, by: 'Engineering Manager' },
+                      { step: 'Issue Rev 04 for design',    done: false, by: 'Document Control' },
+                    ].map((s, i, arr) => (
+                      <div key={s.step} className="flex gap-3 pb-5 relative">
+                        {i < arr.length - 1 && <div className="absolute left-[11px] top-7 bottom-0 w-px" style={{ background: '#e2e8f0' }} />}
+                        <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold"
+                          style={s.done
+                            ? { background: 'rgba(16,185,129,0.12)', color: '#047857', border: '1.5px solid rgba(16,185,129,0.4)' }
+                            : { background: '#f8fafc', color: '#94a3b8', border: '1.5px solid #e2e8f0' }}>
+                          {s.done ? '✓' : i + 1}
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold" style={{ margin: 0, color: s.done ? '#047857' : '#334155' }}>{s.step}</p>
+                          <p className="text-[11px] text-slate-400" style={{ margin: '2px 0 0' }}>{s.by}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="rounded-2xl p-5" style={{ background: 'white', border: '1px solid #e2e8f0' }}>
+                    <h3 className="text-sm font-bold text-slate-800 mb-1" style={{ margin: '0 0 4px' }}>Revision history & activity</h3>
+                    <p className="text-[11px] text-slate-400 mb-4" style={{ margin: '0 0 16px' }}>Latest activity first</p>
+                    <div className="rounded-xl p-3 mb-4 flex items-center gap-3" style={{ background: 'rgba(15,118,110,0.05)', border: '1px solid rgba(15,118,110,0.15)' }}>
+                      <ClockIcon className="h-5 w-5 flex-shrink-0" style={{ color: LL_REGISTER.accent }} />
+                      <div>
+                        <p className="text-xs font-bold text-slate-800" style={{ margin: 0 }}>Line list extracted{pidDocument ? ` from ${pidDocument.name}` : ''}</p>
+                        <p className="text-[11px] text-slate-400" style={{ margin: 0 }}>{regKpis.total} lines · {regKpis.reviewPending} pending review</p>
+                      </div>
+                    </div>
+                    {LL_REVISIONS.map(r => (
+                      <div key={r.rev} className="flex items-center justify-between py-2.5" style={{ borderBottom: '1px solid #f8fafc' }}>
+                        <div>
+                          <p className="text-xs font-bold text-slate-800" style={{ margin: 0 }}>Rev {r.rev} — {r.status}</p>
+                          <p className="text-[11px] text-slate-400" style={{ margin: '2px 0 0' }}>{r.note} · {r.by}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ═══ TAB: Documents ═══ */}
+              {regTab === 'Documents' && (
+                <div className="rounded-2xl p-5" style={{ background: 'white', border: '1px solid #e2e8f0' }}>
+                  <h3 className="text-sm font-bold text-slate-800 mb-4" style={{ margin: '0 0 16px' }}>Linked documents</h3>
+                  <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+                    {[
+                      pidDocument && { name: pidDocument.name, meta: `Source P&ID · ${(pidDocument.size / 1024 / 1024).toFixed(2)} MB · Rev ${LL_REGISTER.revision}`, tone: '#ef4444' },
+                      activeLegend && { name: activeLegend.file_name || activeLegend.name || 'Legend sheet', meta: 'Legend sheet · Active for this section', tone: '#059669' },
+                      { name: 'line_list_base_extraction.xlsx', meta: `Register export · ${regKpis.total} lines · Rev ${LL_REGISTER.revision}`, tone: LL_REGISTER.accent, action: handleExport },
+                    ].filter(Boolean).map(d => (
+                      <div key={d.name} className="rounded-xl p-4 flex items-center gap-3 transition-all hover:shadow-md"
+                        style={{ border: '1px solid #e2e8f0', cursor: d.action ? 'pointer' : 'default' }}
+                        onClick={d.action}>
+                        <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+                          style={{ background: `${d.tone}12`, border: `1px solid ${d.tone}25` }}>
+                          <DocumentTextIcon className="h-5 w-5" style={{ color: d.tone }} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-slate-800 truncate" style={{ margin: 0 }}>{d.name}</p>
+                          <p className="text-[11px] text-slate-400 mt-0.5" style={{ margin: '2px 0 0' }}>{d.meta}</p>
+                        </div>
+                        <ArrowTopRightOnSquareIcon className="h-4 w-4 text-slate-400 flex-shrink-0" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Results Table (legacy — shown when enterprise register is disabled) ── */}
+          {extractedData && !LL_REGISTER.enabled && (
             <div className="rounded-2xl overflow-hidden ll-section" style={{
               background: 'white',
               border: '1px solid rgba(37,99,235,0.1)',
