@@ -479,6 +479,10 @@ const LineList = () => {
   const [regDetailTab, setRegDetailTab] = useState('Details');
   const regImportRef = useRef(null);
 
+  // ── Edit-line modal state ──
+  const [regEditRow, setRegEditRow]   = useState(null);   // row being edited
+  const [regEditForm, setRegEditForm] = useState({});
+
   // ── View switch: 'extract' = upload/processing workspace, 'register' = results page
   // Auto-switches to the register when extraction completes; the register
   // header offers "New extraction" to go back without losing results.
@@ -1072,6 +1076,30 @@ const LineList = () => {
 
   const handleRegReviewRow = (row) => {
     setRegOverrides(prev => new Map(prev).set(row, 'Reviewed'));
+    setSavedNotice(`"${row.original_detection || 'Line'}" marked as Reviewed.`);
+  };
+
+  // Open the edit modal prefilled with the row's current values
+  const handleRegEditOpen = (row) => {
+    const form = {};
+    COLUMNS.forEach(c => { form[c.key] = resolveCellValue(row, c) || ''; });
+    setRegEditForm(form);
+    setRegEditRow(row);
+  };
+
+  // Save edits in place (object identity preserved → selection, overrides and
+  // checkboxes keep working). Edited rows are flagged 'Changed' for review.
+  const handleRegEditSave = () => {
+    if (!regEditRow) return;
+    Object.keys(regEditForm).forEach(k => { regEditRow[k] = regEditForm[k]; });
+    if (regEditRow.__added) {
+      setRegExtraRows(prev => [...prev]);
+    } else if (extractedData) {
+      setExtractedData({ ...extractedData, data: [...extractedData.data] });
+    }
+    setRegOverrides(prev => new Map(prev).set(regEditRow, 'Changed'));
+    setRegEditRow(null);
+    setSavedNotice(`"${regEditForm.original_detection || 'Line'}" updated — marked as Changed for review.`);
   };
 
   const regToggleCheck = (row) => {
@@ -2510,7 +2538,8 @@ const LineList = () => {
 
                             {/* Actions */}
                             <div className="flex gap-2">
-                              <button className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all hover:bg-slate-50"
+                              <button onClick={() => handleRegEditOpen(regSelectedRow)}
+                                className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all hover:bg-slate-50"
                                 style={{ border: '1px solid #cbd5e1', color: '#475569', background: 'white', cursor: 'pointer' }}>
                                 <PencilSquareIcon className="h-4 w-4" /> Edit line
                               </button>
@@ -2946,6 +2975,56 @@ const LineList = () => {
 
         </div>
       </div>
+
+      {/* ── Edit line modal ── */}
+      {regEditRow && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(15,23,42,0.45)', backdropFilter: 'blur(3px)' }}
+          onClick={() => setRegEditRow(null)}>
+          <div className="w-full max-w-lg rounded-2xl overflow-hidden"
+            style={{ background: 'white', boxShadow: '0 24px 60px rgba(15,23,42,0.25)', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}
+            onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid #f1f5f9' }}>
+              <div>
+                <h3 className="text-base font-bold text-slate-900" style={{ margin: 0 }}>Edit line</h3>
+                <p className="text-xs text-slate-400 font-mono" style={{ margin: '2px 0 0' }}>{regEditRow.original_detection || 'New line'}</p>
+              </div>
+              <button onClick={() => setRegEditRow(null)}
+                className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors"
+                style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="px-5 py-4 overflow-y-auto grid grid-cols-2 gap-3" style={{ flex: 1 }}>
+              {COLUMNS.map(c => (
+                <div key={c.key} className={c.key === 'original_detection' ? 'col-span-2' : ''}>
+                  <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-1">{c.label}</label>
+                  <input
+                    value={regEditForm[c.key] ?? ''}
+                    onChange={e => setRegEditForm(f => ({ ...f, [c.key]: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm rounded-lg outline-none"
+                    style={{ border: '1px solid #e2e8f0', color: '#334155', background: '#f8fafc' }}
+                    onFocus={e => { e.target.style.borderColor = 'rgba(15,118,110,0.45)'; e.target.style.boxShadow = '0 0 0 3px rgba(15,118,110,0.08)'; }}
+                    onBlur={e => { e.target.style.borderColor = '#e2e8f0'; e.target.style.boxShadow = 'none'; }}
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="px-5 py-4 flex gap-2" style={{ borderTop: '1px solid #f1f5f9' }}>
+              <button onClick={() => setRegEditRow(null)}
+                className="flex-1 px-4 py-2.5 rounded-xl text-xs font-bold transition-all hover:bg-slate-50"
+                style={{ border: '1px solid #cbd5e1', color: '#475569', background: 'white', cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button onClick={handleRegEditSave}
+                className="flex-1 px-4 py-2.5 rounded-xl text-xs font-bold text-white transition-all"
+                style={{ background: '#0f766e', border: 'none', cursor: 'pointer', boxShadow: '0 4px 12px rgba(15,118,110,0.25)' }}>
+                Save changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Save notice toast (auto-dismisses) ── */}
       {savedNotice && (
