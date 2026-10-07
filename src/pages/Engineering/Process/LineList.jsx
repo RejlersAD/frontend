@@ -485,6 +485,102 @@ const LineList = () => {
   const [regView, setRegView] = useState('extract');
   useEffect(() => { if (extractedData) setRegView('register'); }, [extractedData]);
 
+  // ── Saved outputs (persist & re-download later) ─────────────────────────
+  // Uses the existing backend endpoints: save_output / previous_outputs /
+  // download_output / output_data. Fail-safe: saving never blocks export.
+  const [savedOutputs, setSavedOutputs]     = useState([]);
+  const [savedLoading, setSavedLoading]     = useState(false);
+  const [savedOpen, setSavedOpen]           = useState(false);
+  const [savedNotice, setSavedNotice]       = useState('');
+  const [savedBusyId, setSavedBusyId]       = useState(null);
+
+  const fetchSavedOutputs = useCallback(async () => {
+    setSavedLoading(true);
+    try {
+      const { data } = await apiClient.get('/designiq/lists/previous_outputs/', { params: { list_type: 'line_list' } });
+      setSavedOutputs(data?.outputs || []);
+    } catch { setSavedOutputs([]); }
+    finally { setSavedLoading(false); }
+  }, []);
+
+  useEffect(() => { fetchSavedOutputs(); }, [fetchSavedOutputs]);
+  useEffect(() => {
+    if (!savedNotice) return;
+    const t = setTimeout(() => setSavedNotice(''), 6000);
+    return () => clearTimeout(t);
+  }, [savedNotice]);
+
+  // Download a previously saved output (blob → browser download)
+  const downloadSavedOutput = useCallback(async (output) => {
+    setSavedBusyId(output.id);
+    try {
+      const resp = await apiClient.get(`/designiq/lists/download_output/${output.id}/`, { responseType: 'blob' });
+      const url = URL.createObjectURL(new Blob([resp.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = output.excel_filename || `line_list_${output.id}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch { setError('Download failed — the saved file may no longer exist.'); }
+    finally { setSavedBusyId(null); }
+  }, []);
+
+  // Load a saved output back into the register view (no re-extraction needed)
+  const openSavedOutput = useCallback(async (output) => {
+    setSavedBusyId(output.id);
+    try {
+      const { data } = await apiClient.get(`/designiq/lists/output_data/${output.id}/`);
+      const headers = (data.headers || []).map(h => String(h).trim().toLowerCase());
+      const rows = (data.rows || []).map(r => {
+        const obj = {};
+        COLUMNS.forEach(c => {
+          const i = headers.indexOf(c.label.toLowerCase());
+          if (i >= 0 && r[i] !== '' && r[i] != null) obj[c.key] = r[i];
+        });
+        return obj;
+      });
+      setRegExtraRows([]);
+      setRegOverrides(new Map());
+      setRegChecked(new Set());
+      setRegSelectedRow(null);
+      setRegSearch('');
+      setRegFilters({ fluid_code: '', status: '', insulation: '', pid_no: '' });
+      setRegPage(1);
+      setExtractedData({
+        success: true,
+        total_lines: rows.length,
+        columns: COLUMNS.length,
+        data: rows,
+        message: `Loaded saved output: ${output.excel_filename}`,
+      });
+      setSavedOpen(false);
+    } catch { setError('Could not load the saved output.'); }
+    finally { setSavedBusyId(null); }
+  }, []);
+
+  // Persist the current workbook server-side (called automatically on export)
+  const saveOutputToServer = useCallback(async (wb, filename) => {
+    if (!extractedData?.data?.length) return;
+    try {
+      const wbArray = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([wbArray], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const fd = new FormData();
+      fd.append('excel_file', blob, filename);
+      fd.append('pid_number', extractedData.data.find(r => r.pid_no)?.pid_no || pidDocument?.name || 'Line List');
+      fd.append('list_type', 'line_list');
+      fd.append('format_type', formatType);
+      fd.append('total_lines', String(extractedData.total_lines ?? extractedData.data.length));
+      fd.append('total_columns', String(COLUMNS.length));
+      await apiClient.post('/designiq/lists/save_output/', fd);
+      setSavedNotice('Output saved — re-download anytime from Saved outputs.');
+      fetchSavedOutputs();
+    } catch (e) {
+      console.warn('[LineList] save_output failed (download unaffected):', e);
+    }
+  }, [extractedData, pidDocument, formatType, fetchSavedOutputs]);
+
   const pidRef = useRef(null);
   const legendRef = useRef(null);
   const pollTimerRef = useRef(null);
@@ -860,6 +956,9 @@ const LineList = () => {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Line List');
     XLSX.writeFile(wb, 'line_list_base_extraction.xlsx');
+    // Persist a copy server-side so it can be re-downloaded later (fail-safe —
+    // the local download above has already happened and is never affected).
+    saveOutputToServer(wb, 'line_list_base_extraction.xlsx');
   };
 
   // -------------------------------------------------------------------------
@@ -1408,6 +1507,18 @@ const LineList = () => {
               <h2 className="text-xl font-bold text-slate-900" style={{ margin: 0, marginBottom: '4px' }}>Project Workspace</h2>
               <p className="text-sm text-slate-500" style={{ margin: 0 }}>Upload a P&ID drawing to extract the line list — then review and export.</p>
             </div>
+            <button
+              onClick={() => setSavedOpen(true)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 shadow-sm transition-all"
+              style={{ cursor: 'pointer' }}>
+              <FolderIcon className="h-4 w-4" /> Saved outputs
+              {savedOutputs.length > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold"
+                  style={{ background: 'rgba(15,118,110,0.1)', color: '#0f766e' }}>
+                  {savedOutputs.length}
+                </span>
+              )}
+            </button>
           </div>
 
           <div className="rounded-2xl p-6 mb-4 ll-section" style={{
@@ -2010,6 +2121,7 @@ const LineList = () => {
                                 { icon: <PlusIcon className="h-4 w-4" />,          label: 'Add line',         onClick: handleRegAddLine },
                                 { icon: <ArrowUpTrayIcon className="h-4 w-4" />,   label: 'Import CSV / Excel', onClick: () => regImportRef.current?.click() },
                                 { icon: <ArrowDownTrayIcon className="h-4 w-4" />, label: 'Export Excel',     onClick: () => { setRegActionsOpen(false); handleExport(); } },
+                                { icon: <FolderIcon className="h-4 w-4" />,        label: 'Saved outputs',    onClick: () => { setRegActionsOpen(false); setSavedOpen(true); } },
                               ].map(a => (
                                 <button key={a.label} onClick={a.onClick}
                                   className="w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-teal-50 hover:text-teal-800 transition-colors"
@@ -2834,6 +2946,83 @@ const LineList = () => {
 
         </div>
       </div>
+
+      {/* ── Save notice toast (auto-dismisses) ── */}
+      {savedNotice && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold text-white shadow-lg"
+          style={{ background: '#0f766e', animation: 'll-fade-up 0.25s ease both' }}>
+          <CheckCircleIcon className="h-4 w-4" /> {savedNotice}
+        </div>
+      )}
+
+      {/* ── Saved Outputs modal — re-download or reload past extractions ── */}
+      {savedOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(15,23,42,0.45)', backdropFilter: 'blur(3px)' }}
+          onClick={() => setSavedOpen(false)}>
+          <div className="w-full max-w-2xl rounded-2xl overflow-hidden"
+            style={{ background: 'white', boxShadow: '0 24px 60px rgba(15,23,42,0.25)', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}
+            onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid #f1f5f9' }}>
+              <div>
+                <h3 className="text-base font-bold text-slate-900" style={{ margin: 0 }}>Saved outputs</h3>
+                <p className="text-xs text-slate-400" style={{ margin: '2px 0 0' }}>Previously exported line lists — download or reopen in the register</p>
+              </div>
+              <button onClick={() => setSavedOpen(false)}
+                className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors"
+                style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="overflow-y-auto" style={{ flex: 1 }}>
+              {savedLoading ? (
+                <div className="px-5 py-12 text-center text-sm text-slate-400">Loading saved outputs…</div>
+              ) : savedOutputs.length === 0 ? (
+                <div className="px-5 py-12 text-center">
+                  <FolderIcon className="h-10 w-10 mx-auto mb-2" style={{ color: '#94a3b8', opacity: 0.5 }} />
+                  <p className="text-sm text-slate-500">No saved outputs yet.</p>
+                  <p className="text-xs text-slate-400 mt-1">Exports are saved automatically when you click Export.</p>
+                </div>
+              ) : (
+                savedOutputs.map(o => (
+                  <div key={o.id} className="flex items-center gap-3 px-5 py-3.5" style={{ borderBottom: '1px solid #f8fafc' }}>
+                    <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{ background: 'rgba(15,118,110,0.08)', border: '1px solid rgba(15,118,110,0.18)' }}>
+                      <DocumentTextIcon className="h-5 w-5" style={{ color: '#0f766e' }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-slate-800 truncate" style={{ margin: 0 }}>{o.excel_filename || `line_list_${o.id}.xlsx`}</p>
+                      <p className="text-[11px] text-slate-400" style={{ margin: '2px 0 0' }}>
+                        {o.processing_date} · {o.total_lines} lines · {o.file_size_mb} MB · {o.processed_by}
+                      </p>
+                    </div>
+                    {o.has_file ? (
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <button
+                          onClick={() => openSavedOutput(o)}
+                          disabled={savedBusyId === o.id}
+                          className="px-3 py-1.5 rounded-lg text-[11px] font-bold transition-colors"
+                          style={{ border: '1px solid rgba(15,118,110,0.35)', color: '#0f766e', background: 'white', cursor: 'pointer' }}>
+                          {savedBusyId === o.id ? '…' : 'Open'}
+                        </button>
+                        <button
+                          onClick={() => downloadSavedOutput(o)}
+                          disabled={savedBusyId === o.id}
+                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-bold text-white transition-colors"
+                          style={{ background: '#0f766e', border: 'none', cursor: 'pointer' }}>
+                          <ArrowDownTrayIcon className="h-3.5 w-3.5" /> {savedBusyId === o.id ? '…' : 'Download'}
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-[11px] text-slate-400 flex-shrink-0">File unavailable</span>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Managed Legend Sheets modal (shared V1 system) ── */}
       {LL_LEGENDS.enabled && (
