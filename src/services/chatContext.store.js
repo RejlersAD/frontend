@@ -54,3 +54,46 @@ export function subscribeChatContext(fn) {
 export function clearChatContext() {
   publishChatContext(null)
 }
+
+// ─── Edit-control action handler (soft-coded, per page) ──────────────────
+// A page registers ONE handler to let the assistant propose row edits
+// (update/delete) that the user applies from the chat UI.  The assistant
+// proposes changes as structured `radai_action` blocks; the widget renders
+// an Apply/Reject card; Apply calls this handler.  Pages that register
+// nothing simply don't offer edit control.
+let _actionHandler = null
+
+/**
+ * Register the active page's action handler.
+ * @param {(action: object) => Promise<{ok: boolean, message?: string}>} fn
+ * @returns {() => void} unregister (call on unmount)
+ */
+export function registerChatActionHandler(fn) {
+  _actionHandler = fn
+  return () => { if (_actionHandler === fn) _actionHandler = null }
+}
+
+/** Current handler or null. */
+export function getChatActionHandler() {
+  return _actionHandler
+}
+
+// ─── Chat file-upload handler (soft-coded, per page) ──────────────────────
+// A page registers ONE handler so the assistant's 📎 button can hand an
+// uploaded file (e.g. a P&ID PDF) straight into the page's own pipeline.
+let _uploadHandler = null
+
+/**
+ * Register the active page's chat-upload handler.
+ * @param {(file: File) => Promise<{ok: boolean, message?: string}>} fn
+ * @returns {() => void} unregister (call on unmount)
+ */
+export function registerChatUploadHandler(fn) {
+  _uploadHandler = fn
+  return () => { if (_uploadHandler === fn) _uploadHandler = null }
+}
+
+/** Current handler or null. */
+export function getChatUploadHandler() {
+  return _uploadHandler
+}

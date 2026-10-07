@@ -15,6 +15,17 @@
  *   notes         — describes the dataset (columns/units/origin)
  *   domainPrompt  — verification & validation rules injected into the answer
  *                   grounding (backend appends it to the system prompt)
+ *   actions       — optional EDIT CONTROL the assistant may propose and the
+ *                   user applies from the chat (requires the page to register
+ *                   a handler via registerChatActionHandler):
+ *                     { rowKey: '<column key identifying a row>',
+ *                       ops: ['update_row', 'delete_row'] }
+ *   quickActions  — optional one-tap chips rendered in the chat; each sends
+ *                   its `prompt` as the user's message:
+ *                     [{ id, label, prompt }]
+ *   upload        — optional chat file upload (📎 button); requires the page
+ *                   to register a handler via registerChatUploadHandler:
+ *                     { enabled, accept: '.pdf', note }
  */
 
 export const CHAT_PAGE_PROFILES = {
@@ -84,6 +95,43 @@ export const CHAT_PAGE_PROFILES = {
       'tags exactly; classify/count by equipment type when asked; flag ' +
       'duplicate tags, missing types or missing operating data as gaps; ' +
       'never invent equipment that is not in the context.',
+    actions: {
+      rowKey: 'tag',                        // rows are identified by equipment tag
+      ops: ['update_row', 'delete_row'],    // assistant may propose these edits
+    },
+    // One-tap chat chips (soft-coded): default verification pass over every
+    // row/column against the source document + an engineering recommendation
+    // pass.  Corrections arrive as radai_action blocks the user applies.
+    quickActions: [
+      {
+        id: 'verify_source',
+        label: '🔍 Verify vs source',
+        prompt:
+          'VERIFY AGAINST SOURCE — compare EVERY row and EVERY column of the ' +
+          'extracted equipment list against the document_excerpt (the uploaded ' +
+          'source file). For each cell that contradicts or is missing from the ' +
+          'source, propose the correction as an update_row action (match by ' +
+          'exact tag). List a compact table of what you checked (rows × ' +
+          'columns), what matched, and what you propose to change. If no ' +
+          'excerpt is available, say so and verify internal consistency only ' +
+          '(duplicates, blank mandatory fields, implausible values).',
+      },
+      {
+        id: 'recommend',
+        label: '💡 Recommendations',
+        prompt:
+          'RECOMMEND — analyse this equipment list as a senior process ' +
+          'engineer: missing or blank fields that block procurement, duplicate ' +
+          'or inconsistent tags, implausible operating/design conditions, ' +
+          'type-classification gaps, and MOC/insulation concerns. Rank each ' +
+          'recommendation by impact (high/medium/low) with the affected tag. ' +
+          'Where a fix is a simple data correction, also propose it as an ' +
+          'update_row action.',
+      },
+    ],
+    // 📎 upload a P&ID straight from the chat — the page runs its own
+    // extraction pipeline on it (handler registered by EquipmentList).
+    upload: { enabled: true, accept: '.pdf', note: 'P&ID PDF' },
   },
 }
 

@@ -35,6 +35,7 @@ import { PROJECT_ORGANIZER_CONFIG } from '../../../config/projectOrganizer.confi
 import projectOrganizerService from '../../../services/projectOrganizerService';
 import { ProjectCard, ProjectFormModal, useActiveProject } from '../../../components/ProjectOrganizer';
 import useRadaiChatPage from '../../../hooks/useRadaiChatPage';
+import { registerChatActionHandler, registerChatUploadHandler } from '../../../services/chatContext.store';
 
 // ---------------------------------------------------------------------------
 // Soft-coded column definitions — add/remove columns here only.
@@ -596,7 +597,40 @@ const EquipmentList = () => {
       total_equipment: results.equipment?.length || 0,
       drawing_ref: results.drawing_ref || '',
     } : null,
+    documentExcerpt: results?.document_excerpt || '',
   });
+
+  // ── RADAI Chat edit control — the assistant can PROPOSE row edits
+  // (update/delete matched by equipment tag); each change is applied only
+  // when the user clicks Apply in the chat. Soft-coded ops live in
+  // config/radaiChatPages.config.js → equipment_list.actions.
+  useEffect(() => registerChatActionHandler(async ({ op, match, set }) => {
+    const tag = String(match?.tag || '').trim();
+    if (!tag) return { ok: false, message: 'no equipment tag given' };
+    const current = results?.equipment || [];
+    const idx = current.findIndex(r => String(r.tag || '').trim().toUpperCase() === tag.toUpperCase());
+    if (idx === -1) return { ok: false, message: `no row with tag "${tag}"` };
+    if (op === 'delete_row') {
+      setResults(prev => prev?.equipment
+        ? { ...prev, equipment: prev.equipment.filter((_, i) => i !== idx) }
+        : prev);
+      return { ok: true, message: `Deleted ${tag}` };
+    }
+    if (op === 'update_row' && set && typeof set === 'object') {
+      const allowed = new Set(COLUMNS.map(c => c.key));
+      const patchObj = Object.fromEntries(
+        Object.entries(set).filter(([k]) => allowed.has(k)),
+      );
+      if (!Object.keys(patchObj).length) {
+        return { ok: false, message: 'no valid column keys in the change' };
+      }
+      setResults(prev => prev?.equipment
+        ? { ...prev, equipment: prev.equipment.map((r, i) => (i === idx ? { ...r, ...patchObj } : r)) }
+        : prev);
+      return { ok: true, message: `Updated ${tag} (${Object.keys(patchObj).join(', ')})` };
+    }
+    return { ok: false, message: `unsupported operation "${op}"` };
+  }), [results]);
 
   // ── Project Organizer — load projects + handlers (soft-coded via EQ_PROJECTS) ──
   useEffect(() => {
@@ -751,7 +785,7 @@ const EquipmentList = () => {
           clearTimeout(pollTimerRef.current);
           apiClient.get(`/pid/equipment/results/${uploadId}/`)
             .then(({ data: r }) => {
-              setResults({ equipment: r.equipment, total: r.total, drawing_ref: r.drawing_ref, upload_id: uploadId });
+              setResults({ equipment: r.equipment, total: r.total, drawing_ref: r.drawing_ref, upload_id: uploadId, document_excerpt: r.document_excerpt || '' });
               setSelectedRows(new Set());
               setProgress(100);
               setStatusMessage('Extraction complete!');
@@ -799,6 +833,13 @@ const EquipmentList = () => {
     } else {
       formData.append('file', files[0]);
     }
+    // Soft-coded project label — backend archives the source P&ID, extracted
+    // equipment JSON, legend format and document text to the project's S3
+    // archive (radai_projects/<project>/…).
+    if (activeProject) {
+      formData.append('project_code', activeProject.code || '');
+      formData.append('project_name', activeProject.name || '');
+    }
 
     const token   = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
     let lastErr   = null;
@@ -837,7 +878,7 @@ const EquipmentList = () => {
 
         // Synchronous result (HTTP 200)
         if (data.success && data.equipment !== undefined) {
-          setResults({ equipment: data.equipment, total: data.total, drawing_ref: data.drawing_ref, upload_id: data.upload_id });
+          setResults({ equipment: data.equipment, total: data.total, drawing_ref: data.drawing_ref, upload_id: data.upload_id, document_excerpt: data.document_excerpt || '' });
           setSelectedRows(new Set());
           if (data.debug_info) setDebugInfo(data.debug_info);
           setProgress(100);
@@ -876,6 +917,29 @@ const EquipmentList = () => {
     );
     setIsProcessing(false);
   };
+
+  // ── RADAI Chat file upload — the assistant's 📎 button drops a P&ID into
+  // this page's own extraction pipeline and auto-starts it (soft-coded:
+  // profile `upload` in config/radaiChatPages.config.js).
+  const chatAutoExtractRef = useRef(false);
+  const handleExtractRef   = useRef(null);
+  handleExtractRef.current = handleExtract;
+  useEffect(() => registerChatUploadHandler(async (file) => {
+    if (!file?.name?.toLowerCase().endsWith('.pdf')) {
+      return { ok: false, message: 'Only PDF files are supported' };
+    }
+    chatAutoExtractRef.current = true;
+    setFiles([file]);
+    setResults(null);
+    setError(null);
+    return { ok: true, message: `Received "${file.name}" — starting extraction…` };
+  }), []);
+  useEffect(() => {
+    if (chatAutoExtractRef.current && files.length && !isProcessing) {
+      chatAutoExtractRef.current = false;
+      handleExtractRef.current?.();
+    }
+  }, [files, isProcessing]);
 
   // Sorted + filtered rows
   const displayRows = React.useMemo(() => {

@@ -29,6 +29,7 @@ export default function useRadaiChatPage(profileKey, {
   rowCount = null,
   summary = null,
   extraNotes = '',
+  documentExcerpt = '',
 } = {}) {
   const profile = CHAT_PAGE_PROFILES[profileKey] || null
 
@@ -39,12 +40,16 @@ export default function useRadaiChatPage(profileKey, {
       page: profile.page,
       domain_prompt: profile.domainPrompt,   // backend: appended to grounding
       row_name: profile.rowName,
+      actions: profile.actions || null,      // edit-control ops (see config)
+      quick_actions: profile.quickActions || null,  // one-tap chips in the chat
+      upload: profile.upload || null,        // 📎 chat file upload capability
       project,
       document,
       columns,
       rows: safeRows,
       row_count: rowCount ?? safeRows.length,
       summary,
+      document_excerpt: documentExcerpt || '',   // source-document text excerpt
       notes: [profile.notes, extraNotes].filter(Boolean).join(' '),
     })
     return () => clearChatContext()
@@ -54,6 +59,7 @@ export default function useRadaiChatPage(profileKey, {
     JSON.stringify(project || null),
     JSON.stringify(document || null),
     JSON.stringify(summary || null),
+    documentExcerpt,
     rows,
   ])
 }
