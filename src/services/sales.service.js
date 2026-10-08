@@ -4,7 +4,8 @@
  */
 
 import apiClient from "./api.service";
-import { API_TIMEOUT_UPLOAD } from '../config/api.config';
+import { API_TIMEOUT_UPLOAD, API_BASE_URL } from '../config/api.config';
+import { STORAGE_KEYS } from '../config/app.config';
 import { responseFilename } from '../utils/downloadFilename';
 
 const BASE_URL = "/sales";
@@ -735,6 +736,93 @@ class SalesService {
         `${BASE_URL}/deals/${dealId}/convert-to-project/`,
         payload,
       )
+    ).data;
+  }
+
+  // ============================================================================
+  // SALES LETTERS
+  // ============================================================================
+
+  async prepareLetter(dealId, letterType, customData = {}) {
+    return (
+      await apiClient.post(`${BASE_URL}/deals/${dealId}/prepare-letter/`, {
+        letter_type: letterType,
+        custom_data: customData,
+      })
+    ).data;
+  }
+
+  async getLetters(dealId) {
+    return (
+      await apiClient.get(`${BASE_URL}/deals/${dealId}/letters/`)
+    ).data;
+  }
+
+  async sendLetter(dealId, letterId, recipient) {
+    return (
+      await apiClient.post(`${BASE_URL}/deals/${dealId}/letters/${letterId}/send/`, {
+        recipient,
+      })
+    ).data;
+  }
+
+  async downloadLetterPdf(dealId, letterId) {
+    const response = await apiClient.get(
+      `${BASE_URL}/deals/${dealId}/letters/${letterId}/pdf/`,
+      { responseType: 'blob' }
+    );
+    return { blob: response.data, filename: responseFilename(response.headers?.['content-disposition']) };
+  }
+
+  async downloadLetterDocx(dealId, letterId) {
+    const response = await apiClient.get(
+      `${BASE_URL}/deals/${dealId}/letters/${letterId}/docx/`,
+      { responseType: 'blob' }
+    );
+    return { blob: response.data, filename: responseFilename(response.headers?.['content-disposition']) };
+  }
+
+  async previewLetterPdf(dealId, letterId) {
+    const response = await apiClient.get(
+      `${BASE_URL}/deals/${dealId}/letters/${letterId}/pdf/preview/`,
+      { responseType: 'blob' }
+    );
+    return response.data;
+  }
+
+  /**
+   * Same-origin URL for the inline PDF preview iframe. Iframes cannot send the
+   * Authorization header, so the JWT travels as a query parameter; the backend
+   * QueryParamJWTAuthentication validates it exactly like the header token.
+   * `cacheBuster` changes after regeneration so the iframe reloads the PDF.
+   *
+   * Always same-origin: strip any absolute origin so the request goes through
+   * the same dev/deployment proxy as the rest of the app — the browser often
+   * cannot reach the raw backend host directly.
+   */
+  getLetterPreviewUrl(dealId, letterId, cacheBuster = 0) {
+    const params = new URLSearchParams();
+    const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+    if (token) params.set('token', token);
+    if (cacheBuster) params.set('v', String(cacheBuster));
+    const query = params.toString();
+    const basePath = (API_BASE_URL.startsWith('http')
+      ? new URL(API_BASE_URL).pathname
+      : API_BASE_URL).replace(/\/$/, '');
+    return `${basePath}/sales/deals/${dealId}/letters/${letterId}/pdf/preview/${query ? `?${query}` : ''}`;
+  }
+
+  async regenerateLetterPdf(dealId, letterId, customData = {}) {
+    return (
+      await apiClient.post(`${BASE_URL}/deals/${dealId}/letters/${letterId}/regenerate-pdf/`, {
+        custom_data: customData,
+      })
+    ).data;
+  }
+
+  async updateLetter(dealId, letterId, data) {
+    return (
+      await apiClient.patch(`${BASE_URL}/deals/${dealId}/letters/${letterId}/`, data)
     ).data;
   }
 

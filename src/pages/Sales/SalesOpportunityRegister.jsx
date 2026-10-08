@@ -151,6 +151,7 @@ export default function SalesOpportunityRegister({
   recordError,
   onRefresh,
   onSelect,
+  onOpenRecord,
   onRetryRecord,
   onOpenFullRecord,
   onEdit,
@@ -165,6 +166,9 @@ export default function SalesOpportunityRegister({
 }) {
   const currentUser = useSelector((state) => state.auth?.user);
   const currentUserId = currentUser?.user?.id ?? currentUser?.id;
+  // Row activation: open the full record drawer when the host provides the
+  // handler (opportunities register), otherwise fall back to selection-only.
+  const openRow = (row) => (onOpenRecord || onSelect)(row);
   const [view, setCurrentView] = useState("all");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
@@ -428,7 +432,7 @@ export default function SalesOpportunityRegister({
           type="button"
           className="sor-code sor-cell-text"
           title={row.deal_code || "Not provided"}
-          onClick={() => onSelect(row)}
+          onClick={() => openRow(row)}
         >
           {row.deal_code || "Not provided"}
         </button>
@@ -440,7 +444,7 @@ export default function SalesOpportunityRegister({
             type="button"
             className="sor-title-link sor-cell-text"
             title={row.deal_name || "Untitled opportunity"}
-            onClick={() => onSelect(row)}
+            onClick={() => openRow(row)}
           >
             {row.deal_name || "Untitled opportunity"}
           </button>
@@ -1020,14 +1024,14 @@ export default function SalesOpportunityRegister({
                   pageRows.map((row) => (
                     <tr
                       key={row.id}
-                      className={
+                      className={`cursor-pointer ${
                         record?.id === row.id ? "sor-selected-row" : ""
-                      }
+                      }`}
                       aria-selected={record?.id === row.id}
                       onDoubleClick={() => onOpenWorkspace?.(row)}
                       onClick={(event) => {
                         if (!event.target.closest("button,input,a"))
-                          onSelect(row);
+                          openRow(row);
                       }}
                     >
                       <td className="sor-select-cell">
@@ -1203,6 +1207,7 @@ SalesOpportunityRegister.propTypes = {
   recordError: PropTypes.string,
   onRefresh: PropTypes.func.isRequired,
   onSelect: PropTypes.func.isRequired,
+  onOpenRecord: PropTypes.func,
   onRetryRecord: PropTypes.func.isRequired,
   onOpenFullRecord: PropTypes.func.isRequired,
   onEdit: PropTypes.func.isRequired,

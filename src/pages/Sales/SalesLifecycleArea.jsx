@@ -29,6 +29,7 @@ import salesService from "../../services/sales.service";
 import SalesActionDialog from "./SalesActionDialog";
 import SalesOpportunityHistory from "./SalesOpportunityHistory";
 import SalesOpportunityRegistrationDialog from "./SalesOpportunityRegistrationDialog";
+import SalesLetterModal from "./SalesLetterModal.jsx";
 import { opportunityMoney } from "./salesOpportunityRegistration";
 import SalesOpportunityRegister from "./SalesOpportunityRegister.jsx";
 import { loadOpportunityRegister, typeLabel as opportunityTypeLabel } from "./salesOpportunityRegister.js";
@@ -565,6 +566,16 @@ const lifecycleActions = (area, record) => {
       );
     if (record.stage === "awarded")
       actions.push({ id: "convert_project", label: "Convert to project" });
+    // Prepare Letter actions - available after bid decision
+    if (record.bid_decision === "bid" || record.bid_decision === "conditional_bid") {
+      actions.push({ id: "prepare_letter_eoi", label: "Prepare EOI Letter" });
+    }
+    if (record.bid_decision === "no_bid") {
+      actions.push(
+        { id: "prepare_letter_regret_expertise", label: "Prepare Regret Letter (Expertise)" },
+        { id: "prepare_letter_regret_manpower", label: "Prepare Regret Letter (Manpower)" },
+      );
+    }
     if (
       !["awarded", "converted", "lost", "no_bid", "cancelled"].includes(
         record.stage,
@@ -666,7 +677,7 @@ function RecordDrawer({
   onCancelEdit,
   onChange,
   onSave,
-  error,
+  error = "",
   loadError = "",
   onRetry,
   actions,
@@ -933,6 +944,21 @@ export default function SalesLifecycleArea() {
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState("");
   const [actionWarnings, setActionWarnings] = useState([]);
+  const [letterModal, setLetterModal] = useState({ open: false, letterType: null });
+
+  const handleLetterAction = useCallback((actionId) => {
+    if (actionId.startsWith("prepare_letter_")) {
+      const letterType = actionId.replace("prepare_letter_", "");
+      const typeMap = {
+        eoi: "eoi",
+        regret_expertise: "regret_expertise",
+        regret_manpower: "regret_manpower",
+      };
+      setLetterModal({ open: true, letterType: typeMap[letterType] });
+      return true;
+    }
+    return false;
+  }, []);
 
   useEffect(() => {
     ++recordRequest.current;
@@ -1027,6 +1053,10 @@ export default function SalesLifecycleArea() {
   );
 
   const selectOpportunity = useCallback((row) => openRecord(row, false, { open: false }), [openRecord]);
+  // Row clicks in the opportunities register open the full record drawer
+  // (where lifecycle actions like Prepare Letter live); the auto-select
+  // effect keeps using the selection-only handler above.
+  const openOpportunityRecord = useCallback((row) => openRecord(row, true, { open: false }), [openRecord]);
   const selectProposal = useCallback((row) => openRecord(row, false), [openRecord]);
   const selectClient = useCallback((row) => openRecord(row, false), [openRecord]);
   const selectForecast = useCallback((row) => openRecord(row, false), [openRecord]);
@@ -1432,6 +1462,8 @@ export default function SalesLifecycleArea() {
 
   const openLifecycleAction = (actionId) => {
     if (!record || recordLoading || recordError) return;
+    // Handle prepare_letter_* actions by opening the letter modal
+    if (handleLetterAction(actionId)) return;
     const confirm = (title, description, execute, submitLabel = title) =>
       showAction({ title, description, execute, submitLabel, fields: [] });
     if (actionId === "qualify")
@@ -1854,6 +1886,7 @@ export default function SalesLifecycleArea() {
           rows={rows} loading={loading} error={error}
           record={record} recordLoading={recordLoading} recordError={recordError}
           onRefresh={refreshOpportunities} onSelect={selectOpportunity}
+          onOpenRecord={openOpportunityRecord}
           explorer={searchParams.get('workspace') === '1'} explorerFolder={searchParams.get('folder') || ''}
           onOpenWorkspace={openOpportunityWorkspace} onCloseWorkspace={closeOpportunityWorkspace}
           onRetryRecord={() => record && openRecord(record, false)}
@@ -2122,6 +2155,12 @@ export default function SalesLifecycleArea() {
           onAction={openLifecycleAction}
         />
       )}
+      <SalesLetterModal
+        open={letterModal.open}
+        onClose={() => setLetterModal({ open: false, letterType: null })}
+        deal={record}
+        initialLetterType={letterModal.letterType}
+      />
       {actionDialog && (
         <SalesActionDialog
           action={actionDialog}
@@ -2175,4 +2214,3 @@ RecordDrawer.propTypes = {
   onAction: PropTypes.func.isRequired,
   editEpoch: PropTypes.number,
 };
-RecordDrawer.defaultProps = { error: "" };
