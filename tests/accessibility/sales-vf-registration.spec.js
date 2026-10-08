@@ -1,6 +1,12 @@
 import { test, expect } from '@playwright/test'
 import { prepare, message, listing, paginated, canonicalClient, opportunityDetails, detected, conversionPath } from '../fixtures/sales-email-api-fixture.js'
-const types = [{ value: 'tender', label: 'Tender' }, { value: 'rfq', label: 'RFQ' }, { value: 'eoi', label: 'EOI' }, { value: 'direct_enquiry', label: 'Direct enquiry' }, { value: 'other', label: 'Other' }]
+const types = [
+  { value: 'eio', label: 'EIO' }, { value: 'budgetary', label: 'Budgetary' },
+  { value: 'technical', label: 'Technical' }, { value: 'commercial', label: 'Commercial' },
+  { value: 'techno_commercial', label: 'Techno Commerical' }, { value: 'other', label: 'Others' },
+  { value: 'tender', label: 'Tender' }, { value: 'rfq', label: 'RFQ' },
+  { value: 'eoi', label: 'EOI' }, { value: 'direct_enquiry', label: 'Direct enquiry' },
+]
 const options = { default_owner: 11, owners: [{ id: 11, name: 'Current reviewer' }, { id: 12, name: 'Assigned reviewer' }], opportunity_types: types }
 const record = { id: 'vf-one', deal_code: 'Q-102101', deal_name: 'Registered package', client: 'client-one', client_name: 'Example Energy LLC', owner_name: 'Current reviewer', created_by_name: 'Current reviewer', created_at: '2026-09-30T08:00:00Z', open_date: '2026-09-30', stage: 'lead', stage_display: 'Open', estimated_value: null, currency: '', expected_close_date: null, submission_due_date: null }
 const form = page => page.getByRole('dialog', { name: 'Register opportunity (VF)', exact: true })
@@ -37,7 +43,7 @@ async function manual(page, config = {}) {
   return state
 }
 async function fillBasic(page) {
-  await form(page).getByLabel('Opportunity type', { exact: true }).selectOption('tender')
+  await form(page).getByLabel('Opportunity type', { exact: true }).selectOption('eio')
   await form(page).getByLabel('Opportunity name', { exact: true }).fill('Registered package')
   await form(page).getByLabel('Client', { exact: true }).selectOption('client-one')
 }
@@ -53,10 +59,23 @@ for (const overview of [false, true]) test(`minimal ${overview ? 'overview' : 'r
   await expect(page.getByRole('dialog', { name: 'Opportunity record', exact: true })).toBeVisible()
   const writes = state.requests.filter(item => item.method === 'POST')
   expect(writes).toHaveLength(1)
-  expect(writes[0].body).toMatchObject({ opportunity_type: 'tender', owner: '11', estimated_value: null, currency: '', expected_close_date: null, submission_due_date: null, scope_type: '' })
+  expect(writes[0].body).toMatchObject({ opportunity_type: 'eio', owner: '11', estimated_value: null, currency: '', expected_close_date: null, submission_due_date: null, scope_type: '' })
   expect(writes[0].body.registration_request_id).toMatch(/^[0-9a-f-]{36}$/)
   expect(writes[0].body.deal_code).toBeUndefined()
   expect(writes[0].body.created_by).toBeUndefined()
+  expect(state.errors).toEqual([])
+})
+test('manual registration offers exactly the six requested types and saves the selection', async ({ page }) => {
+  const state = await manual(page)
+  const type = form(page).getByLabel('Opportunity type', { exact: true })
+  await expect(type.locator('option')).toHaveText([
+    'Select opportunity type', 'EIO', 'Budgetary', 'Technical', 'Commercial', 'Techno Commerical', 'Others',
+  ])
+  await type.selectOption('techno_commercial')
+  await form(page).getByLabel('Opportunity name', { exact: true }).fill('Technical-commercial package')
+  await form(page).getByLabel('Client', { exact: true }).selectOption('client-one')
+  await form(page).getByRole('button', { name: 'Create opportunity', exact: true }).click()
+  expect(state.requests.find(item => item.method === 'POST').body.opportunity_type).toBe('techno_commercial')
   expect(state.errors).toEqual([])
 })
 test('failed manual registration preserves values and retry identity while preventing a duplicate in-flight save', async ({ page }) => {

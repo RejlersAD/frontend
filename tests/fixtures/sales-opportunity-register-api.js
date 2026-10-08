@@ -4,9 +4,11 @@ const options = {
   default_owner: 11,
   owners: [{ id: 11, name: 'Aisha Noor' }, { id: 12, name: 'Omar Ali' }],
   opportunity_types: [
+    { value: 'eio', label: 'EIO' }, { value: 'budgetary', label: 'Budgetary' },
+    { value: 'technical', label: 'Technical' }, { value: 'commercial', label: 'Commercial' },
+    { value: 'techno_commercial', label: 'Techno Commerical' }, { value: 'other', label: 'Others' },
     { value: 'tender', label: 'Tender' }, { value: 'rfq', label: 'RFQ' },
     { value: 'eoi', label: 'EOI' }, { value: 'direct_enquiry', label: 'Direct enquiry' },
-    { value: 'other', label: 'Other' },
   ],
 }
 export function opportunity(index, changes = {}) {
