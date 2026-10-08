@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   ACTIVE_STAGES, DEFAULT_FILTERS, attentionItems, deadlineInfo, displayDate,
-  filterOpportunities, loadOpportunityRegister, pipelineTotals,
+  filterOpportunities, loadOpportunityRegister, pipelineTotals, typeLabel,
 } from '../src/pages/Sales/salesOpportunityRegister.js'
 
 const today = '2026-09-30'
@@ -10,6 +10,14 @@ const record = (id, changes = {}) => ({ id, deal_code: `Q-${id}`, deal_name: `Pa
   client_name: 'Synthetic Buyer', owner: 11, owner_name: 'Aisha Noor',
   stage: 'lead', bid_decision: 'pending', service_categories: [],
   submission_due_date: null, next_action_date: null, weighted_value: null, currency: '', ...changes })
+
+test('new type labels remain readable while historical EOI stays distinct from EIO', () => {
+  assert.deepEqual(
+    ['eio', 'budgetary', 'technical', 'commercial', 'techno_commercial', 'other'].map(typeLabel),
+    ['EIO', 'Budgetary', 'Technical', 'Commercial', 'Techno Commerical', 'Others'],
+  )
+  assert.equal(typeLabel('eoi'), 'EOI')
+})
 
 test('date-only deadlines include today and do not invent missing or invalid dates', () => {
   assert.equal(deadlineInfo('2026-09-30', today).label, 'Due today')

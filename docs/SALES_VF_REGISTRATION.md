@@ -15,6 +15,12 @@ failed saves and retries; duplicate clicks are blocked while the request runs.
 Email saves retain their existing source token, classification confirmation,
 client-resolution and source-bound retry contracts.
 
+The New opportunity manual form shows only EIO, Budgetary, Technical,
+Commercial, Techno Commerical and Others. The email review form retains the
+legacy Tender/RFQ/EOI/Direct enquiry types in its server-provided options so
+reviewed email classifications are not silently remapped. EIO is distinct
+from EOI. The backend must accept the new types before deploying this UI.
+
 Open date defaults to the source email's received date in Asia/Dubai, or the
 current business date for manual entry. The original email timestamp remains
 visible. Proposal deadline stays date-only; exact deadline time/timezone and

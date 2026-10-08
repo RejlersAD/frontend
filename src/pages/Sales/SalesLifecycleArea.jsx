@@ -31,7 +31,7 @@ import SalesOpportunityHistory from "./SalesOpportunityHistory";
 import SalesOpportunityRegistrationDialog from "./SalesOpportunityRegistrationDialog";
 import { opportunityMoney } from "./salesOpportunityRegistration";
 import SalesOpportunityRegister from "./SalesOpportunityRegister.jsx";
-import { loadOpportunityRegister } from "./salesOpportunityRegister.js";
+import { loadOpportunityRegister, typeLabel as opportunityTypeLabel } from "./salesOpportunityRegister.js";
 import SalesProposalRegister from "./SalesProposalRegister.jsx";
 import SalesClientRegister from "./SalesClientRegister.jsx";
 import { loadClientPages } from "./salesClientRegister.js";
@@ -75,7 +75,7 @@ const AREAS = {
     ],
     editFields: [
       ["deal_name", "Opportunity name"],
-      ["opportunity_type", "Opportunity type", "select", ["", "tender", "rfq", "eoi", "direct_enquiry", "other"]],
+      ["opportunity_type", "Opportunity type", "select", ["", "eio", "budgetary", "technical", "commercial", "techno_commercial", "other", "tender", "rfq", "eoi", "direct_enquiry"]],
       ["open_date", "Open date", "date"],
       ["submission_due_date", "Due date", "date"],
       ["client_reference", "Client reference"],
@@ -781,7 +781,7 @@ function RecordDrawer({
                           >
                             {[...new Set([...(draft[key] ? [draft[key]] : []), ...options])].map((option) => (
                               <option key={option} value={option}>
-                                {label(option)}
+                                {key === "opportunity_type" && option ? opportunityTypeLabel(option) : label(option)}
                               </option>
                             ))}
                           </select>
@@ -1468,10 +1468,13 @@ export default function SalesLifecycleArea() {
           fields: [
             {
               name: "decision",
-              label: "Decision",
+              label: "Decision*",
               type: "select",
               required: true,
-              options: ["bid", "conditional_bid", "no_bid"],
+              options: [
+                { value: "bid", label: "Go" },
+                { value: "no_bid", label: "No-go" },
+              ],
             },
             {
               name: "reason",

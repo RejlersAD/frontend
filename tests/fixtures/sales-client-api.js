@@ -106,7 +106,13 @@ export async function prepareClients(page, configuration = {}) {
     if (path.endsWith('/notifications/unread_count/')) return route.fulfill({ json: { unread_count: 0 } });
     if (/\/procurement\/(requisitions|orders)\/pending-for-me\/$/.test(path)) return route.fulfill({ json: { count: 0, results: [] } });
     if (path.endsWith('/deals/registration-options/')) return route.fulfill({ json: { owners,
-      opportunity_types: [{ value: 'tender', label: 'Tender' }, { value: 'rfq', label: 'RFQ' }], default_owner: 11 } });
+      opportunity_types: [
+        { value: 'eio', label: 'EIO' }, { value: 'budgetary', label: 'Budgetary' },
+        { value: 'technical', label: 'Technical' }, { value: 'commercial', label: 'Commercial' },
+        { value: 'techno_commercial', label: 'Techno Commerical' }, { value: 'other', label: 'Others' },
+        { value: 'tender', label: 'Tender' }, { value: 'rfq', label: 'RFQ' },
+        { value: 'eoi', label: 'EOI' }, { value: 'direct_enquiry', label: 'Direct enquiry' },
+      ], default_owner: 11 } });
     if (path.endsWith('/clients/') && method === 'GET') {
       if (state.listStatus !== 200) return route.fulfill({ status: state.listStatus, json: { detail: 'The client register could not be loaded.' } });
       return route.fulfill({ json: paginated(url, state.rows.map(listProjection), state.listPageSize) });

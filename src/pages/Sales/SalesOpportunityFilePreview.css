@@ -1,69 +1,408 @@
-.sop-preview { margin: auto; padding: 0; width: min(1280px, calc(100vw - 32px)); height: min(900px, calc(100dvh - 32px)); max-width: none; max-height: none; border: 1px solid #dfe6f2; border-radius: 10px; background: #fff; color: #142448; box-shadow: 0 24px 90px #102a4640; font-family: 'Sales Workspace Roboto', 'Segoe UI', sans-serif; }
-.sop-preview[open] { display: flex; flex-direction: column; }
-.sop-preview::backdrop { background: #0b1c4966; }
-.sop-header { display: flex; flex: none; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 15px 20px; border-bottom: 1px solid #dfe6f2; }
-.sop-header > div { min-width: 0; }
-.sop-header span, .sop-header p { font-size: 12px; color: #52617d; margin: 0; }
-.sop-header h2 { font-size: 18px; line-height: 1.4; font-weight: 600; margin: 3px 0; overflow-wrap: anywhere; }
-.sop-toolbar { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid #dfe6f2; background: #f8faff; }
-.sop-page-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
-.sop-page-controls label { display: flex; align-items: center; gap: 6px; }
-.sop-page-controls input { width: 54px; }
-.sop-page-controls select, .sop-page-controls input, .sop-page-controls button { min-height: 34px; padding: 4px 7px; border: 1px solid #ced9e9; background: #fff; border-radius: 4px; font: inherit; color: inherit; }
-.sop-page-controls button { display: inline-flex; align-items: center; }
-.sop-page-controls button:disabled { color: #738198; }
-.sop-preview svg { width: 18px; height: 18px; flex: none; }
-.sop-download { margin-left: auto; }
-.sop-content { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
-.sop-state { margin: auto; padding: 32px 24px; max-width: 520px; text-align: center; color: #52617d; display: flex; flex-direction: column; align-items: center; gap: 16px; font-size: 14px; }
-.sop-state h3 { font-size: 18px; color: #142448; }
-.sop-state > svg { width: 36px; height: 36px; }
-.sop-error, .sop-render-error { margin: 0; padding: 12px 20px; color: #a12d40; background: #fff6f6; font-size: 13px; }
-.sop-render-error { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-.sop-image { flex: 1; min-height: 0; overflow: auto; display: grid; place-items: center; padding: 20px; background: #eaf0f5; }
-.sop-image img { max-width: 100%; max-height: 100%; object-fit: contain; }
-.sop-text { flex: 1; min-height: 0; overflow: auto; padding: 20px; }
-.sop-text > p { color: #52617d; font-size: 13px; margin: 0 0 12px; }
-.sop-text pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 monospace; }
-.sop-preview button:focus-visible, .sop-preview input:focus-visible, .sop-preview select:focus-visible { outline: 2px solid #6744ff; outline-offset: 2px; }
-.sop-word, .sop-workbook { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.sop-office-notice { margin: 0; padding: 10px 18px; color: #52617d; background: #f8faff; font-size: 13px; flex: none; }
-.sop-office-frame { display: block; width: 100%; flex: 1; min-height: 300px; border: 0; background: #fff; }
-.sop-workbook-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; padding: 12px 18px; font-size: 13px; color: #52617d; }
-.sop-workbook-tools label { display: flex; align-items: center; gap: 8px; color: #142448; font-weight: 500; min-width: 0; }
-.sop-workbook-tools select { max-width: 280px; min-height: 34px; padding: 5px 9px; border: 1px solid #ced9e9; border-radius: 4px; background: #fff; font: inherit; }
-.sop-workbook-scroll { overflow: auto; min-height: 0; flex: 1; border-block: 1px solid #dfe6f2; }
-.sop-workbook-scroll:focus-visible { outline: 2px solid #6744ff; outline-offset: -2px; }
-.sop-workbook table { border-collapse: separate; border-spacing: 0; min-width: 100%; font-size: 13px; }
-.sop-workbook caption { text-align: left; padding: 10px 18px; font-weight: 600; color: #142448; }
-.sop-workbook td, .sop-workbook th { padding: 8px 12px; min-width: 96px; max-width: 360px; border-right: 1px solid #dfe6f2; border-bottom: 1px solid #dfe6f2; white-space: pre-wrap; overflow-wrap: anywhere; vertical-align: top; text-align: left; }
-.sop-workbook th { color: #314b7a; background: #f3f6fc; font-weight: 500; }
-.sop-workbook thead th { position: sticky; top: 0; z-index: 1; }
-.sop-workbook th:first-child { min-width: 56px; width: 56px; }
-.sop-missing-result { color: #795515; font-style: italic; }
-.sop-workbook-footer { padding: 12px 18px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; flex: none; font-size: 12px; color: #52617d; }
-.sop-workbook-footer > div { display: flex; gap: 8px; }
-.sop-message { min-height: 0; flex: 1; overflow: auto; display: flex; flex-direction: column; }
-.sop-message > header { padding: 18px 24px; border-bottom: 1px solid #dfe6f2; flex: none; }
-.sop-message h3 { margin: 0 0 14px; font-size: 20px; font-weight: 600; overflow-wrap: anywhere; }
-.sop-message dl { margin: 0; font-size: 13px; }
-.sop-message dl > div { display: grid; grid-template-columns: 55px minmax(0, 1fr); gap: 12px; margin: 6px 0; }
-.sop-message dt { color: #52617d; }
-.sop-message dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-.sop-message-text { margin: 0; padding: 24px; font: 14px/1.7 'Segoe UI', sans-serif; white-space: pre-wrap; overflow-wrap: anywhere; flex: none; }
-.sop-message-attachments { padding: 12px 24px; border-bottom: 1px solid #dfe6f2; flex: none; }
-.sop-message-attachments h4 { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
-.sop-message-attachments ul { margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; list-style: none; }
-.sop-message-attachments li { display: flex; align-items: center; gap: 12px; padding: 6px 10px; max-width: 100%; border: 1px solid #dfe6f2; border-radius: 5px; font-size: 13px; overflow-wrap: anywhere; }
-.sop-message-attachments small, .sop-message-attachments p { color: #52617d; font-size: 12px; }
-.sop-message-attachments p { margin: 8px 0 0; }
+.sop-preview {
+  margin: auto;
+  padding: 0;
+  width: min(1280px, calc(100vw - 32px));
+  height: min(900px, calc(100dvh - 32px));
+  max-width: none;
+  max-height: none;
+  border: 1px solid #dfe6f2;
+  border-radius: 10px;
+  background: #fff;
+  color: #142448;
+  box-shadow: 0 24px 90px #102a4640;
+  font-family: "Sales Workspace Roboto", "Segoe UI", sans-serif;
+}
+.sop-preview[open] {
+  display: flex;
+  flex-direction: column;
+}
+.sop-preview::backdrop {
+  background: #0b1c4966;
+}
+.sop-header {
+  display: flex;
+  flex: none;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 15px 20px;
+  border-bottom: 1px solid #dfe6f2;
+}
+.sop-header > div {
+  min-width: 0;
+}
+.sop-header span,
+.sop-header p {
+  font-size: 12px;
+  color: #52617d;
+  margin: 0;
+}
+.sop-header h2 {
+  font-size: 18px;
+  line-height: 1.4;
+  font-weight: 600;
+  margin: 3px 0;
+  overflow-wrap: anywhere;
+}
+.sop-toolbar {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #dfe6f2;
+  background: #f8faff;
+}
+.sop-page-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.sop-page-controls label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sop-page-controls input {
+  width: 54px;
+}
+.sop-page-controls select,
+.sop-page-controls input,
+.sop-page-controls button {
+  min-height: 34px;
+  padding: 4px 7px;
+  border: 1px solid #ced9e9;
+  background: #fff;
+  border-radius: 4px;
+  font: inherit;
+  color: inherit;
+}
+.sop-page-controls button {
+  display: inline-flex;
+  align-items: center;
+}
+.sop-page-controls button:disabled {
+  color: #738198;
+}
+.sop-preview svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+.sop-download {
+  margin-left: auto;
+}
+.sop-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+.sop-state {
+  margin: auto;
+  padding: 32px 24px;
+  max-width: 520px;
+  text-align: center;
+  color: #52617d;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  font-size: 14px;
+}
+.sop-state h3 {
+  font-size: 18px;
+  color: #142448;
+}
+.sop-state > svg {
+  width: 36px;
+  height: 36px;
+}
+.sop-error,
+.sop-render-error {
+  margin: 0;
+  padding: 12px 20px;
+  color: #a12d40;
+  background: #fff6f6;
+  font-size: 13px;
+}
+.sop-render-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.sop-image {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: #eaf0f5;
+}
+.sop-image img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.sop-text {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 20px;
+}
+.sop-text > p {
+  color: #52617d;
+  font-size: 13px;
+  margin: 0 0 12px;
+}
+.sop-text pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 13px/1.6 monospace;
+}
+.sop-preview button:focus-visible,
+.sop-preview input:focus-visible,
+.sop-preview select:focus-visible {
+  outline: 2px solid #6744ff;
+  outline-offset: 2px;
+}
+.sop-word,
+.sop-workbook {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.sop-office-notice {
+  margin: 0;
+  padding: 10px 18px;
+  color: #52617d;
+  background: #f8faff;
+  font-size: 13px;
+  flex: none;
+}
+.sop-office-frame {
+  display: block;
+  width: 100%;
+  flex: 1;
+  min-height: 300px;
+  border: 0;
+  background: #fff;
+}
+.sop-workbook-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+  padding: 12px 18px;
+  font-size: 13px;
+  color: #52617d;
+}
+.sop-workbook-tools label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #142448;
+  font-weight: 500;
+  min-width: 0;
+}
+.sop-workbook-tools select {
+  max-width: 280px;
+  min-height: 34px;
+  padding: 5px 9px;
+  border: 1px solid #ced9e9;
+  border-radius: 4px;
+  background: #fff;
+  font: inherit;
+}
+.sop-workbook-scroll {
+  overflow: auto;
+  min-height: 0;
+  flex: 1;
+  border-block: 1px solid #dfe6f2;
+}
+.sop-workbook-scroll:focus-visible {
+  outline: 2px solid #6744ff;
+  outline-offset: -2px;
+}
+.sop-workbook table {
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 100%;
+  font-size: 13px;
+}
+.sop-workbook caption {
+  text-align: left;
+  padding: 10px 18px;
+  font-weight: 600;
+  color: #142448;
+}
+.sop-workbook td,
+.sop-workbook th {
+  padding: 8px 12px;
+  min-width: 96px;
+  max-width: 360px;
+  border-right: 1px solid #dfe6f2;
+  border-bottom: 1px solid #dfe6f2;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+  text-align: left;
+}
+.sop-workbook th {
+  color: #314b7a;
+  background: #f3f6fc;
+  font-weight: 500;
+}
+.sop-workbook thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.sop-workbook th:first-child {
+  min-width: 56px;
+  width: 56px;
+}
+.sop-missing-result {
+  color: #795515;
+  font-style: italic;
+}
+.sop-workbook-footer {
+  padding: 12px 18px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex: none;
+  font-size: 12px;
+  color: #52617d;
+}
+.sop-workbook-footer > div {
+  display: flex;
+  gap: 8px;
+}
+.sop-message {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+.sop-message > header {
+  padding: 18px 24px;
+  border-bottom: 1px solid #dfe6f2;
+  flex: none;
+}
+.sop-message h3 {
+  margin: 0 0 14px;
+  font-size: 20px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.sop-message dl {
+  margin: 0;
+  font-size: 13px;
+}
+.sop-message dl > div {
+  display: grid;
+  grid-template-columns: 55px minmax(0, 1fr);
+  gap: 12px;
+  margin: 6px 0;
+}
+.sop-message dt {
+  color: #52617d;
+}
+.sop-message dd {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.sop-message-text {
+  margin: 0;
+  padding: 24px;
+  font:
+    14px/1.7 "Segoe UI",
+    sans-serif;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  flex: none;
+}
+.sop-message-attachments {
+  padding: 12px 24px;
+  border-bottom: 1px solid #dfe6f2;
+  flex: none;
+}
+.sop-message-attachments h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.sop-message-attachments ul {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  list-style: none;
+}
+.sop-message-attachments li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 10px;
+  max-width: 100%;
+  border: 1px solid #dfe6f2;
+  border-radius: 5px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.sop-message-attachments small,
+.sop-message-attachments p {
+  color: #52617d;
+  font-size: 12px;
+}
+.sop-message-attachments p {
+  margin: 8px 0 0;
+}
 @media (max-width: 700px) {
-  .sop-preview { width: calc(100vw - 16px); height: calc(100dvh - 16px); }
-  .sop-header { padding: 12px; }
-  .sop-toolbar { padding: 8px 12px; }
-  .sop-preview .sales-proposal-pdf-viewer { display: block; min-height: 0; height: 100%; }
-  .sop-preview .sppdf-navigation { display: none; }
-  .sop-preview .sppdf-stage { height: 100%; min-height: 0; padding: 12px; }
-  .sop-workbook-tools, .sop-workbook-footer, .sop-message > header, .sop-message-text, .sop-message-attachments { padding: 12px; }
-  .sop-workbook-tools select { max-width: 250px; }
+  .sop-preview {
+    width: calc(100vw - 16px);
+    height: calc(100dvh - 16px);
+  }
+  .sop-header {
+    padding: 12px;
+  }
+  .sop-toolbar {
+    padding: 8px 12px;
+  }
+  .sop-preview .sales-proposal-pdf-viewer {
+    display: block;
+    min-height: 0;
+    height: 100%;
+  }
+  .sop-preview .sppdf-navigation {
+    display: none;
+  }
+  .sop-preview .sppdf-stage {
+    height: 100%;
+    min-height: 0;
+    padding: 12px;
+  }
+  .sop-workbook-tools,
+  .sop-workbook-footer,
+  .sop-message > header,
+  .sop-message-text,
+  .sop-message-attachments {
+    padding: 12px;
+  }
+  .sop-workbook-tools select {
+    max-width: 250px;
+  }
 }
