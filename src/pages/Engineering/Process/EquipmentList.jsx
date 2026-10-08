@@ -7,68 +7,167 @@
  * Soft-coded: COLUMNS array at top, timing constants below imports.
  */
 
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import {
   CloudArrowUpIcon,
   CheckCircleIcon,
   ArrowDownTrayIcon,
   ArrowsPointingOutIcon,
   ArrowsPointingInIcon,
-  BookOpenIcon,
-  Cog6ToothIcon,
   FolderIcon,
   FolderPlusIcon,
-  DocumentTextIcon,
-} from '@heroicons/react/24/outline';
-import { Boxes } from 'lucide-react';
-import apiClient from '../../../services/api.service';
-import * as XLSX from 'xlsx';
-import { getApiBaseUrl } from '../../../config/environment.config';
-import { STORAGE_KEYS } from '../../../config/app.config';
-import WrenchAiDocAssist from '../../../components/Engineering/WrenchAiDocAssist';
-import LegendSheetsModal from './components/LegendSheetsModal';
-import ProjectLegendPanel from '../../../components/Engineering/ProjectLegendPanel';
-import { listLegends } from '../../../services/pidCheckerV2API';
-import EquipmentListWorkflowDocs from './components/EquipmentListWorkflowDocs';
+} from "@heroicons/react/24/outline";
+import {
+  Boxes,
+  Search,
+  ChevronDown,
+  MoreHorizontal,
+  Maximize2,
+  Download,
+  Columns,
+  Clock3,
+  FileText,
+  AlertTriangle,
+} from "lucide-react";
+import apiClient from "../../../services/api.service";
+import * as XLSX from "xlsx";
+import { getApiBaseUrl } from "../../../config/environment.config";
+import { STORAGE_KEYS } from "../../../config/app.config";
+import WrenchAiDocAssist from "../../../components/Engineering/WrenchAiDocAssist";
+import LegendSheetsModal from "./components/LegendSheetsModal";
+import ProjectLegendPanel from "../../../components/Engineering/ProjectLegendPanel";
+import { listLegends } from "../../../services/pidCheckerV2API";
+import EquipmentListWorkflowDocs from "./components/EquipmentListWorkflowDocs";
 // Shared Project Organizer — soft-coded workspace (same pattern as Line List / HMB)
-import { PROJECT_ORGANIZER_CONFIG } from '../../../config/projectOrganizer.config';
-import projectOrganizerService from '../../../services/projectOrganizerService';
-import { ProjectCard, ProjectFormModal, useActiveProject } from '../../../components/ProjectOrganizer';
-import useRadaiChatPage from '../../../hooks/useRadaiChatPage';
-import { registerChatActionHandler, registerChatUploadHandler } from '../../../services/chatContext.store';
+import { PROJECT_ORGANIZER_CONFIG } from "../../../config/projectOrganizer.config";
+import projectOrganizerService from "../../../services/projectOrganizerService";
+import {
+  getCurrentEquipmentRegister,
+  getEquipmentRegisterChanges,
+  importEquipmentExtraction,
+  updateEquipmentItem,
+} from "../../../services/equipmentRegisterService";
+import {
+  ProjectCard,
+  ProjectFormModal,
+  useActiveProject,
+} from "../../../components/ProjectOrganizer";
+import useRadaiChatPage from "../../../hooks/useRadaiChatPage";
+import {
+  registerChatActionHandler,
+  registerChatUploadHandler,
+} from "../../../services/chatContext.store";
 
 // ---------------------------------------------------------------------------
 // Soft-coded column definitions — add/remove columns here only.
 // key must match the backend response field name.
 // ---------------------------------------------------------------------------
 const COLUMNS = [
-  { key: 'sl_no',               label: 'SL No.',                   width: 6  },
-  { key: 'revision',            label: 'Rev.',                      width: 7  },
-  { key: 'tag',                 label: 'Equipment Tag No.',          width: 16 },
-  { key: 'description',         label: 'Description',               width: 28 },
-  { key: 'design_flowrate',     label: 'Design Flowrate / Duty',    width: 22 },
-  { key: 'oper_pressure',       label: 'Oper. Pressure (PSIG)',     width: 18 },
-  { key: 'oper_temperature',    label: 'Oper. Temp. (°F)',          width: 16 },
-  { key: 'design_pressure_min', label: 'Des. Pressure (MIN)',        width: 20 },
-  { key: 'design_pressure_max', label: 'Des. Pressure (MAX)',        width: 20 },
-  { key: 'design_temp_min',     label: 'Des. Temp. Min (°F)',       width: 16 },
-  { key: 'design_temp_max',     label: 'Des. Temp. Max (°F)',       width: 16 },
-  { key: 'moc',                 label: 'MOC',                       width: 16 },
-  { key: 'insulation',          label: 'Insulation',                width: 14 },
-  { key: 'dimension_length',    label: 'Length / Height (mm)',      width: 18 },
-  { key: 'dimension_diameter',  label: 'Diameter / Width (mm)',     width: 18 },
-  { key: 'motor_rating',        label: 'Motor Rating (kW)',         width: 14 },
-  { key: 'pid_no',              label: 'P&ID No.',                  width: 16 },
-  { key: 'quality_required',    label: 'Quantity Required',         width: 18 },
-  { key: 'phase',               label: 'Phase',                     width: 12 },
-  { key: 'remarks',             label: 'Remarks',                   width: 24 },
+  { key: "sl_no", label: "SL No.", width: 6 },
+  { key: "revision", label: "Rev.", width: 7 },
+  { key: "tag", label: "Equipment Tag No.", width: 16 },
+  { key: "description", label: "Description", width: 28 },
+  { key: "design_flowrate", label: "Design Flowrate / Duty", width: 22 },
+  { key: "oper_pressure", label: "Oper. Pressure (PSIG)", width: 18 },
+  { key: "oper_temperature", label: "Oper. Temp. (°F)", width: 16 },
+  { key: "design_pressure_min", label: "Des. Pressure (MIN)", width: 20 },
+  { key: "design_pressure_max", label: "Des. Pressure (MAX)", width: 20 },
+  { key: "design_temp_min", label: "Des. Temp. Min (°F)", width: 16 },
+  { key: "design_temp_max", label: "Des. Temp. Max (°F)", width: 16 },
+  { key: "moc", label: "MOC", width: 16 },
+  { key: "insulation", label: "Insulation", width: 14 },
+  { key: "dimension_length", label: "Length / Height (mm)", width: 18 },
+  { key: "dimension_diameter", label: "Diameter / Width (mm)", width: 18 },
+  { key: "motor_rating", label: "Motor Rating (kW)", width: 14 },
+  { key: "pid_no", label: "P&ID No.", width: 16 },
+  { key: "quality_required", label: "Quantity Required", width: 18 },
+  { key: "phase", label: "Phase", width: 12 },
+  { key: "remarks", label: "Remarks", width: 24 },
 ];
 
-const UPLOAD_TIMEOUT_MS  = 600000;  // 10 min
-const POLL_INTERVAL_MS   = 3000;
-const POLL_MAX_WAIT_MS   = 3600000; // 60 min
-const POLL_REQ_TIMEOUT   = 10000;
-const MAX_POST_RETRIES   = 3;
+const REFERENCE_COLUMNS = [
+  { key: "tag", label: "Tag", value: (row) => row.tag },
+  { key: "description", label: "Description", value: (row) => row.description },
+  {
+    key: "equipment_type",
+    label: "Type",
+    value: (row) => row.equipment_type || row.type,
+  },
+  {
+    key: "design_pressure_max",
+    label: "Design P (bar)",
+    value: (row) => row.design_pressure_max || row.design_pressure,
+  },
+  {
+    key: "oper_pressure",
+    label: "Oper. P (bar)",
+    value: (row) => row.oper_pressure,
+  },
+  { key: "moc", label: "MOC", value: (row) => row.moc },
+  { key: "pid_no", label: "P&ID reference", value: (row) => row.pid_no },
+  {
+    key: "confidence",
+    label: "Confidence",
+    value: (row) => (row.confidence == null ? "" : `${row.confidence}%`),
+  },
+  {
+    key: "review_state",
+    label: "Review state",
+    value: (row) => row.review_state,
+  },
+  { key: "status", label: "Status", value: (row) => row.status },
+];
+
+const DEFAULT_REFERENCE_COLUMNS = new Set([
+  "tag",
+  "description",
+  "equipment_type",
+  "design_pressure_max",
+  "oper_pressure",
+  "moc",
+  "status",
+]);
+
+// ---------------------------------------------------------------------------
+// Soft-coded Equipment Master relationship badge config — confidence tier
+// thresholds/styles, vision-source chip and cross-P&ID resolution chips.
+// Tier styles reuse the statusStyle palette (Reviewed/Changed/Error tones).
+// ---------------------------------------------------------------------------
+const CONFIDENCE_TIER_THRESHOLDS = { high: 85, medium: 60 };
+const CONFIDENCE_TIER_STYLES = {
+  high: { background: "#d8f7df", color: "#16723b" },
+  medium: { background: "#fff1c7", color: "#9a4d00" },
+  low: { background: "#ffd9dc", color: "#b4232d" },
+};
+const VISION_SOURCE_CHIP_STYLE = {
+  background: "rgba(139,92,246,0.10)",
+  color: "#3b0764",
+  border: "1px solid rgba(139,92,246,0.30)",
+};
+const RESOLVED_BATCH_CHIP_STYLE = {
+  background: "#edf7f8",
+  color: "#086b79",
+  border: "1px solid #b9dde1",
+};
+const UNRESOLVED_CHIP_STYLE = { background: "#edf1f5", color: "#40536d" };
+
+/** Map a relationship-edge confidence value to a tier badge (null if not numeric). */
+function resolveConfidenceTier(confidence) {
+  if (confidence == null || confidence === "") return null;
+  const value = Number(confidence);
+  if (!Number.isFinite(value)) return null;
+  if (value >= CONFIDENCE_TIER_THRESHOLDS.high)
+    return { label: "High", style: CONFIDENCE_TIER_STYLES.high };
+  if (value >= CONFIDENCE_TIER_THRESHOLDS.medium)
+    return { label: "Medium", style: CONFIDENCE_TIER_STYLES.medium };
+  return { label: "Low", style: CONFIDENCE_TIER_STYLES.low };
+}
+
+const UPLOAD_TIMEOUT_MS = 600000; // 10 min
+const POLL_INTERVAL_MS = 3000;
+const POLL_MAX_WAIT_MS = 3600000; // 60 min
+const POLL_REQ_TIMEOUT = 10000;
+const MAX_POST_RETRIES = 3;
 const POST_RETRY_BASE_MS = 4000;
 
 // ---------------------------------------------------------------------------
@@ -76,8 +175,8 @@ const POST_RETRY_BASE_MS = 4000;
 // Kept short per user request; previous form
 // `${drawing_ref}_equipment_list.xlsx` produced very lengthy file names.
 // ---------------------------------------------------------------------------
-const EXPORT_FILENAME          = 'Equipment_list.xlsx';
-const EXPORT_FILENAME_SELECTED = 'Equipment_list_selected.xlsx';
+const EXPORT_FILENAME = "Equipment_list.xlsx";
+const EXPORT_FILENAME_SELECTED = "Equipment_list_selected.xlsx";
 
 // ---------------------------------------------------------------------------
 // Soft-coded layout config — change widths/padding here without touching JSX.
@@ -85,12 +184,12 @@ const EXPORT_FILENAME_SELECTED = 'Equipment_list_selected.xlsx';
 // entire viewport instead of a centred 1280px column.
 // ---------------------------------------------------------------------------
 const LAYOUT_CONFIG = {
-  normalMaxWidth:     '100%',     // full-width canvas like PID Verification V1
-  normalPaddingX:     '1.5rem',
-  normalPaddingY:     '2rem',
-  fullscreenMaxWidth: '100%',
-  fullscreenPaddingX: '2rem',
-  fullscreenPaddingY: '2rem',
+  normalMaxWidth: "100%", // full-width canvas like PID Verification V1
+  normalPaddingX: "1.5rem",
+  normalPaddingY: "2rem",
+  fullscreenMaxWidth: "100%",
+  fullscreenPaddingX: "2rem",
+  fullscreenPaddingY: "2rem",
 };
 
 const API_BASE = getApiBaseUrl();
@@ -100,14 +199,15 @@ const API_BASE = getApiBaseUrl();
 // PFD Quality Checker / Line List.  Equipment List accepts MULTIPLE PDFs,
 // so each Wrench pick is APPENDED (deduped by name) to the existing list.
 const EL_AI_ASSIST_CONFIG = {
-  enabled:         true,
-  title:           'AI Document Assist',
-  subtitleTag:     '(Wrench · optional)',
-  subtitle:        'Let RAD AI pick & recommend the right P&ID PDFs for this Equipment List from Wrench DMS',
-  defaultHint:     'equipment list p&id',
-  hintPlaceholder: 'e.g. equipment list, p&id, unit 100',
-  topN:            6,
-  acceptedExts:    ['pdf'],
+  enabled: true,
+  title: "AI Document Assist",
+  subtitleTag: "(Wrench · optional)",
+  subtitle:
+    "Let RAD AI pick & recommend the right P&ID PDFs for this Equipment List from Wrench DMS",
+  defaultHint: "equipment list p&id",
+  hintPlaceholder: "e.g. equipment list, p&id, unit 100",
+  topN: 6,
+  acceptedExts: ["pdf"],
 };
 
 // ---------------------------------------------------------------------------
@@ -115,43 +215,147 @@ const EL_AI_ASSIST_CONFIG = {
 // Change LINE_ARROW_SEPARATOR to any symbol (e.g. '⟶', '➜', '▸') to restyle.
 // Extend FLUID_COLOR_MAP with any fluid code and { bg, text, border } theme.
 // ---------------------------------------------------------------------------
-const LINE_ARROW_SEPARATOR = '→';
+const LINE_ARROW_SEPARATOR = "→";
 
 const FLUID_COLOR_MAP = {
   // Gases
-  PG:  { bg: 'rgba(59,130,246,0.10)',  text: '#1e3a5f', border: 'rgba(59,130,246,0.30)'  },
-  VG:  { bg: 'rgba(139,92,246,0.10)',  text: '#3b0764', border: 'rgba(139,92,246,0.30)'  },
-  FG:  { bg: 'rgba(14,165,233,0.10)',  text: '#0c4a6e', border: 'rgba(14,165,233,0.30)'  },
-  GC:  { bg: 'rgba(234,179,8,0.10)',   text: '#713f12', border: 'rgba(234,179,8,0.30)'   },
-  NG:  { bg: 'rgba(99,102,241,0.10)',  text: '#312e81', border: 'rgba(99,102,241,0.30)'  },
-  HG:  { bg: 'rgba(99,102,241,0.10)',  text: '#312e81', border: 'rgba(99,102,241,0.30)'  },
+  PG: {
+    bg: "rgba(59,130,246,0.10)",
+    text: "#1e3a5f",
+    border: "rgba(59,130,246,0.30)",
+  },
+  VG: {
+    bg: "rgba(139,92,246,0.10)",
+    text: "#3b0764",
+    border: "rgba(139,92,246,0.30)",
+  },
+  FG: {
+    bg: "rgba(14,165,233,0.10)",
+    text: "#0c4a6e",
+    border: "rgba(14,165,233,0.30)",
+  },
+  GC: {
+    bg: "rgba(234,179,8,0.10)",
+    text: "#713f12",
+    border: "rgba(234,179,8,0.30)",
+  },
+  NG: {
+    bg: "rgba(99,102,241,0.10)",
+    text: "#312e81",
+    border: "rgba(99,102,241,0.30)",
+  },
+  HG: {
+    bg: "rgba(99,102,241,0.10)",
+    text: "#312e81",
+    border: "rgba(99,102,241,0.30)",
+  },
   // Liquid hydrocarbons
-  HO:  { bg: 'rgba(245,158,11,0.10)',  text: '#78350f', border: 'rgba(245,158,11,0.30)'  },
-  LO:  { bg: 'rgba(245,158,11,0.10)',  text: '#78350f', border: 'rgba(245,158,11,0.30)'  },
-  CO:  { bg: 'rgba(245,158,11,0.10)',  text: '#78350f', border: 'rgba(245,158,11,0.30)'  },
+  HO: {
+    bg: "rgba(245,158,11,0.10)",
+    text: "#78350f",
+    border: "rgba(245,158,11,0.30)",
+  },
+  LO: {
+    bg: "rgba(245,158,11,0.10)",
+    text: "#78350f",
+    border: "rgba(245,158,11,0.30)",
+  },
+  CO: {
+    bg: "rgba(245,158,11,0.10)",
+    text: "#78350f",
+    border: "rgba(245,158,11,0.30)",
+  },
   // Water
-  W:   { bg: 'rgba(6,182,212,0.10)',   text: '#164e63', border: 'rgba(6,182,212,0.30)'   },
-  CW:  { bg: 'rgba(6,182,212,0.10)',   text: '#164e63', border: 'rgba(6,182,212,0.30)'   },
-  SW:  { bg: 'rgba(20,184,166,0.10)',  text: '#134e4a', border: 'rgba(20,184,166,0.30)'  },
-  FW:  { bg: 'rgba(6,182,212,0.10)',   text: '#164e63', border: 'rgba(6,182,212,0.30)'   },
-  WW:  { bg: 'rgba(6,182,212,0.10)',   text: '#164e63', border: 'rgba(6,182,212,0.30)'   },
+  W: {
+    bg: "rgba(6,182,212,0.10)",
+    text: "#164e63",
+    border: "rgba(6,182,212,0.30)",
+  },
+  CW: {
+    bg: "rgba(6,182,212,0.10)",
+    text: "#164e63",
+    border: "rgba(6,182,212,0.30)",
+  },
+  SW: {
+    bg: "rgba(20,184,166,0.10)",
+    text: "#134e4a",
+    border: "rgba(20,184,166,0.30)",
+  },
+  FW: {
+    bg: "rgba(6,182,212,0.10)",
+    text: "#164e63",
+    border: "rgba(6,182,212,0.30)",
+  },
+  WW: {
+    bg: "rgba(6,182,212,0.10)",
+    text: "#164e63",
+    border: "rgba(6,182,212,0.30)",
+  },
   // Steam / condensate
-  ST:  { bg: 'rgba(249,115,22,0.10)',  text: '#7c2d12', border: 'rgba(249,115,22,0.30)'  },
-  SC:  { bg: 'rgba(249,115,22,0.10)',  text: '#7c2d12', border: 'rgba(249,115,22,0.30)'  },
+  ST: {
+    bg: "rgba(249,115,22,0.10)",
+    text: "#7c2d12",
+    border: "rgba(249,115,22,0.30)",
+  },
+  SC: {
+    bg: "rgba(249,115,22,0.10)",
+    text: "#7c2d12",
+    border: "rgba(249,115,22,0.30)",
+  },
   // Drain / vent
-  D:   { bg: 'rgba(100,116,139,0.10)', text: '#334155', border: 'rgba(100,116,139,0.30)' },
-  DR:  { bg: 'rgba(100,116,139,0.10)', text: '#334155', border: 'rgba(100,116,139,0.30)' },
-  V:   { bg: 'rgba(167,139,250,0.10)', text: '#4c1d95', border: 'rgba(167,139,250,0.30)' },
+  D: {
+    bg: "rgba(100,116,139,0.10)",
+    text: "#334155",
+    border: "rgba(100,116,139,0.30)",
+  },
+  DR: {
+    bg: "rgba(100,116,139,0.10)",
+    text: "#334155",
+    border: "rgba(100,116,139,0.30)",
+  },
+  V: {
+    bg: "rgba(167,139,250,0.10)",
+    text: "#4c1d95",
+    border: "rgba(167,139,250,0.30)",
+  },
   // Air
-  A:   { bg: 'rgba(132,204,22,0.10)',  text: '#3f6212', border: 'rgba(132,204,22,0.30)'  },
-  IA:  { bg: 'rgba(132,204,22,0.10)',  text: '#3f6212', border: 'rgba(132,204,22,0.30)'  },
-  PA:  { bg: 'rgba(132,204,22,0.10)',  text: '#3f6212', border: 'rgba(132,204,22,0.30)'  },
+  A: {
+    bg: "rgba(132,204,22,0.10)",
+    text: "#3f6212",
+    border: "rgba(132,204,22,0.30)",
+  },
+  IA: {
+    bg: "rgba(132,204,22,0.10)",
+    text: "#3f6212",
+    border: "rgba(132,204,22,0.30)",
+  },
+  PA: {
+    bg: "rgba(132,204,22,0.10)",
+    text: "#3f6212",
+    border: "rgba(132,204,22,0.30)",
+  },
   // Chemicals / inhibitors
-  CH:  { bg: 'rgba(239,68,68,0.08)',   text: '#7f1d1d', border: 'rgba(239,68,68,0.25)'   },
-  INH: { bg: 'rgba(239,68,68,0.08)',   text: '#7f1d1d', border: 'rgba(239,68,68,0.25)'   },
-  MEG: { bg: 'rgba(239,68,68,0.08)',   text: '#7f1d1d', border: 'rgba(239,68,68,0.25)'   },
+  CH: {
+    bg: "rgba(239,68,68,0.08)",
+    text: "#7f1d1d",
+    border: "rgba(239,68,68,0.25)",
+  },
+  INH: {
+    bg: "rgba(239,68,68,0.08)",
+    text: "#7f1d1d",
+    border: "rgba(239,68,68,0.25)",
+  },
+  MEG: {
+    bg: "rgba(239,68,68,0.08)",
+    text: "#7f1d1d",
+    border: "rgba(239,68,68,0.25)",
+  },
 };
-const FLUID_COLOR_DEFAULT = { bg: 'rgba(148,163,184,0.10)', text: '#475569', border: 'rgba(148,163,184,0.30)' };
+const FLUID_COLOR_DEFAULT = {
+  bg: "rgba(148,163,184,0.10)",
+  text: "#475569",
+  border: "rgba(148,163,184,0.30)",
+};
 
 // ---------------------------------------------------------------------------
 // Soft-coded: equipment-type → quantity field semantic hint.
@@ -161,32 +365,34 @@ const FLUID_COLOR_DEFAULT = { bg: 'rgba(148,163,184,0.10)', text: '#475569', bor
 // ---------------------------------------------------------------------------
 const EQUIPMENT_QUANTITY_HINTS = {
   // Vessels / Separators / Tanks / Drums / Filters / Slug Catchers
-  V:   { label: 'Volume',            placeholder: 'e.g. 327 M³' },
-  T:   { label: 'Volume',            placeholder: 'e.g. 100 M³' },
-  TK:  { label: 'Volume',            placeholder: 'e.g. 500 M³' },
-  S:   { label: 'Volume',            placeholder: 'e.g. 50 M³'  },
-  D:   { label: 'Volume',            placeholder: 'e.g. 20 M³'  },
-  SC:  { label: 'Volume',            placeholder: 'e.g. 327 M³' },
-  F:   { label: 'Volume',            placeholder: 'e.g. 10 M³'  },
+  V: { label: "Volume", placeholder: "e.g. 327 M³" },
+  T: { label: "Volume", placeholder: "e.g. 100 M³" },
+  TK: { label: "Volume", placeholder: "e.g. 500 M³" },
+  S: { label: "Volume", placeholder: "e.g. 50 M³" },
+  D: { label: "Volume", placeholder: "e.g. 20 M³" },
+  SC: { label: "Volume", placeholder: "e.g. 327 M³" },
+  F: { label: "Volume", placeholder: "e.g. 10 M³" },
   // Pumps / Compressors / Blowers / Fans
-  P:   { label: 'Design Flow Rate',  placeholder: 'e.g. 250 m³/h' },
-  C:   { label: 'Design Flow Rate',  placeholder: 'e.g. 1000 Nm³/h' },
-  K:   { label: 'Design Flow Rate',  placeholder: 'e.g. 5000 Nm³/h' },
-  B:   { label: 'Design Flow Rate',  placeholder: 'e.g. 2000 m³/h' },
+  P: { label: "Design Flow Rate", placeholder: "e.g. 250 m³/h" },
+  C: { label: "Design Flow Rate", placeholder: "e.g. 1000 Nm³/h" },
+  K: { label: "Design Flow Rate", placeholder: "e.g. 5000 Nm³/h" },
+  B: { label: "Design Flow Rate", placeholder: "e.g. 2000 m³/h" },
   // Heat Exchangers / Coolers / Heaters / Fired Heaters
-  E:   { label: 'Duty',              placeholder: 'e.g. 2.5 MMBtu/hr' },
-  H:   { label: 'Duty',              placeholder: 'e.g. 5 MMBtu/hr' },
-  A:   { label: 'Duty',              placeholder: 'e.g. 1.2 MMBtu/hr' },
+  E: { label: "Duty", placeholder: "e.g. 2.5 MMBtu/hr" },
+  H: { label: "Duty", placeholder: "e.g. 5 MMBtu/hr" },
+  A: { label: "Duty", placeholder: "e.g. 1.2 MMBtu/hr" },
   // Columns / Towers
-  CO:  { label: 'Volume',            placeholder: 'e.g. 80 M³' },
+  CO: { label: "Volume", placeholder: "e.g. 80 M³" },
 };
 
 /** Resolve quantity hint for an equipment tag string (e.g. "V-803-TF" → Volume) */
 function resolveQuantityHint(tag) {
-  if (!tag || tag === '—') return null;
-  const prefix = String(tag).split('-')[0].toUpperCase();
+  if (!tag || tag === "—") return null;
+  const prefix = String(tag).split("-")[0].toUpperCase();
   // Try longest match first (e.g. "SC" before "S", "TK" before "T", "CO" before "C")
-  const sorted = Object.keys(EQUIPMENT_QUANTITY_HINTS).sort((a, b) => b.length - a.length);
+  const sorted = Object.keys(EQUIPMENT_QUANTITY_HINTS).sort(
+    (a, b) => b.length - a.length,
+  );
   for (const k of sorted) {
     if (prefix === k) return EQUIPMENT_QUANTITY_HINTS[k];
   }
@@ -206,32 +412,49 @@ function parseFluidCode(lineTag) {
 
 /** Render line connection tags as colour-coded mono badges joined by flow arrows */
 function renderLineBadges(lines) {
-  if (!Array.isArray(lines) || !lines.length) return <span style={{ color: '#94a3b8' }}>—</span>;
+  if (!Array.isArray(lines) || !lines.length)
+    return <span style={{ color: "#94a3b8" }}>—</span>;
   return (
-    <span style={{ display: 'inline-flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px' }}>
+    <span
+      style={{
+        display: "inline-flex",
+        flexWrap: "wrap",
+        alignItems: "center",
+        gap: "4px",
+      }}
+    >
       {lines.map((line, i) => {
-        const fluid   = parseFluidCode(line);
-        const colours = (fluid && FLUID_COLOR_MAP[fluid]) || FLUID_COLOR_DEFAULT;
+        const fluid = parseFluidCode(line);
+        const colours =
+          (fluid && FLUID_COLOR_MAP[fluid]) || FLUID_COLOR_DEFAULT;
         return (
           <React.Fragment key={i}>
             {i > 0 && (
-              <span style={{ color: '#94a3b8', fontSize: '0.65rem', fontWeight: 700, userSelect: 'none', padding: '0 1px' }}>
+              <span
+                style={{
+                  color: "#94a3b8",
+                  fontSize: "0.65rem",
+                  fontWeight: 700,
+                  userSelect: "none",
+                  padding: "0 1px",
+                }}
+              >
                 {LINE_ARROW_SEPARATOR}
               </span>
             )}
             <span
-              title={`${line}${fluid ? ` (${fluid})` : ''}`}
+              title={`${line}${fluid ? ` (${fluid})` : ""}`}
               style={{
-                background:    colours.bg,
-                color:         colours.text,
-                border:        `1px solid ${colours.border}`,
-                borderRadius:  '4px',
-                padding:       '1px 6px',
-                fontSize:      '0.67rem',
-                fontFamily:    'ui-monospace, SFMono-Regular, monospace',
-                fontWeight:    600,
-                whiteSpace:    'nowrap',
-                letterSpacing: '0.01em',
+                background: colours.bg,
+                color: colours.text,
+                border: `1px solid ${colours.border}`,
+                borderRadius: "4px",
+                padding: "1px 6px",
+                fontSize: "0.67rem",
+                fontFamily: "ui-monospace, SFMono-Regular, monospace",
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+                letterSpacing: "0.01em",
               }}
             >
               {line}
@@ -245,23 +468,24 @@ function renderLineBadges(lines) {
 
 /** Render nozzle connection tags as compact emerald mono badges */
 function renderNozzleBadges(nozzles) {
-  if (!Array.isArray(nozzles) || !nozzles.length) return <span style={{ color: '#94a3b8' }}>—</span>;
+  if (!Array.isArray(nozzles) || !nozzles.length)
+    return <span style={{ color: "#94a3b8" }}>—</span>;
   return (
-    <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: '4px' }}>
+    <span style={{ display: "inline-flex", flexWrap: "wrap", gap: "4px" }}>
       {nozzles.map((nozzle, i) => (
         <span
           key={i}
           title={nozzle}
           style={{
-            background:   'rgba(59,130,246,0.07)',
-            color:        '#065f46',
-            border:       '1px solid rgba(59,130,246,0.20)',
-            borderRadius: '4px',
-            padding:      '1px 6px',
-            fontSize:     '0.67rem',
-            fontFamily:   'ui-monospace, SFMono-Regular, monospace',
-            fontWeight:   600,
-            whiteSpace:   'nowrap',
+            background: "rgba(59,130,246,0.07)",
+            color: "#065f46",
+            border: "1px solid rgba(59,130,246,0.20)",
+            borderRadius: "4px",
+            padding: "1px 6px",
+            fontSize: "0.67rem",
+            fontFamily: "ui-monospace, SFMono-Regular, monospace",
+            fontWeight: 600,
+            whiteSpace: "nowrap",
           }}
         >
           {nozzle}
@@ -276,14 +500,14 @@ function renderNozzleBadges(nozzles) {
 // may contain normalised range values (e.g. "60 – 105 °F") from the backend.
 // _RANGE_SEP must match the backend _TEMP_RANGE_SEPARATOR constant.
 // ---------------------------------------------------------------------------
-const _RANGE_SEP = ' \u2013 ';  // en-dash with spaces
+const _RANGE_SEP = " \u2013 "; // en-dash with spaces
 const CONDITION_COLS = new Set([
-  'oper_pressure',
-  'oper_temperature',
-  'design_pressure_min',
-  'design_pressure_max',
-  'design_temp_min',
-  'design_temp_max',
+  "oper_pressure",
+  "oper_temperature",
+  "design_pressure_min",
+  "design_pressure_max",
+  "design_temp_min",
+  "design_temp_max",
 ]);
 
 /**
@@ -291,21 +515,26 @@ const CONDITION_COLS = new Set([
  * backend has normalised it to a MIN – MAX range (contains en-dash separator).
  */
 function renderConditionValue(display) {
-  if (!display || display === '—') return <span style={{ color: '#94a3b8' }}>—</span>;
+  if (!display || display === "—")
+    return <span style={{ color: "#94a3b8" }}>—</span>;
   const str = String(display);
   if (str.includes(_RANGE_SEP)) {
     return (
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+      <span
+        style={{ display: "inline-flex", alignItems: "center", gap: "3px" }}
+      >
         <span
           title="Range value (min – max)"
           style={{
-            fontSize: '0.6rem',
+            fontSize: "0.6rem",
             fontWeight: 700,
-            color: '#a5b4fc',
-            letterSpacing: '-0.5px',
-            userSelect: 'none',
+            color: "#a5b4fc",
+            letterSpacing: "-0.5px",
+            userSelect: "none",
           }}
-        >⇕</span>
+        >
+          ⇕
+        </span>
         <span>{str}</span>
       </span>
     );
@@ -318,11 +547,25 @@ function renderConditionValue(display) {
 // Add/remove keys here to extend manual entry fields. Must match COLUMNS keys.
 // ---------------------------------------------------------------------------
 const MANUAL_OBS_BLANK = {
-  tag: '', description: '', design_flowrate: '', oper_pressure: '',
-  oper_temperature: '', design_pressure_min: '', design_pressure_max: '',
-  design_temp_min: '', design_temp_max: '', moc: '', insulation: '',
-  dimension_length: '', dimension_diameter: '', motor_rating: '',
-  pid_no: '', quality_required: '', phase: '', remarks: '', revision: '',
+  tag: "",
+  description: "",
+  design_flowrate: "",
+  oper_pressure: "",
+  oper_temperature: "",
+  design_pressure_min: "",
+  design_pressure_max: "",
+  design_temp_min: "",
+  design_temp_max: "",
+  moc: "",
+  insulation: "",
+  dimension_length: "",
+  dimension_diameter: "",
+  motor_rating: "",
+  pid_no: "",
+  quality_required: "",
+  phase: "",
+  remarks: "",
+  revision: "",
 };
 
 // ---------------------------------------------------------------------------
@@ -497,32 +740,57 @@ const EQ_KEYFRAMES = `
 // SOFT-CODED: visual theme constants for EquipmentList — colours, gradients, decoration
 // Aligned with P&ID Verification V1 (blue/indigo/violet palette; T.bg/blob set identical).
 const EQ_T = {
-  bg:      'linear-gradient(135deg, #f8faff 0%, #eef2ff 45%, #f0f9ff 75%, #fffbeb 100%)',
-  gridDot: 'radial-gradient(circle, rgba(99,102,241,0.055) 1px, transparent 1px)',
-  gradBar: 'linear-gradient(90deg,#3b82f6,#6366f1,#f59e0b,#3b82f6)',
+  bg: "linear-gradient(135deg, #f8faff 0%, #eef2ff 45%, #f0f9ff 75%, #fffbeb 100%)",
+  gridDot:
+    "radial-gradient(circle, rgba(99,102,241,0.055) 1px, transparent 1px)",
+  gradBar: "linear-gradient(90deg,#3b82f6,#6366f1,#f59e0b,#3b82f6)",
   blobs: [
-    { color:'rgba(59,130,246,0.09)',  size:'520px', top:'-80px',    left:'18%',    anim:'eqFloatA 14s ease-in-out infinite'     },
-    { color:'rgba(168,85,247,0.07)',  size:'430px', top:'28%',      right:'-60px', anim:'eqFloatB 17s ease-in-out infinite'     },
-    { color:'rgba(245,158,11,0.07)',  size:'380px', bottom:'-60px', left:'32%',    anim:'eqFloatC 12s ease-in-out infinite'     },
-    { color:'rgba(6,182,212,0.06)',   size:'300px', top:'62%',      left:'-40px',  anim:'eqFloatA 10s ease-in-out infinite 3s'  },
+    {
+      color: "rgba(59,130,246,0.09)",
+      size: "520px",
+      top: "-80px",
+      left: "18%",
+      anim: "eqFloatA 14s ease-in-out infinite",
+    },
+    {
+      color: "rgba(168,85,247,0.07)",
+      size: "430px",
+      top: "28%",
+      right: "-60px",
+      anim: "eqFloatB 17s ease-in-out infinite",
+    },
+    {
+      color: "rgba(245,158,11,0.07)",
+      size: "380px",
+      bottom: "-60px",
+      left: "32%",
+      anim: "eqFloatC 12s ease-in-out infinite",
+    },
+    {
+      color: "rgba(6,182,212,0.06)",
+      size: "300px",
+      top: "62%",
+      left: "-40px",
+      anim: "eqFloatA 10s ease-in-out infinite 3s",
+    },
   ],
-  electrons: ['#3b82f6', '#6366f1', '#a855f7'],  // A / B / C orbit colours
+  electrons: ["#3b82f6", "#6366f1", "#a855f7"], // A / B / C orbit colours
   // Capability chips in hero section
   chips: [
-    { icon:'🏷️', label:'Equipment Tags'     },
-    { icon:'🌡️', label:'Process Conditions'  },
-    { icon:'🧱', label:'MOC & Insulation'   },
-    { icon:'📐', label:'Dimensions'         },
-    { icon:'⚡', label:'Motor Rating'       },
-    { icon:'📋', label:'P&ID Reference'     },
+    { icon: "🏷️", label: "Equipment Tags" },
+    { icon: "🌡️", label: "Process Conditions" },
+    { icon: "🧱", label: "MOC & Insulation" },
+    { icon: "📐", label: "Dimensions" },
+    { icon: "⚡", label: "Motor Rating" },
+    { icon: "📋", label: "P&ID Reference" },
   ],
   // Stream dots for right-side SVG decoration
   streamDots: [
-    { top:'22%', delay:'0s',   dur:'3.0s', color:'#3b82f6' },
-    { top:'22%', delay:'1.0s', dur:'3.0s', color:'#6366f1' },
-    { top:'22%', delay:'2.0s', dur:'3.0s', color:'#a855f7' },
-    { top:'62%', delay:'0.5s', dur:'2.7s', color:'#f59e0b' },
-    { top:'62%', delay:'1.5s', dur:'2.7s', color:'#3b82f6' },
+    { top: "22%", delay: "0s", dur: "3.0s", color: "#3b82f6" },
+    { top: "22%", delay: "1.0s", dur: "3.0s", color: "#6366f1" },
+    { top: "22%", delay: "2.0s", dur: "3.0s", color: "#a855f7" },
+    { top: "62%", delay: "0.5s", dur: "2.7s", color: "#f59e0b" },
+    { top: "62%", delay: "1.5s", dur: "2.7s", color: "#3b82f6" },
   ],
 };
 
@@ -530,16 +798,16 @@ const EQ_T = {
 // SOFT-CODED: feature integrations (same pattern as Line List)
 // ---------------------------------------------------------------------------
 const EQ_PROJECTS = {
-  enabled:    true,                       // false → legacy single-shot mode (no projects)
-  toolCode:   'pid_equipment_list',       // matches moduleCode in engineeringStructure.config
-  storageKey: 'equipmentListActiveProject',
-  theme:      PROJECT_ORGANIZER_CONFIG.defaultTheme,
+  enabled: true, // false → legacy single-shot mode (no projects)
+  toolCode: "pid_equipment_list", // matches moduleCode in engineeringStructure.config
+  storageKey: "equipmentListActiveProject",
+  theme: PROJECT_ORGANIZER_CONFIG.defaultTheme,
 };
 const EQ_LEGENDS = {
-  enabled: true,                          // managed legend sheets (shared V1 system)
-  section: 'equipment_list',              // backend legend section
+  enabled: true, // managed legend sheets (shared V1 system)
+  section: "equipment_list", // backend legend section
 };
-const EQ_DOCS = { enabled: true };        // workflow + Smart Documentation split-screen
+const EQ_DOCS = { enabled: true }; // workflow + Smart Documentation split-screen
 
 // SOFT-CODED: visibility toggles for optional page sections
 const EQ_SHOW_WHAT_GETS_EXTRACTED = false; // "What Gets Extracted" info panel — hidden
@@ -547,194 +815,422 @@ const EQ_SHOW_WHAT_GETS_EXTRACTED = false; // "What Gets Extracted" info panel �
 // ---------------------------------------------------------------------------
 const EquipmentList = () => {
   // ── Project Organizer state (soft-coded — see EQ_PROJECTS) ─────────────
-  const { activeProject, setActiveProject, hydrated: projHydrated } = useActiveProject(EQ_PROJECTS.storageKey);
-  const [projects, setProjects]               = useState([]);
+  const {
+    activeProject,
+    setActiveProject,
+    clearActiveProject,
+    hydrated: projHydrated,
+  } = useActiveProject(EQ_PROJECTS.storageKey);
+  const [projects, setProjects] = useState([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [showCreateProject, setShowCreateProject] = useState(false);
-  const [projectBusy, setProjectBusy]         = useState(false);
-  const [projectError, setProjectError]       = useState('');
+  const [projectBusy, setProjectBusy] = useState(false);
+  const [projectError, setProjectError] = useState("");
 
   // ── Managed Legend Sheets state (shared V1 system — see EQ_LEGENDS) ─────
   const [legendModalOpen, setLegendModalOpen] = useState(false);
-  const [activeLegend, setActiveLegend]       = useState(null);
+  const [, setActiveLegend] = useState(null);
 
-  const [files,          setFiles]          = useState([]);
-  const [isProcessing,   setIsProcessing]   = useState(false);
-  const [progress,       setProgress]       = useState(0);
-  const [statusMessage,  setStatusMessage]  = useState('');
-  const [results,        setResults]        = useState(null);
-  const [debugInfo,      setDebugInfo]      = useState(null);
-  const [error,          setError]          = useState(null);
-  const [sortCol,        setSortCol]        = useState('tag');
-  const [sortAsc,        setSortAsc]        = useState(true);
-  const [filterText,     setFilterText]     = useState('');
+  const [files, setFiles] = useState([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [statusMessage, setStatusMessage] = useState("");
+  const [results, setResults] = useState(null);
+  const [debugInfo, setDebugInfo] = useState(null);
+  const [error, setError] = useState(null);
+  const [sortCol, setSortCol] = useState("tag");
+  const [sortAsc, setSortAsc] = useState(true);
+  const [filterText, setFilterText] = useState("");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [isDragging,     setIsDragging]     = useState(false);
-  const [manualObs,      setManualObs]      = useState([{ ...MANUAL_OBS_BLANK }]);
+  const [isDragging, setIsDragging] = useState(false);
+  const [manualObs, setManualObs] = useState([{ ...MANUAL_OBS_BLANK }]);
   const [showManualForm, setShowManualForm] = useState(false);
-  const [selectedRows,   setSelectedRows]   = useState(new Set());
-  const [isFullscreen,   setIsFullscreen]   = useState(false);
+  const [selectedRows, setSelectedRows] = useState(new Set());
+  const [selectedEquipment, setSelectedEquipment] = useState(null);
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState("Equipment");
+  const [activeDetailTab, setActiveDetailTab] = useState("Details");
+  const [referenceFilters, setReferenceFilters] = useState({
+    type: "",
+    status: "",
+    changed: "",
+    confidence: "",
+    validation: "",
+  });
+  const [visibleReferenceColumns, setVisibleReferenceColumns] = useState(
+    () => new Set(DEFAULT_REFERENCE_COLUMNS),
+  );
+  const [openReferenceMenu, setOpenReferenceMenu] = useState("");
+  const [referencePage, setReferencePage] = useState(1);
+  const [detailsExpanded, setDetailsExpanded] = useState(false);
+  const [registerChanges, setRegisterChanges] = useState([]);
+  const [changesLoading, setChangesLoading] = useState(false);
+  const [changesError, setChangesError] = useState("");
+  const [registerRecord, setRegisterRecord] = useState(null);
+  const [registerLoading, setRegisterLoading] = useState(false);
+  const [registerError, setRegisterError] = useState("");
+  const [registerSaveState, setRegisterSaveState] = useState("");
+  const [showLeaveConfirmation, setShowLeaveConfirmation] = useState(false);
+  const [editingEquipment, setEditingEquipment] = useState(null);
+  const [editDraft, setEditDraft] = useState({});
+  const [isSavingEquipment, setIsSavingEquipment] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
-  const fileRef      = useRef(null);
+  const fileRef = useRef(null);
+  const leaveDialogRef = useRef(null);
   const pollTimerRef = useRef(null);
   const pollStartRef = useRef(null);
-  const elapsedRef   = useRef(null);
+  const elapsedRef = useRef(null);
+
+  useEffect(() => {
+    if (
+      showLeaveConfirmation &&
+      leaveDialogRef.current &&
+      !leaveDialogRef.current.open
+    ) {
+      leaveDialogRef.current.showModal();
+    }
+  }, [showLeaveConfirmation]);
+
+  useEffect(() => {
+    if (!openReferenceMenu) return undefined;
+    const close = (event) => {
+      if (!event.target.closest("[data-equipment-menu]"))
+        setOpenReferenceMenu("");
+    };
+    const escape = (event) => {
+      if (event.key === "Escape") setOpenReferenceMenu("");
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [openReferenceMenu]);
 
   // ── RADAI Chat context — publish extracted equipment rows so the floating
   // assistant verifies/validates within THIS tool's data (profile: soft-coded
   // in config/radaiChatPages.config.js → 'equipment_list'). Clears on unmount.
-  useRadaiChatPage('equipment_list', {
+  useRadaiChatPage("equipment_list", {
     project: activeProject
-      ? { id: activeProject.project_id, name: activeProject.name || '', code: activeProject.code || '' }
+      ? {
+          id: activeProject.project_id,
+          name: activeProject.name || "",
+          code: activeProject.code || "",
+        }
       : null,
     document: files.length
-      ? { name: files.map(f => f.name).join(', '), type: 'P&ID PDF' }
+      ? { name: files.map((f) => f.name).join(", "), type: "P&ID PDF" }
       : null,
-    columns: COLUMNS.map(c => ({ key: c.key, label: c.label })),
+    columns: COLUMNS.map((c) => ({ key: c.key, label: c.label })),
     rows: results?.equipment || [],
     rowCount: results?.equipment?.length || 0,
-    summary: results ? {
-      total_equipment: results.equipment?.length || 0,
-      drawing_ref: results.drawing_ref || '',
-    } : null,
-    documentExcerpt: results?.document_excerpt || '',
+    summary: results
+      ? {
+          total_equipment: results.equipment?.length || 0,
+          drawing_ref: results.drawing_ref || "",
+        }
+      : null,
+    documentExcerpt: results?.document_excerpt || "",
   });
 
   // ── RADAI Chat edit control — the assistant can PROPOSE row edits
   // (update/delete matched by equipment tag); each change is applied only
   // when the user clicks Apply in the chat. Soft-coded ops live in
   // config/radaiChatPages.config.js → equipment_list.actions.
-  useEffect(() => registerChatActionHandler(async ({ op, match, set }) => {
-    const tag = String(match?.tag || '').trim();
-    if (!tag) return { ok: false, message: 'no equipment tag given' };
-    const current = results?.equipment || [];
-    const idx = current.findIndex(r => String(r.tag || '').trim().toUpperCase() === tag.toUpperCase());
-    if (idx === -1) return { ok: false, message: `no row with tag "${tag}"` };
-    if (op === 'delete_row') {
-      setResults(prev => prev?.equipment
-        ? { ...prev, equipment: prev.equipment.filter((_, i) => i !== idx) }
-        : prev);
-      return { ok: true, message: `Deleted ${tag}` };
-    }
-    if (op === 'update_row' && set && typeof set === 'object') {
-      const allowed = new Set(COLUMNS.map(c => c.key));
-      const patchObj = Object.fromEntries(
-        Object.entries(set).filter(([k]) => allowed.has(k)),
-      );
-      if (!Object.keys(patchObj).length) {
-        return { ok: false, message: 'no valid column keys in the change' };
-      }
-      setResults(prev => prev?.equipment
-        ? { ...prev, equipment: prev.equipment.map((r, i) => (i === idx ? { ...r, ...patchObj } : r)) }
-        : prev);
-      return { ok: true, message: `Updated ${tag} (${Object.keys(patchObj).join(', ')})` };
-    }
-    return { ok: false, message: `unsupported operation "${op}"` };
-  }), [results]);
+  useEffect(
+    () =>
+      registerChatActionHandler(async ({ op, match, set }) => {
+        const tag = String(match?.tag || "").trim();
+        if (!tag) return { ok: false, message: "no equipment tag given" };
+        const current = results?.equipment || [];
+        const idx = current.findIndex(
+          (r) =>
+            String(r.tag || "")
+              .trim()
+              .toUpperCase() === tag.toUpperCase(),
+        );
+        if (idx === -1)
+          return { ok: false, message: `no row with tag "${tag}"` };
+        if (registerRecord) {
+          return {
+            ok: false,
+            message:
+              "Saved register rows must be changed with Edit equipment so concurrency and change evidence are preserved.",
+          };
+        }
+        if (op === "delete_row") {
+          setResults((prev) =>
+            prev?.equipment
+              ? {
+                  ...prev,
+                  equipment: prev.equipment.filter((_, i) => i !== idx),
+                }
+              : prev,
+          );
+          return { ok: true, message: `Deleted ${tag}` };
+        }
+        if (op === "update_row" && set && typeof set === "object") {
+          const allowed = new Set(COLUMNS.map((c) => c.key));
+          const patchObj = Object.fromEntries(
+            Object.entries(set).filter(([k]) => allowed.has(k)),
+          );
+          if (!Object.keys(patchObj).length) {
+            return { ok: false, message: "no valid column keys in the change" };
+          }
+          setResults((prev) =>
+            prev?.equipment
+              ? {
+                  ...prev,
+                  equipment: prev.equipment.map((r, i) =>
+                    i === idx ? { ...r, ...patchObj } : r,
+                  ),
+                }
+              : prev,
+          );
+          return {
+            ok: true,
+            message: `Updated ${tag} (${Object.keys(patchObj).join(", ")})`,
+          };
+        }
+        return { ok: false, message: `unsupported operation "${op}"` };
+      }),
+    [results, registerRecord],
+  );
 
   // ── Project Organizer — load projects + handlers (soft-coded via EQ_PROJECTS) ──
   useEffect(() => {
-    if (!EQ_PROJECTS.enabled) { setLoadingProjects(false); return; }
+    if (!EQ_PROJECTS.enabled) {
+      setLoadingProjects(false);
+      return;
+    }
     let live = true;
     (async () => {
       try {
         const items = await projectOrganizerService.listProjects();
         if (live) setProjects(items);
       } catch {
-        if (live) setProjectError('Failed to load projects');
+        if (live) setProjectError("Failed to load projects");
       } finally {
         if (live) setLoadingProjects(false);
       }
     })();
-    return () => { live = false; };
+    return () => {
+      live = false;
+    };
   }, []);
 
   const handleCreateProject = async (payload) => {
-    setProjectBusy(true); setProjectError('');
+    setProjectBusy(true);
+    setProjectError("");
     try {
       const p = await projectOrganizerService.createProject(payload);
-      setProjects(prev => [p, ...prev]);
+      setProjects((prev) => [p, ...prev]);
       setShowCreateProject(false);
       setActiveProject(p);
     } catch (e) {
-      setProjectError(e?.response?.data?.error || 'Failed to create project');
+      setProjectError(e?.response?.data?.error || "Failed to create project");
     } finally {
       setProjectBusy(false);
     }
   };
 
+  const applyRegisterRecord = useCallback((record) => {
+    setRegisterRecord(record || null);
+    if (!record) {
+      setResults(null);
+      setSelectedEquipment(null);
+      return;
+    }
+    const equipment = record.items || [];
+    setResults({
+      equipment,
+      total: equipment.length,
+      drawing_ref: record.revision?.extraction_run?.drawing_ref || "",
+      upload_id: record.revision?.source_upload_id || "",
+      register_no: record.register_number,
+      revision: record.revision?.number,
+    });
+    setSelectedEquipment((current) => {
+      if (!current) return equipment[0] || null;
+      return (
+        equipment.find(
+          (item) => item.id === current.id || item.tag === current.tag,
+        ) ||
+        equipment[0] ||
+        null
+      );
+    });
+  }, []);
+
+  useEffect(() => {
+    setFiles([]);
+    setEditingEquipment(null);
+    setEditDraft({});
+    setRegisterSaveState("");
+    setRegisterChanges([]);
+    setChangesError("");
+    setReferencePage(1);
+    applyRegisterRecord(null);
+    if (!activeProject?.project_id) {
+      setRegisterLoading(false);
+      return;
+    }
+    let live = true;
+    setRegisterLoading(true);
+    setRegisterError("");
+    getCurrentEquipmentRegister(activeProject.project_id)
+      .then((record) => {
+        if (live) applyRegisterRecord(record);
+      })
+      .catch((error) => {
+        if (live)
+          setRegisterError(
+            error?.response?.data?.error ||
+              "Failed to load the saved Equipment Register.",
+          );
+      })
+      .finally(() => {
+        if (live) setRegisterLoading(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, [activeProject?.project_id, applyRegisterRecord]);
+
+  const loadRegisterChanges = useCallback(async () => {
+    if (!registerRecord?.id) {
+      setRegisterChanges([]);
+      return;
+    }
+    setChangesLoading(true);
+    setChangesError("");
+    try {
+      const payload = await getEquipmentRegisterChanges(registerRecord.id);
+      setRegisterChanges(payload?.changes || []);
+    } catch (loadError) {
+      setChangesError(
+        loadError?.response?.data?.error ||
+          "Change history could not be loaded.",
+      );
+    } finally {
+      setChangesLoading(false);
+    }
+  }, [registerRecord?.id]);
+
+  useEffect(() => {
+    if (!registerRecord?.id) return;
+    loadRegisterChanges();
+  }, [
+    registerRecord?.id,
+    registerRecord?.revision?.version,
+    loadRegisterChanges,
+  ]);
+
   // Fire-and-forget cross-tool activity log (never blocks extraction UX)
-  const logExtractionActivity = (fileNames, eqCount) => {
-    if (!EQ_PROJECTS.enabled || !activeProject) return;
-    projectOrganizerService.logProjectActivity(activeProject.project_id, {
-      toolCode: EQ_PROJECTS.toolCode,
-      summary: `Equipment list extracted from ${fileNames} — ${eqCount} item${eqCount === 1 ? '' : 's'}`,
-      metadata: { files: fileNames, items: eqCount },
-    }).catch(() => {});
-  };
+  const logExtractionActivity = useCallback(
+    (fileNames, eqCount) => {
+      if (!EQ_PROJECTS.enabled || !activeProject) return;
+      projectOrganizerService
+        .logProjectActivity(activeProject.project_id, {
+          toolCode: EQ_PROJECTS.toolCode,
+          summary: `Equipment list extracted from ${fileNames} — ${eqCount} item${eqCount === 1 ? "" : "s"}`,
+          metadata: { files: fileNames, items: eqCount },
+        })
+        .catch(() => {});
+    },
+    [activeProject],
+  );
 
   // ── Managed Legend Sheets — load active legend (soft-coded via EQ_LEGENDS) ──
   const refreshActiveLegend = useCallback(async () => {
     try {
       const rows = await listLegends(EQ_LEGENDS.section);
       const list = rows || [];
-      setActiveLegend(list.find(l => l.is_active) || null);
-    } catch { /* non-fatal — legend is optional */ }
+      setActiveLegend(list.find((l) => l.is_active) || null);
+    } catch {
+      /* non-fatal — legend is optional */
+    }
   }, []);
 
-  useEffect(() => { if (EQ_LEGENDS.enabled) refreshActiveLegend(); }, [refreshActiveLegend]);
+  useEffect(() => {
+    if (EQ_LEGENDS.enabled) refreshActiveLegend();
+  }, [refreshActiveLegend]);
 
   // Elapsed timer
   useEffect(() => {
     if (isProcessing) {
       setElapsedSeconds(0);
-      elapsedRef.current = setInterval(() => setElapsedSeconds(s => s + 1), 1000);
+      elapsedRef.current = setInterval(
+        () => setElapsedSeconds((s) => s + 1),
+        1000,
+      );
     } else {
       clearInterval(elapsedRef.current);
     }
     return () => clearInterval(elapsedRef.current);
   }, [isProcessing]);
 
-  const formatElapsed = (s) => s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
+  const formatElapsed = (s) =>
+    s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
 
   // Manual observation helpers
   const handleManualFieldChange = (rowIdx, field, value) => {
-    setManualObs(prev => prev.map((r, i) => i === rowIdx ? { ...r, [field]: value } : r));
+    setManualObs((prev) =>
+      prev.map((r, i) => (i === rowIdx ? { ...r, [field]: value } : r)),
+    );
   };
 
   const handleAddManualRow = () => {
-    setManualObs(prev => [...prev, { ...MANUAL_OBS_BLANK }]);
+    setManualObs((prev) => [...prev, { ...MANUAL_OBS_BLANK }]);
   };
 
   const handleRemoveManualRow = (rowIdx) => {
-    setManualObs(prev => prev.length === 1 ? [{ ...MANUAL_OBS_BLANK }] : prev.filter((_, i) => i !== rowIdx));
+    setManualObs((prev) =>
+      prev.length === 1
+        ? [{ ...MANUAL_OBS_BLANK }]
+        : prev.filter((_, i) => i !== rowIdx),
+    );
   };
 
   /** Merge manual observations into results — appends non-empty tag rows */
   const handleAddManualToResults = () => {
-    const valid = manualObs.filter(r => r.tag && r.tag.trim());
+    const valid = manualObs.filter((r) => r.tag && r.tag.trim());
     if (!valid.length) return;
-    const injected = valid.map((r, i) => ({ ...r, sl_no: (results?.equipment?.length || 0) + i + 1, _manual: true }));
+    const injected = valid.map((r, i) => ({
+      ...r,
+      sl_no: (results?.equipment?.length || 0) + i + 1,
+      _manual: true,
+    }));
     if (results) {
-      setResults(prev => ({
+      setResults((prev) => ({
         ...prev,
         equipment: [...(prev.equipment || []), ...injected],
         total: (prev.total || 0) + injected.length,
       }));
     } else {
       // No AI results yet — create a synthetic result set from manual entries only
-      setResults({ equipment: injected, total: injected.length, drawing_ref: 'Manual Entry' });
+      setResults({
+        equipment: injected,
+        total: injected.length,
+        drawing_ref: "Manual Entry",
+      });
     }
     setManualObs([{ ...MANUAL_OBS_BLANK }]);
     setShowManualForm(false);
   };
 
   const handleFileSelect = (e) => {
-    const selected = Array.from(e.target.files).filter(f => f.type === 'application/pdf');
-    if (!selected.length) { setError('Please select valid PDF file(s)'); return; }
+    const selected = Array.from(e.target.files).filter(
+      (f) => f.type === "application/pdf",
+    );
+    if (!selected.length) {
+      setError("Please select valid PDF file(s)");
+      return;
+    }
     setFiles(selected);
     setError(null);
-    setResults(null);
+    if (!registerRecord) setResults(null);
   };
 
   const handleDragOver = (e) => {
@@ -760,117 +1256,237 @@ const EquipmentList = () => {
     e.stopPropagation();
     setIsDragging(false);
     if (isProcessing) return;
-    const dropped = Array.from(e.dataTransfer.files).filter(f => f.type === 'application/pdf');
-    if (!dropped.length) { setError('Please drop valid PDF file(s)'); return; }
-    setFiles(dropped);
-    setError(null);
-    setResults(null);
-  };
-
-  // Polling - used when server returns 202 + upload_id
-  const pollStatus = useCallback((uploadId) => {
-    if (Date.now() - pollStartRef.current > POLL_MAX_WAIT_MS) {
-      clearTimeout(pollTimerRef.current);
-      setError('Extraction timed out — please try again.');
-      setIsProcessing(false);
+    const dropped = Array.from(e.dataTransfer.files).filter(
+      (f) => f.type === "application/pdf",
+    );
+    if (!dropped.length) {
+      setError("Please drop valid PDF file(s)");
       return;
     }
-    apiClient
-      .get(`/pid/equipment/status/${uploadId}/`, { timeout: POLL_REQ_TIMEOUT })
-      .then(({ data }) => {
-        const s = data.status;
-        setProgress(data.progress || 0);
-        setStatusMessage(data.message || 'Processing…');
-        if (s === 'completed') {
-          clearTimeout(pollTimerRef.current);
-          apiClient.get(`/pid/equipment/results/${uploadId}/`)
-            .then(({ data: r }) => {
-              setResults({ equipment: r.equipment, total: r.total, drawing_ref: r.drawing_ref, upload_id: uploadId, document_excerpt: r.document_excerpt || '' });
-              setSelectedRows(new Set());
-              setProgress(100);
-              setStatusMessage('Extraction complete!');
-              setIsProcessing(false);
-              logExtractionActivity(files.map(f => f.name).join(', ') || 'P&ID', r.total ?? r.equipment?.length ?? 0);
-            })
-            .catch(() => {
-              setError('Failed to load results. Please try again.');
-              setIsProcessing(false);
-            });
-        } else if (s === 'failed') {
-          clearTimeout(pollTimerRef.current);
-          setError(data.message || 'Extraction failed on the server.');
-          setIsProcessing(false);
-        } else {
-          pollTimerRef.current = setTimeout(() => pollStatus(uploadId), POLL_INTERVAL_MS);
-        }
-      })
-      .catch(() => {
-        pollTimerRef.current = setTimeout(() => pollStatus(uploadId), POLL_INTERVAL_MS * 2);
-      });
-  }, []);
+    setFiles(dropped);
+    setError(null);
+    if (!registerRecord) setResults(null);
+  };
+
+  const persistExtractionDraft = useCallback(
+    async (payload, uploadId) => {
+      if (
+        !activeProject?.project_id ||
+        !payload?.equipment?.length ||
+        !uploadId
+      )
+        return null;
+      setRegisterSaveState("saving");
+      setRegisterError("");
+      try {
+        const record = await importEquipmentExtraction({
+          projectId: activeProject.project_id,
+          uploadId,
+          files: files.map((file) => file.name),
+          drawingRef: payload.drawing_ref,
+          items: payload.equipment,
+        });
+        applyRegisterRecord(record);
+        setRegisterSaveState("saved");
+        return record;
+      } catch (saveError) {
+        setRegisterSaveState("failed");
+        setRegisterError(
+          saveError?.response?.data?.error
+            ? `Extraction completed, but the draft was not saved: ${saveError.response.data.error}`
+            : "Extraction completed, but the draft could not be saved. Retry before leaving this page.",
+        );
+        return null;
+      }
+    },
+    [activeProject?.project_id, files, applyRegisterRecord],
+  );
+
+  // Polling - used when server returns 202 + upload_id
+  const pollStatus = useCallback(
+    (uploadId) => {
+      if (Date.now() - pollStartRef.current > POLL_MAX_WAIT_MS) {
+        clearTimeout(pollTimerRef.current);
+        setError("Extraction timed out — please try again.");
+        setIsProcessing(false);
+        return;
+      }
+      apiClient
+        .get(`/pid/equipment/status/${uploadId}/`, {
+          timeout: POLL_REQ_TIMEOUT,
+        })
+        .then(({ data }) => {
+          const s = data.status;
+          setProgress(data.progress || 0);
+          setStatusMessage(data.message || "Processing…");
+          if (s === "completed") {
+            clearTimeout(pollTimerRef.current);
+            apiClient
+              .get(`/pid/equipment/results/${uploadId}/`)
+              .then(async ({ data: r }) => {
+                setResults({
+                  equipment: r.equipment,
+                  total: r.total,
+                  drawing_ref: r.drawing_ref,
+                  upload_id: uploadId,
+                  document_excerpt: r.document_excerpt || "",
+                });
+                setSelectedRows(new Set());
+                setProgress(100);
+                setStatusMessage("Saving draft register…");
+                const saved = await persistExtractionDraft(r, uploadId);
+                setStatusMessage(
+                  saved
+                    ? "Extraction complete and draft saved."
+                    : "Extraction complete; draft save failed.",
+                );
+                setIsProcessing(false);
+                logExtractionActivity(
+                  files.map((f) => f.name).join(", ") || "P&ID",
+                  r.total ?? r.equipment?.length ?? 0,
+                );
+              })
+              .catch(() => {
+                setError("Failed to load results. Please try again.");
+                setIsProcessing(false);
+              });
+          } else if (s === "failed") {
+            clearTimeout(pollTimerRef.current);
+            setError(data.message || "Extraction failed on the server.");
+            setIsProcessing(false);
+          } else {
+            pollTimerRef.current = setTimeout(
+              () => pollStatus(uploadId),
+              POLL_INTERVAL_MS,
+            );
+          }
+        })
+        .catch(() => {
+          pollTimerRef.current = setTimeout(
+            () => pollStatus(uploadId),
+            POLL_INTERVAL_MS * 2,
+          );
+        });
+    },
+    [files, persistExtractionDraft, logExtractionActivity],
+  );
 
   const handleExtract = async () => {
-    if (!files.length) { setError('Please upload a P&ID document first'); return; }
+    if (!files.length) {
+      setError("Please upload a P&ID document first");
+      return;
+    }
     setIsProcessing(true);
     setError(null);
     setResults(null);
     setDebugInfo(null);
     setProgress(0);
 
-    const isBatch   = files.length > 1;
+    let uploadFiles = [];
+    try {
+      uploadFiles = files.map((file, index) => {
+        if (file instanceof File) {
+          return file;
+        }
+        if (file instanceof Blob) {
+          const fallbackName =
+            typeof file.name === "string" && file.name.trim()
+              ? file.name
+              : `pid-${index + 1}.pdf`;
+          return new File([file], fallbackName, {
+            type: file.type || "application/pdf",
+          });
+        }
+        if (file?.file instanceof File) {
+          return file.file;
+        }
+        if (file?.blob instanceof Blob) {
+          const fallbackName =
+            typeof file.name === "string" && file.name.trim()
+              ? file.name
+              : `pid-${index + 1}.pdf`;
+          return new File([file.blob], fallbackName, {
+            type: file.blob.type || "application/pdf",
+          });
+        }
+        throw new Error(
+          "Uploaded file data is no longer available. Remove and upload the PDF again before extracting.",
+        );
+      });
+    } catch (normalizeError) {
+      setError(
+        normalizeError?.message ||
+          "Uploaded file data is invalid. Remove and upload the PDF again before extracting.",
+      );
+      setIsProcessing(false);
+      return;
+    }
+
+    const isBatch = uploadFiles.length > 1;
     const uploadUrl = isBatch
       ? `${API_BASE}/pid/equipment/analyze-batch/`
       : `${API_BASE}/pid/equipment/analyze/`;
 
     setStatusMessage(
-      isBatch ? `Uploading ${files.length} P&ID file(s)…` : 'Uploading P&ID…'
+      isBatch
+        ? `Uploading ${uploadFiles.length} P&ID file(s)…`
+        : "Uploading P&ID…",
     );
 
     // Build FormData — single file uses field 'file'; batch uses 'file_0', 'file_1'…
     const formData = new FormData();
     if (isBatch) {
-      files.forEach((f, i) => formData.append(`file_${i}`, f));
+      uploadFiles.forEach((file, i) => formData.append(`file_${i}`, file));
     } else {
-      formData.append('file', files[0]);
+      formData.append("file", uploadFiles[0]);
     }
     // Soft-coded project label — backend archives the source P&ID, extracted
     // equipment JSON, legend format and document text to the project's S3
     // archive (radai_projects/<project>/…).
     if (activeProject) {
-      formData.append('project_code', activeProject.code || '');
-      formData.append('project_name', activeProject.name || '');
+      formData.append("project_code", activeProject.code || "");
+      formData.append("project_name", activeProject.name || "");
     }
 
-    const token   = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-    let lastErr   = null;
+    const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+    let lastErr = null;
 
     for (let attempt = 1; attempt <= MAX_POST_RETRIES; attempt++) {
       if (attempt > 1) {
         const delay = POST_RETRY_BASE_MS * Math.pow(2, attempt - 2);
         setStatusMessage(`Retrying (attempt ${attempt}/${MAX_POST_RETRIES})…`);
-        await new Promise(r => setTimeout(r, delay));
+        await new Promise((r) => setTimeout(r, delay));
       }
       setStatusMessage(
         attempt === 1
-          ? (isBatch ? `Uploading ${files.length} P&ID file(s)…` : 'Uploading P&ID…')
-          : `Sending (attempt ${attempt}/${MAX_POST_RETRIES})…`
+          ? isBatch
+            ? `Uploading ${uploadFiles.length} P&ID file(s)…`
+            : "Uploading P&ID…"
+          : `Sending (attempt ${attempt}/${MAX_POST_RETRIES})…`,
       );
 
       const controller = new AbortController();
-      const abortTimer = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
+      const abortTimer = setTimeout(
+        () => controller.abort(),
+        UPLOAD_TIMEOUT_MS,
+      );
 
       try {
         const resp = await fetch(uploadUrl, {
-          method:  'POST',
+          method: "POST",
           headers: token ? { Authorization: `Bearer ${token}` } : {},
-          body:    formData,
-          signal:  controller.signal,
+          body: formData,
+          signal: controller.signal,
         });
         clearTimeout(abortTimer);
 
         if (!resp.ok) {
           let detail = `HTTP ${resp.status}`;
-          try { detail = (await resp.json()).error || detail; } catch (_) {}
+          try {
+            detail = (await resp.json()).error || detail;
+          } catch (_) {
+            /* non-JSON error response */
+          }
           throw Object.assign(new Error(detail), { isHttpError: true });
         }
 
@@ -878,13 +1494,28 @@ const EquipmentList = () => {
 
         // Synchronous result (HTTP 200)
         if (data.success && data.equipment !== undefined) {
-          setResults({ equipment: data.equipment, total: data.total, drawing_ref: data.drawing_ref, upload_id: data.upload_id, document_excerpt: data.document_excerpt || '' });
+          setResults({
+            equipment: data.equipment,
+            total: data.total,
+            drawing_ref: data.drawing_ref,
+            upload_id: data.upload_id,
+            document_excerpt: data.document_excerpt || "",
+          });
           setSelectedRows(new Set());
           if (data.debug_info) setDebugInfo(data.debug_info);
           setProgress(100);
-          setStatusMessage('Extraction complete!');
+          setStatusMessage("Saving draft register…");
+          const saved = await persistExtractionDraft(data, data.upload_id);
+          setStatusMessage(
+            saved
+              ? "Extraction complete and draft saved."
+              : "Extraction complete; draft save failed.",
+          );
           setIsProcessing(false);
-          logExtractionActivity(files.map(f => f.name).join(', ') || 'P&ID', data.total ?? data.equipment?.length ?? 0);
+          logExtractionActivity(
+            uploadFiles.map((file) => file.name).join(", ") || "P&ID",
+            data.total ?? data.equipment?.length ?? 0,
+          );
           return;
         }
 
@@ -892,28 +1523,29 @@ const EquipmentList = () => {
         if (data.upload_id) {
           setStatusMessage(
             isBatch
-              ? `Processing ${files.length} P&ID file(s) in background…`
-              : 'Processing in background…'
+              ? `Processing ${uploadFiles.length} P&ID file(s) in background…`
+              : "Processing in background…",
           );
           pollStartRef.current = Date.now();
           pollStatus(data.upload_id);
           return;
         }
 
-        throw new Error('Unexpected server response format.');
-
+        throw new Error("Unexpected server response format.");
       } catch (err) {
         clearTimeout(abortTimer);
         lastErr = err;
-        const retryable = err.name === 'AbortError' || (err instanceof TypeError && err.message.includes('fetch'));
+        const retryable =
+          err.name === "AbortError" ||
+          (err instanceof TypeError && err.message.includes("fetch"));
         if (!retryable || attempt === MAX_POST_RETRIES) break;
       }
     }
 
     setError(
-      lastErr?.name === 'AbortError'
+      lastErr?.name === "AbortError"
         ? `Upload timed out after ${Math.round(UPLOAD_TIMEOUT_MS / 1000)}s. Please try again.`
-        : lastErr?.message || 'Extraction failed — please try again.'
+        : lastErr?.message || "Extraction failed — please try again.",
     );
     setIsProcessing(false);
   };
@@ -922,18 +1554,25 @@ const EquipmentList = () => {
   // this page's own extraction pipeline and auto-starts it (soft-coded:
   // profile `upload` in config/radaiChatPages.config.js).
   const chatAutoExtractRef = useRef(false);
-  const handleExtractRef   = useRef(null);
+  const handleExtractRef = useRef(null);
   handleExtractRef.current = handleExtract;
-  useEffect(() => registerChatUploadHandler(async (file) => {
-    if (!file?.name?.toLowerCase().endsWith('.pdf')) {
-      return { ok: false, message: 'Only PDF files are supported' };
-    }
-    chatAutoExtractRef.current = true;
-    setFiles([file]);
-    setResults(null);
-    setError(null);
-    return { ok: true, message: `Received "${file.name}" — starting extraction…` };
-  }), []);
+  useEffect(
+    () =>
+      registerChatUploadHandler(async (file) => {
+        if (!file?.name?.toLowerCase().endsWith(".pdf")) {
+          return { ok: false, message: "Only PDF files are supported" };
+        }
+        chatAutoExtractRef.current = true;
+        setFiles([file]);
+        setResults(null);
+        setError(null);
+        return {
+          ok: true,
+          message: `Received "${file.name}" — starting extraction…`,
+        };
+      }),
+    [],
+  );
   useEffect(() => {
     if (chatAutoExtractRef.current && files.length && !isProcessing) {
       chatAutoExtractRef.current = false;
@@ -948,21 +1587,26 @@ const EquipmentList = () => {
 
     if (filterText.trim()) {
       const q = filterText.toLowerCase();
-      rows = rows.filter(r =>
-        COLUMNS.some(c => {
+      rows = rows.filter((r) =>
+        COLUMNS.some((c) => {
           const v = r[c.key];
-          if (Array.isArray(v)) return v.some(s => String(s).toLowerCase().includes(q));
-          return String(v || '').toLowerCase().includes(q);
-        })
+          if (Array.isArray(v))
+            return v.some((s) => String(s).toLowerCase().includes(q));
+          return String(v || "")
+            .toLowerCase()
+            .includes(q);
+        }),
       );
     }
 
     rows.sort((a, b) => {
-      let va = a[sortCol] ?? '';
-      let vb = b[sortCol] ?? '';
-      if (Array.isArray(va)) va = va.join(',');
-      if (Array.isArray(vb)) vb = vb.join(',');
-      const cmp = String(va).localeCompare(String(vb), undefined, { numeric: true });
+      let va = a[sortCol] ?? "";
+      let vb = b[sortCol] ?? "";
+      if (Array.isArray(va)) va = va.join(",");
+      if (Array.isArray(vb)) vb = vb.join(",");
+      const cmp = String(va).localeCompare(String(vb), undefined, {
+        numeric: true,
+      });
       return sortAsc ? cmp : -cmp;
     });
 
@@ -970,16 +1614,21 @@ const EquipmentList = () => {
   }, [results, sortCol, sortAsc, filterText]);
 
   const handleSort = (key) => {
-    if (sortCol === key) setSortAsc(a => !a);
-    else { setSortCol(key); setSortAsc(true); }
+    if (sortCol === key) setSortAsc((a) => !a);
+    else {
+      setSortCol(key);
+      setSortAsc(true);
+    }
   };
 
-  const getRowKey = (row, idx) => (row.tag && row.tag.trim() && row.tag !== '—' ? row.tag : `row-${idx}`);
+  const getRowKey = (row, idx) =>
+    row.tag && row.tag.trim() && row.tag !== "—" ? row.tag : `row-${idx}`;
 
   const handleSelectRow = (key) => {
-    setSelectedRows(prev => {
+    setSelectedRows((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key); else next.add(key);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   };
@@ -988,65 +1637,255 @@ const EquipmentList = () => {
     if (selectedRows.size === displayRows.length && displayRows.length > 0) {
       setSelectedRows(new Set());
     } else {
-      setSelectedRows(new Set(displayRows.map((row, idx) => getRowKey(row, idx))));
+      setSelectedRows(
+        new Set(displayRows.map((row, idx) => getRowKey(row, idx))),
+      );
     }
   };
 
   const handleExportSelected = () => {
-    const rowsToExport = displayRows.filter((row, idx) => selectedRows.has(getRowKey(row, idx)));
+    const rowsToExport = displayRows.filter((row, idx) =>
+      selectedRows.has(getRowKey(row, idx)),
+    );
     if (!rowsToExport.length) return;
     const wsData = [
-      COLUMNS.map(c => c.label),
+      COLUMNS.map((c) => c.label),
       ...rowsToExport.map((row, idx) =>
-        COLUMNS.map(c => {
-          const v = c.key === 'sl_no' ? idx + 1 : row[c.key];
-          if (Array.isArray(v)) return v.join(', ') || '—';
-          return v || '—';
-        })
+        COLUMNS.map((c) => {
+          const v = c.key === "sl_no" ? idx + 1 : row[c.key];
+          if (Array.isArray(v)) return v.join(", ") || "—";
+          return v || "—";
+        }),
       ),
     ];
-    const ws    = XLSX.utils.aoa_to_sheet(wsData);
-    ws['!cols'] = COLUMNS.map(c => ({ wch: c.width || 18 }));
-    const wb    = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Equipment List');
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    ws["!cols"] = COLUMNS.map((c) => ({ wch: c.width || 18 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Equipment List");
     XLSX.writeFile(wb, EXPORT_FILENAME_SELECTED);
   };
 
   const handleExport = () => {
     if (!displayRows.length) return;
     const wsData = [
-      COLUMNS.map(c => c.label),
+      COLUMNS.map((c) => c.label),
       ...displayRows.map((row, idx) =>
-        COLUMNS.map(c => {
+        COLUMNS.map((c) => {
           // sl_no: always sequential 1-based index regardless of backend value
-          const v = c.key === 'sl_no' ? idx + 1 : row[c.key];
-          if (Array.isArray(v)) return v.join(', ') || '—';
-          return v || '—';
-        })
+          const v = c.key === "sl_no" ? idx + 1 : row[c.key];
+          if (Array.isArray(v)) return v.join(", ") || "—";
+          return v || "—";
+        }),
       ),
     ];
-    const ws    = XLSX.utils.aoa_to_sheet(wsData);
-    ws['!cols'] = COLUMNS.map(c => ({ wch: c.width || 18 }));
-    const wb    = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Equipment List');
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    ws["!cols"] = COLUMNS.map((c) => ({ wch: c.width || 18 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Equipment List");
     XLSX.writeFile(wb, EXPORT_FILENAME);
   };
+
+  const beginEquipmentEdit = (row) => {
+    if (
+      !registerRecord?.revision ||
+      registerRecord.revision.status !== "draft" ||
+      registerRecord.revision.is_immutable
+    ) {
+      setRegisterError("Only the current draft revision can be edited.");
+      return;
+    }
+    setRegisterError("");
+    setEditingEquipment(row);
+    setEditDraft({
+      tag: row.tag || "",
+      description: row.description || "",
+      equipment_type: row.equipment_type || row.type || "",
+      design_pressure_max: row.design_pressure_max || "",
+      oper_pressure: row.oper_pressure || "",
+      design_temp_max: row.design_temp_max || "",
+      moc: row.moc || "",
+      insulation: row.insulation || "",
+      pid_no: row.pid_no || "",
+      remarks: row.remarks || "",
+      review_state: row.review_state || "unreviewed",
+    });
+  };
+
+  const handleSaveEquipment = async () => {
+    if (
+      !registerRecord?.id ||
+      !editingEquipment?.id ||
+      !registerRecord?.revision
+    )
+      return;
+    setIsSavingEquipment(true);
+    setRegisterError("");
+    try {
+      const record = await updateEquipmentItem({
+        registerId: registerRecord.id,
+        itemId: editingEquipment.id,
+        expectedRevisionVersion: registerRecord.revision.version,
+        fields: editDraft,
+        reason: "Updated in Equipment List draft.",
+      });
+      applyRegisterRecord(record);
+      setEditingEquipment(null);
+      setEditDraft({});
+      setRegisterSaveState("saved");
+    } catch (saveError) {
+      const data = saveError?.response?.data;
+      setRegisterError(
+        data?.code === "stale_revision"
+          ? "This register changed after you opened it. Your edits are preserved; refresh the saved register before retrying."
+          : data?.error ||
+              "Equipment changes could not be saved. Your edits are preserved.",
+      );
+      setRegisterSaveState("failed");
+    } finally {
+      setIsSavingEquipment(false);
+    }
+  };
+
+  const handleSaveDraft = async () => {
+    if (
+      isProcessing ||
+      registerLoading ||
+      registerSaveState === "saving" ||
+      isSavingEquipment
+    )
+      return;
+    if (editingEquipment) {
+      await handleSaveEquipment();
+      return;
+    }
+    if (
+      results?.equipment?.length &&
+      results.upload_id !== registerRecord?.revision?.source_upload_id
+    ) {
+      if (results.upload_id) {
+        await persistExtractionDraft(results, results.upload_id);
+      } else {
+        setRegisterSaveState("failed");
+        setRegisterError(
+          "This equipment list has no extraction upload ID and cannot be saved as a draft. Extract a P&ID to create a register.",
+        );
+      }
+      return;
+    }
+    if (registerRecord && results?.equipment !== registerRecord.items) {
+      setRegisterSaveState("failed");
+      setRegisterError(
+        "Local table changes are not saved. Edit an equipment row in the details panel to save it with revision history.",
+      );
+      return;
+    }
+    if (
+      registerRecord?.revision?.status !== "draft" ||
+      registerRecord.revision.is_immutable
+    ) {
+      setRegisterSaveState("failed");
+      setRegisterError(
+        registerRecord
+          ? "Only the current draft revision can be saved."
+          : "Extract a P&ID before saving a draft.",
+      );
+      return;
+    }
+    setRegisterError("");
+    setRegisterSaveState("saved");
+  };
+
+  const handleBackToProjects = () => {
+    if (isProcessing || isSavingEquipment || registerSaveState === "saving")
+      return;
+    const hasUnsavedWork =
+      editingEquipment ||
+      registerSaveState === "failed" ||
+      (results?.equipment?.length &&
+        results.equipment !== registerRecord?.items);
+    if (hasUnsavedWork) {
+      setShowLeaveConfirmation(true);
+      return;
+    }
+    setIsFullscreen(false);
+    clearActiveProject();
+  };
+
+  const leaveConfirmation = showLeaveConfirmation && (
+    <>
+      <style>
+        {".eq-leave-dialog::backdrop { background: rgba(15,23,42,.55); }"}
+      </style>
+      <dialog
+        ref={leaveDialogRef}
+        onClose={() => setShowLeaveConfirmation(false)}
+        aria-labelledby="equipment-leave-title"
+        className="eq-leave-dialog w-full max-w-md rounded-xl bg-white p-6 shadow-xl"
+      >
+        <h2
+          id="equipment-leave-title"
+          className="text-lg font-bold text-slate-900"
+        >
+          Leave Equipment List?
+        </h2>
+        <p className="mt-2 text-sm text-slate-600">
+          Unsaved equipment changes will be lost. Save your draft before
+          returning to Projects.
+        </p>
+        <div className="mt-5 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={() => setShowLeaveConfirmation(false)}
+            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold"
+          >
+            Stay here
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setShowLeaveConfirmation(false);
+              setIsFullscreen(false);
+              clearActiveProject();
+            }}
+            disabled={
+              isProcessing ||
+              isSavingEquipment ||
+              registerSaveState === "saving"
+            }
+            className="rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            Discard and return
+          </button>
+        </div>
+      </dialog>
+    </>
+  );
 
   // ── Derived stats for KPI bar (shown after extraction) ──────────────────
   const kpiStats = React.useMemo(() => {
     if (!results?.equipment?.length) return null;
     const eq = results.equipment;
-    const filled  = f => eq.filter(r => r[f] && r[f] !== '—' && r[f] !== '').length;
-    const types   = [...new Set(eq.map(r => (r.tag || '').split('-')[0]).filter(Boolean))];
-    const withMtr = eq.filter(r => r.motor_rating && !['No','N/A','no','n/a'].includes(String(r.motor_rating).trim())).length;
+    const filled = (f) =>
+      eq.filter((r) => r[f] && r[f] !== "—" && r[f] !== "").length;
+    const types = [
+      ...new Set(eq.map((r) => (r.tag || "").split("-")[0]).filter(Boolean)),
+    ];
+    const withMtr = eq.filter(
+      (r) =>
+        r.motor_rating &&
+        !["No", "N/A", "no", "n/a"].includes(String(r.motor_rating).trim()),
+    ).length;
     return {
-      total:    eq.length,
-      types:    types.length,
-      withMoc:  filled('moc'),
+      total: eq.length,
+      types: types.length,
+      withMoc: filled("moc"),
       withMtr,
-      withDim:  filled('dimension_length'),
+      withDim: filled("dimension_length"),
       drawings: results?.drawing_ref
-        ? results.drawing_ref.split(',').map(s => s.trim()).filter(Boolean).length
+        ? results.drawing_ref
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean).length
         : 1,
     };
   }, [results]);
@@ -1054,62 +1893,2861 @@ const EquipmentList = () => {
   // ── PROJECT GATE — V1-style workspace: select/create a project first ─────
   // SOFT-CODED: disable via EQ_PROJECTS.enabled = false (legacy single-shot).
   if (EQ_PROJECTS.enabled && (!projHydrated || loadingProjects)) {
-    return <div style={{ minHeight: '100vh', background: EQ_T.bg }} />;
+    return <div style={{ minHeight: "100vh", background: EQ_T.bg }} />;
   }
 
   if (EQ_PROJECTS.enabled && !activeProject) {
     return (
-      <div style={{ minHeight: '100vh', background: EQ_T.bg, padding: '32px 24px' }}>
-        <div className="w-full" style={{ maxWidth: 1400, margin: '0 auto' }}>
+      <div
+        style={{
+          minHeight: "100vh",
+          background: EQ_T.bg,
+          padding: "32px 24px",
+        }}
+      >
+        <div className="w-full" style={{ maxWidth: 1400, margin: "0 auto" }}>
           {/* Header */}
           <div className="flex items-center gap-3 mb-1.5">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-              style={{ background: 'linear-gradient(135deg,#3b82f6,#6366f1)', boxShadow: '0 4px 14px rgba(59,130,246,0.3)' }}>
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{
+                background: "linear-gradient(135deg,#3b82f6,#6366f1)",
+                boxShadow: "0 4px 14px rgba(59,130,246,0.3)",
+              }}
+            >
               <Boxes className="h-5 w-5 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-extrabold text-slate-900" style={{ margin: 0 }}>Equipment List — Project Workspace</h1>
-              <p className="text-sm text-slate-500" style={{ margin: 0 }}>Select or create a project to organise your P&ID equipment extractions.</p>
+              <h1
+                className="text-2xl font-extrabold text-slate-900"
+                style={{ margin: 0 }}
+              >
+                Equipment List — Project Workspace
+              </h1>
+              <p className="text-sm text-slate-500" style={{ margin: 0 }}>
+                Select or create a project to organise your P&ID equipment
+                extractions.
+              </p>
             </div>
           </div>
 
           <div className="mt-6 mb-5">
-            <button onClick={() => setShowCreateProject(true)}
+            <button
+              onClick={() => setShowCreateProject(true)}
               className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-white rounded-xl transition-all hover:-translate-y-px"
-              style={{ background: 'linear-gradient(135deg,#3b82f6,#6366f1)', boxShadow: '0 4px 12px rgba(59,130,246,0.25)', border: 'none', cursor: 'pointer' }}>
+              style={{
+                background: "linear-gradient(135deg,#3b82f6,#6366f1)",
+                boxShadow: "0 4px 12px rgba(59,130,246,0.25)",
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
               <FolderPlusIcon className="h-4 w-4" /> New Project
             </button>
           </div>
 
           {projectError && (
-            <div role="alert" className="mb-4 px-4 py-3 rounded-lg text-sm" style={{ border: '1px solid #fecaca', background: '#fef2f2', color: '#991b1b' }}>
+            <div
+              role="alert"
+              className="mb-4 px-4 py-3 rounded-lg text-sm"
+              style={{
+                border: "1px solid #fecaca",
+                background: "#fef2f2",
+                color: "#991b1b",
+              }}
+            >
               {projectError}
             </div>
           )}
 
           {projects.length === 0 ? (
-            <div className="rounded-2xl p-16 text-center" style={{ background: '#fff', border: '1px dashed rgba(59,130,246,0.3)' }}>
-              <FolderIcon className="h-12 w-12 mx-auto mb-3" style={{ color: '#3b82f6', opacity: 0.45 }} />
-              <h2 className="text-lg font-bold text-slate-900" style={{ margin: 0 }}>No projects yet</h2>
-              <p className="text-sm text-slate-500 mt-1">Create your first project to start extracting equipment registers.</p>
+            <div
+              className="rounded-2xl p-16 text-center"
+              style={{
+                background: "#fff",
+                border: "1px dashed rgba(59,130,246,0.3)",
+              }}
+            >
+              <FolderIcon
+                className="h-12 w-12 mx-auto mb-3"
+                style={{ color: "#3b82f6", opacity: 0.45 }}
+              />
+              <h2
+                className="text-lg font-bold text-slate-900"
+                style={{ margin: 0 }}
+              >
+                No projects yet
+              </h2>
+              <p className="text-sm text-slate-500 mt-1">
+                Create your first project to start extracting equipment
+                registers.
+              </p>
             </div>
           ) : (
-            <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))' }}>
-              {projects.map(p => (
-                <ProjectCard key={p.project_id} project={p} theme={EQ_PROJECTS.theme}
-                  onOpen={() => setActiveProject(p)} />
+            <div
+              className="grid gap-4"
+              style={{
+                gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
+              }}
+            >
+              {projects.map((p) => (
+                <ProjectCard
+                  key={p.project_id}
+                  project={p}
+                  theme={EQ_PROJECTS.theme}
+                  onOpen={() => setActiveProject(p)}
+                />
               ))}
             </div>
           )}
 
           {showCreateProject && (
-            <ProjectFormModal theme={EQ_PROJECTS.theme} busy={projectBusy}
-              onClose={() => setShowCreateProject(false)} onSubmit={handleCreateProject} />
+            <ProjectFormModal
+              theme={EQ_PROJECTS.theme}
+              busy={projectBusy}
+              onClose={() => setShowCreateProject(false)}
+              onSubmit={handleCreateProject}
+            />
           )}
         </div>
       </div>
     );
   }
+
+  // Reference-aligned register workspace. The extraction workflow remains
+  // available from the Actions menu and the compact upload card below.
+  const referenceRows = results?.equipment || [];
+  const referenceSelected = selectedEquipment
+    ? referenceRows.find(
+        (row) =>
+          row.id === selectedEquipment.id || row.tag === selectedEquipment.tag,
+      ) ||
+      referenceRows[0] ||
+      null
+    : referenceRows[0] || null;
+  const referenceChanged = referenceRows.filter(
+    (r) => r._changed || r.status === "Changed",
+  ).length;
+  const referenceErrors = referenceRows.filter(
+    (r) => r._error || r.status === "Error",
+  ).length;
+  const referenceWarnings = referenceRows.filter(
+    (r) => r._warning || r.status === "Warnings" || r.status === "Warning",
+  ).length;
+  const referenceStatus = (row) =>
+    row?.status ||
+    (row?._error
+      ? "Error"
+      : row?._warning
+        ? "Warnings"
+        : row?._changed
+          ? "Changed"
+          : "Unchanged");
+  const statusStyle = (status) =>
+    ({
+      Changed: { background: "#fff1c7", color: "#9a4d00" },
+      New: { background: "#dceeff", color: "#1467b3" },
+      Reviewed: { background: "#d8f7df", color: "#16723b" },
+      Error: { background: "#ffd9dc", color: "#b4232d" },
+      Warnings: { background: "#fff1c7", color: "#9a4d00" },
+      Warning: { background: "#fff1c7", color: "#9a4d00" },
+      Unchanged: { background: "#edf1f5", color: "#40536d" },
+    })[status] || { background: "#edf1f5", color: "#40536d" };
+
+  const referenceValidation = (row) => {
+    if (row?.review_state === "discrepancy") return "Discrepancy";
+    if (
+      !row?.description ||
+      !(row?.equipment_type || row?.type) ||
+      !row?.pid_no
+    )
+      return "Missing metadata";
+    return "Complete";
+  };
+  const referenceTypes = [
+    ...new Set(
+      referenceRows
+        .map((row) => row.equipment_type || row.type)
+        .filter(Boolean),
+    ),
+  ].sort();
+  const referenceStatuses = [
+    ...new Set(
+      referenceRows.map((row) => referenceStatus(row)).filter(Boolean),
+    ),
+  ].sort();
+  const activeReferenceColumns = REFERENCE_COLUMNS.filter((column) =>
+    visibleReferenceColumns.has(column.key),
+  );
+  const filteredReferenceRows = referenceRows
+    .filter((row) => {
+      const query = filterText.trim().toLowerCase();
+      if (
+        query &&
+        !COLUMNS.some((column) =>
+          String(row[column.key] || "")
+            .toLowerCase()
+            .includes(query),
+        )
+      )
+        return false;
+      if (
+        referenceFilters.type &&
+        (row.equipment_type || row.type) !== referenceFilters.type
+      )
+        return false;
+      if (
+        referenceFilters.status &&
+        referenceStatus(row) !== referenceFilters.status
+      )
+        return false;
+      const changed = referenceStatus(row) === "Changed";
+      if (referenceFilters.changed === "changed" && !changed) return false;
+      if (referenceFilters.changed === "unchanged" && changed) return false;
+      const hasConfidence =
+        row.confidence !== null &&
+        row.confidence !== undefined &&
+        row.confidence !== "";
+      if (referenceFilters.confidence === "recorded" && !hasConfidence)
+        return false;
+      if (referenceFilters.confidence === "missing" && hasConfidence)
+        return false;
+      if (
+        referenceFilters.validation &&
+        referenceValidation(row) !== referenceFilters.validation
+      )
+        return false;
+      return true;
+    })
+    .sort((left, right) => {
+      const column = REFERENCE_COLUMNS.find(
+        (candidate) => candidate.key === sortCol,
+      );
+      const leftValue = column ? column.value(left) : left[sortCol];
+      const rightValue = column ? column.value(right) : right[sortCol];
+      const comparison = String(leftValue || "").localeCompare(
+        String(rightValue || ""),
+        undefined,
+        { numeric: true },
+      );
+      return sortAsc ? comparison : -comparison;
+    });
+  const referencePageSize = 10;
+  const referencePageCount = Math.max(
+    1,
+    Math.ceil(filteredReferenceRows.length / referencePageSize),
+  );
+  const safeReferencePage = Math.min(referencePage, referencePageCount);
+  const pagedReferenceRows = filteredReferenceRows.slice(
+    (safeReferencePage - 1) * referencePageSize,
+    safeReferencePage * referencePageSize,
+  );
+  const selectedItemChanges = referenceSelected
+    ? registerChanges.filter(
+        (change) => change.item_id === referenceSelected.id,
+      )
+    : [];
+  const fieldLabel = (field) =>
+    ({
+      __row__: "Equipment row",
+      equipment_type: "Type",
+      design_pressure_max: "Design pressure",
+      oper_pressure: "Operating pressure",
+      design_temp_max: "Design temperature",
+      pid_no: "P&ID reference",
+      moc: "Material of construction",
+      review_state: "Review state",
+    })[field] || String(field || "").replaceAll("_", " ");
+  const displayChangeValue = (value) => {
+    if (value === null || value === undefined || value === "") return "—";
+    if (typeof value === "object") return JSON.stringify(value);
+    return String(value);
+  };
+  const selectedMetadata =
+    referenceSelected?.equipment_master || referenceSelected?.metadata || {};
+  const pidInformation = {
+    drawing_no: referenceSelected?.pid_no || "",
+    equipment_tag: referenceSelected?.tag || "",
+    equipment_name: referenceSelected?.description || "",
+    revision: referenceSelected?.revision || "",
+    project: activeProject?.name || activeProject?.code || "",
+    ...(selectedMetadata.pid_information || {}),
+  };
+  const equipmentRecord = {
+    tag_number: referenceSelected?.tag || "",
+    description: referenceSelected?.description || "",
+    type: referenceSelected?.equipment_type || referenceSelected?.type || "",
+    discipline: registerRecord?.discipline || "Process",
+    status: "Extracted",
+    source_pid: referenceSelected?.pid_no || "",
+    revision: referenceSelected?.revision || "",
+    ...(selectedMetadata.equipment_record || {}),
+  };
+  const engineeringSpecifications = {
+    design_pressure: [
+      referenceSelected?.design_pressure_max,
+      referenceSelected?.design_pressure_min,
+    ]
+      .filter(Boolean)
+      .join(" / "),
+    operating_pressure: referenceSelected?.oper_pressure || "",
+    design_temperature: [
+      referenceSelected?.design_temp_max,
+      referenceSelected?.design_temp_min,
+    ]
+      .filter(Boolean)
+      .join(" / "),
+    operating_temperature: referenceSelected?.oper_temperature || "",
+    diameter: referenceSelected?.dimension_diameter || "",
+    length: referenceSelected?.dimension_length || "",
+    material_of_construction: referenceSelected?.moc || "",
+    capacity: referenceSelected?.design_flowrate || "",
+    ...(selectedMetadata.engineering_specifications || {}),
+  };
+  const safetyEquipment = selectedMetadata.connected_safety_equipment || {};
+  const processInstruments = selectedMetadata.main_process_instruments || {};
+  const connectedLines = selectedMetadata.connected_lines || [];
+  const masterRelationships = selectedMetadata.relationships || {};
+  const masterAttributes = selectedMetadata.attributes || {};
+  const validationFindings = selectedMetadata.validation_findings || {};
+  const metadataConfidence = selectedMetadata.confidence || {};
+  const fieldEvidence = selectedMetadata.field_evidence || {};
+  const extractionCoverage = selectedMetadata.extraction_coverage || null;
+  const extractionProvenance = selectedMetadata.provenance || null;
+  const renderMetadataRows = (rows) =>
+    rows.map(([label, value]) => (
+      <div
+        key={label}
+        className="flex justify-between gap-4 py-2 text-sm border-b"
+        style={{ borderColor: "#e2e8f0" }}
+      >
+        <span style={{ color: "#667892" }}>{label}</span>
+        <span
+          className="font-semibold text-right break-words"
+          style={{ maxWidth: "62%" }}
+        >
+          {value || "Not recorded"}
+        </span>
+      </div>
+    ));
+  const renderTagGroup = (label, values = []) => (
+    <div className="py-2 border-b" style={{ borderColor: "#e2e8f0" }}>
+      <div className="text-xs font-semibold mb-2" style={{ color: "#667892" }}>
+        {label}
+      </div>
+      {values.length ? (
+        <div className="flex flex-wrap gap-2">
+          {values.map((value) => (
+            <span
+              key={value}
+              className="px-2 py-1 rounded-md text-xs font-semibold"
+              style={{
+                background: "#edf7f8",
+                color: "#086b79",
+                border: "1px solid #b9dde1",
+              }}
+            >
+              {value}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <div className="text-sm" style={{ color: "#8795a8" }}>
+          None detected from current source evidence
+        </div>
+      )}
+    </div>
+  );
+  const clearReferenceFilters = () => {
+    setFilterText("");
+    setReferenceFilters({
+      type: "",
+      status: "",
+      changed: "",
+      confidence: "",
+      validation: "",
+    });
+    setReferencePage(1);
+    setOpenReferenceMenu("");
+  };
+  const toggleReferenceColumn = (key) => {
+    setVisibleReferenceColumns((current) => {
+      const next = new Set(current);
+      if (next.has(key)) {
+        if (next.size > 1) next.delete(key);
+      } else next.add(key);
+      return next;
+    });
+  };
+  const handleReferenceExport = (scope) => {
+    const selected = filteredReferenceRows.filter((row, index) =>
+      selectedRows.has(getRowKey(row, index)),
+    );
+    const rows =
+      scope === "all"
+        ? referenceRows
+        : scope === "selected"
+          ? selected
+          : filteredReferenceRows;
+    if (!rows.length) return;
+    const columns = activeReferenceColumns.length
+      ? activeReferenceColumns
+      : REFERENCE_COLUMNS;
+    const worksheet = XLSX.utils.aoa_to_sheet([
+      columns.map((column) => column.label),
+      ...rows.map((row) => columns.map((column) => column.value(row) || "—")),
+    ]);
+    worksheet["!cols"] = columns.map((column) => ({
+      wch: Math.max(14, column.label.length + 2),
+    }));
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Equipment List");
+    XLSX.writeFile(
+      workbook,
+      scope === "selected" ? EXPORT_FILENAME_SELECTED : EXPORT_FILENAME,
+    );
+    setOpenReferenceMenu("");
+  };
+  const handleMasterExport = () => {
+    if (!referenceRows.length) return;
+    const crossReferenceIndex = [];
+    referenceRows.forEach((row) => {
+      const master = row.equipment_master || row.metadata || {};
+      const crossReferences = master.relationships?.cross_pid_references || [];
+      crossReferences.forEach((entry) => {
+        if (!entry?.resolution) return;
+        crossReferenceIndex.push({
+          tag: row.tag,
+          group: "cross_pid_references",
+          related_tag: entry.tag || null,
+          resolution: entry.resolution,
+          resolved_drawing_no: entry.resolved_drawing_no || null,
+          resolved_filename: entry.resolved_filename || null,
+          drawing_no: entry.drawing_no || null,
+          filename: entry.filename || null,
+          page: entry.page ?? null,
+        });
+      });
+    });
+    const payload = {
+      schema_version: "1.0",
+      project_id: activeProject.project_id,
+      register_id: registerRecord?.id || null,
+      revision_id: registerRecord?.revision?.id || null,
+      review_state: "proposed",
+      equipment: referenceRows.map((row) => ({
+        tag: row.tag,
+        source_locator: row.source_locator || {},
+        equipment_master: row.equipment_master || row.metadata || {},
+      })),
+      ...(crossReferenceIndex.length
+        ? { cross_reference_index: crossReferenceIndex }
+        : {}),
+    };
+    const url = URL.createObjectURL(
+      new Blob([JSON.stringify(payload, null, 2)], {
+        type: "application/json",
+      }),
+    );
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "Equipment_master.json";
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+    setOpenReferenceMenu("");
+  };
+  const renderFilterMenu = (key, label, options) => {
+    const value = referenceFilters[key];
+    return (
+      <div className="relative" data-equipment-menu>
+        <button
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded={openReferenceMenu === key}
+          onClick={() =>
+            setOpenReferenceMenu((current) => (current === key ? "" : key))
+          }
+          className="px-3 rounded-lg flex items-center gap-3 text-sm"
+          style={{
+            height: 43,
+            border: `1px solid ${value ? "#087f91" : "#ccd8e5"}`,
+            background: value ? "#f0fbfc" : "#fff",
+            color: value ? "#066b79" : "#142746",
+          }}
+        >
+          {value || label}
+          <ChevronDown size={15} />
+        </button>
+        {openReferenceMenu === key && (
+          <div
+            role="menu"
+            className="absolute right-0 mt-1 min-w-48 rounded-lg p-1 z-30"
+            style={{
+              background: "#fff",
+              border: "1px solid #dce5ef",
+              boxShadow: "0 12px 28px rgba(20,39,70,.14)",
+            }}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setReferenceFilters((current) => ({ ...current, [key]: "" }));
+                setReferencePage(1);
+                setOpenReferenceMenu("");
+              }}
+              className="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-slate-50"
+            >
+              All {label.toLowerCase()}
+            </button>
+            {options.map((option) => {
+              const optionValue =
+                typeof option === "string" ? option : option.value;
+              const optionLabel =
+                typeof option === "string" ? option : option.label;
+              return (
+                <button
+                  type="button"
+                  role="menuitem"
+                  key={optionValue}
+                  onClick={() => {
+                    setReferenceFilters((current) => ({
+                      ...current,
+                      [key]: optionValue,
+                    }));
+                    setReferencePage(1);
+                    setOpenReferenceMenu("");
+                  }}
+                  className="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-slate-50"
+                  style={{
+                    color: value === optionValue ? "#087f91" : "#142746",
+                    fontWeight: value === optionValue ? 700 : 400,
+                  }}
+                >
+                  {optionLabel}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  if (activeProject && !isFullscreen)
+    return (
+      <div
+        className="el-ref-shell"
+        style={{
+          background: "#f8fafc",
+          color: "#142746",
+          fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
+          height: "calc(100dvh - 50px)",
+          minHeight: 0,
+          overflow: "hidden",
+        }}
+      >
+        {leaveConfirmation}
+        <style>{` .el-ref *{box-sizing:border-box}.el-ref button{font:inherit}.el-ref button:focus-visible,.el-ref input:focus-visible,.el-ref select:focus-visible{outline:2px solid #0b8798;outline-offset:2px}.el-ref-detail-scroll{scrollbar-gutter:stable}@media(max-width:1200px){.el-ref-shell{height:auto!important;min-height:calc(100dvh - 50px)!important;overflow:visible!important}.el-ref{height:auto!important}.el-ref-main{display:block!important;overflow:visible!important}.el-ref-main>section{overflow:visible!important}.el-ref-main>aside{height:min(720px,calc(100dvh - 70px))!important;border-left:0!important;border-top:1px solid #dbe4ee}}`}</style>
+        <div
+          className="el-ref"
+          style={{
+            width: "100%",
+            minWidth: 0,
+            height: "100%",
+            margin: 0,
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <header
+            style={{
+              padding: "14px 32px 0",
+              background: "#fff",
+              borderBottom: "1px solid #dbe4ee",
+            }}
+          >
+            <div className="flex items-start justify-between gap-6">
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setActiveProject(null)}
+                  className="text-sm font-semibold mb-1"
+                  style={{ color: "#087f91" }}
+                >
+                  ← Back to Projects list
+                </button>
+                <div className="text-sm" style={{ color: "#667892" }}>
+                  <button
+                    type="button"
+                    onClick={() => setActiveProject(null)}
+                    className="hover:underline"
+                  >
+                    Projects
+                  </button>{" "}
+                  <span className="mx-2">/</span>{" "}
+                  {activeProject.name ||
+                    activeProject.code ||
+                    "Engineering project"}
+                </div>
+                <h1
+                  style={{
+                    fontSize: 30,
+                    lineHeight: 1.15,
+                    margin: "4px 0 2px",
+                    fontWeight: 750,
+                    letterSpacing: "-.02em",
+                  }}
+                >
+                  Equipment List
+                </h1>
+                <p className="text-sm" style={{ color: "#667892", margin: 0 }}>
+                  {activeProject.name || "Engineering project"}{" "}
+                  <span className="mx-3">—</span> Engineering equipment register
+                  and data validation
+                </p>
+              </div>
+              <div className="flex items-center gap-3 pt-2 flex-wrap justify-end">
+                <span className="text-sm font-semibold">
+                  Register: {registerRecord?.register_number || "—"}
+                </span>
+                <span style={{ color: "#9aa9ba" }}>|</span>
+                <span className="text-sm font-semibold">
+                  Rev: {registerRecord?.revision?.number ?? "—"}
+                </span>
+                <span
+                  className="px-3 py-1 rounded-full text-sm font-semibold capitalize"
+                  style={{ background: "#e4f1ff", color: "#1269b0" }}
+                >
+                  {registerRecord?.revision?.status || "No draft"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    editingEquipment ? handleSaveEquipment() : handleExtract()
+                  }
+                  disabled={
+                    isSavingEquipment ||
+                    isProcessing ||
+                    (!editingEquipment && !files.length)
+                  }
+                  className="px-4 py-2 rounded-lg text-sm font-semibold"
+                  style={{
+                    border: "1px solid #087f91",
+                    background: "#fff",
+                    color: "#087f91",
+                    opacity:
+                      isSavingEquipment ||
+                      isProcessing ||
+                      (!editingEquipment && !files.length)
+                        ? 0.5
+                        : 1,
+                  }}
+                >
+                  {isSavingEquipment ? "Saving…" : "Save draft"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBackToProjects}
+                  disabled={
+                    isProcessing ||
+                    isSavingEquipment ||
+                    registerSaveState === "saving"
+                  }
+                  className="px-3 py-2 rounded-lg border bg-white text-sm font-semibold disabled:opacity-50"
+                >
+                  Back to Projects
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveDraft}
+                  disabled={
+                    isProcessing ||
+                    registerLoading ||
+                    registerSaveState === "saving" ||
+                    isSavingEquipment
+                  }
+                  className="px-4 py-2 rounded-lg text-white text-sm font-semibold disabled:opacity-50"
+                  style={{ background: "#087f91" }}
+                >
+                  {registerSaveState === "saving" || isSavingEquipment
+                    ? "Saving…"
+                    : "Save Draft"}
+                </button>
+                <div className="relative" data-equipment-menu>
+                  <button
+                    type="button"
+                    aria-label="More register actions"
+                    aria-haspopup="menu"
+                    aria-expanded={openReferenceMenu === "more"}
+                    onClick={() =>
+                      setOpenReferenceMenu((current) =>
+                        current === "more" ? "" : "more",
+                      )
+                    }
+                    className="p-2 rounded-lg border bg-white"
+                  >
+                    <MoreHorizontal size={20} />
+                  </button>
+                  {openReferenceMenu === "more" && (
+                    <div
+                      role="menu"
+                      className="absolute right-0 mt-1 min-w-52 rounded-lg p-1 z-40"
+                      style={{
+                        background: "#fff",
+                        border: "1px solid #dce5ef",
+                        boxShadow: "0 12px 28px rgba(20,39,70,.14)",
+                      }}
+                    >
+                      <button
+                        role="menuitem"
+                        type="button"
+                        onClick={() => {
+                          clearReferenceFilters();
+                        }}
+                        className="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-slate-50"
+                      >
+                        Clear filters
+                      </button>
+                      <button
+                        role="menuitem"
+                        type="button"
+                        disabled={!registerRecord}
+                        onClick={() => {
+                          setOpenReferenceMenu("");
+                          loadRegisterChanges();
+                        }}
+                        className="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        Refresh change history
+                      </button>
+                      <button
+                        role="menuitem"
+                        type="button"
+                        onClick={() => {
+                          setDetailsExpanded((value) => !value);
+                          setOpenReferenceMenu("");
+                        }}
+                        className="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-slate-50"
+                      >
+                        {detailsExpanded
+                          ? "Standard details width"
+                          : "Expand details panel"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div className="relative" data-equipment-menu>
+                  <button
+                    type="button"
+                    aria-haspopup="menu"
+                    aria-expanded={openReferenceMenu === "actions"}
+                    onClick={() =>
+                      setOpenReferenceMenu((current) =>
+                        current === "actions" ? "" : "actions",
+                      )
+                    }
+                    disabled={isProcessing}
+                    className="px-4 py-2 rounded-lg text-white flex items-center gap-2 text-sm font-semibold"
+                    style={{
+                      background: "#087f91",
+                      opacity: isProcessing ? 0.65 : 1,
+                    }}
+                  >
+                    {isProcessing ? "Processing…" : "Actions"}{" "}
+                    <ChevronDown size={16} />
+                  </button>
+                  {openReferenceMenu === "actions" && (
+                    <div
+                      role="menu"
+                      className="absolute right-0 mt-1 min-w-56 rounded-lg p-1 z-40"
+                      style={{
+                        background: "#fff",
+                        border: "1px solid #dce5ef",
+                        boxShadow: "0 12px 28px rgba(20,39,70,.14)",
+                      }}
+                    >
+                      <button
+                        role="menuitem"
+                        type="button"
+                        onClick={() => {
+                          setOpenReferenceMenu("");
+                          fileRef.current?.click();
+                        }}
+                        className="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-slate-50"
+                      >
+                        Upload P&amp;ID files
+                      </button>
+                      <button
+                        role="menuitem"
+                        type="button"
+                        disabled={!files.length || isProcessing}
+                        onClick={() => {
+                          setOpenReferenceMenu("");
+                          handleExtract();
+                        }}
+                        className="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        Extract and save draft
+                      </button>
+                      <button
+                        role="menuitem"
+                        type="button"
+                        onClick={() => {
+                          setOpenReferenceMenu("");
+                          getCurrentEquipmentRegister(activeProject.project_id)
+                            .then(applyRegisterRecord)
+                            .catch((loadError) =>
+                              setRegisterError(
+                                loadError?.response?.data?.error ||
+                                  "Failed to reload the Equipment Register.",
+                              ),
+                            );
+                        }}
+                        className="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-slate-50"
+                      >
+                        Reload saved register
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            <nav
+              className="flex gap-8 mt-5"
+              aria-label="Equipment List sections"
+            >
+              {[
+                "Overview",
+                "Equipment",
+                "Changes",
+                "Validation",
+                "Reviews",
+                "Documents",
+              ].map((tab) => (
+                <button
+                  type="button"
+                  key={tab}
+                  aria-current={activeWorkspaceTab === tab ? "page" : undefined}
+                  onClick={() => {
+                    setActiveWorkspaceTab(tab);
+                    setOpenReferenceMenu("");
+                  }}
+                  className="pb-3 text-sm font-semibold"
+                  style={{
+                    color: activeWorkspaceTab === tab ? "#132746" : "#40536d",
+                    borderBottom:
+                      activeWorkspaceTab === tab
+                        ? "3px solid #087f91"
+                        : "3px solid transparent",
+                  }}
+                >
+                  {tab}
+                </button>
+              ))}
+            </nav>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".pdf"
+              multiple
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+          </header>
+          <main
+            className="el-ref-main grid"
+            style={{
+              gridTemplateColumns: `minmax(0, 1fr) ${detailsExpanded ? "720px" : "516px"}`,
+              flex: 1,
+              minHeight: 0,
+              overflow: "hidden",
+            }}
+          >
+            <section
+              style={{
+                padding: "16px 18px 20px 20px",
+                minHeight: 0,
+                overflowY: "auto",
+              }}
+            >
+              <div
+                className="grid grid-cols-5 mb-4 rounded-lg overflow-hidden"
+                style={{ background: "#fff", border: "1px solid #e1e9f1" }}
+              >
+                {[
+                  [FileText, referenceRows.length, "Total items", "#50647e"],
+                  [FileText, referenceChanged, "Changed", "#087f91"],
+                  [AlertTriangle, referenceErrors, "Errors", "#c9252d"],
+                  [AlertTriangle, referenceWarnings, "Warnings", "#a55a00"],
+                  [
+                    Clock3,
+                    registerRecord?.revision?.summary?.unreviewed_items ??
+                      referenceRows.filter(
+                        (row) => row.review_state !== "reviewed",
+                      ).length,
+                    "Review pending",
+                    "#50647e",
+                  ],
+                ].map(([Icon, value, label, color], i) => (
+                  <div
+                    key={label}
+                    className="flex items-center gap-3 px-5 py-4"
+                    style={{
+                      borderRight: i < 4 ? "1px solid #e1e9f1" : "none",
+                    }}
+                  >
+                    <Icon size={29} color={color} />
+                    <div>
+                      <div
+                        style={{
+                          fontSize: 25,
+                          fontWeight: 750,
+                          lineHeight: 1,
+                          color: "#142746",
+                        }}
+                      >
+                        {value}
+                      </div>
+                      <div
+                        className="text-sm mt-1"
+                        style={{
+                          color:
+                            label === "Errors"
+                              ? "#c9252d"
+                              : label === "Warnings"
+                                ? "#a55a00"
+                                : "#50647e",
+                        }}
+                      >
+                        {label}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {registerError && (
+                <div
+                  role="alert"
+                  className="mb-4 px-4 py-3 rounded-lg text-sm"
+                  style={{
+                    background: "#fff8e8",
+                    border: "1px solid #f3c66d",
+                    color: "#7a4300",
+                  }}
+                >
+                  {registerError}
+                </div>
+              )}
+              {registerSaveState === "saved" && (
+                <div role="status" className="sr-only">
+                  Draft saved
+                </div>
+              )}
+              {registerLoading && (
+                <div
+                  className="mb-4 px-4 py-3 rounded-lg text-sm"
+                  style={{
+                    background: "#fff",
+                    border: "1px solid #dce5ef",
+                    color: "#667892",
+                  }}
+                >
+                  Loading saved Equipment Register…
+                </div>
+              )}
+              <div
+                className="rounded-lg overflow-hidden"
+                style={{ background: "#fff", border: "1px solid #dce5ef" }}
+              >
+                {activeWorkspaceTab === "Equipment" && (
+                  <div
+                    className="flex items-center gap-3 p-4 flex-wrap"
+                    style={{ borderBottom: "1px solid #e1e9f1" }}
+                  >
+                    <div
+                      className="flex items-center gap-2 flex-1 px-3 rounded-lg"
+                      style={{ height: 43, border: "1px solid #ccd8e5" }}
+                    >
+                      <Search size={19} color="#50647e" />
+                      <input
+                        value={filterText}
+                        onChange={(event) => {
+                          setFilterText(event.target.value);
+                          setReferencePage(1);
+                        }}
+                        placeholder="Search equipment tags or descriptions..."
+                        className="w-full outline-none text-sm"
+                      />
+                    </div>
+                    {renderFilterMenu("type", "Type", referenceTypes)}
+                    {renderFilterMenu("status", "Status", referenceStatuses)}
+                    {renderFilterMenu("changed", "Changed", [
+                      { value: "changed", label: "Changed only" },
+                      { value: "unchanged", label: "Unchanged only" },
+                    ])}
+                    {renderFilterMenu("confidence", "Confidence", [
+                      { value: "recorded", label: "Confidence recorded" },
+                      { value: "missing", label: "Confidence not recorded" },
+                    ])}
+                    {renderFilterMenu("validation", "Validation", [
+                      "Complete",
+                      "Missing metadata",
+                      "Discrepancy",
+                    ])}
+                    {(filterText ||
+                      Object.values(referenceFilters).some(Boolean)) && (
+                      <button
+                        type="button"
+                        onClick={clearReferenceFilters}
+                        className="px-3 text-sm font-semibold"
+                        style={{ height: 43, color: "#087f91" }}
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                )}
+                <div className="flex items-center justify-between px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <h2 className="text-xl font-bold m-0">
+                      {activeWorkspaceTab === "Equipment"
+                        ? "Equipment register"
+                        : activeWorkspaceTab}
+                    </h2>
+                    {registerSaveState === "saving" && (
+                      <span className="text-xs" style={{ color: "#667892" }}>
+                        Saving draft…
+                      </span>
+                    )}
+                    {registerSaveState === "saved" && (
+                      <span
+                        className="text-xs font-semibold"
+                        style={{ color: "#16723b" }}
+                      >
+                        Draft saved
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    {activeWorkspaceTab === "Equipment" && (
+                      <div className="relative" data-equipment-menu>
+                        <button
+                          type="button"
+                          aria-haspopup="menu"
+                          aria-expanded={openReferenceMenu === "columns"}
+                          onClick={() =>
+                            setOpenReferenceMenu((current) =>
+                              current === "columns" ? "" : "columns",
+                            )
+                          }
+                          className="px-3 py-2 rounded-lg border bg-white flex items-center gap-2 text-sm font-semibold"
+                        >
+                          <Columns size={16} /> Columns{" "}
+                          <ChevronDown size={14} />
+                        </button>
+                        {openReferenceMenu === "columns" && (
+                          <div
+                            role="menu"
+                            className="absolute right-0 mt-1 w-60 rounded-lg p-2 z-30"
+                            style={{
+                              background: "#fff",
+                              border: "1px solid #dce5ef",
+                              boxShadow: "0 12px 28px rgba(20,39,70,.14)",
+                            }}
+                          >
+                            {REFERENCE_COLUMNS.map((column) => (
+                              <label
+                                key={column.key}
+                                className="flex items-center gap-2 px-2 py-2 rounded-md text-sm hover:bg-slate-50"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={visibleReferenceColumns.has(
+                                    column.key,
+                                  )}
+                                  onChange={() =>
+                                    toggleReferenceColumn(column.key)
+                                  }
+                                />
+                                <span>{column.label}</span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <div className="relative" data-equipment-menu>
+                      <button
+                        type="button"
+                        aria-haspopup="menu"
+                        aria-expanded={openReferenceMenu === "export"}
+                        onClick={() =>
+                          setOpenReferenceMenu((current) =>
+                            current === "export" ? "" : "export",
+                          )
+                        }
+                        disabled={!referenceRows.length}
+                        className="px-3 py-2 rounded-lg border bg-white flex items-center gap-2 text-sm font-semibold disabled:opacity-50"
+                      >
+                        <Download size={16} /> Export <ChevronDown size={14} />
+                      </button>
+                      {openReferenceMenu === "export" && (
+                        <div
+                          role="menu"
+                          className="absolute right-0 mt-1 w-56 rounded-lg p-1 z-30"
+                          style={{
+                            background: "#fff",
+                            border: "1px solid #dce5ef",
+                            boxShadow: "0 12px 28px rgba(20,39,70,.14)",
+                          }}
+                        >
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={() => handleReferenceExport("filtered")}
+                            className="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-slate-50"
+                          >
+                            Export filtered rows
+                          </button>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={() => handleReferenceExport("all")}
+                            className="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-slate-50"
+                          >
+                            Export all rows
+                          </button>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            disabled={!selectedRows.size}
+                            onClick={() => handleReferenceExport("selected")}
+                            className="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-slate-50 disabled:opacity-50"
+                          >
+                            Export selected rows
+                          </button>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={handleMasterExport}
+                            className="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-slate-50"
+                          >
+                            Export Equipment Master JSON
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                {activeWorkspaceTab === "Equipment" &&
+                  files.length === 0 &&
+                  !results && (
+                    <div
+                      className="mx-4 mb-4 p-4 rounded-lg"
+                      style={{
+                        background: "#f4fbfc",
+                        border: "1px dashed #8bc8cf",
+                      }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="font-semibold">
+                            Start an extraction
+                          </div>
+                          <div className="text-sm" style={{ color: "#667892" }}>
+                            Upload one or more P&amp;ID PDFs to populate this
+                            register.
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => fileRef.current?.click()}
+                          className="px-3 py-2 rounded-lg text-white text-sm font-semibold"
+                          style={{ background: "#087f91" }}
+                        >
+                          Upload P&amp;ID
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                {activeWorkspaceTab === "Equipment" && files.length > 0 && (
+                  <div
+                    className="mx-4 mb-4 p-4 rounded-lg flex items-center justify-between"
+                    style={{
+                      background: "#f4fbfc",
+                      border: "1px solid #8bc8cf",
+                    }}
+                  >
+                    <div>
+                      <div className="font-semibold">
+                        {files.length} P&amp;ID file
+                        {files.length === 1 ? "" : "s"} ready
+                      </div>
+                      <div className="text-sm" style={{ color: "#667892" }}>
+                        {files.map((file) => file.name).join(", ")}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleExtract}
+                      disabled={isProcessing}
+                      className="px-3 py-2 rounded-lg text-white text-sm font-semibold"
+                      style={{
+                        background: "#087f91",
+                        opacity: isProcessing ? 0.65 : 1,
+                      }}
+                    >
+                      {isProcessing ? `${progress}%` : "Extract and save draft"}
+                    </button>
+                  </div>
+                )}
+                {activeWorkspaceTab === "Equipment" && (
+                  <>
+                    <div className="overflow-x-auto">
+                      <table
+                        className="w-full text-left"
+                        style={{ minWidth: 760 }}
+                      >
+                        <thead style={{ background: "#f7fafc" }}>
+                          <tr>
+                            <th
+                              className="px-3 py-3"
+                              style={{
+                                borderTop: "1px solid #e1e9f1",
+                                borderBottom: "1px solid #d8e3ed",
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                aria-label="Select filtered equipment"
+                                checked={
+                                  filteredReferenceRows.length > 0 &&
+                                  filteredReferenceRows.every((row, index) =>
+                                    selectedRows.has(getRowKey(row, index)),
+                                  )
+                                }
+                                onChange={() => {
+                                  const allSelected =
+                                    filteredReferenceRows.length > 0 &&
+                                    filteredReferenceRows.every((row, index) =>
+                                      selectedRows.has(getRowKey(row, index)),
+                                    );
+                                  setSelectedRows((current) => {
+                                    const next = new Set(current);
+                                    filteredReferenceRows.forEach(
+                                      (row, index) => {
+                                        const key = getRowKey(row, index);
+                                        if (allSelected) next.delete(key);
+                                        else next.add(key);
+                                      },
+                                    );
+                                    return next;
+                                  });
+                                }}
+                              />
+                            </th>
+                            {activeReferenceColumns.map((column) => (
+                              <th
+                                key={column.key}
+                                className="px-3 py-3 text-xs font-bold"
+                                style={{
+                                  color: "#142746",
+                                  borderTop: "1px solid #e1e9f1",
+                                  borderBottom: "1px solid #d8e3ed",
+                                }}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => handleSort(column.key)}
+                                  className="font-bold text-left"
+                                >
+                                  {column.label}
+                                  {sortCol === column.key
+                                    ? sortAsc
+                                      ? " ↑"
+                                      : " ↓"
+                                    : ""}
+                                </button>
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pagedReferenceRows.map((row, i) => {
+                            const status = referenceStatus(row);
+                            const active = referenceSelected?.id
+                              ? referenceSelected.id === row.id
+                              : referenceSelected?.tag === row.tag;
+                            return (
+                              <tr
+                                key={row.id || row.tag || i}
+                                onClick={() => {
+                                  setSelectedEquipment(row);
+                                  setActiveDetailTab("Details");
+                                }}
+                                style={{
+                                  background: active ? "#dff7f7" : "#fff",
+                                  borderBottom: "1px solid #e1e9f1",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                <td className="px-3 py-2">
+                                  <input
+                                    type="checkbox"
+                                    aria-label={`Select ${row.tag}`}
+                                    checked={selectedRows.has(
+                                      getRowKey(row, i),
+                                    )}
+                                    onChange={() =>
+                                      handleSelectRow(getRowKey(row, i))
+                                    }
+                                    onClick={(event) => event.stopPropagation()}
+                                  />
+                                </td>
+                                {activeReferenceColumns.map((column) => (
+                                  <td
+                                    key={column.key}
+                                    className={`px-3 py-2 text-sm ${column.key === "tag" ? "font-semibold" : ""}`}
+                                  >
+                                    {column.key === "status" ? (
+                                      <span
+                                        className="px-3 py-1 rounded-md text-xs font-bold"
+                                        style={statusStyle(status)}
+                                      >
+                                        {status}
+                                      </span>
+                                    ) : column.key === "review_state" ? (
+                                      <span className="capitalize">
+                                        {column.value(row) || "unreviewed"}
+                                      </span>
+                                    ) : (
+                                      column.value(row) || "—"
+                                    )}
+                                  </td>
+                                ))}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                      {!pagedReferenceRows.length && (
+                        <div
+                          className="p-10 text-center text-sm"
+                          style={{ color: "#667892" }}
+                        >
+                          No equipment matches the active filters.
+                        </div>
+                      )}
+                    </div>
+                    <div
+                      className="flex justify-between items-center px-4 py-4 text-sm"
+                      style={{ color: "#667892" }}
+                    >
+                      <span>
+                        {filteredReferenceRows.length
+                          ? (safeReferencePage - 1) * referencePageSize + 1
+                          : 0}
+                        –
+                        {Math.min(
+                          safeReferencePage * referencePageSize,
+                          filteredReferenceRows.length,
+                        )}{" "}
+                        of {filteredReferenceRows.length}
+                      </span>
+                      <span className="flex gap-2 items-center">
+                        <button
+                          type="button"
+                          aria-label="Previous page"
+                          disabled={safeReferencePage === 1}
+                          onClick={() =>
+                            setReferencePage((page) => Math.max(1, page - 1))
+                          }
+                          className="px-2 py-1 disabled:opacity-30"
+                        >
+                          ‹
+                        </button>
+                        {Array.from(
+                          { length: referencePageCount },
+                          (_, index) => index + 1,
+                        )
+                          .slice(
+                            Math.max(0, safeReferencePage - 3),
+                            Math.max(5, safeReferencePage + 2),
+                          )
+                          .map((page) => (
+                            <button
+                              type="button"
+                              key={page}
+                              onClick={() => setReferencePage(page)}
+                              className="px-3 py-2 rounded-md font-bold"
+                              style={{
+                                background:
+                                  page === safeReferencePage
+                                    ? "#dff7f7"
+                                    : "transparent",
+                                color:
+                                  page === safeReferencePage
+                                    ? "#087f91"
+                                    : "#667892",
+                              }}
+                            >
+                              {page}
+                            </button>
+                          ))}
+                        <button
+                          type="button"
+                          aria-label="Next page"
+                          disabled={safeReferencePage === referencePageCount}
+                          onClick={() =>
+                            setReferencePage((page) =>
+                              Math.min(referencePageCount, page + 1),
+                            )
+                          }
+                          className="px-2 py-1 disabled:opacity-30"
+                        >
+                          ›
+                        </button>
+                      </span>
+                    </div>
+                  </>
+                )}
+                {activeWorkspaceTab === "Overview" && (
+                  <div
+                    className="p-5 border-t"
+                    style={{ borderColor: "#e1e9f1" }}
+                  >
+                    <div className="grid grid-cols-2 gap-4">
+                      <div
+                        className="p-4 rounded-lg"
+                        style={{ border: "1px solid #dce5ef" }}
+                      >
+                        <div
+                          className="text-xs font-bold uppercase"
+                          style={{ color: "#6b89a8" }}
+                        >
+                          Current revision
+                        </div>
+                        <div className="text-2xl font-bold mt-2">
+                          Rev {registerRecord?.revision?.number ?? "—"}
+                        </div>
+                        <div
+                          className="text-sm mt-1 capitalize"
+                          style={{ color: "#667892" }}
+                        >
+                          {registerRecord?.revision?.status ||
+                            "No saved revision"}{" "}
+                          · version {registerRecord?.revision?.version ?? "—"}
+                        </div>
+                      </div>
+                      <div
+                        className="p-4 rounded-lg"
+                        style={{ border: "1px solid #dce5ef" }}
+                      >
+                        <div
+                          className="text-xs font-bold uppercase"
+                          style={{ color: "#6b89a8" }}
+                        >
+                          Source evidence
+                        </div>
+                        <div className="text-2xl font-bold mt-2">
+                          {registerRecord?.revision?.source_files?.length || 0}
+                        </div>
+                        <div
+                          className="text-sm mt-1"
+                          style={{ color: "#667892" }}
+                        >
+                          P&amp;ID source file(s) recorded
+                        </div>
+                      </div>
+                      <div
+                        className="p-4 rounded-lg"
+                        style={{ border: "1px solid #dce5ef" }}
+                      >
+                        <div
+                          className="text-xs font-bold uppercase"
+                          style={{ color: "#6b89a8" }}
+                        >
+                          Review readiness
+                        </div>
+                        <div className="text-2xl font-bold mt-2">
+                          {registerRecord?.revision?.summary?.reviewed_items ||
+                            0}{" "}
+                          / {referenceRows.length}
+                        </div>
+                        <div
+                          className="text-sm mt-1"
+                          style={{ color: "#667892" }}
+                        >
+                          Items marked reviewed; this is not revision approval
+                        </div>
+                      </div>
+                      <div
+                        className="p-4 rounded-lg"
+                        style={{ border: "1px solid #dce5ef" }}
+                      >
+                        <div
+                          className="text-xs font-bold uppercase"
+                          style={{ color: "#6b89a8" }}
+                        >
+                          Data completeness
+                        </div>
+                        <div className="text-2xl font-bold mt-2">
+                          {
+                            referenceRows.filter(
+                              (row) => referenceValidation(row) === "Complete",
+                            ).length
+                          }{" "}
+                          / {referenceRows.length}
+                        </div>
+                        <div
+                          className="text-sm mt-1"
+                          style={{ color: "#667892" }}
+                        >
+                          Rows with description, type and P&amp;ID reference
+                        </div>
+                      </div>
+                    </div>
+                    <div
+                      className="mt-4 p-4 rounded-lg"
+                      style={{
+                        background: "#f7fafc",
+                        border: "1px solid #dce5ef",
+                      }}
+                    >
+                      <div className="font-bold">Register scope</div>
+                      <div className="grid grid-cols-2 gap-3 mt-3 text-sm">
+                        <div>
+                          <span style={{ color: "#667892" }}>Project</span>
+                          <div className="font-semibold mt-1">
+                            {activeProject.name || activeProject.code}
+                          </div>
+                        </div>
+                        <div>
+                          <span style={{ color: "#667892" }}>Discipline</span>
+                          <div className="font-semibold mt-1">
+                            {registerRecord?.discipline || "Process"}
+                          </div>
+                        </div>
+                        <div>
+                          <span style={{ color: "#667892" }}>
+                            Drawing reference
+                          </span>
+                          <div className="font-semibold mt-1">
+                            {registerRecord?.revision?.extraction_run
+                              ?.drawing_ref || "Not recorded"}
+                          </div>
+                        </div>
+                        <div>
+                          <span style={{ color: "#667892" }}>Last saved</span>
+                          <div className="font-semibold mt-1">
+                            {registerRecord?.updated_at
+                              ? new Date(
+                                  registerRecord.updated_at,
+                                ).toLocaleString()
+                              : "Not saved"}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {activeWorkspaceTab === "Changes" && (
+                  <div className="border-t" style={{ borderColor: "#e1e9f1" }}>
+                    {changesLoading && (
+                      <div
+                        className="p-8 text-center text-sm"
+                        style={{ color: "#667892" }}
+                      >
+                        Loading change evidence…
+                      </div>
+                    )}
+                    {changesError && (
+                      <div
+                        role="alert"
+                        className="m-4 p-3 rounded-lg text-sm"
+                        style={{
+                          background: "#fff8e8",
+                          border: "1px solid #f3c66d",
+                          color: "#7a4300",
+                        }}
+                      >
+                        {changesError}
+                      </div>
+                    )}
+                    {!changesLoading && !registerChanges.length && (
+                      <div
+                        className="p-10 text-center text-sm"
+                        style={{ color: "#667892" }}
+                      >
+                        No extraction or manual change evidence is recorded for
+                        this revision.
+                      </div>
+                    )}
+                    {registerChanges.map((change) => (
+                      <button
+                        type="button"
+                        key={change.id}
+                        onClick={() => {
+                          const row = referenceRows.find(
+                            (item) => item.id === change.item_id,
+                          );
+                          if (row) {
+                            setSelectedEquipment(row);
+                            setActiveDetailTab("History");
+                          }
+                        }}
+                        className="w-full text-left px-5 py-4 border-b hover:bg-slate-50"
+                        style={{ borderColor: "#e1e9f1" }}
+                      >
+                        <div className="flex justify-between gap-4">
+                          <div>
+                            <span className="font-bold">{change.tag}</span>
+                            <span className="mx-2" style={{ color: "#9aa9ba" }}>
+                              ·
+                            </span>
+                            <span className="capitalize">
+                              {fieldLabel(change.field)}
+                            </span>
+                          </div>
+                          <span
+                            className="text-xs"
+                            style={{ color: "#667892" }}
+                          >
+                            {new Date(change.changed_at).toLocaleString()}
+                          </span>
+                        </div>
+                        <div
+                          className="text-sm mt-2"
+                          style={{ color: "#526176" }}
+                        >
+                          {change.field === "__row__" ? (
+                            "Created from extraction"
+                          ) : (
+                            <>
+                              <span className="line-through">
+                                {displayChangeValue(change.old_value)}
+                              </span>
+                              <span className="mx-2">→</span>
+                              <strong>
+                                {displayChangeValue(change.new_value)}
+                              </strong>
+                            </>
+                          )}
+                        </div>
+                        <div
+                          className="text-xs mt-2"
+                          style={{ color: "#6b89a8" }}
+                        >
+                          {change.changed_by} · {change.source}
+                          {change.reason ? ` · ${change.reason}` : ""}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {activeWorkspaceTab === "Validation" && (
+                  <div
+                    className="border-t overflow-x-auto"
+                    style={{ borderColor: "#e1e9f1" }}
+                  >
+                    <div
+                      className="px-5 py-3 text-sm"
+                      style={{ background: "#f7fafc", color: "#526176" }}
+                    >
+                      Advisory completeness checks only. Engineering validation
+                      rules are not yet configured.
+                    </div>
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr>
+                          {[
+                            "Equipment",
+                            "Data quality",
+                            "Confidence",
+                            "Review state",
+                            "Action",
+                          ].map((label) => (
+                            <th
+                              key={label}
+                              className="px-5 py-3 text-xs font-bold border-b"
+                              style={{ borderColor: "#dce5ef" }}
+                            >
+                              {label}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {referenceRows.map((row) => {
+                          const quality = referenceValidation(row);
+                          return (
+                            <tr
+                              key={row.id || row.tag}
+                              className="border-b"
+                              style={{ borderColor: "#e1e9f1" }}
+                            >
+                              <td className="px-5 py-3">
+                                <div className="font-bold text-sm">
+                                  {row.tag}
+                                </div>
+                                <div
+                                  className="text-xs"
+                                  style={{ color: "#667892" }}
+                                >
+                                  {row.description || "No description"}
+                                </div>
+                              </td>
+                              <td className="px-5 py-3 text-sm">
+                                <span
+                                  className="px-2 py-1 rounded-md"
+                                  style={{
+                                    background:
+                                      quality === "Complete"
+                                        ? "#d8f7df"
+                                        : "#fff1c7",
+                                    color:
+                                      quality === "Complete"
+                                        ? "#16723b"
+                                        : "#9a4d00",
+                                  }}
+                                >
+                                  {quality}
+                                </span>
+                              </td>
+                              <td className="px-5 py-3 text-sm">
+                                {row.confidence == null
+                                  ? "Not recorded"
+                                  : `${row.confidence}%`}
+                              </td>
+                              <td className="px-5 py-3 text-sm capitalize">
+                                {row.review_state || "unreviewed"}
+                              </td>
+                              <td className="px-5 py-3">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedEquipment(row);
+                                    setActiveWorkspaceTab("Equipment");
+                                    setActiveDetailTab("Details");
+                                  }}
+                                  className="text-sm font-semibold"
+                                  style={{ color: "#087f91" }}
+                                >
+                                  Open item
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {activeWorkspaceTab === "Reviews" && (
+                  <div
+                    className="p-5 border-t"
+                    style={{ borderColor: "#e1e9f1" }}
+                  >
+                    <div
+                      className="p-4 rounded-lg mb-4"
+                      style={{
+                        background: "#f4fbfc",
+                        border: "1px solid #8bc8cf",
+                      }}
+                    >
+                      <div className="font-bold">Item review tracking</div>
+                      <div
+                        className="text-sm mt-1"
+                        style={{ color: "#526176" }}
+                      >
+                        These item states support draft preparation. They do not
+                        submit or approve the Equipment Revision.
+                      </div>
+                    </div>
+                    {["discrepancy", "unreviewed", "reviewed"].map((state) => {
+                      const rows = referenceRows.filter(
+                        (row) => (row.review_state || "unreviewed") === state,
+                      );
+                      return (
+                        <div
+                          key={state}
+                          className="mb-4 rounded-lg overflow-hidden"
+                          style={{ border: "1px solid #dce5ef" }}
+                        >
+                          <div
+                            className="px-4 py-3 flex justify-between"
+                            style={{ background: "#f7fafc" }}
+                          >
+                            <span className="font-bold capitalize">
+                              {state}
+                            </span>
+                            <span
+                              className="text-sm"
+                              style={{ color: "#667892" }}
+                            >
+                              {rows.length}
+                            </span>
+                          </div>
+                          {rows.length ? (
+                            rows.map((row) => (
+                              <button
+                                type="button"
+                                key={row.id || row.tag}
+                                onClick={() => {
+                                  setSelectedEquipment(row);
+                                  setActiveWorkspaceTab("Equipment");
+                                  setActiveDetailTab("Details");
+                                }}
+                                className="w-full flex justify-between px-4 py-3 border-t text-left hover:bg-slate-50"
+                                style={{ borderColor: "#e1e9f1" }}
+                              >
+                                <span>
+                                  <strong>{row.tag}</strong>
+                                  <span
+                                    className="ml-3 text-sm"
+                                    style={{ color: "#667892" }}
+                                  >
+                                    {row.description || "No description"}
+                                  </span>
+                                </span>
+                                <span
+                                  className="text-sm font-semibold"
+                                  style={{ color: "#087f91" }}
+                                >
+                                  Review item
+                                </span>
+                              </button>
+                            ))
+                          ) : (
+                            <div
+                              className="px-4 py-3 text-sm"
+                              style={{ color: "#667892" }}
+                            >
+                              No items in this state.
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {activeWorkspaceTab === "Documents" && (
+                  <div
+                    className="p-5 border-t"
+                    style={{ borderColor: "#e1e9f1" }}
+                  >
+                    <div className="text-sm mb-4" style={{ color: "#526176" }}>
+                      Source evidence recorded for draft revision{" "}
+                      {registerRecord?.revision?.number ?? "—"}.
+                    </div>
+                    {registerRecord?.revision?.source_files?.length ? (
+                      <div className="grid gap-3">
+                        {registerRecord.revision.source_files.map(
+                          (filename, index) => (
+                            <div
+                              key={`${filename}-${index}`}
+                              className="p-4 rounded-lg flex gap-3"
+                              style={{ border: "1px solid #dce5ef" }}
+                            >
+                              <FileText size={24} color="#087f91" />
+                              <div>
+                                <div className="font-bold">{filename}</div>
+                                <div
+                                  className="text-xs mt-1"
+                                  style={{ color: "#667892" }}
+                                >
+                                  Extraction source · Upload{" "}
+                                  {registerRecord.revision.source_upload_id ||
+                                    "not recorded"}
+                                </div>
+                              </div>
+                            </div>
+                          ),
+                        )}
+                      </div>
+                    ) : (
+                      <div
+                        className="p-8 rounded-lg text-center text-sm"
+                        style={{ background: "#f7fafc", color: "#667892" }}
+                      >
+                        No source filenames are recorded for this revision.
+                      </div>
+                    )}
+                    <div
+                      className="mt-4 p-4 rounded-lg text-sm"
+                      style={{
+                        background: "#fff8e8",
+                        border: "1px solid #f3c66d",
+                        color: "#7a4300",
+                      }}
+                    >
+                      This phase stores source references, not a controlled
+                      issued document or guaranteed downloadable file.
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+            <aside
+              style={{
+                background: "#fff",
+                borderLeft: "1px solid #dbe4ee",
+                height: "100%",
+                minHeight: 0,
+                padding: "18px 20px 0",
+                overflow: "hidden",
+              }}
+            >
+              {referenceSelected ? (
+                <div className="flex flex-col h-full min-h-0">
+                  <div className="flex justify-between gap-4">
+                    <div>
+                      <div
+                        className="text-xs font-bold uppercase tracking-wide"
+                        style={{ color: "#6b89a8" }}
+                      >
+                        Equipment details
+                      </div>
+                      <h2
+                        style={{
+                          fontSize: 34,
+                          margin: "10px 0 0",
+                          lineHeight: 1,
+                          fontWeight: 750,
+                        }}
+                      >
+                        {referenceSelected.tag || "—"}
+                      </h2>
+                      <div className="font-bold mt-1">
+                        {referenceSelected.description || "Equipment item"}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setDetailsExpanded((value) => !value)}
+                      aria-label={
+                        detailsExpanded
+                          ? "Restore details panel width"
+                          : "Expand details panel"
+                      }
+                      className="p-1 rounded hover:bg-slate-50"
+                    >
+                      <Maximize2 size={18} />
+                    </button>
+                  </div>
+                  <span
+                    className="inline-block mt-3 px-3 py-1 rounded-md text-xs font-bold"
+                    style={statusStyle(referenceStatus(referenceSelected))}
+                  >
+                    {referenceStatus(referenceSelected)}
+                  </span>
+                  <div
+                    className="flex gap-8 mt-7 border-b"
+                    style={{ borderColor: "#dce5ef" }}
+                  >
+                    {["Details", "History", "Documents"].map((tab) => (
+                      <button
+                        type="button"
+                        key={tab}
+                        onClick={() => {
+                          setActiveDetailTab(tab);
+                          if (tab !== "Details") setEditingEquipment(null);
+                        }}
+                        className="pb-3 text-sm font-semibold"
+                        style={{
+                          color:
+                            activeDetailTab === tab ? "#087f91" : "#40536d",
+                          borderBottom:
+                            activeDetailTab === tab
+                              ? "3px solid #087f91"
+                              : "3px solid transparent",
+                        }}
+                      >
+                        {tab}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="el-ref-detail-scroll flex-1 min-h-0 overflow-y-auto pr-1 pb-4">
+                    {activeDetailTab === "Details" &&
+                      (editingEquipment ? (
+                        <div className="mt-5">
+                          <h3 className="text-lg font-bold mb-3">
+                            Edit draft equipment
+                          </h3>
+                          <div className="grid grid-cols-2 gap-3">
+                            {[
+                              ["tag", "Equipment tag"],
+                              ["equipment_type", "Type"],
+                              ["description", "Description"],
+                              ["pid_no", "P&ID reference"],
+                              ["design_pressure_max", "Design pressure"],
+                              ["oper_pressure", "Operating pressure"],
+                              ["design_temp_max", "Design temperature"],
+                              ["moc", "Material of construction"],
+                              ["insulation", "Insulation"],
+                              ["remarks", "Remarks"],
+                            ].map(([field, label]) => (
+                              <label
+                                key={field}
+                                className={
+                                  field === "description" || field === "remarks"
+                                    ? "col-span-2"
+                                    : ""
+                                }
+                              >
+                                <span
+                                  className="block text-xs font-semibold mb-1"
+                                  style={{ color: "#526176" }}
+                                >
+                                  {label}
+                                </span>
+                                <input
+                                  value={editDraft[field] || ""}
+                                  onChange={(event) =>
+                                    setEditDraft((current) => ({
+                                      ...current,
+                                      [field]: event.target.value,
+                                    }))
+                                  }
+                                  className="w-full px-3 py-2 rounded-md text-sm"
+                                  style={{
+                                    border: "1px solid #ccd8e5",
+                                    minHeight: 40,
+                                  }}
+                                />
+                              </label>
+                            ))}
+                            <label className="col-span-2">
+                              <span
+                                className="block text-xs font-semibold mb-1"
+                                style={{ color: "#526176" }}
+                              >
+                                Item review state (not revision approval)
+                              </span>
+                              <select
+                                value={editDraft.review_state || "unreviewed"}
+                                onChange={(event) =>
+                                  setEditDraft((current) => ({
+                                    ...current,
+                                    review_state: event.target.value,
+                                  }))
+                                }
+                                className="w-full px-3 py-2 rounded-md text-sm bg-white"
+                                style={{
+                                  border: "1px solid #ccd8e5",
+                                  minHeight: 40,
+                                }}
+                              >
+                                <option value="unreviewed">Unreviewed</option>
+                                <option value="reviewed">Reviewed</option>
+                                <option value="discrepancy">Discrepancy</option>
+                              </select>
+                            </label>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+
+                          <h3 className="text-lg font-bold mt-5 mb-2">
+                            P&amp;ID information
+                          </h3>
+                          {renderMetadataRows([
+                            ["Drawing No", pidInformation.drawing_no],
+                            ["Title", pidInformation.title],
+                            ["Equipment Tag", pidInformation.equipment_tag],
+                            ["Equipment Name", pidInformation.equipment_name],
+                            ["Revision", pidInformation.revision],
+                            [
+                              "Project",
+                              pidInformation.project ||
+                                activeProject.name ||
+                                activeProject.code,
+                            ],
+                            ["Location", pidInformation.location],
+                          ])}
+                          <h3 className="text-lg font-bold mt-5 mb-2">
+                            Equipment record
+                          </h3>
+                          {renderMetadataRows([
+                            ["Tag Number", equipmentRecord.tag_number],
+                            ["Description", equipmentRecord.description],
+                            ["Type", equipmentRecord.type],
+                            ["Discipline", equipmentRecord.discipline],
+                            ["Area", equipmentRecord.area],
+                            ["Status", equipmentRecord.status],
+                            ["Source P&ID", equipmentRecord.source_pid],
+                            ["Revision", equipmentRecord.revision],
+                          ])}
+                          <h3 className="text-lg font-bold mt-5 mb-2">
+                            Engineering specifications
+                          </h3>
+                          {renderMetadataRows([
+                            [
+                              "Design Pressure",
+                              engineeringSpecifications.design_pressure,
+                            ],
+                            [
+                              "Operating Pressure",
+                              engineeringSpecifications.operating_pressure,
+                            ],
+                            [
+                              "Design Temperature",
+                              engineeringSpecifications.design_temperature,
+                            ],
+                            [
+                              "Operating Temperature",
+                              engineeringSpecifications.operating_temperature,
+                            ],
+                            [
+                              "Diameter (ID)",
+                              engineeringSpecifications.diameter,
+                            ],
+                            ["Length (T/T)", engineeringSpecifications.length],
+                            [
+                              "Material of Construction",
+                              engineeringSpecifications.material_of_construction,
+                            ],
+                            ["Capacity", engineeringSpecifications.capacity],
+                            ["Insulation", referenceSelected.insulation],
+                          ])}
+                          <h3 className="text-lg font-bold mt-5 mb-2">
+                            Connected safety equipment
+                          </h3>
+                          {renderTagGroup(
+                            "Pressure Safety Valves",
+                            safetyEquipment.pressure_safety_valves,
+                          )}
+                          {renderTagGroup(
+                            "Shutdown Valves",
+                            safetyEquipment.shutdown_valves,
+                          )}
+                          <h3 className="text-lg font-bold mt-5 mb-2">
+                            Main process instruments
+                          </h3>
+                          {renderTagGroup(
+                            "Pressure Instruments",
+                            processInstruments.pressure_instruments,
+                          )}
+                          {renderTagGroup(
+                            "Level Instruments",
+                            processInstruments.level_instruments,
+                          )}
+                          {renderTagGroup(
+                            "Flow Instruments",
+                            processInstruments.flow_instruments,
+                          )}
+                          {renderTagGroup(
+                            "Temperature Instruments",
+                            processInstruments.temperature_instruments,
+                          )}
+                          <h3 className="text-lg font-bold mt-5 mb-2">
+                            Connected lines
+                          </h3>
+                          {connectedLines.length ? (
+                            <div
+                              className="overflow-x-auto rounded-lg"
+                              style={{ border: "1px solid #dce5ef" }}
+                            >
+                              <table className="w-full text-left text-xs">
+                                <thead style={{ background: "#f7fafc" }}>
+                                  <tr>
+                                    <th className="px-3 py-2">Service</th>
+                                    <th className="px-3 py-2">Destination</th>
+                                    <th className="px-3 py-2">Line</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {connectedLines.map((line, index) => (
+                                    <tr
+                                      key={`${line.service}-${line.destination}-${line.line_tag}-${index}`}
+                                      className="border-t"
+                                      style={{ borderColor: "#e2e8f0" }}
+                                    >
+                                      <td className="px-3 py-2">
+                                        {line.service || "—"}
+                                      </td>
+                                      <td className="px-3 py-2">
+                                        {line.destination || "—"}
+                                      </td>
+                                      <td className="px-3 py-2 font-semibold">
+                                        {line.line_tag || "—"}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <div
+                              className="p-3 rounded-lg text-sm"
+                              style={{
+                                background: "#f7fafc",
+                                color: "#667892",
+                              }}
+                            >
+                              No connected lines were reliably associated with
+                              this item.
+                            </div>
+                          )}
+                          <h3 className="text-lg font-bold mt-5 mb-2">
+                            Equipment Master relationships
+                          </h3>
+                          <p className="text-xs mb-3" style={{ color: "#667892" }}>
+                            Proposed links from explicit P&amp;ID evidence. Empty
+                            groups are not proof that no connection exists.
+                          </p>
+                          {Object.entries(masterRelationships).some(
+                            ([, entries]) => entries?.length,
+                          ) ? (
+                            Object.entries(masterRelationships)
+                              .filter(([, entries]) => entries?.length)
+                              .map(([group, entries]) => (
+                                <section key={group} className="mb-3">
+                                  <h4 className="text-sm font-bold capitalize mb-1">
+                                    {group.replaceAll("_", " ")} ({entries.length})
+                                  </h4>
+                                  {entries.map((entry, index) => {
+                                    const tier = resolveConfidenceTier(
+                                      entry.confidence,
+                                    );
+                                    const crossRefTarget =
+                                      group === "cross_pid_references" &&
+                                      entry.tag
+                                        ? referenceRows.find(
+                                            (row) =>
+                                              row.tag && row.tag === entry.tag,
+                                          ) || null
+                                        : null;
+                                    return (
+                                      <div
+                                        key={`${group}-${entry.tag}-${index}`}
+                                        className="p-3 mb-2 rounded-lg text-sm break-words"
+                                        style={{ background: "#f7fafc", border: "1px solid #dce5ef" }}
+                                      >
+                                        <div className="font-semibold flex flex-wrap items-center gap-2">
+                                          <span>
+                                            {entry.tag || entry.description || "Unlabelled link"}
+                                            {" · "}{entry.review_state || "proposed"}
+                                            {entry.confidence != null &&
+                                              ` · ${entry.confidence}% estimated confidence`}
+                                          </span>
+                                          {entry.source === "vision" && (
+                                            <span
+                                              className="px-2 py-0.5 rounded-md text-xs font-semibold"
+                                              style={VISION_SOURCE_CHIP_STYLE}
+                                              title="Extracted by the vision pipeline"
+                                            >
+                                              Vision
+                                            </span>
+                                          )}
+                                          {tier && (
+                                            <span
+                                              className="px-2 py-0.5 rounded-md text-xs font-bold"
+                                              style={tier.style}
+                                              title={`${entry.confidence}% estimated confidence`}
+                                            >
+                                              {tier.label}
+                                            </span>
+                                          )}
+                                          {group === "cross_pid_references" &&
+                                            entry.resolution ===
+                                              "resolved_in_batch" &&
+                                            (crossRefTarget ? (
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setSelectedEquipment(
+                                                    crossRefTarget,
+                                                  );
+                                                  setActiveDetailTab("Details");
+                                                }}
+                                                className="px-2 py-0.5 rounded-md text-xs font-semibold"
+                                                style={
+                                                  RESOLVED_BATCH_CHIP_STYLE
+                                                }
+                                                title={[
+                                                  `Select ${crossRefTarget.tag} — resolved on`,
+                                                  entry.resolved_drawing_no ||
+                                                    "drawing not recorded",
+                                                  entry.resolved_filename,
+                                                ]
+                                                  .filter(Boolean)
+                                                  .join(" ")}
+                                              >
+                                                Resolved in batch
+                                              </button>
+                                            ) : (
+                                              <span
+                                                className="px-2 py-0.5 rounded-md text-xs font-semibold"
+                                                style={
+                                                  RESOLVED_BATCH_CHIP_STYLE
+                                                }
+                                                title={[
+                                                  "Resolved on",
+                                                  entry.resolved_drawing_no ||
+                                                    "drawing not recorded",
+                                                  entry.resolved_filename,
+                                                ]
+                                                  .filter(Boolean)
+                                                  .join(" ")}
+                                              >
+                                                Resolved in batch
+                                              </span>
+                                            ))}
+                                          {group === "cross_pid_references" &&
+                                            entry.resolution ===
+                                              "unresolved" && (
+                                              <span
+                                                className="px-2 py-0.5 rounded-md text-xs font-semibold"
+                                                style={UNRESOLVED_CHIP_STYLE}
+                                                title={[
+                                                  "Source drawing:",
+                                                  entry.drawing_no ||
+                                                    "not recorded",
+                                                  entry.page
+                                                    ? `page ${entry.page}`
+                                                    : "",
+                                                ]
+                                                  .filter(Boolean)
+                                                  .join(" ")}
+                                              >
+                                                Unresolved
+                                              </span>
+                                            )}
+                                        </div>
+                                        {entry.evidence && (
+                                          <blockquote className="mt-1 text-xs" style={{ color: "#40536d" }}>
+                                            “{entry.evidence}”
+                                          </blockquote>
+                                        )}
+                                        <div className="mt-1 text-xs" style={{ color: "#667892" }}>
+                                          {entry.drawing_no || "Drawing not recorded"}
+                                          {entry.page ? ` · page ${entry.page}` : ""}
+                                          {entry.filename ? ` · ${entry.filename}` : ""}
+                                        </div>
+                                        {group === "cross_pid_references" &&
+                                          entry.resolution ===
+                                            "resolved_in_batch" &&
+                                          (entry.resolved_drawing_no ||
+                                            entry.resolved_filename) && (
+                                            <div
+                                              className="mt-1 text-xs"
+                                              style={{ color: "#667892" }}
+                                            >
+                                              Resolved to{" "}
+                                              {entry.resolved_drawing_no ||
+                                                "drawing not recorded"}
+                                              {entry.resolved_filename
+                                                ? ` · ${entry.resolved_filename}`
+                                                : ""}
+                                            </div>
+                                          )}
+                                      </div>
+                                    );
+                                  })}
+                                </section>
+                              ))
+                          ) : (
+                            <div className="p-3 rounded-lg text-sm" style={{ background: "#f7fafc", color: "#667892" }}>
+                              No source-backed links extracted. Check the drawing for graphical connections.
+                            </div>
+                          )}
+                          {extractionCoverage && (
+                            <>
+                              <h3 className="text-lg font-bold mt-5 mb-2">
+                                Extraction coverage
+                              </h3>
+                              <div
+                                className="p-3 rounded-lg text-sm"
+                                style={{
+                                  background: "#f7fafc",
+                                  border: "1px solid #dce5ef",
+                                }}
+                              >
+                                <div className="flex justify-between gap-3 flex-wrap font-semibold">
+                                  <span>
+                                    {extractionCoverage.groups_found ?? 0} /{" "}
+                                    {extractionCoverage.groups_total ?? 0}{" "}
+                                    groups found
+                                  </span>
+                                  <span>
+                                    {Math.round(
+                                      (extractionCoverage.completeness || 0) *
+                                        100,
+                                    )}
+                                    % complete
+                                  </span>
+                                </div>
+                                {Object.values(
+                                  extractionCoverage.groups || {},
+                                ).some((group) => group?.count > 0) && (
+                                  <div className="flex flex-wrap gap-2 mt-2">
+                                    {Object.entries(
+                                      extractionCoverage.groups || {},
+                                    )
+                                      .filter(([, group]) => group?.count > 0)
+                                      .map(([name, group]) => (
+                                        <span
+                                          key={name}
+                                          className="px-2 py-1 rounded-md text-xs font-semibold"
+                                          style={{
+                                            background: "#edf7f8",
+                                            color: "#086b79",
+                                            border: "1px solid #b9dde1",
+                                          }}
+                                          title={
+                                            Array.isArray(group?.sources) &&
+                                            group.sources.length
+                                              ? `Sources: ${group.sources.join(", ")}`
+                                              : undefined
+                                          }
+                                        >
+                                          {name.replaceAll("_", " ")} ·{" "}
+                                          {group.count}
+                                        </span>
+                                      ))}
+                                  </div>
+                                )}
+                                <div
+                                  className="text-xs mt-2"
+                                  style={{ color: "#667892" }}
+                                >
+                                  Blank groups mean unverified, not absent.
+                                </div>
+                                {extractionProvenance &&
+                                  (extractionProvenance.text != null ||
+                                    extractionProvenance.vision != null) && (
+                                    <div
+                                      className="text-xs mt-1"
+                                      style={{ color: "#667892" }}
+                                    >
+                                      {`Text-sourced: ${extractionProvenance.text ?? 0} · Vision-sourced: ${extractionProvenance.vision ?? 0}`}
+                                    </div>
+                                  )}
+                              </div>
+                            </>
+                          )}
+                          <h3 className="text-lg font-bold mt-5 mb-2">
+                            Additional engineering attributes
+                          </h3>
+                          {Object.keys(masterAttributes).length ? (
+                            renderMetadataRows(
+                              Object.entries(masterAttributes).map(([key, attribute]) => [
+                                key.replaceAll("_", " "),
+                                [attribute.value, attribute.unit].filter(Boolean).join(" "),
+                              ]),
+                            )
+                          ) : (
+                            <p className="text-sm" style={{ color: "#667892" }}>
+                              No additional source-backed attributes recorded.
+                            </p>
+                          )}
+                          <h3 className="text-lg font-bold mt-5 mb-2">
+                            Validation findings
+                          </h3>
+                          <div
+                            className="p-3 rounded-lg"
+                            style={{
+                              background: "#fff8e8",
+                              border: "1px solid #f3c66d",
+                            }}
+                          >
+                            <div className="flex justify-between gap-3">
+                              <span
+                                className="font-bold text-sm"
+                                style={{ color: "#9a4d00" }}
+                              >
+                                {validationFindings.status ||
+                                  "Validation pending"}
+                              </span>
+                              <span
+                                className="text-xs font-semibold"
+                                style={{ color: "#667892" }}
+                              >
+                                {metadataConfidence.overall
+                                  ? `${metadataConfidence.overall}% confidence`
+                                  : "Confidence not recorded"}
+                              </span>
+                            </div>
+                            <div
+                              className="text-xs mt-3 mb-2"
+                              style={{ color: "#526176" }}
+                            >
+                              Not reliably available from the P&amp;ID alone:
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {(validationFindings.missing_fields || []).map(
+                                (field) => (
+                                  <span
+                                    key={field}
+                                    className="px-2 py-1 rounded text-xs"
+                                    style={{
+                                      background: "#fff",
+                                      border: "1px solid #efd69a",
+                                    }}
+                                  >
+                                    {field}
+                                  </span>
+                                ),
+                              )}
+                            </div>
+                            {(validationFindings.warnings || []).map((warning) => (
+                              <p key={warning} className="text-xs mt-2" role="status">
+                                {warning}
+                              </p>
+                            ))}
+                          </div>
+                          {referenceSelected.review_state === "discrepancy" && (
+                            <div
+                              className="mt-4 p-3 rounded-lg flex gap-3"
+                              style={{
+                                background: "#fff8e8",
+                                border: "1px solid #f3c66d",
+                              }}
+                            >
+                              <AlertTriangle size={22} color="#c87500" />
+                              <div>
+                                <div
+                                  className="font-bold text-sm"
+                                  style={{ color: "#9a4d00" }}
+                                >
+                                  Discrepancy
+                                </div>
+                                <div className="text-sm">
+                                  This extracted row requires engineering
+                                  review.
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                          <div
+                            className="mt-3 p-3 rounded-lg flex gap-3"
+                            style={{ border: "1px solid #dce5ef" }}
+                          >
+                            <FileText size={22} />
+                            <div>
+                              <div className="font-bold text-sm">
+                                Draft revision{" "}
+                                {registerRecord?.revision?.number ?? "—"}
+                              </div>
+                              <div
+                                className="text-sm"
+                                style={{ color: "#667892" }}
+                              >
+                                {registerRecord?.revision?.source_files?.join(
+                                  ", ",
+                                ) || "No source filename recorded"}
+                              </div>
+                            </div>
+                          </div>
+                        </>
+                      ))}
+                    {activeDetailTab === "History" && (
+                      <div className="mt-5">
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="text-lg font-bold m-0">
+                            Change history
+                          </h3>
+                          <button
+                            type="button"
+                            onClick={loadRegisterChanges}
+                            disabled={changesLoading}
+                            className="text-sm font-semibold"
+                            style={{ color: "#087f91" }}
+                          >
+                            {changesLoading ? "Loading…" : "Refresh"}
+                          </button>
+                        </div>
+                        {changesError && (
+                          <div
+                            role="alert"
+                            className="p-3 rounded-lg text-sm mb-3"
+                            style={{
+                              background: "#fff8e8",
+                              border: "1px solid #f3c66d",
+                              color: "#7a4300",
+                            }}
+                          >
+                            {changesError}
+                          </div>
+                        )}
+                        {!selectedItemChanges.length && !changesLoading && (
+                          <div
+                            className="p-5 rounded-lg text-center text-sm"
+                            style={{ background: "#f7fafc", color: "#667892" }}
+                          >
+                            No change evidence is recorded for this equipment
+                            item.
+                          </div>
+                        )}
+                        {selectedItemChanges.map((change) => (
+                          <div
+                            key={change.id}
+                            className="p-3 mb-3 rounded-lg"
+                            style={{ border: "1px solid #dce5ef" }}
+                          >
+                            <div className="flex justify-between gap-3">
+                              <span className="font-bold text-sm capitalize">
+                                {fieldLabel(change.field)}
+                              </span>
+                              <span
+                                className="text-xs"
+                                style={{ color: "#667892" }}
+                              >
+                                {new Date(change.changed_at).toLocaleString()}
+                              </span>
+                            </div>
+                            <div
+                              className="text-sm mt-2"
+                              style={{ color: "#526176" }}
+                            >
+                              {change.field === "__row__" ? (
+                                "Created from extraction"
+                              ) : (
+                                <>
+                                  <span className="line-through">
+                                    {displayChangeValue(change.old_value)}
+                                  </span>
+                                  <span className="mx-2">→</span>
+                                  <strong>
+                                    {displayChangeValue(change.new_value)}
+                                  </strong>
+                                </>
+                              )}
+                            </div>
+                            <div
+                              className="text-xs mt-2"
+                              style={{ color: "#6b89a8" }}
+                            >
+                              {change.changed_by} · {change.source}
+                            </div>
+                            {change.reason && (
+                              <div
+                                className="text-xs mt-1"
+                                style={{ color: "#526176" }}
+                              >
+                                {change.reason}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {activeDetailTab === "Documents" && (
+                      <div className="mt-5">
+                        <h3 className="text-lg font-bold mb-3">
+                          P&amp;ID evidence
+                        </h3>
+                        <div
+                          className="p-3 rounded-lg mb-4"
+                          style={{ border: "1px solid #dce5ef" }}
+                        >
+                          {renderMetadataRows([
+                            ["Drawing No", pidInformation.drawing_no],
+                            ["Title", pidInformation.title],
+                            ["Revision", pidInformation.revision],
+                            [
+                              "Project",
+                              pidInformation.project ||
+                                activeProject.name ||
+                                activeProject.code,
+                            ],
+                            ["Location", pidInformation.location],
+                          ])}
+                        </div>
+                        <h3 className="text-lg font-bold mb-3">
+                          Source documents
+                        </h3>
+                        {registerRecord?.revision?.source_files?.map(
+                          (filename, index) => (
+                            <div
+                              key={`${filename}-${index}`}
+                              className="p-3 rounded-lg mb-3 flex gap-3"
+                              style={{ border: "1px solid #dce5ef" }}
+                            >
+                              <FileText size={22} color="#087f91" />
+                              <div>
+                                <div className="font-bold text-sm">
+                                  {filename}
+                                </div>
+                                <div
+                                  className="text-xs mt-1"
+                                  style={{ color: "#667892" }}
+                                >
+                                  Extraction source for revision{" "}
+                                  {registerRecord.revision.number}
+                                </div>
+                              </div>
+                            </div>
+                          ),
+                        )}
+                        {!registerRecord?.revision?.source_files?.length && (
+                          <div
+                            className="p-5 rounded-lg text-center text-sm"
+                            style={{ background: "#f7fafc", color: "#667892" }}
+                          >
+                            No source filenames are recorded.
+                          </div>
+                        )}
+                        <h3 className="text-lg font-bold mt-5 mb-3">
+                          Extraction provenance
+                        </h3>
+                        <div
+                          className="p-3 rounded-lg mb-4"
+                          style={{
+                            background: "#f7fafc",
+                            border: "1px solid #dce5ef",
+                          }}
+                        >
+                          {renderMetadataRows([
+                            ["Validation status", validationFindings.status],
+                            [
+                              "Overall confidence",
+                              metadataConfidence.overall
+                                ? `${metadataConfidence.overall}%`
+                                : "",
+                            ],
+                            [
+                              "Register revision",
+                              registerRecord?.revision?.number,
+                            ],
+                            [
+                              "Upload reference",
+                              registerRecord?.revision?.source_upload_id,
+                            ],
+                          ])}
+                          {Object.keys(fieldEvidence).length > 0 && (
+                            <div className="mt-3">
+                              <div
+                                className="text-xs font-bold uppercase mb-2"
+                                style={{ color: "#6b89a8" }}
+                              >
+                                Field evidence
+                              </div>
+                              {Object.entries(fieldEvidence).map(
+                                ([field, evidence]) => (
+                                  <div key={field} className="text-xs mb-2">
+                                    <strong className="capitalize">
+                                      {field.replaceAll("_", " ")}:
+                                    </strong>{" "}
+                                    {evidence}
+                                  </div>
+                                ),
+                              )}
+                            </div>
+                          )}
+                        </div>
+                        <h3 className="text-lg font-bold mb-3">
+                          Required supporting sources
+                        </h3>
+                        <div className="flex flex-wrap gap-2 mb-4">
+                          {(validationFindings.recommended_sources || []).map(
+                            (source) => (
+                              <span
+                                key={source}
+                                className="px-2 py-1 rounded-md text-xs font-semibold"
+                                style={{
+                                  background: "#edf7f8",
+                                  color: "#086b79",
+                                  border: "1px solid #b9dde1",
+                                }}
+                              >
+                                {source}
+                              </span>
+                            ),
+                          )}
+                        </div>
+                        <div
+                          className="p-3 rounded-lg text-xs"
+                          style={{
+                            background: "#fff8e8",
+                            border: "1px solid #f3c66d",
+                            color: "#7a4300",
+                          }}
+                        >
+                          Source references and extracted evidence are not
+                          controlled issued documents. Missing vendor and
+                          procurement values must come from approved supporting
+                          records.
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {activeDetailTab === "Details" && (
+                    <div
+                      className="flex-shrink-0 py-3"
+                      style={{
+                        borderTop: "1px solid #dce5ef",
+                        background: "#fff",
+                      }}
+                    >
+                      {editingEquipment ? (
+                        <div className="flex gap-3">
+                          <button
+                            onClick={() => {
+                              setEditingEquipment(null);
+                              setEditDraft({});
+                            }}
+                            disabled={isSavingEquipment}
+                            className="flex-1 py-3 rounded-lg font-bold text-sm"
+                            style={{
+                              border: "1px solid #ccd8e5",
+                              background: "#fff",
+                            }}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={handleSaveEquipment}
+                            disabled={isSavingEquipment}
+                            className="flex-1 py-3 rounded-lg font-bold text-sm text-white"
+                            style={{
+                              background: "#087f91",
+                              opacity: isSavingEquipment ? 0.65 : 1,
+                            }}
+                          >
+                            {isSavingEquipment ? "Saving…" : "Save draft"}
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => beginEquipmentEdit(referenceSelected)}
+                          disabled={
+                            registerRecord?.revision?.status !== "draft" ||
+                            registerRecord?.revision?.is_immutable
+                          }
+                          className="w-full py-3 rounded-lg font-bold text-sm"
+                          style={{
+                            border: "1px solid #087f91",
+                            color: "#087f91",
+                            background: "#fff",
+                            opacity:
+                              registerRecord?.revision?.status === "draft" &&
+                              !registerRecord?.revision?.is_immutable
+                                ? 1
+                                : 0.55,
+                          }}
+                        >
+                          Edit equipment
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center mt-24" style={{ color: "#667892" }}>
+                  <Boxes size={42} className="mx-auto mb-3" />
+                  <div className="font-semibold">Select an equipment item</div>
+                  <div className="text-sm mt-1">
+                    Details and source evidence will appear here.
+                  </div>
+                </div>
+              )}
+            </aside>
+          </main>
+        </div>
+      </div>
+    );
 
   return (
     <>
@@ -1117,911 +4755,1892 @@ const EquipmentList = () => {
 
       {/* ── Full-page background — wraps in fixed overlay when fullscreen ── */}
       <div
-        className={`min-h-screen relative overflow-x-hidden${isFullscreen ? ' eq-fullscreen-wrap' : ''}`}
+        className={`min-h-screen relative overflow-x-hidden${isFullscreen ? " eq-fullscreen-wrap" : ""}`}
         style={{ background: EQ_T.bg }}
       >
+        {leaveConfirmation}
 
         {/* Fine dot grid */}
-        <div className="fixed inset-0 pointer-events-none"
-          style={{ backgroundImage: EQ_T.gridDot, backgroundSize:'44px 44px' }} />
+        <div
+          className="fixed inset-0 pointer-events-none"
+          style={{ backgroundImage: EQ_T.gridDot, backgroundSize: "44px 44px" }}
+        />
 
         {/* Ambient gradient blobs */}
         {EQ_T.blobs.map((b, i) => (
-          <div key={i} className="absolute rounded-full pointer-events-none"
-            style={{ width:b.size, height:b.size, top:b.top, bottom:b.bottom, left:b.left, right:b.right,
-              background:`radial-gradient(circle, ${b.color} 0%, transparent 70%)`, animation:b.anim }} />
+          <div
+            key={i}
+            className="absolute rounded-full pointer-events-none"
+            style={{
+              width: b.size,
+              height: b.size,
+              top: b.top,
+              bottom: b.bottom,
+              left: b.left,
+              right: b.right,
+              background: `radial-gradient(circle, ${b.color} 0%, transparent 70%)`,
+              animation: b.anim,
+            }}
+          />
         ))}
 
         {/* Right-side animated SVG pipe decoration */}
         <div className="absolute right-0 top-0 bottom-0 w-52 pointer-events-none overflow-hidden opacity-25 hidden xl:block">
-          <svg width="208" height="100%" viewBox="0 0 208 800" preserveAspectRatio="none"
-            fill="none" xmlns="http://www.w3.org/2000/svg">
-            <line x1="0" y1="176" x2="208" y2="176" stroke="#3b82f6" strokeWidth="2.5"
-              strokeDasharray="12 8" style={{ animation:'eqPipeFlow 2.4s linear infinite' }} />
-            <line x1="0" y1="496" x2="208" y2="496" stroke="#2563eb" strokeWidth="2.5"
-              strokeDasharray="12 8" style={{ animation:'eqPipeFlow 2.8s linear infinite 0.4s' }} />
-            <line x1="104" y1="176" x2="104" y2="496" stroke="#6366f1" strokeWidth="1.5"
-              strokeDasharray="8 10" style={{ animation:'eqPipeFlow 3.2s linear infinite 0.8s' }} />
-            <rect x="32"  y="154" width="40" height="44" rx="5" fill="rgba(59,130,246,0.12)" stroke="#3b82f6" strokeWidth="1.5"/>
-            <rect x="136" y="154" width="40" height="44" rx="5" fill="rgba(37,99,235,0.10)"  stroke="#2563eb" strokeWidth="1.5"/>
-            <rect x="84"  y="474" width="40" height="44" rx="5" fill="rgba(99,102,241,0.10)" stroke="#6366f1" strokeWidth="1.5"/>
-            <text x="43"  y="180" fill="#3b82f6" fontSize="8" fontFamily="monospace" fontWeight="700">V-101</text>
-            <text x="147" y="180" fill="#2563eb" fontSize="8" fontFamily="monospace" fontWeight="700">E-201</text>
-            <text x="91"  y="500" fill="#6366f1" fontSize="8" fontFamily="monospace" fontWeight="700">P-301</text>
-            <text x="4"   y="170" fill="#3b82f6" fontSize="7" fontFamily="monospace" opacity="0.65">S-01</text>
-            <text x="4"   y="490" fill="#2563eb" fontSize="7" fontFamily="monospace" opacity="0.65">S-03</text>
+          <svg
+            width="208"
+            height="100%"
+            viewBox="0 0 208 800"
+            preserveAspectRatio="none"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <line
+              x1="0"
+              y1="176"
+              x2="208"
+              y2="176"
+              stroke="#3b82f6"
+              strokeWidth="2.5"
+              strokeDasharray="12 8"
+              style={{ animation: "eqPipeFlow 2.4s linear infinite" }}
+            />
+            <line
+              x1="0"
+              y1="496"
+              x2="208"
+              y2="496"
+              stroke="#2563eb"
+              strokeWidth="2.5"
+              strokeDasharray="12 8"
+              style={{ animation: "eqPipeFlow 2.8s linear infinite 0.4s" }}
+            />
+            <line
+              x1="104"
+              y1="176"
+              x2="104"
+              y2="496"
+              stroke="#6366f1"
+              strokeWidth="1.5"
+              strokeDasharray="8 10"
+              style={{ animation: "eqPipeFlow 3.2s linear infinite 0.8s" }}
+            />
+            <rect
+              x="32"
+              y="154"
+              width="40"
+              height="44"
+              rx="5"
+              fill="rgba(59,130,246,0.12)"
+              stroke="#3b82f6"
+              strokeWidth="1.5"
+            />
+            <rect
+              x="136"
+              y="154"
+              width="40"
+              height="44"
+              rx="5"
+              fill="rgba(37,99,235,0.10)"
+              stroke="#2563eb"
+              strokeWidth="1.5"
+            />
+            <rect
+              x="84"
+              y="474"
+              width="40"
+              height="44"
+              rx="5"
+              fill="rgba(99,102,241,0.10)"
+              stroke="#6366f1"
+              strokeWidth="1.5"
+            />
+            <text
+              x="43"
+              y="180"
+              fill="#3b82f6"
+              fontSize="8"
+              fontFamily="monospace"
+              fontWeight="700"
+            >
+              V-101
+            </text>
+            <text
+              x="147"
+              y="180"
+              fill="#2563eb"
+              fontSize="8"
+              fontFamily="monospace"
+              fontWeight="700"
+            >
+              E-201
+            </text>
+            <text
+              x="91"
+              y="500"
+              fill="#6366f1"
+              fontSize="8"
+              fontFamily="monospace"
+              fontWeight="700"
+            >
+              P-301
+            </text>
+            <text
+              x="4"
+              y="170"
+              fill="#3b82f6"
+              fontSize="7"
+              fontFamily="monospace"
+              opacity="0.65"
+            >
+              S-01
+            </text>
+            <text
+              x="4"
+              y="490"
+              fill="#2563eb"
+              fontSize="7"
+              fontFamily="monospace"
+              opacity="0.65"
+            >
+              S-03
+            </text>
           </svg>
           {EQ_T.streamDots.map((d, i) => (
-            <div key={i} className="absolute w-2 h-2 rounded-full pointer-events-none"
-              style={{ top: d.top, left: 0, background: d.color,
-                boxShadow: `0 0 5px ${d.color}`, animation: `eqStreamDot ${d.dur} linear infinite ${d.delay}` }} />
+            <div
+              key={i}
+              className="absolute w-2 h-2 rounded-full pointer-events-none"
+              style={{
+                top: d.top,
+                left: 0,
+                background: d.color,
+                boxShadow: `0 0 5px ${d.color}`,
+                animation: `eqStreamDot ${d.dur} linear infinite ${d.delay}`,
+              }}
+            />
           ))}
         </div>
 
         {/* Animated top gradient bar */}
-        <div className="absolute inset-x-0 top-0 h-[3px] pointer-events-none"
-          style={{ backgroundImage: EQ_T.gradBar, backgroundSize:'300% auto', animation:'eqGradShift 3s linear infinite' }} />
+        <div
+          className="absolute inset-x-0 top-0 h-[3px] pointer-events-none"
+          style={{
+            backgroundImage: EQ_T.gradBar,
+            backgroundSize: "300% auto",
+            animation: "eqGradShift 3s linear infinite",
+          }}
+        />
 
         <div className="relative z-10">
-
           {/* ── Full-width content wrapper (V1 canvas) ── */}
           <div
             style={{
-              maxWidth: isFullscreen ? LAYOUT_CONFIG.fullscreenMaxWidth : LAYOUT_CONFIG.normalMaxWidth,
-              padding:  `${isFullscreen ? LAYOUT_CONFIG.fullscreenPaddingY : LAYOUT_CONFIG.normalPaddingY} ${isFullscreen ? LAYOUT_CONFIG.fullscreenPaddingX : LAYOUT_CONFIG.normalPaddingX}`,
+              maxWidth: isFullscreen
+                ? LAYOUT_CONFIG.fullscreenMaxWidth
+                : LAYOUT_CONFIG.normalMaxWidth,
+              padding: `${isFullscreen ? LAYOUT_CONFIG.fullscreenPaddingY : LAYOUT_CONFIG.normalPaddingY} ${isFullscreen ? LAYOUT_CONFIG.fullscreenPaddingX : LAYOUT_CONFIG.normalPaddingX}`,
             }}
           >
-
-          {/* ── Hero Header — elevated gradient card (engaging) ── */}
-          <div className="mb-10 eq-section relative" style={{ animationDelay: '0s' }}>
-            {/* Glowing gradient border ring (rotating conic) */}
-            <div className="absolute -inset-[1.5px] rounded-3xl pointer-events-none overflow-hidden" aria-hidden>
-              <div style={{
-                position: 'absolute', inset: '-40%',
-                background: 'conic-gradient(from 0deg, rgba(59,130,246,0.55), rgba(99,102,241,0.55), rgba(245,158,11,0.45), rgba(16,185,129,0.45), rgba(59,130,246,0.55))',
-                animation: 'eq-hero-ring 9s linear infinite',
-              }} />
-            </div>
-            {/* Card body */}
-            <div className="relative rounded-3xl overflow-hidden" style={{
-              background: 'linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(238,242,255,0.94) 55%, rgba(240,249,255,0.96) 100%)',
-              border: '1px solid rgba(255,255,255,0.7)',
-              boxShadow: '0 12px 40px rgba(59,130,246,0.14), 0 2px 8px rgba(15,23,42,0.05)',
-              padding: '32px 36px',
-              backdropFilter: 'blur(8px)',
-            }}>
-              {/* Sheen sweep */}
-              <div className="pointer-events-none absolute top-0 bottom-0 w-1/3" aria-hidden style={{
-                background: 'linear-gradient(105deg, transparent 0%, rgba(255,255,255,0.5) 50%, transparent 100%)',
-                animation: 'eq-hero-sheen 5.5s ease-in-out infinite',
-              }} />
-              {/* Soft inner glow orbs */}
-              <div className="pointer-events-none absolute -top-16 -right-10 w-64 h-64 rounded-full" aria-hidden style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.18), transparent 70%)' }} />
-              <div className="pointer-events-none absolute -bottom-20 -left-10 w-64 h-64 rounded-full" aria-hidden style={{ background: 'radial-gradient(circle, rgba(59,130,246,0.14), transparent 70%)' }} />
-
-            {/* Rule ring decoration (right side, desktop only) */}
-            <div className="absolute right-0 top-1/2 -translate-y-1/2 hidden xl:block pointer-events-none" style={{ opacity: 0.20 }}>
-              <svg width="172" height="172" viewBox="0 0 172 172" fill="none">
-                <circle cx="86" cy="86" r="76" stroke="url(#eqRingGradOuter)" strokeWidth="1.5" strokeDasharray="4 7"
-                  style={{ animation: 'eq-spin-slow 24s linear infinite' }} />
-                <circle cx="86" cy="86" r="50" stroke="url(#eqRingGradInner)" strokeWidth="1" strokeDasharray="3 9"
-                  style={{ animation: 'eqSpinSlowRev 16s linear infinite' }} />
-                {Array.from({ length: 12 }, (_, i) => {
-                  const ang = (i * 30 * Math.PI) / 180;
-                  const x = 86 + 76 * Math.cos(ang);
-                  const y = 86 + 76 * Math.sin(ang);
-                  return <circle key={i} cx={x} cy={y} r="2.5" fill="#3b82f6" opacity="0.8" />;
-                })}
-                <defs>
-                  <linearGradient id="eqRingGradOuter" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor="#3b82f6" /><stop offset="100%" stopColor="#6366f1" />
-                  </linearGradient>
-                  <linearGradient id="eqRingGradInner" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor="#2563eb" /><stop offset="100%" stopColor="#818cf8" />
-                  </linearGradient>
-                </defs>
-              </svg>
-            </div>
-
-            {/* Badge pill */}
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full mb-4 eq-chip" style={{
-              background: 'linear-gradient(90deg, rgba(59,130,246,0.12), rgba(99,102,241,0.12))',
-              border: '1px solid rgba(59,130,246,0.30)', animationDelay: '0.04s',
-              boxShadow: '0 2px 10px rgba(59,130,246,0.15)',
-            }}>
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-500" style={{ animation: 'eq-pulse-badge 2s ease infinite' }} />
-              <span className="text-blue-700 text-xs font-bold tracking-widest uppercase">AI-Powered · P&amp;ID Analysis</span>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold text-white"
-                style={{ background: 'linear-gradient(135deg,#10b981,#059669)' }}>
-                ✓ PRODUCTION READY
-              </span>
-            </div>
-
-            {/* Title + Fullscreen toggle */}
-            <div className="flex items-center justify-between gap-4">
-              <h1 className="text-4xl font-bold text-slate-900 flex items-center gap-4 mb-3">
-                <div className="p-2.5 rounded-xl relative overflow-hidden flex-shrink-0" style={{
-                  background: 'linear-gradient(135deg, rgba(59,130,246,0.12) 0%, rgba(99,102,241,0.07) 100%)',
-                  border: '1px solid rgba(59,130,246,0.22)',
-                  animation: 'eq-glow-light 3s ease infinite',
-                }}>
-                  <Boxes className="h-7 w-7 text-blue-600" />
-                </div>
-                Equipment&nbsp;
-                <span style={{
-                  background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 60%, #6366f1 100%)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                }}>List</span>
-              </h1>
-
-              {/* Fullscreen toggle — layout-only control, no core logic */}
-              <button
-                onClick={() => setIsFullscreen(fs => !fs)}
-                title={isFullscreen ? 'Exit fullscreen' : 'Expand to fullscreen'}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold flex-shrink-0"
-                style={{
-                  background: isFullscreen ? 'rgba(59,130,246,0.14)' : 'rgba(59,130,246,0.07)',
-                  border: '1px solid rgba(59,130,246,0.22)',
-                  color: '#065f46',
-                  transition: 'all 0.2s',
-                }}
+            {/* ── Hero Header — elevated gradient card (engaging) ── */}
+            <div
+              className="mb-10 eq-section relative"
+              style={{ animationDelay: "0s" }}
+            >
+              {/* Glowing gradient border ring (rotating conic) */}
+              <div
+                className="absolute -inset-[1.5px] rounded-3xl pointer-events-none overflow-hidden"
+                aria-hidden
               >
-                {isFullscreen
-                  ? <><ArrowsPointingInIcon className="h-4 w-4" /> Exit Fullscreen</>
-                  : <><ArrowsPointingOutIcon className="h-4 w-4" /> Fullscreen</>
-                }
-              </button>
-            </div>
-
-            {/* Description */}
-            <p className="text-slate-500 text-base leading-relaxed max-w-2xl mb-6">
-              Extract 18 engineering fields from Equipment List registers or P&amp;ID drawings using AI — Tag No., Description, Operating &amp; Design Conditions, MOC, Insulation, Dimensions, Motor Rating, P&amp;ID Ref and more
-            </p>
-
-            {/* Capability chips */}
-            <div className="flex flex-wrap gap-2 mb-5">
-              {EQ_T.chips.map((chip, i) => (
-                <span key={chip.label} className="eq-chip inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold"
+                <div
                   style={{
-                    background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.18)',
-                    color: '#065f46', animationDelay: `${0.08 + i * 0.06}s`,
-                  }}>
-                  <span>{chip.icon}</span><span>{chip.label}</span>
-                </span>
-              ))}
-            </div>
-
-            {/* Workflow steps */}
-            <div className="flex flex-wrap gap-3">
-              {[
-                { n:'01', label:'Upload PDF',       desc:'P&ID drawing or Equipment Register',  icon:'📄' },
-                { n:'02', label:'AI Extraction',    desc:'18-field OCR + rule engine',            icon:'🤖' },
-                { n:'03', label:'Selection Record', desc:'Review & confirm extracted rows',       icon:'☑️'  },
-                { n:'04', label:'Download Excel',   desc:'Structured register ready to use',      icon:'📊' },
-              ].map((step, i) => (
-                <div key={step.n} className="eq-chip flex items-center gap-2.5 px-4 py-2.5 rounded-xl"
-                  style={{
-                    background: 'white',
-                    border: '1px solid rgba(59,130,246,0.12)',
-                    boxShadow: '0 1px 4px rgba(59,130,246,0.06)',
-                    animationDelay: `${0.45 + i * 0.07}s`,
-                  }}>
-                  <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold text-white"
-                    style={{ background: 'linear-gradient(135deg,#3b82f6,#2563eb)' }}>
-                    {step.n}
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-slate-700 leading-none mb-0.5">{step.label}</p>
-                    <p className="text-[10px] text-slate-400 leading-none">{step.desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-            </div>
-          </div>
-
-          {/* ═══ VERIFICATION WORKFLOW + SMART DOCUMENTATION — V1 split-screen ═══
-              Soft-coded: components/EquipmentListWorkflowDocs.jsx (EQ_DOCS_CONFIG) */}
-          {EQ_DOCS.enabled && <EquipmentListWorkflowDocs />}
-
-          {/* ═══ PROJECT WORKSPACE section header + project chip — V1 pattern ═══ */}
-          <div className="flex items-center justify-between mb-6 mt-2 flex-wrap gap-4 eq-section" style={{ animationDelay: '0.06s' }}>
-            <div>
-              <h2 className="text-xl font-bold text-slate-900" style={{ margin: 0, marginBottom: '4px' }}>Project Workspace</h2>
-              <p className="text-sm text-slate-500" style={{ margin: 0 }}>Upload P&ID drawings to extract the equipment register — then review and export.</p>
-            </div>
-            {EQ_PROJECTS.enabled && activeProject && (
-              <button onClick={() => setActiveProject(null)}
-                title="Switch project"
-                className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition-all">
-                <FolderIcon className="h-4 w-4" />
-                <span className="max-w-[180px] truncate">{activeProject.name || activeProject.code || 'Project'}</span>
-                <span className="text-blue-400">·</span>
-                <span className="text-blue-500">Switch</span>
-              </button>
-            )}
-          </div>
-
-          {/* ── Legend Sheets — shared ProjectLegendPanel (project inheritance) ── */}
-          {EQ_LEGENDS.enabled && (
-          <ProjectLegendPanel
-            section={EQ_LEGENDS.section}
-            projectId={activeProject?.project_id}
-            projectName={activeProject?.name || activeProject?.code || ''}
-            onManage={() => setLegendModalOpen(true)}
-            refreshToken={legendModalOpen ? 0 : 1}
-          />
-          )}
-
-          {/* ── Upload Card ── */}
-          <div className="rounded-2xl p-6 mb-4 eq-section" style={{
-            background: 'white',
-            border: '1px solid rgba(59,130,246,0.15)',
-            boxShadow: '0 4px 28px rgba(59,130,246,0.09), 0 1px 4px rgba(0,0,0,0.04)',
-            animationDelay: '0.08s',
-          }}>
-            <div className="flex items-center gap-2.5 mb-5">
-              <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{
-                background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-                boxShadow: '0 2px 8px rgba(59,130,246,0.35)',
-              }}>1</div>
-              <h2 className="text-sm font-semibold text-slate-700 tracking-wide">Upload P&amp;ID Document</h2>
-              <span className="ml-auto text-xs text-slate-400 font-medium px-2.5 py-1 rounded-full" style={{
-                background: '#f8fafc', border: '1px solid #e2e8f0',
-              }}>PDF only</span>
-            </div>
-
-            {/* ── AI Document Assist (Wrench) — soft-coded, optional ─────── */}
-            {EL_AI_ASSIST_CONFIG.enabled && (
-              <div className="mb-5">
-                <WrenchAiDocAssist
-                  title={EL_AI_ASSIST_CONFIG.title}
-                  subtitleTag={EL_AI_ASSIST_CONFIG.subtitleTag}
-                  subtitle={EL_AI_ASSIST_CONFIG.subtitle}
-                  defaultHint={EL_AI_ASSIST_CONFIG.defaultHint}
-                  hintPlaceholder={EL_AI_ASSIST_CONFIG.hintPlaceholder}
-                  topN={EL_AI_ASSIST_CONFIG.topN}
-                  acceptedExts={EL_AI_ASSIST_CONFIG.acceptedExts}
-                  projectName=""
-                  onFileSelected={(f) => {
-                    // Append (dedupe by name+size) to support multi-PDF workflow
-                    setFiles(prev => {
-                      const key = `${f.name}|${f.size}`;
-                      const has = prev.some(p => `${p.name}|${p.size}` === key);
-                      return has ? prev : [...prev, f];
-                    });
-                    setError(null);
-                    setResults(null);
+                    position: "absolute",
+                    inset: "-40%",
+                    background:
+                      "conic-gradient(from 0deg, rgba(59,130,246,0.55), rgba(99,102,241,0.55), rgba(245,158,11,0.45), rgba(16,185,129,0.45), rgba(59,130,246,0.55))",
+                    animation: "eq-hero-ring 9s linear infinite",
                   }}
-                  onError={(msg) => setError(msg)}
                 />
               </div>
-            )}
+              {/* Card body */}
+              <div
+                className="relative rounded-3xl overflow-hidden"
+                style={{
+                  background:
+                    "linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(238,242,255,0.94) 55%, rgba(240,249,255,0.96) 100%)",
+                  border: "1px solid rgba(255,255,255,0.7)",
+                  boxShadow:
+                    "0 12px 40px rgba(59,130,246,0.14), 0 2px 8px rgba(15,23,42,0.05)",
+                  padding: "32px 36px",
+                  backdropFilter: "blur(8px)",
+                }}
+              >
+                {/* Sheen sweep */}
+                <div
+                  className="pointer-events-none absolute top-0 bottom-0 w-1/3"
+                  aria-hidden
+                  style={{
+                    background:
+                      "linear-gradient(105deg, transparent 0%, rgba(255,255,255,0.5) 50%, transparent 100%)",
+                    animation: "eq-hero-sheen 5.5s ease-in-out infinite",
+                  }}
+                />
+                {/* Soft inner glow orbs */}
+                <div
+                  className="pointer-events-none absolute -top-16 -right-10 w-64 h-64 rounded-full"
+                  aria-hidden
+                  style={{
+                    background:
+                      "radial-gradient(circle, rgba(99,102,241,0.18), transparent 70%)",
+                  }}
+                />
+                <div
+                  className="pointer-events-none absolute -bottom-20 -left-10 w-64 h-64 rounded-full"
+                  aria-hidden
+                  style={{
+                    background:
+                      "radial-gradient(circle, rgba(59,130,246,0.14), transparent 70%)",
+                  }}
+                />
 
-            <div
-              className="eq-upload-zone relative rounded-xl cursor-pointer overflow-hidden"
-              style={{
-                border: isDragging ? '2px solid rgba(59,130,246,0.75)' : files.length ? '2px solid rgba(59,130,246,0.5)' : '2px dashed rgba(59,130,246,0.25)',
-                background: isDragging ? 'rgba(59,130,246,0.08)' : files.length ? 'rgba(59,130,246,0.04)' : 'rgba(59,130,246,0.015)',
-                minHeight: 148,
-                transition: 'border-color 0.25s, background 0.25s, box-shadow 0.25s',
-              }}
-              onClick={() => !isProcessing && fileRef.current?.click()}
-              onDragOver={handleDragOver}
-              onDragEnter={handleDragEnter}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-            >
-              {/* Circuit trace border — top edge */}
-              <div className="absolute top-0 left-0 right-0 h-[2px] pointer-events-none"
-                style={{ background: 'rgba(59,130,246,0.55)', animation: 'eqTraceH 2.8s ease-in-out infinite' }} />
-              {/* Circuit trace border — bottom edge (offset) */}
-              <div className="absolute bottom-0 left-0 right-0 h-[2px] pointer-events-none"
-                style={{ background: 'rgba(59,130,246,0.40)', animation: 'eqTraceH 2.8s ease-in-out infinite 1.4s' }} />
-              {/* Circuit trace border — left edge */}
-              <div className="absolute top-0 bottom-0 left-0 w-[2px] pointer-events-none"
-                style={{ background: 'rgba(59,130,246,0.45)', animation: 'eqTraceV 2.8s ease-in-out infinite 0.7s' }} />
-              {/* Circuit trace border — right edge (offset) */}
-              <div className="absolute top-0 bottom-0 right-0 w-[2px] pointer-events-none"
-                style={{ background: 'rgba(59,130,246,0.35)', animation: 'eqTraceV 2.8s ease-in-out infinite 2.1s' }} />
+                {/* Rule ring decoration (right side, desktop only) */}
+                <div
+                  className="absolute right-0 top-1/2 -translate-y-1/2 hidden xl:block pointer-events-none"
+                  style={{ opacity: 0.2 }}
+                >
+                  <svg
+                    width="172"
+                    height="172"
+                    viewBox="0 0 172 172"
+                    fill="none"
+                  >
+                    <circle
+                      cx="86"
+                      cy="86"
+                      r="76"
+                      stroke="url(#eqRingGradOuter)"
+                      strokeWidth="1.5"
+                      strokeDasharray="4 7"
+                      style={{ animation: "eq-spin-slow 24s linear infinite" }}
+                    />
+                    <circle
+                      cx="86"
+                      cy="86"
+                      r="50"
+                      stroke="url(#eqRingGradInner)"
+                      strokeWidth="1"
+                      strokeDasharray="3 9"
+                      style={{ animation: "eqSpinSlowRev 16s linear infinite" }}
+                    />
+                    {Array.from({ length: 12 }, (_, i) => {
+                      const ang = (i * 30 * Math.PI) / 180;
+                      const x = 86 + 76 * Math.cos(ang);
+                      const y = 86 + 76 * Math.sin(ang);
+                      return (
+                        <circle
+                          key={i}
+                          cx={x}
+                          cy={y}
+                          r="2.5"
+                          fill="#3b82f6"
+                          opacity="0.8"
+                        />
+                      );
+                    })}
+                    <defs>
+                      <linearGradient
+                        id="eqRingGradOuter"
+                        x1="0"
+                        y1="0"
+                        x2="1"
+                        y2="1"
+                      >
+                        <stop offset="0%" stopColor="#3b82f6" />
+                        <stop offset="100%" stopColor="#6366f1" />
+                      </linearGradient>
+                      <linearGradient
+                        id="eqRingGradInner"
+                        x1="0"
+                        y1="0"
+                        x2="1"
+                        y2="1"
+                      >
+                        <stop offset="0%" stopColor="#2563eb" />
+                        <stop offset="100%" stopColor="#818cf8" />
+                      </linearGradient>
+                    </defs>
+                  </svg>
+                </div>
 
-              {/* Corner brackets */}
-              {[
-                'top-0 left-0   border-t-2 border-l-2',
-                'top-0 right-0  border-t-2 border-r-2',
-                'bottom-0 left-0  border-b-2 border-l-2',
-                'bottom-0 right-0 border-b-2 border-r-2',
-              ].map((cls, i) => (
-                <div key={i} className={`absolute ${cls} w-5 h-5 pointer-events-none`}
-                  style={{ borderColor: 'rgba(59,130,246,0.45)' }} />
-              ))}
+                {/* Badge pill */}
+                <div
+                  className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full mb-4 eq-chip"
+                  style={{
+                    background:
+                      "linear-gradient(90deg, rgba(59,130,246,0.12), rgba(99,102,241,0.12))",
+                    border: "1px solid rgba(59,130,246,0.30)",
+                    animationDelay: "0.04s",
+                    boxShadow: "0 2px 10px rgba(59,130,246,0.15)",
+                  }}
+                >
+                  <span
+                    className="w-1.5 h-1.5 rounded-full bg-blue-500"
+                    style={{ animation: "eq-pulse-badge 2s ease infinite" }}
+                  />
+                  <span className="text-blue-700 text-xs font-bold tracking-widest uppercase">
+                    AI-Powered · P&amp;ID Analysis
+                  </span>
+                  <span
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold text-white"
+                    style={{
+                      background: "linear-gradient(135deg,#10b981,#059669)",
+                    }}
+                  >
+                    ✓ PRODUCTION READY
+                  </span>
+                </div>
 
-              {/* Scan line (idle only) */}
-              {!files.length && !isProcessing && <div className="eq-scan-line" />}
-
-              <input ref={fileRef} type="file" accept=".pdf" multiple onChange={handleFileSelect} className="hidden" />
-
-              <div className="flex flex-col items-center justify-center gap-3 py-9 px-6">
-                {files.length > 0 ? (
-                  <>
-                    <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{
-                      background: 'linear-gradient(135deg, rgba(59,130,246,0.15), rgba(59,130,246,0.08))',
-                      border: '2px solid rgba(59,130,246,0.4)',
-                      animation: 'eq-glow-light 2.2s ease infinite',
-                    }}>
-                      <CheckCircleIcon className="h-8 w-8 text-blue-600" />
+                {/* Title + Fullscreen toggle */}
+                <div className="flex items-center justify-between gap-4">
+                  <h1 className="text-4xl font-bold text-slate-900 flex items-center gap-4 mb-3">
+                    <div
+                      className="p-2.5 rounded-xl relative overflow-hidden flex-shrink-0"
+                      style={{
+                        background:
+                          "linear-gradient(135deg, rgba(59,130,246,0.12) 0%, rgba(99,102,241,0.07) 100%)",
+                        border: "1px solid rgba(59,130,246,0.22)",
+                        animation: "eq-glow-light 3s ease infinite",
+                      }}
+                    >
+                      <Boxes className="h-7 w-7 text-blue-600" />
                     </div>
-                    <div className="text-center">
-                      {files.length === 1 ? (
+                    Equipment&nbsp;
+                    <span
+                      style={{
+                        background:
+                          "linear-gradient(135deg, #3b82f6 0%, #2563eb 60%, #6366f1 100%)",
+                        WebkitBackgroundClip: "text",
+                        WebkitTextFillColor: "transparent",
+                      }}
+                    >
+                      List
+                    </span>
+                  </h1>
+
+                  <div className="flex items-center gap-2 flex-wrap justify-end">
+                    {activeProject && (
+                      <button
+                        type="button"
+                        onClick={handleBackToProjects}
+                        disabled={
+                          isProcessing ||
+                          isSavingEquipment ||
+                          registerSaveState === "saving"
+                        }
+                        className="px-3 py-2 rounded-xl text-xs font-semibold bg-white border border-slate-300 disabled:opacity-50"
+                      >
+                        Back to Projects
+                      </button>
+                    )}
+                    {activeProject && (
+                      <button
+                        type="button"
+                        onClick={handleSaveDraft}
+                        disabled={
+                          isProcessing ||
+                          registerLoading ||
+                          registerSaveState === "saving" ||
+                          isSavingEquipment
+                        }
+                        className="px-3 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-50"
+                        style={{ background: "#087f91" }}
+                      >
+                        {registerSaveState === "saving" || isSavingEquipment
+                          ? "Saving…"
+                          : "Save Draft"}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setIsFullscreen((fs) => !fs)}
+                      title={
+                        isFullscreen
+                          ? "Exit fullscreen"
+                          : "Expand to fullscreen"
+                      }
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold flex-shrink-0"
+                      style={{
+                        background: isFullscreen
+                          ? "rgba(59,130,246,0.14)"
+                          : "rgba(59,130,246,0.07)",
+                        border: "1px solid rgba(59,130,246,0.22)",
+                        color: "#065f46",
+                        transition: "all 0.2s",
+                      }}
+                    >
+                      {isFullscreen ? (
                         <>
-                          <p className="text-slate-800 font-semibold text-sm">{files[0].name}</p>
-                          <p className="text-slate-400 text-xs mt-1">{(files[0].size / 1024 / 1024).toFixed(2)} MB · Ready for extraction</p>
+                          <ArrowsPointingInIcon className="h-4 w-4" /> Exit
+                          Fullscreen
                         </>
                       ) : (
                         <>
-                          <p className="text-slate-800 font-semibold text-sm">{files.length} PDF files selected</p>
-                          <div className="text-slate-400 text-xs mt-1 max-h-20 overflow-y-auto space-y-0.5">
-                            {files.map((f, i) => (
-                              <p key={i}>{f.name} &nbsp;<span className="text-slate-300">({(f.size / 1024 / 1024).toFixed(2)} MB)</span></p>
-                            ))}
-                          </div>
+                          <ArrowsPointingOutIcon className="h-4 w-4" />{" "}
+                          Fullscreen
                         </>
                       )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="px-3 py-1 rounded-full text-xs font-semibold text-blue-700 flex items-center gap-1.5" style={{
-                        background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)',
-                      }}>
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block"
-                          style={{ animation: 'eq-pulse-badge 1.6s ease infinite' }} />
-                        {files.length === 1 ? 'PDF Loaded' : `${files.length} PDFs Loaded`}
-                      </div>
-                      {!isProcessing && (
-                        <button
-                          onClick={e => { e.stopPropagation(); setFiles([]); setResults(null); setError(null); }}
-                          className="px-2.5 py-1 rounded-full text-xs font-medium text-slate-400 hover:text-red-500"
-                          style={{ background: '#f8fafc', border: '1px solid #e2e8f0', transition: 'color 0.2s' }}
-                        >✕ Remove</button>
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{
-                      background: 'linear-gradient(135deg, rgba(59,130,246,0.10), rgba(59,130,246,0.04))',
-                      border: '1.5px solid rgba(59,130,246,0.20)',
-                    }}>
-                      <CloudArrowUpIcon className="h-9 w-9 text-blue-500" />
-                    </div>
-                    <div className="text-center">
-                      <p className="text-slate-700 font-semibold text-sm">Drop a P&amp;ID PDF here <span className="text-slate-400 font-normal">or</span> <span className="text-blue-600 font-semibold">click to browse</span></p>
-                      <p className="text-slate-400 text-xs mt-1.5">Equipment List registers &amp; P&amp;ID drawings · Auto-detects mode · Multi-angle OCR (0°/90°/180°/270°)</p>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* ── Manual Observation Panel ── */}
-          <div className="rounded-2xl mb-4 eq-section overflow-hidden" style={{
-            background: 'white',
-            border: '1px solid rgba(59,130,246,0.15)',
-            boxShadow: '0 4px 24px rgba(59,130,246,0.08), 0 1px 4px rgba(0,0,0,0.04)',
-            animationDelay: '0.12s',
-          }}>
-            {/* Collapsible header */}
-            <button
-              onClick={() => setShowManualForm(v => !v)}
-              className="w-full flex items-center gap-2.5 px-6 py-4"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
-            >
-              <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{
-                background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-              }}>2</div>
-              <h2 className="text-sm font-semibold text-slate-700 tracking-wide flex-1">
-                Manual Observations
-                {manualObs.some(r => r.tag?.trim()) && (
-                  <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold text-blue-700"
-                    style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)' }}>
-                    {manualObs.filter(r => r.tag?.trim()).length} pending
-                  </span>
-                )}
-              </h2>
-              <span className="text-slate-400 text-xs font-medium mr-2">Enter equipment data manually from P&amp;ID drawing</span>
-              <span className="text-slate-400 text-sm">{showManualForm ? '▲' : '▼'}</span>
-            </button>
-
-            {showManualForm && (
-              <div className="px-6 pb-5" style={{ borderTop: '1px solid rgba(59,130,246,0.08)' }}>
-                {manualObs.map((row, rowIdx) => {
-                  const hint = resolveQuantityHint(row.tag);
-                  return (
-                    <div key={rowIdx} className="mb-5 pt-4" style={{ borderTop: rowIdx > 0 ? '1px dashed rgba(59,130,246,0.15)' : 'none' }}>
-                      {rowIdx > 0 && (
-                        <div className="flex justify-between items-center mb-3">
-                          <span className="text-xs font-semibold text-slate-500">Entry #{rowIdx + 1}</span>
-                          <button onClick={() => handleRemoveManualRow(rowIdx)}
-                            className="text-xs text-red-400 hover:text-red-600 font-medium px-2 py-0.5 rounded"
-                            style={{ background: '#fef2f2', border: '1px solid rgba(239,68,68,0.15)' }}>
-                            ✕ Remove
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Row 1: Tag + Description + PID No */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-                        {[
-                          { field: 'tag',         label: 'Equipment Tag No. *', placeholder: 'e.g. V-803-TF',     mono: true },
-                          { field: 'description', label: 'Description',          placeholder: 'e.g. MRD OIL SLUG CATCHER' },
-                          { field: 'pid_no',      label: 'P&ID No.',             placeholder: 'e.g. PJ6-EXD-MRI-BQDA-0023' },
-                        ].map(({ field, label, placeholder, mono }) => (
-                          <div key={field}>
-                            <label className="block text-xs font-semibold text-slate-600 mb-1">{label}</label>
-                            <input
-                              type="text"
-                              value={row[field]}
-                              onChange={e => handleManualFieldChange(rowIdx, field, e.target.value)}
-                              placeholder={placeholder}
-                              className="w-full px-3 py-2 text-sm rounded-lg outline-none"
-                              style={{
-                                background: '#f8fafc', border: '1px solid #e2e8f0', color: '#334155',
-                                fontFamily: mono ? 'ui-monospace, SFMono-Regular, monospace' : undefined,
-                                transition: 'border-color 0.2s, box-shadow 0.2s',
-                              }}
-                              onFocus={e => { e.target.style.borderColor='rgba(59,130,246,0.45)'; e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,0.1)'; }}
-                              onBlur={e => { e.target.style.borderColor='#e2e8f0'; e.target.style.boxShadow='none'; }}
-                            />
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Row 2: Quantity Required (dynamic label) + Design Flowrate + Phase */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1">
-                            Quantity Required
-                            {hint && (
-                              <span className="ml-1.5 px-1.5 py-0.5 rounded text-xs font-medium text-blue-700"
-                                style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.18)' }}>
-                                {hint.label}
-                              </span>
-                            )}
-                          </label>
-                          <input
-                            type="text"
-                            value={row.quality_required}
-                            onChange={e => handleManualFieldChange(rowIdx, 'quality_required', e.target.value)}
-                            placeholder={hint ? hint.placeholder : 'e.g. 327 M³'}
-                            className="w-full px-3 py-2 text-sm rounded-lg outline-none"
-                            style={{ background: '#f8fafc', border: '1px solid #e2e8f0', color: '#334155', transition: 'border-color 0.2s, box-shadow 0.2s' }}
-                            onFocus={e => { e.target.style.borderColor='rgba(59,130,246,0.45)'; e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,0.1)'; }}
-                            onBlur={e => { e.target.style.borderColor='#e2e8f0'; e.target.style.boxShadow='none'; }}
-                          />
-                        </div>
-                        {[
-                          { field: 'design_flowrate',  label: 'Design Flowrate / Duty', placeholder: 'e.g. 2.5 MMBtu/hr' },
-                          { field: 'phase',             label: 'Phase',                  placeholder: 'e.g. Liquid / Gas / Mixed' },
-                        ].map(({ field, label, placeholder }) => (
-                          <div key={field}>
-                            <label className="block text-xs font-semibold text-slate-600 mb-1">{label}</label>
-                            <input
-                              type="text"
-                              value={row[field]}
-                              onChange={e => handleManualFieldChange(rowIdx, field, e.target.value)}
-                              placeholder={placeholder}
-                              className="w-full px-3 py-2 text-sm rounded-lg outline-none"
-                              style={{ background: '#f8fafc', border: '1px solid #e2e8f0', color: '#334155', transition: 'border-color 0.2s, box-shadow 0.2s' }}
-                              onFocus={e => { e.target.style.borderColor='rgba(59,130,246,0.45)'; e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,0.1)'; }}
-                              onBlur={e => { e.target.style.borderColor='#e2e8f0'; e.target.style.boxShadow='none'; }}
-                            />
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Row 3: Operating conditions */}
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-                        {[
-                          { field: 'oper_pressure',       label: 'Oper. Pressure (PSIG)',      placeholder: 'e.g. 150' },
-                          { field: 'oper_temperature',    label: 'Oper. Temp. (°F)',            placeholder: 'e.g. 105/60' },
-                          { field: 'design_pressure_min', label: 'Des. Press. Min (PSIG)',      placeholder: 'e.g. FV' },
-                          { field: 'design_pressure_max', label: 'Des. Press. Max (PSIG)',      placeholder: 'e.g. 195' },
-                        ].map(({ field, label, placeholder }) => (
-                          <div key={field}>
-                            <label className="block text-xs font-semibold text-slate-600 mb-1">{label}</label>
-                            <input type="text" value={row[field]} onChange={e => handleManualFieldChange(rowIdx, field, e.target.value)}
-                              placeholder={placeholder} className="w-full px-3 py-2 text-sm rounded-lg outline-none"
-                              style={{ background: '#f8fafc', border: '1px solid #e2e8f0', color: '#334155', transition: 'border-color 0.2s, box-shadow 0.2s' }}
-                              onFocus={e => { e.target.style.borderColor='rgba(59,130,246,0.45)'; e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,0.1)'; }}
-                              onBlur={e => { e.target.style.borderColor='#e2e8f0'; e.target.style.boxShadow='none'; }}
-                            />
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Row 4: Design temps + MOC + Insulation + Dimensions */}
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-                        {[
-                          { field: 'design_temp_min',    label: 'Des. Temp. Min (°F)',   placeholder: 'e.g. -13.2' },
-                          { field: 'design_temp_max',    label: 'Des. Temp. Max (°F)',   placeholder: 'e.g. 185' },
-                          { field: 'moc',                label: 'MOC',                   placeholder: 'e.g. CS + LINING' },
-                          { field: 'insulation',         label: 'Insulation',            placeholder: 'e.g. HOT' },
-                        ].map(({ field, label, placeholder }) => (
-                          <div key={field}>
-                            <label className="block text-xs font-semibold text-slate-600 mb-1">{label}</label>
-                            <input type="text" value={row[field]} onChange={e => handleManualFieldChange(rowIdx, field, e.target.value)}
-                              placeholder={placeholder} className="w-full px-3 py-2 text-sm rounded-lg outline-none"
-                              style={{ background: '#f8fafc', border: '1px solid #e2e8f0', color: '#334155', transition: 'border-color 0.2s, box-shadow 0.2s' }}
-                              onFocus={e => { e.target.style.borderColor='rgba(59,130,246,0.45)'; e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,0.1)'; }}
-                              onBlur={e => { e.target.style.borderColor='#e2e8f0'; e.target.style.boxShadow='none'; }}
-                            />
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Row 5: Dimensions + Motor + Revision + Remarks */}
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        {[
-                          { field: 'dimension_length',   label: 'Length / Height (mm)',  placeholder: 'e.g. 15000' },
-                          { field: 'dimension_diameter', label: 'Diameter / Width (mm)', placeholder: 'e.g. 5000' },
-                          { field: 'motor_rating',       label: 'Motor Rating (kW)',      placeholder: 'e.g. N/A' },
-                          { field: 'revision',           label: 'Rev.',                   placeholder: 'e.g. 1' },
-                        ].map(({ field, label, placeholder }) => (
-                          <div key={field}>
-                            <label className="block text-xs font-semibold text-slate-600 mb-1">{label}</label>
-                            <input type="text" value={row[field]} onChange={e => handleManualFieldChange(rowIdx, field, e.target.value)}
-                              placeholder={placeholder} className="w-full px-3 py-2 text-sm rounded-lg outline-none"
-                              style={{ background: '#f8fafc', border: '1px solid #e2e8f0', color: '#334155', transition: 'border-color 0.2s, box-shadow 0.2s' }}
-                              onFocus={e => { e.target.style.borderColor='rgba(59,130,246,0.45)'; e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,0.1)'; }}
-                              onBlur={e => { e.target.style.borderColor='#e2e8f0'; e.target.style.boxShadow='none'; }}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {/* Form action buttons */}
-                <div className="flex items-center gap-3 mt-4 pt-4" style={{ borderTop: '1px solid rgba(59,130,246,0.1)' }}>
-                  <button onClick={handleAddManualRow}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-blue-700"
-                    style={{ background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.2)', cursor: 'pointer' }}>
-                    + Add Another Entry
-                  </button>
-                  <button
-                    onClick={handleAddManualToResults}
-                    disabled={!manualObs.some(r => r.tag?.trim())}
-                    className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold text-white"
-                    style={manualObs.some(r => r.tag?.trim()) ? {
-                      background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-                      border: 'none', cursor: 'pointer',
-                      boxShadow: '0 4px 14px rgba(59,130,246,0.32)',
-                    } : {
-                      background: '#f1f5f9', color: '#94a3b8', border: '1px solid #e2e8f0', cursor: 'not-allowed',
-                    }}
-                  >
-                    ✓ Add to Equipment List
-                  </button>
-                  <button onClick={() => { setManualObs([{ ...MANUAL_OBS_BLANK }]); setShowManualForm(false); }}
-                    className="ml-auto text-xs text-slate-400 hover:text-slate-600 px-3 py-1.5 rounded-lg font-medium"
-                    style={{ background: '#f8fafc', border: '1px solid #e2e8f0', cursor: 'pointer' }}>
-                    Cancel
-                  </button>
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
 
-          {/* ── Action Buttons ── */}
-          <div className="flex gap-3 mb-6 eq-section" style={{ animationDelay: '0.15s' }}>
-            <button
-              onClick={handleExtract}
-              disabled={!files.length || isProcessing}
-              className="eq-action-btn flex-1 py-3.5 px-6 rounded-xl font-semibold text-sm relative overflow-hidden"
-              style={!files.length || isProcessing ? {
-                background: '#f1f5f9',
-                color: '#94a3b8',
-                cursor: 'not-allowed',
-                border: '1px solid #e2e8f0',
-                transition: 'all 0.25s',
-              } : {
-                background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-                color: 'white',
-                border: 'none',
-                boxShadow: '0 4px 18px rgba(59,130,246,0.32)',
-                transition: 'all 0.25s',
-                cursor: 'pointer',
-              }}
-            >
-              {/* Shimmer on active */}
-              {files.length > 0 && !isProcessing && (
-                <div className="absolute inset-0 pointer-events-none" style={{
-                  background: 'linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.18) 50%, transparent 60%)',
-                  animation: 'eq-shimmer 2.8s linear infinite',
-                }} />
-              )}
-              {isProcessing ? (
-                <span className="flex items-center justify-center gap-2.5">
-                  <svg className="h-5 w-5 text-blue-600" viewBox="0 0 24 24"
-                    style={{ animation: 'eq-spin-slow 1.2s linear infinite' }}>
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  <span className="text-slate-500">Extracting…</span>
-                </span>
-              ) : (
-                <span className="flex items-center justify-center gap-2 relative z-10">
-                  <span className="text-base">⚡</span>
-                  <span>Extract Equipment List</span>
-                  {files.length > 0 && <span className="ml-1 text-blue-200 text-xs font-normal opacity-80">→ AI-powered</span>}
-                </span>
-              )}
-            </button>
-
-            {results && (
-              <>
-                {selectedRows.size > 0 && (
-                  <button
-                    onClick={handleExportSelected}
-                    className="eq-export-btn flex items-center gap-2 px-5 py-3.5 rounded-xl font-semibold text-sm"
+                {activeProject && registerError && (
+                  <div
+                    role="alert"
+                    className="mt-3 px-4 py-3 rounded-lg text-sm"
                     style={{
-                      background: 'rgba(59,130,246,0.12)',
-                      color: '#065f46',
-                      border: '1px solid rgba(59,130,246,0.35)',
-                      boxShadow: '0 2px 8px rgba(59,130,246,0.12)',
-                      transition: 'all 0.2s',
-                      cursor: 'pointer',
+                      background: "#fff8e8",
+                      border: "1px solid #f3c66d",
+                      color: "#7a4300",
                     }}
                   >
-                    <ArrowDownTrayIcon className="h-4 w-4" />
-                    Download Selected
-                    <span className="ml-1 inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold text-white"
-                      style={{ background: '#3b82f6' }}>
-                      {selectedRows.size}
-                    </span>
-                  </button>
+                    {registerError}
+                  </div>
                 )}
-                <button
-                  onClick={handleExport}
-                  className="eq-export-btn flex items-center gap-2 px-5 py-3.5 rounded-xl font-semibold text-sm"
-                  style={{
-                    background: 'rgba(59,130,246,0.07)',
-                    color: '#065f46',
-                    border: '1px solid rgba(59,130,246,0.22)',
-                    boxShadow: '0 2px 8px rgba(59,130,246,0.08)',
-                    transition: 'all 0.2s',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <ArrowDownTrayIcon className="h-4 w-4" />
-                  Download Excel
-                </button>
-              </>
-            )}
-          </div>
-
-          {/* ── Progress ── */}
-          {isProcessing && (
-            <div className="rounded-2xl overflow-hidden mb-4" style={{
-              background: 'white',
-              border: '1px solid rgba(59,130,246,0.20)',
-              boxShadow: '0 4px 24px rgba(59,130,246,0.10)',
-              animation: 'eq-fade-up 0.35s ease forwards',
-            }}>
-              {/* Gradient top strip */}
-              <div className="h-[3px]" style={{
-                backgroundImage: EQ_T.gradBar, backgroundSize:'300% auto',
-                animation: 'eqGradShift 2.5s linear infinite',
-              }} />
-
-              <div className="p-5">
-                <div className="flex items-start gap-5 mb-4">
-                  {/* Orbit electron AI loader */}
-                  <div className="relative flex-shrink-0 w-14 h-14" style={{ marginTop: '2px' }}>
-                    {/* Orbit ring */}
-                    <div className="absolute inset-0 rounded-full border border-dashed pointer-events-none"
-                      style={{ borderColor: 'rgba(59,130,246,0.18)' }} />
-                    {/* Core glow */}
-                    <div className="absolute inset-[14px] rounded-full flex items-center justify-center"
-                      style={{ background: 'rgba(59,130,246,0.09)', animation: 'eq-glow-light 1.8s ease infinite' }}>
-                      <svg className="w-5 h-5 text-blue-600" viewBox="0 0 24 24" fill="none"
-                        stroke="currentColor" strokeWidth="1.5" style={{ animation: 'eq-spin-slow 6s linear infinite' }}>
-                        <path d="M12 2a10 10 0 1 0 10 10" strokeLinecap="round"/>
-                        <path d="M12 6v6l3 3" strokeLinecap="round"/>
-                      </svg>
-                    </div>
-                    {/* Orbit electrons A / B / C */}
-                    {EQ_T.electrons.map((color, i) => (
-                      <div key={i} className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <div className="w-2 h-2 rounded-full" style={{
-                          background: color,
-                          boxShadow: `0 0 6px ${color}`,
-                          animation: `eqOrbit${['A','B','C'][i]} ${['1.4s','1.8s','2.2s'][i]} linear infinite`,
-                        }} />
-                      </div>
-                    ))}
+                {activeProject && registerSaveState === "saved" && (
+                  <div
+                    role="status"
+                    className="mt-3 text-sm font-semibold text-green-700"
+                  >
+                    Draft saved
                   </div>
+                )}
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-semibold text-slate-700">{statusMessage || 'AI Processing…'}</span>
-                      <div className="flex items-center gap-2.5">
-                        <span className="text-xs text-slate-400 tabular-nums font-mono">⏱ {formatElapsed(elapsedSeconds)}</span>
-                        <span className="text-sm font-bold text-blue-600 tabular-nums">{progress}%</span>
-                      </div>
-                    </div>
-                    {/* Progress bar */}
-                    <div className="relative w-full rounded-full h-2.5 overflow-hidden" style={{ background: '#f1f5f9' }}>
-                      <div className="h-full rounded-full relative overflow-hidden" style={{
-                        width: `${Math.max(5, progress)}%`,
-                        background: 'linear-gradient(90deg, #2563eb, #3b82f6, #818cf8)',
-                        animation: 'eq-bar-glow 1.6s ease infinite',
-                        transition: 'width 0.7s ease',
-                      }}>
-                        <div className="absolute inset-0" style={{
-                          background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.45) 50%, transparent 100%)',
-                          animation: 'eq-shimmer 2s linear infinite',
-                        }} />
-                      </div>
-                    </div>
-                    {/* Stage indicators */}
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2.5">
-                      {[
-                        { label:'OCR Extraction',  done: progress >= 20 },
-                        { label:'Tag Detection',   done: progress >= 40 },
-                        { label:'Field Mapping',   done: progress >= 65 },
-                        { label:'Post-processing', done: progress >= 85 },
-                      ].map(stage => (
-                        <div key={stage.label} className="flex items-center gap-1.5 text-[11px]">
-                          <div className="w-3 h-3 rounded-full border flex items-center justify-center" style={{
-                            background: stage.done ? '#3b82f6' : 'transparent',
-                            borderColor: stage.done ? '#3b82f6' : '#e2e8f0',
-                            transition: 'all 0.4s ease',
-                          }}>
-                            {stage.done && <span className="text-white font-bold" style={{ fontSize:'7px' }}>✓</span>}
-                          </div>
-                          <span style={{ color: stage.done ? '#3b82f6' : '#94a3b8', fontWeight: stage.done ? 600 : 400 }}>
-                            {stage.label}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                {/* Description */}
+                <p className="text-slate-500 text-base leading-relaxed max-w-2xl mb-6">
+                  Extract 18 engineering fields from Equipment List registers or
+                  P&amp;ID drawings using AI — Tag No., Description, Operating
+                  &amp; Design Conditions, MOC, Insulation, Dimensions, Motor
+                  Rating, P&amp;ID Ref and more
+                </p>
+
+                {/* Capability chips */}
+                <div className="flex flex-wrap gap-2 mb-5">
+                  {EQ_T.chips.map((chip, i) => (
+                    <span
+                      key={chip.label}
+                      className="eq-chip inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold"
+                      style={{
+                        background: "rgba(59,130,246,0.06)",
+                        border: "1px solid rgba(59,130,246,0.18)",
+                        color: "#065f46",
+                        animationDelay: `${0.08 + i * 0.06}s`,
+                      }}
+                    >
+                      <span>{chip.icon}</span>
+                      <span>{chip.label}</span>
+                    </span>
+                  ))}
                 </div>
 
-                <div className="flex items-center gap-1.5 pt-3" style={{ borderTop: '1px solid #f1f5f9' }}>
-                  <span className="text-xs text-slate-400 flex-1">
-                    {elapsedSeconds > 20 ? 'OCR scanning P&ID drawing — large drawings may take 1–3 min' : 'AI scanning document for equipment registers and tag numbers'}
-                  </span>
-                  {[0, 1, 2].map(i => (
-                    <div key={i} className="w-1.5 h-4 rounded-full bg-blue-400 flex-shrink-0" style={{
-                      animation: 'eq-dot-wave 1.1s ease infinite',
-                      animationDelay: `${i * 0.18}s`,
-                    }} />
+                {/* Workflow steps */}
+                <div className="flex flex-wrap gap-3">
+                  {[
+                    {
+                      n: "01",
+                      label: "Upload PDF",
+                      desc: "P&ID drawing or Equipment Register",
+                      icon: "📄",
+                    },
+                    {
+                      n: "02",
+                      label: "AI Extraction",
+                      desc: "18-field OCR + rule engine",
+                      icon: "🤖",
+                    },
+                    {
+                      n: "03",
+                      label: "Selection Record",
+                      desc: "Review & confirm extracted rows",
+                      icon: "☑️",
+                    },
+                    {
+                      n: "04",
+                      label: "Download Excel",
+                      desc: "Structured register ready to use",
+                      icon: "📊",
+                    },
+                  ].map((step, i) => (
+                    <div
+                      key={step.n}
+                      className="eq-chip flex items-center gap-2.5 px-4 py-2.5 rounded-xl"
+                      style={{
+                        background: "white",
+                        border: "1px solid rgba(59,130,246,0.12)",
+                        boxShadow: "0 1px 4px rgba(59,130,246,0.06)",
+                        animationDelay: `${0.45 + i * 0.07}s`,
+                      }}
+                    >
+                      <div
+                        className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold text-white"
+                        style={{
+                          background: "linear-gradient(135deg,#3b82f6,#2563eb)",
+                        }}
+                      >
+                        {step.n}
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-700 leading-none mb-0.5">
+                          {step.label}
+                        </p>
+                        <p className="text-[10px] text-slate-400 leading-none">
+                          {step.desc}
+                        </p>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
             </div>
-          )}
 
-          {/* ── Error ── */}
-          {error && (
-            <div className="rounded-xl p-4 mb-4 flex items-start gap-3" style={{
-              background: '#fef2f2',
-              border: '1px solid rgba(239,68,68,0.22)',
-              animation: 'eq-fade-up 0.3s ease forwards',
-            }}>
-              <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
-                style={{ background: 'rgba(239,68,68,0.12)' }}>
-                <span className="text-red-500 text-xs font-bold">✕</span>
-              </div>
-              <p className="text-red-600 text-sm font-medium">{error}</p>
-            </div>
-          )}
+            {/* ═══ VERIFICATION WORKFLOW + SMART DOCUMENTATION — V1 split-screen ═══
+              Soft-coded: components/EquipmentListWorkflowDocs.jsx (EQ_DOCS_CONFIG) */}
+            {EQ_DOCS.enabled && <EquipmentListWorkflowDocs />}
 
-          {/* ── Diagnostic Panel (when 0 items extracted) ── */}
-          {debugInfo && results && results.total === 0 && (
-            <div className="rounded-2xl p-5 mb-4 eq-section" style={{
-              background: '#fffbeb',
-              border: '1px solid rgba(245,158,11,0.35)',
-              boxShadow: '0 2px 12px rgba(245,158,11,0.08)',
-              animationDelay: '0.1s',
-            }}>
-              <div className="flex items-center gap-2.5 mb-4">
-                <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" style={{
-                  background: 'rgba(245,158,11,0.12)',
-                  border: '1px solid rgba(245,158,11,0.3)',
-                }}>
-                  <span className="text-amber-600 text-sm font-bold">!</span>
-                </div>
-                <h3 className="text-sm font-semibold text-amber-800">No Equipment Found — Extraction Diagnostics</h3>
-              </div>
-
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                {[
-                  { label: 'Mode', value: debugInfo.extraction_mode || '—' },
-                  { label: 'Text Extracted', value: debugInfo.text_len != null ? `${debugInfo.text_len.toLocaleString()} chars` : '—' },
-                  { label: 'Raw Tag Matches', value: debugInfo.raw_items_count != null ? String(debugInfo.raw_items_count) : '—' },
-                  { label: 'After Dedup', value: debugInfo.after_dedup_count != null ? String(debugInfo.after_dedup_count) : '—' },
-                ].map(({ label, value }) => (
-                  <div key={label} className="rounded-xl px-3 py-2.5" style={{
-                    background: 'white',
-                    border: '1px solid rgba(245,158,11,0.2)',
-                  }}>
-                    <p className="text-xs text-amber-600 font-medium mb-0.5">{label}</p>
-                    <p className="text-sm font-bold text-slate-800">{value}</p>
-                  </div>
-                ))}
-              </div>
-
-              {debugInfo.text_preview ? (
-                <div>
-                  <p className="text-xs font-semibold text-amber-700 mb-1.5">PDF Text Preview (first 400 chars extracted by backend):</p>
-                  <pre className="text-xs text-slate-600 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-all" style={{
-                    background: '#fefce8',
-                    border: '1px solid rgba(245,158,11,0.18)',
-                    maxHeight: '160px',
-                    overflowY: 'auto',
-                  }}>
-                    {debugInfo.text_preview}
-                  </pre>
-                  <p className="text-xs text-amber-600 mt-2 leading-relaxed">
-                    {debugInfo.text_len === 0
-                      ? '⚠ No text was extracted from the PDF. The drawing may be a scanned image — try enabling Force OCR in a future version.'
-                      : debugInfo.raw_items_count === 0
-                        ? '⚠ Text was extracted but no equipment tags (e.g. V-308, P-101A) were found in it. Check that the preview above contains recognisable tag numbers.'
-                        : '⚠ Tags were found but removed during deduplication. The tag pattern may be too strict — contact support.'}
-                  </p>
-                </div>
-              ) : (
-                <p className="text-xs text-amber-600">
-                  {debugInfo.extraction_mode === 'register'
-                    ? 'Register mode ran but found no matching table structure in the document.'
-                    : 'No text preview available — extraction may have encountered an error before reaching the text stage.'}
+            {/* ═══ PROJECT WORKSPACE section header + project chip — V1 pattern ═══ */}
+            <div
+              className="flex items-center justify-between mb-6 mt-2 flex-wrap gap-4 eq-section"
+              style={{ animationDelay: "0.06s" }}
+            >
+              <div>
+                <h2
+                  className="text-xl font-bold text-slate-900"
+                  style={{ margin: 0, marginBottom: "4px" }}
+                >
+                  Project Workspace
+                </h2>
+                <p className="text-sm text-slate-500" style={{ margin: 0 }}>
+                  Upload P&ID drawings to extract the equipment register — then
+                  review and export.
                 </p>
+              </div>
+              {EQ_PROJECTS.enabled && activeProject && (
+                <button
+                  onClick={() => setActiveProject(null)}
+                  title="Switch project"
+                  className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition-all"
+                >
+                  <FolderIcon className="h-4 w-4" />
+                  <span className="max-w-[180px] truncate">
+                    {activeProject.name || activeProject.code || "Project"}
+                  </span>
+                  <span className="text-blue-400">·</span>
+                  <span className="text-blue-500">Switch</span>
+                </button>
               )}
             </div>
-          )}
 
-          </div>{/* end centered wrapper */}
+            {/* ── Legend Sheets — shared ProjectLegendPanel (project inheritance) ── */}
+            {EQ_LEGENDS.enabled && (
+              <ProjectLegendPanel
+                section={EQ_LEGENDS.section}
+                projectId={activeProject?.project_id}
+                projectName={activeProject?.name || activeProject?.code || ""}
+                onManage={() => setLegendModalOpen(true)}
+                refreshToken={legendModalOpen ? 0 : 1}
+              />
+            )}
+
+            {/* ── Upload Card ── */}
+            <div
+              className="rounded-2xl p-6 mb-4 eq-section"
+              style={{
+                background: "white",
+                border: "1px solid rgba(59,130,246,0.15)",
+                boxShadow:
+                  "0 4px 28px rgba(59,130,246,0.09), 0 1px 4px rgba(0,0,0,0.04)",
+                animationDelay: "0.08s",
+              }}
+            >
+              <div className="flex items-center gap-2.5 mb-5">
+                <div
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
+                    boxShadow: "0 2px 8px rgba(59,130,246,0.35)",
+                  }}
+                >
+                  1
+                </div>
+                <h2 className="text-sm font-semibold text-slate-700 tracking-wide">
+                  Upload P&amp;ID Document
+                </h2>
+                <span
+                  className="ml-auto text-xs text-slate-400 font-medium px-2.5 py-1 rounded-full"
+                  style={{
+                    background: "#f8fafc",
+                    border: "1px solid #e2e8f0",
+                  }}
+                >
+                  PDF only
+                </span>
+              </div>
+
+              {/* ── AI Document Assist (Wrench) — soft-coded, optional ─────── */}
+              {EL_AI_ASSIST_CONFIG.enabled && (
+                <div className="mb-5">
+                  <WrenchAiDocAssist
+                    title={EL_AI_ASSIST_CONFIG.title}
+                    subtitleTag={EL_AI_ASSIST_CONFIG.subtitleTag}
+                    subtitle={EL_AI_ASSIST_CONFIG.subtitle}
+                    defaultHint={EL_AI_ASSIST_CONFIG.defaultHint}
+                    hintPlaceholder={EL_AI_ASSIST_CONFIG.hintPlaceholder}
+                    topN={EL_AI_ASSIST_CONFIG.topN}
+                    acceptedExts={EL_AI_ASSIST_CONFIG.acceptedExts}
+                    projectName=""
+                    onFileSelected={(f) => {
+                      // Append (dedupe by name+size) to support multi-PDF workflow
+                      setFiles((prev) => {
+                        const key = `${f.name}|${f.size}`;
+                        const has = prev.some(
+                          (p) => `${p.name}|${p.size}` === key,
+                        );
+                        return has ? prev : [...prev, f];
+                      });
+                      setError(null);
+                      setResults(null);
+                    }}
+                    onError={(msg) => setError(msg)}
+                  />
+                </div>
+              )}
+
+              <div
+                className="eq-upload-zone relative rounded-xl cursor-pointer overflow-hidden"
+                style={{
+                  border: isDragging
+                    ? "2px solid rgba(59,130,246,0.75)"
+                    : files.length
+                      ? "2px solid rgba(59,130,246,0.5)"
+                      : "2px dashed rgba(59,130,246,0.25)",
+                  background: isDragging
+                    ? "rgba(59,130,246,0.08)"
+                    : files.length
+                      ? "rgba(59,130,246,0.04)"
+                      : "rgba(59,130,246,0.015)",
+                  minHeight: 148,
+                  transition:
+                    "border-color 0.25s, background 0.25s, box-shadow 0.25s",
+                }}
+                onClick={() => !isProcessing && fileRef.current?.click()}
+                onDragOver={handleDragOver}
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+              >
+                {/* Circuit trace border — top edge */}
+                <div
+                  className="absolute top-0 left-0 right-0 h-[2px] pointer-events-none"
+                  style={{
+                    background: "rgba(59,130,246,0.55)",
+                    animation: "eqTraceH 2.8s ease-in-out infinite",
+                  }}
+                />
+                {/* Circuit trace border — bottom edge (offset) */}
+                <div
+                  className="absolute bottom-0 left-0 right-0 h-[2px] pointer-events-none"
+                  style={{
+                    background: "rgba(59,130,246,0.40)",
+                    animation: "eqTraceH 2.8s ease-in-out infinite 1.4s",
+                  }}
+                />
+                {/* Circuit trace border — left edge */}
+                <div
+                  className="absolute top-0 bottom-0 left-0 w-[2px] pointer-events-none"
+                  style={{
+                    background: "rgba(59,130,246,0.45)",
+                    animation: "eqTraceV 2.8s ease-in-out infinite 0.7s",
+                  }}
+                />
+                {/* Circuit trace border — right edge (offset) */}
+                <div
+                  className="absolute top-0 bottom-0 right-0 w-[2px] pointer-events-none"
+                  style={{
+                    background: "rgba(59,130,246,0.35)",
+                    animation: "eqTraceV 2.8s ease-in-out infinite 2.1s",
+                  }}
+                />
+
+                {/* Corner brackets */}
+                {[
+                  "top-0 left-0   border-t-2 border-l-2",
+                  "top-0 right-0  border-t-2 border-r-2",
+                  "bottom-0 left-0  border-b-2 border-l-2",
+                  "bottom-0 right-0 border-b-2 border-r-2",
+                ].map((cls, i) => (
+                  <div
+                    key={i}
+                    className={`absolute ${cls} w-5 h-5 pointer-events-none`}
+                    style={{ borderColor: "rgba(59,130,246,0.45)" }}
+                  />
+                ))}
+
+                {/* Scan line (idle only) */}
+                {!files.length && !isProcessing && (
+                  <div className="eq-scan-line" />
+                )}
+
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".pdf"
+                  multiple
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+
+                <div className="flex flex-col items-center justify-center gap-3 py-9 px-6">
+                  {files.length > 0 ? (
+                    <>
+                      <div
+                        className="w-14 h-14 rounded-full flex items-center justify-center"
+                        style={{
+                          background:
+                            "linear-gradient(135deg, rgba(59,130,246,0.15), rgba(59,130,246,0.08))",
+                          border: "2px solid rgba(59,130,246,0.4)",
+                          animation: "eq-glow-light 2.2s ease infinite",
+                        }}
+                      >
+                        <CheckCircleIcon className="h-8 w-8 text-blue-600" />
+                      </div>
+                      <div className="text-center">
+                        {files.length === 1 ? (
+                          <>
+                            <p className="text-slate-800 font-semibold text-sm">
+                              {files[0].name}
+                            </p>
+                            <p className="text-slate-400 text-xs mt-1">
+                              {(files[0].size / 1024 / 1024).toFixed(2)} MB ·
+                              Ready for extraction
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-slate-800 font-semibold text-sm">
+                              {files.length} PDF files selected
+                            </p>
+                            <div className="text-slate-400 text-xs mt-1 max-h-20 overflow-y-auto space-y-0.5">
+                              {files.map((f, i) => (
+                                <p key={i}>
+                                  {f.name} &nbsp;
+                                  <span className="text-slate-300">
+                                    ({(f.size / 1024 / 1024).toFixed(2)} MB)
+                                  </span>
+                                </p>
+                              ))}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="px-3 py-1 rounded-full text-xs font-semibold text-blue-700 flex items-center gap-1.5"
+                          style={{
+                            background: "rgba(59,130,246,0.08)",
+                            border: "1px solid rgba(59,130,246,0.2)",
+                          }}
+                        >
+                          <span
+                            className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block"
+                            style={{
+                              animation: "eq-pulse-badge 1.6s ease infinite",
+                            }}
+                          />
+                          {files.length === 1
+                            ? "PDF Loaded"
+                            : `${files.length} PDFs Loaded`}
+                        </div>
+                        {!isProcessing && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setFiles([]);
+                              setResults(null);
+                              setError(null);
+                            }}
+                            className="px-2.5 py-1 rounded-full text-xs font-medium text-slate-400 hover:text-red-500"
+                            style={{
+                              background: "#f8fafc",
+                              border: "1px solid #e2e8f0",
+                              transition: "color 0.2s",
+                            }}
+                          >
+                            ✕ Remove
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div
+                        className="w-16 h-16 rounded-2xl flex items-center justify-center"
+                        style={{
+                          background:
+                            "linear-gradient(135deg, rgba(59,130,246,0.10), rgba(59,130,246,0.04))",
+                          border: "1.5px solid rgba(59,130,246,0.20)",
+                        }}
+                      >
+                        <CloudArrowUpIcon className="h-9 w-9 text-blue-500" />
+                      </div>
+                      <div className="text-center">
+                        <p className="text-slate-700 font-semibold text-sm">
+                          Drop a P&amp;ID PDF here{" "}
+                          <span className="text-slate-400 font-normal">or</span>{" "}
+                          <span className="text-blue-600 font-semibold">
+                            click to browse
+                          </span>
+                        </p>
+                        <p className="text-slate-400 text-xs mt-1.5">
+                          Equipment List registers &amp; P&amp;ID drawings ·
+                          Auto-detects mode · Multi-angle OCR (0°/90°/180°/270°)
+                        </p>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* ── Manual Observation Panel ── */}
+            <div
+              className="rounded-2xl mb-4 eq-section overflow-hidden"
+              style={{
+                background: "white",
+                border: "1px solid rgba(59,130,246,0.15)",
+                boxShadow:
+                  "0 4px 24px rgba(59,130,246,0.08), 0 1px 4px rgba(0,0,0,0.04)",
+                animationDelay: "0.12s",
+              }}
+            >
+              {/* Collapsible header */}
+              <button
+                onClick={() => setShowManualForm((v) => !v)}
+                className="w-full flex items-center gap-2.5 px-6 py-4"
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  textAlign: "left",
+                }}
+              >
+                <div
+                  className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
+                  }}
+                >
+                  2
+                </div>
+                <h2 className="text-sm font-semibold text-slate-700 tracking-wide flex-1">
+                  Manual Observations
+                  {manualObs.some((r) => r.tag?.trim()) && (
+                    <span
+                      className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold text-blue-700"
+                      style={{
+                        background: "rgba(59,130,246,0.1)",
+                        border: "1px solid rgba(59,130,246,0.2)",
+                      }}
+                    >
+                      {manualObs.filter((r) => r.tag?.trim()).length} pending
+                    </span>
+                  )}
+                </h2>
+                <span className="text-slate-400 text-xs font-medium mr-2">
+                  Enter equipment data manually from P&amp;ID drawing
+                </span>
+                <span className="text-slate-400 text-sm">
+                  {showManualForm ? "▲" : "▼"}
+                </span>
+              </button>
+
+              {showManualForm && (
+                <div
+                  className="px-6 pb-5"
+                  style={{ borderTop: "1px solid rgba(59,130,246,0.08)" }}
+                >
+                  {manualObs.map((row, rowIdx) => {
+                    const hint = resolveQuantityHint(row.tag);
+                    return (
+                      <div
+                        key={rowIdx}
+                        className="mb-5 pt-4"
+                        style={{
+                          borderTop:
+                            rowIdx > 0
+                              ? "1px dashed rgba(59,130,246,0.15)"
+                              : "none",
+                        }}
+                      >
+                        {rowIdx > 0 && (
+                          <div className="flex justify-between items-center mb-3">
+                            <span className="text-xs font-semibold text-slate-500">
+                              Entry #{rowIdx + 1}
+                            </span>
+                            <button
+                              onClick={() => handleRemoveManualRow(rowIdx)}
+                              className="text-xs text-red-400 hover:text-red-600 font-medium px-2 py-0.5 rounded"
+                              style={{
+                                background: "#fef2f2",
+                                border: "1px solid rgba(239,68,68,0.15)",
+                              }}
+                            >
+                              ✕ Remove
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Row 1: Tag + Description + PID No */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                          {[
+                            {
+                              field: "tag",
+                              label: "Equipment Tag No. *",
+                              placeholder: "e.g. V-803-TF",
+                              mono: true,
+                            },
+                            {
+                              field: "description",
+                              label: "Description",
+                              placeholder: "e.g. MRD OIL SLUG CATCHER",
+                            },
+                            {
+                              field: "pid_no",
+                              label: "P&ID No.",
+                              placeholder: "e.g. PJ6-EXD-MRI-BQDA-0023",
+                            },
+                          ].map(({ field, label, placeholder, mono }) => (
+                            <div key={field}>
+                              <label className="block text-xs font-semibold text-slate-600 mb-1">
+                                {label}
+                              </label>
+                              <input
+                                type="text"
+                                value={row[field]}
+                                onChange={(e) =>
+                                  handleManualFieldChange(
+                                    rowIdx,
+                                    field,
+                                    e.target.value,
+                                  )
+                                }
+                                placeholder={placeholder}
+                                className="w-full px-3 py-2 text-sm rounded-lg outline-none"
+                                style={{
+                                  background: "#f8fafc",
+                                  border: "1px solid #e2e8f0",
+                                  color: "#334155",
+                                  fontFamily: mono
+                                    ? "ui-monospace, SFMono-Regular, monospace"
+                                    : undefined,
+                                  transition:
+                                    "border-color 0.2s, box-shadow 0.2s",
+                                }}
+                                onFocus={(e) => {
+                                  e.target.style.borderColor =
+                                    "rgba(59,130,246,0.45)";
+                                  e.target.style.boxShadow =
+                                    "0 0 0 3px rgba(59,130,246,0.1)";
+                                }}
+                                onBlur={(e) => {
+                                  e.target.style.borderColor = "#e2e8f0";
+                                  e.target.style.boxShadow = "none";
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Row 2: Quantity Required (dynamic label) + Design Flowrate + Phase */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-600 mb-1">
+                              Quantity Required
+                              {hint && (
+                                <span
+                                  className="ml-1.5 px-1.5 py-0.5 rounded text-xs font-medium text-blue-700"
+                                  style={{
+                                    background: "rgba(59,130,246,0.08)",
+                                    border: "1px solid rgba(59,130,246,0.18)",
+                                  }}
+                                >
+                                  {hint.label}
+                                </span>
+                              )}
+                            </label>
+                            <input
+                              type="text"
+                              value={row.quality_required}
+                              onChange={(e) =>
+                                handleManualFieldChange(
+                                  rowIdx,
+                                  "quality_required",
+                                  e.target.value,
+                                )
+                              }
+                              placeholder={
+                                hint ? hint.placeholder : "e.g. 327 M³"
+                              }
+                              className="w-full px-3 py-2 text-sm rounded-lg outline-none"
+                              style={{
+                                background: "#f8fafc",
+                                border: "1px solid #e2e8f0",
+                                color: "#334155",
+                                transition:
+                                  "border-color 0.2s, box-shadow 0.2s",
+                              }}
+                              onFocus={(e) => {
+                                e.target.style.borderColor =
+                                  "rgba(59,130,246,0.45)";
+                                e.target.style.boxShadow =
+                                  "0 0 0 3px rgba(59,130,246,0.1)";
+                              }}
+                              onBlur={(e) => {
+                                e.target.style.borderColor = "#e2e8f0";
+                                e.target.style.boxShadow = "none";
+                              }}
+                            />
+                          </div>
+                          {[
+                            {
+                              field: "design_flowrate",
+                              label: "Design Flowrate / Duty",
+                              placeholder: "e.g. 2.5 MMBtu/hr",
+                            },
+                            {
+                              field: "phase",
+                              label: "Phase",
+                              placeholder: "e.g. Liquid / Gas / Mixed",
+                            },
+                          ].map(({ field, label, placeholder }) => (
+                            <div key={field}>
+                              <label className="block text-xs font-semibold text-slate-600 mb-1">
+                                {label}
+                              </label>
+                              <input
+                                type="text"
+                                value={row[field]}
+                                onChange={(e) =>
+                                  handleManualFieldChange(
+                                    rowIdx,
+                                    field,
+                                    e.target.value,
+                                  )
+                                }
+                                placeholder={placeholder}
+                                className="w-full px-3 py-2 text-sm rounded-lg outline-none"
+                                style={{
+                                  background: "#f8fafc",
+                                  border: "1px solid #e2e8f0",
+                                  color: "#334155",
+                                  transition:
+                                    "border-color 0.2s, box-shadow 0.2s",
+                                }}
+                                onFocus={(e) => {
+                                  e.target.style.borderColor =
+                                    "rgba(59,130,246,0.45)";
+                                  e.target.style.boxShadow =
+                                    "0 0 0 3px rgba(59,130,246,0.1)";
+                                }}
+                                onBlur={(e) => {
+                                  e.target.style.borderColor = "#e2e8f0";
+                                  e.target.style.boxShadow = "none";
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Row 3: Operating conditions */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                          {[
+                            {
+                              field: "oper_pressure",
+                              label: "Oper. Pressure (PSIG)",
+                              placeholder: "e.g. 150",
+                            },
+                            {
+                              field: "oper_temperature",
+                              label: "Oper. Temp. (°F)",
+                              placeholder: "e.g. 105/60",
+                            },
+                            {
+                              field: "design_pressure_min",
+                              label: "Des. Press. Min (PSIG)",
+                              placeholder: "e.g. FV",
+                            },
+                            {
+                              field: "design_pressure_max",
+                              label: "Des. Press. Max (PSIG)",
+                              placeholder: "e.g. 195",
+                            },
+                          ].map(({ field, label, placeholder }) => (
+                            <div key={field}>
+                              <label className="block text-xs font-semibold text-slate-600 mb-1">
+                                {label}
+                              </label>
+                              <input
+                                type="text"
+                                value={row[field]}
+                                onChange={(e) =>
+                                  handleManualFieldChange(
+                                    rowIdx,
+                                    field,
+                                    e.target.value,
+                                  )
+                                }
+                                placeholder={placeholder}
+                                className="w-full px-3 py-2 text-sm rounded-lg outline-none"
+                                style={{
+                                  background: "#f8fafc",
+                                  border: "1px solid #e2e8f0",
+                                  color: "#334155",
+                                  transition:
+                                    "border-color 0.2s, box-shadow 0.2s",
+                                }}
+                                onFocus={(e) => {
+                                  e.target.style.borderColor =
+                                    "rgba(59,130,246,0.45)";
+                                  e.target.style.boxShadow =
+                                    "0 0 0 3px rgba(59,130,246,0.1)";
+                                }}
+                                onBlur={(e) => {
+                                  e.target.style.borderColor = "#e2e8f0";
+                                  e.target.style.boxShadow = "none";
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Row 4: Design temps + MOC + Insulation + Dimensions */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                          {[
+                            {
+                              field: "design_temp_min",
+                              label: "Des. Temp. Min (°F)",
+                              placeholder: "e.g. -13.2",
+                            },
+                            {
+                              field: "design_temp_max",
+                              label: "Des. Temp. Max (°F)",
+                              placeholder: "e.g. 185",
+                            },
+                            {
+                              field: "moc",
+                              label: "MOC",
+                              placeholder: "e.g. CS + LINING",
+                            },
+                            {
+                              field: "insulation",
+                              label: "Insulation",
+                              placeholder: "e.g. HOT",
+                            },
+                          ].map(({ field, label, placeholder }) => (
+                            <div key={field}>
+                              <label className="block text-xs font-semibold text-slate-600 mb-1">
+                                {label}
+                              </label>
+                              <input
+                                type="text"
+                                value={row[field]}
+                                onChange={(e) =>
+                                  handleManualFieldChange(
+                                    rowIdx,
+                                    field,
+                                    e.target.value,
+                                  )
+                                }
+                                placeholder={placeholder}
+                                className="w-full px-3 py-2 text-sm rounded-lg outline-none"
+                                style={{
+                                  background: "#f8fafc",
+                                  border: "1px solid #e2e8f0",
+                                  color: "#334155",
+                                  transition:
+                                    "border-color 0.2s, box-shadow 0.2s",
+                                }}
+                                onFocus={(e) => {
+                                  e.target.style.borderColor =
+                                    "rgba(59,130,246,0.45)";
+                                  e.target.style.boxShadow =
+                                    "0 0 0 3px rgba(59,130,246,0.1)";
+                                }}
+                                onBlur={(e) => {
+                                  e.target.style.borderColor = "#e2e8f0";
+                                  e.target.style.boxShadow = "none";
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Row 5: Dimensions + Motor + Revision + Remarks */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                          {[
+                            {
+                              field: "dimension_length",
+                              label: "Length / Height (mm)",
+                              placeholder: "e.g. 15000",
+                            },
+                            {
+                              field: "dimension_diameter",
+                              label: "Diameter / Width (mm)",
+                              placeholder: "e.g. 5000",
+                            },
+                            {
+                              field: "motor_rating",
+                              label: "Motor Rating (kW)",
+                              placeholder: "e.g. N/A",
+                            },
+                            {
+                              field: "revision",
+                              label: "Rev.",
+                              placeholder: "e.g. 1",
+                            },
+                          ].map(({ field, label, placeholder }) => (
+                            <div key={field}>
+                              <label className="block text-xs font-semibold text-slate-600 mb-1">
+                                {label}
+                              </label>
+                              <input
+                                type="text"
+                                value={row[field]}
+                                onChange={(e) =>
+                                  handleManualFieldChange(
+                                    rowIdx,
+                                    field,
+                                    e.target.value,
+                                  )
+                                }
+                                placeholder={placeholder}
+                                className="w-full px-3 py-2 text-sm rounded-lg outline-none"
+                                style={{
+                                  background: "#f8fafc",
+                                  border: "1px solid #e2e8f0",
+                                  color: "#334155",
+                                  transition:
+                                    "border-color 0.2s, box-shadow 0.2s",
+                                }}
+                                onFocus={(e) => {
+                                  e.target.style.borderColor =
+                                    "rgba(59,130,246,0.45)";
+                                  e.target.style.boxShadow =
+                                    "0 0 0 3px rgba(59,130,246,0.1)";
+                                }}
+                                onBlur={(e) => {
+                                  e.target.style.borderColor = "#e2e8f0";
+                                  e.target.style.boxShadow = "none";
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Form action buttons */}
+                  <div
+                    className="flex items-center gap-3 mt-4 pt-4"
+                    style={{ borderTop: "1px solid rgba(59,130,246,0.1)" }}
+                  >
+                    <button
+                      onClick={handleAddManualRow}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-blue-700"
+                      style={{
+                        background: "rgba(59,130,246,0.06)",
+                        border: "1px solid rgba(59,130,246,0.2)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      + Add Another Entry
+                    </button>
+                    <button
+                      onClick={handleAddManualToResults}
+                      disabled={!manualObs.some((r) => r.tag?.trim())}
+                      className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold text-white"
+                      style={
+                        manualObs.some((r) => r.tag?.trim())
+                          ? {
+                              background:
+                                "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
+                              border: "none",
+                              cursor: "pointer",
+                              boxShadow: "0 4px 14px rgba(59,130,246,0.32)",
+                            }
+                          : {
+                              background: "#f1f5f9",
+                              color: "#94a3b8",
+                              border: "1px solid #e2e8f0",
+                              cursor: "not-allowed",
+                            }
+                      }
+                    >
+                      ✓ Add to Equipment List
+                    </button>
+                    <button
+                      onClick={() => {
+                        setManualObs([{ ...MANUAL_OBS_BLANK }]);
+                        setShowManualForm(false);
+                      }}
+                      className="ml-auto text-xs text-slate-400 hover:text-slate-600 px-3 py-1.5 rounded-lg font-medium"
+                      style={{
+                        background: "#f8fafc",
+                        border: "1px solid #e2e8f0",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ── Action Buttons ── */}
+            <div
+              className="flex gap-3 mb-6 eq-section"
+              style={{ animationDelay: "0.15s" }}
+            >
+              <button
+                onClick={handleExtract}
+                disabled={!files.length || isProcessing}
+                className="eq-action-btn flex-1 py-3.5 px-6 rounded-xl font-semibold text-sm relative overflow-hidden"
+                style={
+                  !files.length || isProcessing
+                    ? {
+                        background: "#f1f5f9",
+                        color: "#94a3b8",
+                        cursor: "not-allowed",
+                        border: "1px solid #e2e8f0",
+                        transition: "all 0.25s",
+                      }
+                    : {
+                        background:
+                          "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
+                        color: "white",
+                        border: "none",
+                        boxShadow: "0 4px 18px rgba(59,130,246,0.32)",
+                        transition: "all 0.25s",
+                        cursor: "pointer",
+                      }
+                }
+              >
+                {/* Shimmer on active */}
+                {files.length > 0 && !isProcessing && (
+                  <div
+                    className="absolute inset-0 pointer-events-none"
+                    style={{
+                      background:
+                        "linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.18) 50%, transparent 60%)",
+                      animation: "eq-shimmer 2.8s linear infinite",
+                    }}
+                  />
+                )}
+                {isProcessing ? (
+                  <span className="flex items-center justify-center gap-2.5">
+                    <svg
+                      className="h-5 w-5 text-blue-600"
+                      viewBox="0 0 24 24"
+                      style={{ animation: "eq-spin-slow 1.2s linear infinite" }}
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                        fill="none"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      />
+                    </svg>
+                    <span className="text-slate-500">Extracting…</span>
+                  </span>
+                ) : (
+                  <span className="flex items-center justify-center gap-2 relative z-10">
+                    <span className="text-base">⚡</span>
+                    <span>Extract Equipment List</span>
+                    {files.length > 0 && (
+                      <span className="ml-1 text-blue-200 text-xs font-normal opacity-80">
+                        → AI-powered
+                      </span>
+                    )}
+                  </span>
+                )}
+              </button>
+
+              {results && (
+                <>
+                  {selectedRows.size > 0 && (
+                    <button
+                      onClick={handleExportSelected}
+                      className="eq-export-btn flex items-center gap-2 px-5 py-3.5 rounded-xl font-semibold text-sm"
+                      style={{
+                        background: "rgba(59,130,246,0.12)",
+                        color: "#065f46",
+                        border: "1px solid rgba(59,130,246,0.35)",
+                        boxShadow: "0 2px 8px rgba(59,130,246,0.12)",
+                        transition: "all 0.2s",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <ArrowDownTrayIcon className="h-4 w-4" />
+                      Download Selected
+                      <span
+                        className="ml-1 inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold text-white"
+                        style={{ background: "#3b82f6" }}
+                      >
+                        {selectedRows.size}
+                      </span>
+                    </button>
+                  )}
+                  <button
+                    onClick={handleExport}
+                    className="eq-export-btn flex items-center gap-2 px-5 py-3.5 rounded-xl font-semibold text-sm"
+                    style={{
+                      background: "rgba(59,130,246,0.07)",
+                      color: "#065f46",
+                      border: "1px solid rgba(59,130,246,0.22)",
+                      boxShadow: "0 2px 8px rgba(59,130,246,0.08)",
+                      transition: "all 0.2s",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <ArrowDownTrayIcon className="h-4 w-4" />
+                    Download Excel
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* ── Progress ── */}
+            {isProcessing && (
+              <div
+                className="rounded-2xl overflow-hidden mb-4"
+                style={{
+                  background: "white",
+                  border: "1px solid rgba(59,130,246,0.20)",
+                  boxShadow: "0 4px 24px rgba(59,130,246,0.10)",
+                  animation: "eq-fade-up 0.35s ease forwards",
+                }}
+              >
+                {/* Gradient top strip */}
+                <div
+                  className="h-[3px]"
+                  style={{
+                    backgroundImage: EQ_T.gradBar,
+                    backgroundSize: "300% auto",
+                    animation: "eqGradShift 2.5s linear infinite",
+                  }}
+                />
+
+                <div className="p-5">
+                  <div className="flex items-start gap-5 mb-4">
+                    {/* Orbit electron AI loader */}
+                    <div
+                      className="relative flex-shrink-0 w-14 h-14"
+                      style={{ marginTop: "2px" }}
+                    >
+                      {/* Orbit ring */}
+                      <div
+                        className="absolute inset-0 rounded-full border border-dashed pointer-events-none"
+                        style={{ borderColor: "rgba(59,130,246,0.18)" }}
+                      />
+                      {/* Core glow */}
+                      <div
+                        className="absolute inset-[14px] rounded-full flex items-center justify-center"
+                        style={{
+                          background: "rgba(59,130,246,0.09)",
+                          animation: "eq-glow-light 1.8s ease infinite",
+                        }}
+                      >
+                        <svg
+                          className="w-5 h-5 text-blue-600"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          style={{
+                            animation: "eq-spin-slow 6s linear infinite",
+                          }}
+                        >
+                          <path
+                            d="M12 2a10 10 0 1 0 10 10"
+                            strokeLinecap="round"
+                          />
+                          <path d="M12 6v6l3 3" strokeLinecap="round" />
+                        </svg>
+                      </div>
+                      {/* Orbit electrons A / B / C */}
+                      {EQ_T.electrons.map((color, i) => (
+                        <div
+                          key={i}
+                          className="absolute inset-0 flex items-center justify-center pointer-events-none"
+                        >
+                          <div
+                            className="w-2 h-2 rounded-full"
+                            style={{
+                              background: color,
+                              boxShadow: `0 0 6px ${color}`,
+                              animation: `eqOrbit${["A", "B", "C"][i]} ${["1.4s", "1.8s", "2.2s"][i]} linear infinite`,
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-semibold text-slate-700">
+                          {statusMessage || "AI Processing…"}
+                        </span>
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-xs text-slate-400 tabular-nums font-mono">
+                            ⏱ {formatElapsed(elapsedSeconds)}
+                          </span>
+                          <span className="text-sm font-bold text-blue-600 tabular-nums">
+                            {progress}%
+                          </span>
+                        </div>
+                      </div>
+                      {/* Progress bar */}
+                      <div
+                        className="relative w-full rounded-full h-2.5 overflow-hidden"
+                        style={{ background: "#f1f5f9" }}
+                      >
+                        <div
+                          className="h-full rounded-full relative overflow-hidden"
+                          style={{
+                            width: `${Math.max(5, progress)}%`,
+                            background:
+                              "linear-gradient(90deg, #2563eb, #3b82f6, #818cf8)",
+                            animation: "eq-bar-glow 1.6s ease infinite",
+                            transition: "width 0.7s ease",
+                          }}
+                        >
+                          <div
+                            className="absolute inset-0"
+                            style={{
+                              background:
+                                "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.45) 50%, transparent 100%)",
+                              animation: "eq-shimmer 2s linear infinite",
+                            }}
+                          />
+                        </div>
+                      </div>
+                      {/* Stage indicators */}
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2.5">
+                        {[
+                          { label: "OCR Extraction", done: progress >= 20 },
+                          { label: "Tag Detection", done: progress >= 40 },
+                          { label: "Field Mapping", done: progress >= 65 },
+                          { label: "Post-processing", done: progress >= 85 },
+                        ].map((stage) => (
+                          <div
+                            key={stage.label}
+                            className="flex items-center gap-1.5 text-[11px]"
+                          >
+                            <div
+                              className="w-3 h-3 rounded-full border flex items-center justify-center"
+                              style={{
+                                background: stage.done
+                                  ? "#3b82f6"
+                                  : "transparent",
+                                borderColor: stage.done ? "#3b82f6" : "#e2e8f0",
+                                transition: "all 0.4s ease",
+                              }}
+                            >
+                              {stage.done && (
+                                <span
+                                  className="text-white font-bold"
+                                  style={{ fontSize: "7px" }}
+                                >
+                                  ✓
+                                </span>
+                              )}
+                            </div>
+                            <span
+                              style={{
+                                color: stage.done ? "#3b82f6" : "#94a3b8",
+                                fontWeight: stage.done ? 600 : 400,
+                              }}
+                            >
+                              {stage.label}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    className="flex items-center gap-1.5 pt-3"
+                    style={{ borderTop: "1px solid #f1f5f9" }}
+                  >
+                    <span className="text-xs text-slate-400 flex-1">
+                      {elapsedSeconds > 20
+                        ? "OCR scanning P&ID drawing — large drawings may take 1–3 min"
+                        : "AI scanning document for equipment registers and tag numbers"}
+                    </span>
+                    {[0, 1, 2].map((i) => (
+                      <div
+                        key={i}
+                        className="w-1.5 h-4 rounded-full bg-blue-400 flex-shrink-0"
+                        style={{
+                          animation: "eq-dot-wave 1.1s ease infinite",
+                          animationDelay: `${i * 0.18}s`,
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Error ── */}
+            {error && (
+              <div
+                className="rounded-xl p-4 mb-4 flex items-start gap-3"
+                style={{
+                  background: "#fef2f2",
+                  border: "1px solid rgba(239,68,68,0.22)",
+                  animation: "eq-fade-up 0.3s ease forwards",
+                }}
+              >
+                <div
+                  className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
+                  style={{ background: "rgba(239,68,68,0.12)" }}
+                >
+                  <span className="text-red-500 text-xs font-bold">✕</span>
+                </div>
+                <p className="text-red-600 text-sm font-medium">{error}</p>
+              </div>
+            )}
+
+            {/* ── Diagnostic Panel (when 0 items extracted) ── */}
+            {debugInfo && results && results.total === 0 && (
+              <div
+                className="rounded-2xl p-5 mb-4 eq-section"
+                style={{
+                  background: "#fffbeb",
+                  border: "1px solid rgba(245,158,11,0.35)",
+                  boxShadow: "0 2px 12px rgba(245,158,11,0.08)",
+                  animationDelay: "0.1s",
+                }}
+              >
+                <div className="flex items-center gap-2.5 mb-4">
+                  <div
+                    className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
+                    style={{
+                      background: "rgba(245,158,11,0.12)",
+                      border: "1px solid rgba(245,158,11,0.3)",
+                    }}
+                  >
+                    <span className="text-amber-600 text-sm font-bold">!</span>
+                  </div>
+                  <h3 className="text-sm font-semibold text-amber-800">
+                    No Equipment Found — Extraction Diagnostics
+                  </h3>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                  {[
+                    { label: "Mode", value: debugInfo.extraction_mode || "—" },
+                    {
+                      label: "Text Extracted",
+                      value:
+                        debugInfo.text_len != null
+                          ? `${debugInfo.text_len.toLocaleString()} chars`
+                          : "—",
+                    },
+                    {
+                      label: "Raw Tag Matches",
+                      value:
+                        debugInfo.raw_items_count != null
+                          ? String(debugInfo.raw_items_count)
+                          : "—",
+                    },
+                    {
+                      label: "After Dedup",
+                      value:
+                        debugInfo.after_dedup_count != null
+                          ? String(debugInfo.after_dedup_count)
+                          : "—",
+                    },
+                  ].map(({ label, value }) => (
+                    <div
+                      key={label}
+                      className="rounded-xl px-3 py-2.5"
+                      style={{
+                        background: "white",
+                        border: "1px solid rgba(245,158,11,0.2)",
+                      }}
+                    >
+                      <p className="text-xs text-amber-600 font-medium mb-0.5">
+                        {label}
+                      </p>
+                      <p className="text-sm font-bold text-slate-800">
+                        {value}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                {debugInfo.text_preview ? (
+                  <div>
+                    <p className="text-xs font-semibold text-amber-700 mb-1.5">
+                      PDF Text Preview (first 400 chars extracted by backend):
+                    </p>
+                    <pre
+                      className="text-xs text-slate-600 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-all"
+                      style={{
+                        background: "#fefce8",
+                        border: "1px solid rgba(245,158,11,0.18)",
+                        maxHeight: "160px",
+                        overflowY: "auto",
+                      }}
+                    >
+                      {debugInfo.text_preview}
+                    </pre>
+                    <p className="text-xs text-amber-600 mt-2 leading-relaxed">
+                      {debugInfo.text_len === 0
+                        ? "⚠ No text was extracted from the PDF. The drawing may be a scanned image — try enabling Force OCR in a future version."
+                        : debugInfo.raw_items_count === 0
+                          ? "⚠ Text was extracted but no equipment tags (e.g. V-308, P-101A) were found in it. Check that the preview above contains recognisable tag numbers."
+                          : "⚠ Tags were found but removed during deduplication. The tag pattern may be too strict — contact support."}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-xs text-amber-600">
+                    {debugInfo.extraction_mode === "register"
+                      ? "Register mode ran but found no matching table structure in the document."
+                      : "No text preview available — extraction may have encountered an error before reaching the text stage."}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+          {/* end centered wrapper */}
 
           {/* ── KPI Summary Bar (after extraction) ── */}
           {kpiStats && (
-            <div className="px-6 mb-6" style={{ maxWidth: LAYOUT_CONFIG.normalMaxWidth }}>
+            <div
+              className="px-6 mb-6"
+              style={{ maxWidth: LAYOUT_CONFIG.normalMaxWidth }}
+            >
               {/* Section label */}
               <div className="flex items-center gap-2 mb-3">
-                <div className="h-px flex-1" style={{ background: 'linear-gradient(90deg, transparent, rgba(59,130,246,0.2))' }} />
-                <span className="text-[11px] font-bold text-blue-700 uppercase tracking-widest px-3 py-1 rounded-full eq-chip"
-                  style={{ background:'rgba(59,130,246,0.06)', border:'1px solid rgba(59,130,246,0.16)', animationDelay:'0s' }}>
+                <div
+                  className="h-px flex-1"
+                  style={{
+                    background:
+                      "linear-gradient(90deg, transparent, rgba(59,130,246,0.2))",
+                  }}
+                />
+                <span
+                  className="text-[11px] font-bold text-blue-700 uppercase tracking-widest px-3 py-1 rounded-full eq-chip"
+                  style={{
+                    background: "rgba(59,130,246,0.06)",
+                    border: "1px solid rgba(59,130,246,0.16)",
+                    animationDelay: "0s",
+                  }}
+                >
                   Extraction Summary
                 </span>
-                <div className="h-px flex-1" style={{ background: 'linear-gradient(270deg, transparent, rgba(59,130,246,0.2))' }} />
+                <div
+                  className="h-px flex-1"
+                  style={{
+                    background:
+                      "linear-gradient(270deg, transparent, rgba(59,130,246,0.2))",
+                  }}
+                />
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
                 {[
-                  { label: 'P&ID Drawings',   value: kpiStats.drawings, icon: '📋', color: '#2563eb', delay: '0s'    },
-                  { label: 'Items Extracted', value: kpiStats.total,    icon: '🏷️', color: '#3b82f6', delay: '0.05s' },
-                  { label: 'Equipment Types', value: kpiStats.types,    icon: '🗂️', color: '#2563eb', delay: '0.1s'  },
-                  { label: 'With MOC',        value: kpiStats.withMoc,  icon: '🧱', color: '#065f46', delay: '0.15s' },
-                  { label: 'With Dimensions', value: kpiStats.withDim,  icon: '📐', color: '#3b82f6', delay: '0.2s'  },
-                  { label: 'With Motor',      value: kpiStats.withMtr,  icon: '⚡', color: '#2563eb', delay: '0.25s' },
+                  {
+                    label: "P&ID Drawings",
+                    value: kpiStats.drawings,
+                    icon: "📋",
+                    color: "#2563eb",
+                    delay: "0s",
+                  },
+                  {
+                    label: "Items Extracted",
+                    value: kpiStats.total,
+                    icon: "🏷️",
+                    color: "#3b82f6",
+                    delay: "0.05s",
+                  },
+                  {
+                    label: "Equipment Types",
+                    value: kpiStats.types,
+                    icon: "🗂️",
+                    color: "#2563eb",
+                    delay: "0.1s",
+                  },
+                  {
+                    label: "With MOC",
+                    value: kpiStats.withMoc,
+                    icon: "🧱",
+                    color: "#065f46",
+                    delay: "0.15s",
+                  },
+                  {
+                    label: "With Dimensions",
+                    value: kpiStats.withDim,
+                    icon: "📐",
+                    color: "#3b82f6",
+                    delay: "0.2s",
+                  },
+                  {
+                    label: "With Motor",
+                    value: kpiStats.withMtr,
+                    icon: "⚡",
+                    color: "#2563eb",
+                    delay: "0.25s",
+                  },
                 ].map(({ label, value, icon, color, delay }) => (
-                  <div key={label} className="eq-kpi-card eq-kpi-node rounded-2xl px-4 py-4 flex items-center gap-3" style={{
-                    background: 'white',
-                    border: '1px solid rgba(59,130,246,0.13)',
-                    animationDelay: delay,
-                  }}>
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-xl" style={{
-                      background: `linear-gradient(135deg, ${color}18 0%, ${color}0c 100%)`,
-                      border: `1px solid ${color}22`,
-                    }}>
+                  <div
+                    key={label}
+                    className="eq-kpi-card eq-kpi-node rounded-2xl px-4 py-4 flex items-center gap-3"
+                    style={{
+                      background: "white",
+                      border: "1px solid rgba(59,130,246,0.13)",
+                      animationDelay: delay,
+                    }}
+                  >
+                    <div
+                      className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-xl"
+                      style={{
+                        background: `linear-gradient(135deg, ${color}18 0%, ${color}0c 100%)`,
+                        border: `1px solid ${color}22`,
+                      }}
+                    >
                       {icon}
                     </div>
                     <div>
-                      <p className="text-2xl font-bold leading-none tabular-nums" style={{ color }}>{value}</p>
-                      <p className="text-xs text-slate-400 mt-0.5 font-medium">{label}</p>
+                      <p
+                        className="text-2xl font-bold leading-none tabular-nums"
+                        style={{ color }}
+                      >
+                        {value}
+                      </p>
+                      <p className="text-xs text-slate-400 mt-0.5 font-medium">
+                        {label}
+                      </p>
                     </div>
                   </div>
                 ))}
@@ -2031,17 +6650,38 @@ const EquipmentList = () => {
 
           {/* ── Visual divider before table ── */}
           {results && (
-            <div className="px-6 mb-4" style={{ maxWidth: LAYOUT_CONFIG.normalMaxWidth }}>
+            <div
+              className="px-6 mb-4"
+              style={{ maxWidth: LAYOUT_CONFIG.normalMaxWidth }}
+            >
               <div className="flex items-center gap-3">
-                <div className="flex-1 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(59,130,246,0.25), transparent)' }} />
-                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold text-blue-700" style={{
-                  background: 'rgba(59,130,246,0.07)', border: '1px solid rgba(59,130,246,0.18)',
-                }}>
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500"
-                    style={{ animation: 'eq-pulse-badge 2s ease infinite' }} />
+                <div
+                  className="flex-1 h-px"
+                  style={{
+                    background:
+                      "linear-gradient(90deg, transparent, rgba(59,130,246,0.25), transparent)",
+                  }}
+                />
+                <div
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold text-blue-700"
+                  style={{
+                    background: "rgba(59,130,246,0.07)",
+                    border: "1px solid rgba(59,130,246,0.18)",
+                  }}
+                >
+                  <span
+                    className="w-1.5 h-1.5 rounded-full bg-blue-500"
+                    style={{ animation: "eq-pulse-badge 2s ease infinite" }}
+                  />
                   Extraction Results
                 </div>
-                <div className="flex-1 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(59,130,246,0.25), transparent)' }} />
+                <div
+                  className="flex-1 h-px"
+                  style={{
+                    background:
+                      "linear-gradient(90deg, transparent, rgba(59,130,246,0.25), transparent)",
+                  }}
+                />
               </div>
             </div>
           )}
@@ -2049,283 +6689,529 @@ const EquipmentList = () => {
           {/* ── Results Table — full viewport width breakout ── */}
           {results && (
             <div className="px-4 mt-4">
-            <div className="rounded-2xl overflow-hidden eq-section" style={{
-              background: 'white',
-              border: '1px solid rgba(59,130,246,0.12)',
-              boxShadow: '0 4px 24px rgba(59,130,246,0.07)',
-              animationDelay: '0s',
-            }}>
-              {/* Results header */}
-              <div className="px-6 py-4 flex flex-wrap items-center justify-between gap-3" style={{
-                background: 'linear-gradient(90deg, rgba(59,130,246,0.05), rgba(59,130,246,0.02))',
-                borderBottom: '1px solid rgba(59,130,246,0.1)',
-              }}>
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg" style={{
-                    background: 'rgba(59,130,246,0.08)',
-                    border: '1px solid rgba(59,130,246,0.18)',
-                  }}>
-                    <Boxes className="h-5 w-5 text-blue-600" />
+              <div
+                className="rounded-2xl overflow-hidden eq-section"
+                style={{
+                  background: "white",
+                  border: "1px solid rgba(59,130,246,0.12)",
+                  boxShadow: "0 4px 24px rgba(59,130,246,0.07)",
+                  animationDelay: "0s",
+                }}
+              >
+                {/* Results header */}
+                <div
+                  className="px-6 py-4 flex flex-wrap items-center justify-between gap-3"
+                  style={{
+                    background:
+                      "linear-gradient(90deg, rgba(59,130,246,0.05), rgba(59,130,246,0.02))",
+                    borderBottom: "1px solid rgba(59,130,246,0.1)",
+                  }}
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="p-2 rounded-lg"
+                      style={{
+                        background: "rgba(59,130,246,0.08)",
+                        border: "1px solid rgba(59,130,246,0.18)",
+                      }}
+                    >
+                      <Boxes className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <h2 className="text-slate-800 font-semibold text-base">
+                        <span className="text-blue-600 text-xl font-bold">
+                          {results.total}
+                        </span>{" "}
+                        Equipment Item{results.total !== 1 ? "s" : ""} Extracted
+                      </h2>
+                      {results.drawing_ref && (
+                        <p className="text-slate-400 text-xs mt-0.5">
+                          Drawing: {results.drawing_ref}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                  <div>
-                    <h2 className="text-slate-800 font-semibold text-base">
-                      <span className="text-blue-600 text-xl font-bold">{results.total}</span>
-                      {' '}Equipment Item{results.total !== 1 ? 's' : ''} Extracted
-                    </h2>
-                    {results.drawing_ref && (
-                      <p className="text-slate-400 text-xs mt-0.5">Drawing: {results.drawing_ref}</p>
-                    )}
+
+                  {/* Filter input */}
+                  <div className="relative">
+                    <svg
+                      className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <circle cx="11" cy="11" r="8" />
+                      <path d="m21 21-4.35-4.35" />
+                    </svg>
+                    <input
+                      type="text"
+                      placeholder="Filter by tag, type, fluid…"
+                      value={filterText}
+                      onChange={(e) => setFilterText(e.target.value)}
+                      className="eq-filter-input pl-8 pr-3 py-2 text-sm rounded-lg outline-none w-56"
+                      style={{
+                        background: "white",
+                        border: "1px solid #e2e8f0",
+                        color: "#334155",
+                        transition: "border-color 0.2s, box-shadow 0.2s",
+                      }}
+                      onFocus={(e) => {
+                        e.target.style.borderColor = "rgba(59,130,246,0.45)";
+                        e.target.style.boxShadow =
+                          "0 0 0 3px rgba(59,130,246,0.1)";
+                      }}
+                      onBlur={(e) => {
+                        e.target.style.borderColor = "#e2e8f0";
+                        e.target.style.boxShadow = "none";
+                      }}
+                    />
                   </div>
                 </div>
 
-                {/* Filter input */}
-                <div className="relative">
-                  <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none"
-                    viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-                  </svg>
-                  <input
-                    type="text"
-                    placeholder="Filter by tag, type, fluid…"
-                    value={filterText}
-                    onChange={e => setFilterText(e.target.value)}
-                    className="eq-filter-input pl-8 pr-3 py-2 text-sm rounded-lg outline-none w-56"
-                    style={{
-                      background: 'white',
-                      border: '1px solid #e2e8f0',
-                      color: '#334155',
-                      transition: 'border-color 0.2s, box-shadow 0.2s',
-                    }}
-                    onFocus={e => {
-                      e.target.style.borderColor = 'rgba(59,130,246,0.45)';
-                      e.target.style.boxShadow   = '0 0 0 3px rgba(59,130,246,0.1)';
-                    }}
-                    onBlur={e => {
-                      e.target.style.borderColor = '#e2e8f0';
-                      e.target.style.boxShadow   = 'none';
-                    }}
-                  />
-                </div>
-              </div>
-
-              {displayRows.length === 0 ? (
-                <div className="px-6 py-12 text-center">
-                  <p className="text-slate-400 text-sm">
-                    {filterText ? 'No items match your filter.' : 'No equipment items were extracted from this drawing.'}
-                  </p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full">
-                    <thead className="eq-th-sticky">
-                      <tr style={{ background: 'linear-gradient(90deg, #065f46, #2563eb)' }}>
-                        <th className="px-3 py-3.5 text-center" style={{ width: '40px' }}>
-                          <input
-                            type="checkbox"
-                            checked={selectedRows.size === displayRows.length && displayRows.length > 0}
-                            onChange={handleSelectAll}
-                            title="Select / deselect all"
-                            style={{ cursor: 'pointer', accentColor: '#6366f1', width: '15px', height: '15px' }}
-                          />
-                        </th>
-                        {COLUMNS.map(col => (
-                          <th
-                            key={col.key}
-                            className="px-4 py-3.5 text-left text-xs font-semibold text-white uppercase tracking-wider cursor-pointer select-none"
-                            style={{ transition: 'background 0.18s' }}
-                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.12)'}
-                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                            onClick={() => handleSort(col.key)}
-                          >
-                            <span className="flex items-center gap-1">
-                              {col.label}
-                              {sortCol === col.key && (
-                                <span className="text-blue-200">{sortAsc ? ' ↑' : ' ↓'}</span>
-                              )}
-                            </span>
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {displayRows.map((row, idx) => {
-                        const rowKey = getRowKey(row, idx);
-                        const isSelected = selectedRows.has(rowKey);
-                        return (
+                {displayRows.length === 0 ? (
+                  <div className="px-6 py-12 text-center">
+                    <p className="text-slate-400 text-sm">
+                      {filterText
+                        ? "No items match your filter."
+                        : "No equipment items were extracted from this drawing."}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full">
+                      <thead className="eq-th-sticky">
                         <tr
-                          key={row.tag}
-                          className="eq-row-animate"
                           style={{
-                            animationDelay: `${Math.min(idx * 0.035, 0.5)}s`,
-                            background: isSelected ? 'rgba(59,130,246,0.08)' : idx % 2 === 0 ? 'white' : '#eff6ff',
-                            borderBottom: '1px solid #f1f5f9',
-                            transition: 'background 0.15s',
-                            outline: isSelected ? '1px solid rgba(59,130,246,0.25)' : 'none',
+                            background:
+                              "linear-gradient(90deg, #065f46, #2563eb)",
                           }}
-                          onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(59,130,246,0.05)'; }}
-                          onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = idx % 2 === 0 ? 'white' : '#eff6ff'; }}
                         >
-                          <td className="px-3 py-3 text-center" style={{ width: '40px' }}>
+                          <th
+                            className="px-3 py-3.5 text-center"
+                            style={{ width: "40px" }}
+                          >
                             <input
                               type="checkbox"
-                              checked={isSelected}
-                              onChange={() => handleSelectRow(rowKey)}
-                              style={{ cursor: 'pointer', accentColor: '#3b82f6', width: '15px', height: '15px' }}
+                              checked={
+                                selectedRows.size === displayRows.length &&
+                                displayRows.length > 0
+                              }
+                              onChange={handleSelectAll}
+                              title="Select / deselect all"
+                              style={{
+                                cursor: "pointer",
+                                accentColor: "#6366f1",
+                                width: "15px",
+                                height: "15px",
+                              }}
                             />
-                          </td>
-                          {COLUMNS.map(col => {
-                            // sl_no: always sequential 1-based index regardless of backend value
-                            const raw     = row[col.key];
-                            const v       = col.key === 'sl_no' ? idx + 1 : raw;
-                            const display = Array.isArray(v)
-                              ? (v.length ? v.join(' · ') : '—')
-                              : (v || '—');
-                            const isConnectionCol = col.key === 'line_connections' || col.key === 'nozzle_connections';
-                            return (
-                              <td
-                                key={col.key}
-                                className={`px-4 py-3 text-sm ${col.key === 'tag' ? 'font-mono font-bold' : ''}`}
-                                style={{
-                                  color:      col.key === 'tag' ? '#065f46' : '#334155',
-                                  whiteSpace: isConnectionCol ? 'normal' : 'nowrap',
-                                  maxWidth:   col.key === 'line_connections' ? '320px' : undefined,
-                                }}
-                                title={Array.isArray(v) ? v.join(', ') : String(v || '')}
-                              >
-                                {col.key === 'tag' ? (
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-mono font-bold"
-                                    style={{ background: 'rgba(59,130,246,0.08)', color: '#065f46', border: '1px solid rgba(59,130,246,0.15)' }}>
-                                    {display}
+                          </th>
+                          {COLUMNS.map((col) => (
+                            <th
+                              key={col.key}
+                              className="px-4 py-3.5 text-left text-xs font-semibold text-white uppercase tracking-wider cursor-pointer select-none"
+                              style={{ transition: "background 0.18s" }}
+                              onMouseEnter={(e) =>
+                                (e.currentTarget.style.background =
+                                  "rgba(255,255,255,0.12)")
+                              }
+                              onMouseLeave={(e) =>
+                                (e.currentTarget.style.background =
+                                  "transparent")
+                              }
+                              onClick={() => handleSort(col.key)}
+                            >
+                              <span className="flex items-center gap-1">
+                                {col.label}
+                                {sortCol === col.key && (
+                                  <span className="text-blue-200">
+                                    {sortAsc ? " ↑" : " ↓"}
                                   </span>
-                                ) : col.key === 'quality_required' ? (
-                                  <span className="flex flex-col gap-0.5">
-                                    {display !== '—' && <span>{display}</span>}
-                                    {(() => {
-                                      const h = resolveQuantityHint(row.tag);
-                                      return h ? (
-                                        <span className="text-xs font-medium px-1.5 py-0.5 rounded self-start"
-                                          style={{ background: 'rgba(59,130,246,0.07)', color: '#3b82f6', border: '1px solid rgba(59,130,246,0.15)' }}
-                                          title={`Expected: ${h.label} (${h.placeholder})`}>
-                                          {h.label}
-                                        </span>
-                                      ) : (display === '—' ? <span style={{ color: '#94a3b8' }}>—</span> : null);
-                                    })()}
-                                  </span>
-                                ) : col.key === 'line_connections' ? (
-                                  renderLineBadges(v)
-                                ) : col.key === 'nozzle_connections' ? (
-                                  renderNozzleBadges(v)
-                                ) : CONDITION_COLS.has(col.key) ? (
-                                  renderConditionValue(display)
-                                ) : (
-                                  <span className="block">{display}</span>
                                 )}
-                              </td>
-                            );
-                          })}
+                              </span>
+                            </th>
+                          ))}
                         </tr>
-                      ); })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                      </thead>
+                      <tbody>
+                        {displayRows.map((row, idx) => {
+                          const rowKey = getRowKey(row, idx);
+                          const isSelected = selectedRows.has(rowKey);
+                          return (
+                            <tr
+                              key={row.tag}
+                              className="eq-row-animate"
+                              style={{
+                                animationDelay: `${Math.min(idx * 0.035, 0.5)}s`,
+                                background: isSelected
+                                  ? "rgba(59,130,246,0.08)"
+                                  : idx % 2 === 0
+                                    ? "white"
+                                    : "#eff6ff",
+                                borderBottom: "1px solid #f1f5f9",
+                                transition: "background 0.15s",
+                                outline: isSelected
+                                  ? "1px solid rgba(59,130,246,0.25)"
+                                  : "none",
+                              }}
+                              onMouseEnter={(e) => {
+                                if (!isSelected)
+                                  e.currentTarget.style.background =
+                                    "rgba(59,130,246,0.05)";
+                              }}
+                              onMouseLeave={(e) => {
+                                if (!isSelected)
+                                  e.currentTarget.style.background =
+                                    idx % 2 === 0 ? "white" : "#eff6ff";
+                              }}
+                            >
+                              <td
+                                className="px-3 py-3 text-center"
+                                style={{ width: "40px" }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => handleSelectRow(rowKey)}
+                                  style={{
+                                    cursor: "pointer",
+                                    accentColor: "#3b82f6",
+                                    width: "15px",
+                                    height: "15px",
+                                  }}
+                                />
+                              </td>
+                              {COLUMNS.map((col) => {
+                                // sl_no: always sequential 1-based index regardless of backend value
+                                const raw = row[col.key];
+                                const v = col.key === "sl_no" ? idx + 1 : raw;
+                                const display = Array.isArray(v)
+                                  ? v.length
+                                    ? v.join(" · ")
+                                    : "—"
+                                  : v || "—";
+                                const isConnectionCol =
+                                  col.key === "line_connections" ||
+                                  col.key === "nozzle_connections";
+                                return (
+                                  <td
+                                    key={col.key}
+                                    className={`px-4 py-3 text-sm ${col.key === "tag" ? "font-mono font-bold" : ""}`}
+                                    style={{
+                                      color:
+                                        col.key === "tag"
+                                          ? "#065f46"
+                                          : "#334155",
+                                      whiteSpace: isConnectionCol
+                                        ? "normal"
+                                        : "nowrap",
+                                      maxWidth:
+                                        col.key === "line_connections"
+                                          ? "320px"
+                                          : undefined,
+                                    }}
+                                    title={
+                                      Array.isArray(v)
+                                        ? v.join(", ")
+                                        : String(v || "")
+                                    }
+                                  >
+                                    {col.key === "tag" ? (
+                                      <span
+                                        className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-mono font-bold"
+                                        style={{
+                                          background: "rgba(59,130,246,0.08)",
+                                          color: "#065f46",
+                                          border:
+                                            "1px solid rgba(59,130,246,0.15)",
+                                        }}
+                                      >
+                                        {display}
+                                      </span>
+                                    ) : col.key === "quality_required" ? (
+                                      <span className="flex flex-col gap-0.5">
+                                        {display !== "—" && (
+                                          <span>{display}</span>
+                                        )}
+                                        {(() => {
+                                          const h = resolveQuantityHint(
+                                            row.tag,
+                                          );
+                                          return h ? (
+                                            <span
+                                              className="text-xs font-medium px-1.5 py-0.5 rounded self-start"
+                                              style={{
+                                                background:
+                                                  "rgba(59,130,246,0.07)",
+                                                color: "#3b82f6",
+                                                border:
+                                                  "1px solid rgba(59,130,246,0.15)",
+                                              }}
+                                              title={`Expected: ${h.label} (${h.placeholder})`}
+                                            >
+                                              {h.label}
+                                            </span>
+                                          ) : display === "—" ? (
+                                            <span style={{ color: "#94a3b8" }}>
+                                              —
+                                            </span>
+                                          ) : null;
+                                        })()}
+                                      </span>
+                                    ) : col.key === "line_connections" ? (
+                                      renderLineBadges(v)
+                                    ) : col.key === "nozzle_connections" ? (
+                                      renderNozzleBadges(v)
+                                    ) : CONDITION_COLS.has(col.key) ? (
+                                      renderConditionValue(display)
+                                    ) : (
+                                      <span className="block">{display}</span>
+                                    )}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
 
-              <div className="px-6 py-3 flex items-center justify-between text-xs" style={{
-                borderTop: '1px solid #f1f5f9',
-                background: 'linear-gradient(90deg, #f8fafc, rgba(59,130,246,0.02))',
-              }}>
-                <div className="flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500"
-                    style={{ animation: 'eq-pulse-badge 2s ease infinite' }} />
-                  <span className="text-slate-400 font-medium">
-                    {filterText ? `${displayRows.length} of ${results.total} shown` : `${results.total} equipment items`}
+                <div
+                  className="px-6 py-3 flex items-center justify-between text-xs"
+                  style={{
+                    borderTop: "1px solid #f1f5f9",
+                    background:
+                      "linear-gradient(90deg, #f8fafc, rgba(59,130,246,0.02))",
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="w-1.5 h-1.5 rounded-full bg-blue-500"
+                      style={{ animation: "eq-pulse-badge 2s ease infinite" }}
+                    />
+                    <span className="text-slate-400 font-medium">
+                      {filterText
+                        ? `${displayRows.length} of ${results.total} shown`
+                        : `${results.total} equipment items`}
+                    </span>
+                  </div>
+                  <span className="text-slate-300 hidden sm:block">
+                    ↑↓ Click column header to sort
                   </span>
                 </div>
-                <span className="text-slate-300 hidden sm:block">↑↓ Click column header to sort</span>
               </div>
-            </div>
             </div>
           )}
 
           {/* ── Info Panel (idle) — soft-coded off (EQ_SHOW_WHAT_GETS_EXTRACTED) ── */}
-          <div className="px-6" style={{ maxWidth: LAYOUT_CONFIG.normalMaxWidth }}>
-          {EQ_SHOW_WHAT_GETS_EXTRACTED && !results && !isProcessing && (
-            <div className="rounded-2xl overflow-hidden mt-4 eq-section" style={{
-              background: 'white',
-              border: '1px solid rgba(59,130,246,0.12)',
-              boxShadow: '0 4px 24px rgba(59,130,246,0.07)',
-              animationDelay: '0.25s',
-            }}>
-              {/* Gradient top strip */}
-              <div className="h-[3px]" style={{
-                backgroundImage: EQ_T.gradBar, backgroundSize:'300% auto',
-                animation: 'eqGradShift 4s linear infinite',
-              }} />
+          <div
+            className="px-6"
+            style={{ maxWidth: LAYOUT_CONFIG.normalMaxWidth }}
+          >
+            {EQ_SHOW_WHAT_GETS_EXTRACTED && !results && !isProcessing && (
+              <div
+                className="rounded-2xl overflow-hidden mt-4 eq-section"
+                style={{
+                  background: "white",
+                  border: "1px solid rgba(59,130,246,0.12)",
+                  boxShadow: "0 4px 24px rgba(59,130,246,0.07)",
+                  animationDelay: "0.25s",
+                }}
+              >
+                {/* Gradient top strip */}
+                <div
+                  className="h-[3px]"
+                  style={{
+                    backgroundImage: EQ_T.gradBar,
+                    backgroundSize: "300% auto",
+                    animation: "eqGradShift 4s linear infinite",
+                  }}
+                />
 
-              <div className="p-6">
-                <div className="flex items-center gap-3 mb-5">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{
-                    background: 'linear-gradient(135deg, rgba(59,130,246,0.12), rgba(99,102,241,0.06))',
-                    border: '1px solid rgba(59,130,246,0.20)',
-                  }}>
-                    <span className="text-blue-600 text-sm">📋</span>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-800">What Gets Extracted</h3>
-                    <p className="text-xs text-slate-400">18-field engineering register · P&ID + Equipment List modes</p>
-                  </div>
-                  <div className="ml-auto flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500"
-                      style={{ animation: 'eq-pulse-badge 2s ease infinite' }} />
-                    <span className="text-xs font-semibold text-blue-600">AI-Ready</span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {[
-                    ['🔢', 'SL No. & Revision',           'Row serial number and document revision extracted from the register table',       '#3b82f6'],
-                    ['🏷️', 'Equipment Tag No.',            'ISA/project-style tag (V-101, P-201A, E-302…) from tag column',                  '#2563eb'],
-                    ['📝', 'Description',                  'Equipment description as listed in the register',                                  '#065f46'],
-                    ['💧', 'Design Flowrate / Duty',       'Design flow rate, duty, or volume capacity from the process column',              '#3b82f6'],
-                    ['🌡️', 'Operating Pressure (PSIG)',    'Normal operating pressure extracted from oper. press. column',                    '#2563eb'],
-                    ['🔥', 'Operating Temperature (°F)',   'Normal operating temperature from oper. temp. column',                            '#065f46'],
-                    ['⬆️', 'Design/Set Press. Min & Max',  'Minimum and maximum design or set pressure from the two PSIG columns',           '#3b82f6'],
-                    ['⬆️', 'Design Temp. Min & Max (°F)',  'Minimum and maximum design temperature from the two Deg F columns',              '#2563eb'],
-                    ['🧱', 'MOC',                          'Material of Construction — shell, body or wetted-parts material',                 '#065f46'],
-                    ['🧊', 'Insulation',                   'Insulation type or code (PERS, PITS, ICS, CONS, HOT, COLD…)',                    '#3b82f6'],
-                    ['📐', 'Length / Height (mm)',          'Tangent-to-tangent length or overall height from the dimension column',           '#2563eb'],
-                    ['⭕', 'Diameter / Width (mm)',         'Outside diameter or width from the dimension column',                             '#065f46'],
-                    ['⚡', 'Motor Rating (kW)',             'Installed motor or driver power rating from the KW column',                      '#3b82f6'],
-                    ['📋', 'P&ID No.',                     'P&ID reference number cross-linked to this equipment item',                      '#2563eb'],
-                    ['✅', 'Quantity Required',             'Volume / Flow Rate / Duty — resolved dynamically from equipment tag prefix',      '#065f46'],
-                    ['🔄', 'Phase',                        'Process fluid phase (Gas, Liquid, Mixed, Vapour…)',                               '#3b82f6'],
-                    ['💬', 'Remarks',                      'Notes, holds, TBD items or other remarks from the last column',                   '#2563eb'],
-                    ['🔀', 'Multi-Angle OCR',              'Extracts at 0°, 90°, 180°, 270° — handles landscape CAD title blocks',           '#065f46'],
-                  ].map(([icon, title, desc, color]) => (
-                    <div key={title} className="eq-info-card flex items-start gap-3 p-3.5 rounded-xl" style={{
-                      background: '#f8fafc',
-                      border: '1px solid #e2e8f0',
-                      transition: 'border-color 0.2s, background 0.2s',
-                      cursor: 'default',
-                    }}>
-                      <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 text-base" style={{
-                        background: `linear-gradient(135deg, ${color}12 0%, ${color}07 100%)`,
-                        border: `1px solid ${color}1a`,
-                      }}>
-                        {icon}
-                      </div>
-                      <div>
-                        <p className="text-xs font-semibold mb-0.5" style={{ color }}>{title}</p>
-                        <p className="text-xs text-slate-500 leading-relaxed">{desc}</p>
-                      </div>
+                <div className="p-6">
+                  <div className="flex items-center gap-3 mb-5">
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{
+                        background:
+                          "linear-gradient(135deg, rgba(59,130,246,0.12), rgba(99,102,241,0.06))",
+                        border: "1px solid rgba(59,130,246,0.20)",
+                      }}
+                    >
+                      <span className="text-blue-600 text-sm">📋</span>
                     </div>
-                  ))}
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-800">
+                        What Gets Extracted
+                      </h3>
+                      <p className="text-xs text-slate-400">
+                        18-field engineering register · P&ID + Equipment List
+                        modes
+                      </p>
+                    </div>
+                    <div className="ml-auto flex items-center gap-1.5">
+                      <span
+                        className="w-1.5 h-1.5 rounded-full bg-blue-500"
+                        style={{ animation: "eq-pulse-badge 2s ease infinite" }}
+                      />
+                      <span className="text-xs font-semibold text-blue-600">
+                        AI-Ready
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {[
+                      [
+                        "🔢",
+                        "SL No. & Revision",
+                        "Row serial number and document revision extracted from the register table",
+                        "#3b82f6",
+                      ],
+                      [
+                        "🏷️",
+                        "Equipment Tag No.",
+                        "ISA/project-style tag (V-101, P-201A, E-302…) from tag column",
+                        "#2563eb",
+                      ],
+                      [
+                        "📝",
+                        "Description",
+                        "Equipment description as listed in the register",
+                        "#065f46",
+                      ],
+                      [
+                        "💧",
+                        "Design Flowrate / Duty",
+                        "Design flow rate, duty, or volume capacity from the process column",
+                        "#3b82f6",
+                      ],
+                      [
+                        "🌡️",
+                        "Operating Pressure (PSIG)",
+                        "Normal operating pressure extracted from oper. press. column",
+                        "#2563eb",
+                      ],
+                      [
+                        "🔥",
+                        "Operating Temperature (°F)",
+                        "Normal operating temperature from oper. temp. column",
+                        "#065f46",
+                      ],
+                      [
+                        "⬆️",
+                        "Design/Set Press. Min & Max",
+                        "Minimum and maximum design or set pressure from the two PSIG columns",
+                        "#3b82f6",
+                      ],
+                      [
+                        "⬆️",
+                        "Design Temp. Min & Max (°F)",
+                        "Minimum and maximum design temperature from the two Deg F columns",
+                        "#2563eb",
+                      ],
+                      [
+                        "🧱",
+                        "MOC",
+                        "Material of Construction — shell, body or wetted-parts material",
+                        "#065f46",
+                      ],
+                      [
+                        "🧊",
+                        "Insulation",
+                        "Insulation type or code (PERS, PITS, ICS, CONS, HOT, COLD…)",
+                        "#3b82f6",
+                      ],
+                      [
+                        "📐",
+                        "Length / Height (mm)",
+                        "Tangent-to-tangent length or overall height from the dimension column",
+                        "#2563eb",
+                      ],
+                      [
+                        "⭕",
+                        "Diameter / Width (mm)",
+                        "Outside diameter or width from the dimension column",
+                        "#065f46",
+                      ],
+                      [
+                        "⚡",
+                        "Motor Rating (kW)",
+                        "Installed motor or driver power rating from the KW column",
+                        "#3b82f6",
+                      ],
+                      [
+                        "📋",
+                        "P&ID No.",
+                        "P&ID reference number cross-linked to this equipment item",
+                        "#2563eb",
+                      ],
+                      [
+                        "✅",
+                        "Quantity Required",
+                        "Volume / Flow Rate / Duty — resolved dynamically from equipment tag prefix",
+                        "#065f46",
+                      ],
+                      [
+                        "🔄",
+                        "Phase",
+                        "Process fluid phase (Gas, Liquid, Mixed, Vapour…)",
+                        "#3b82f6",
+                      ],
+                      [
+                        "💬",
+                        "Remarks",
+                        "Notes, holds, TBD items or other remarks from the last column",
+                        "#2563eb",
+                      ],
+                      [
+                        "🔀",
+                        "Multi-Angle OCR",
+                        "Extracts at 0°, 90°, 180°, 270° — handles landscape CAD title blocks",
+                        "#065f46",
+                      ],
+                    ].map(([icon, title, desc, color]) => (
+                      <div
+                        key={title}
+                        className="eq-info-card flex items-start gap-3 p-3.5 rounded-xl"
+                        style={{
+                          background: "#f8fafc",
+                          border: "1px solid #e2e8f0",
+                          transition: "border-color 0.2s, background 0.2s",
+                          cursor: "default",
+                        }}
+                      >
+                        <div
+                          className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 text-base"
+                          style={{
+                            background: `linear-gradient(135deg, ${color}12 0%, ${color}07 100%)`,
+                            border: `1px solid ${color}1a`,
+                          }}
+                        >
+                          {icon}
+                        </div>
+                        <div>
+                          <p
+                            className="text-xs font-semibold mb-0.5"
+                            style={{ color }}
+                          >
+                            {title}
+                          </p>
+                          <p className="text-xs text-slate-500 leading-relaxed">
+                            {desc}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-          </div>{/* end info panel wrapper */}
-
+            )}
+          </div>
+          {/* end info panel wrapper */}
         </div>
       </div>
 
@@ -2336,7 +7222,10 @@ const EquipmentList = () => {
           onClose={() => setLegendModalOpen(false)}
           section={EQ_LEGENDS.section}
           projectId={activeProject?.project_id}
-          onActiveChange={(legend) => { setActiveLegend(legend); refreshActiveLegend(); }}
+          onActiveChange={(legend) => {
+            setActiveLegend(legend);
+            refreshActiveLegend();
+          }}
         />
       )}
     </>

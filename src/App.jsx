@@ -1306,7 +1306,7 @@ function App() {
             <Route
               path="engineering/process/equipment-list"
               element={
-                <ModuleProtectedRoute moduleCode="pid_analysis">
+                <ModuleProtectedRoute moduleCode="pid_equipment_list">
                   <EquipmentList />
                 </ModuleProtectedRoute>
               }
