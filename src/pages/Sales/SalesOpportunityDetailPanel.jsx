@@ -214,9 +214,9 @@ export default function SalesOpportunityDetailPanel({
     if (next < 0) return;
     event.preventDefault();
     activate(tabs[next]);
-    event.currentTarget.parentElement
-      .querySelectorAll('[role="tab"]')
-      [next]?.focus();
+    const tabs_list = event.currentTarget.parentElement
+      .querySelectorAll('[role="tab"]');
+    tabs_list[next]?.focus();
   };
   if (loading || error || !record)
     return (
@@ -370,6 +370,10 @@ export default function SalesOpportunityDetailPanel({
     "Not provided"
   );
 
+  const handleAction = (actionId) => {
+    onAction?.(actionId);
+  };
+
   return (
     <aside
       className={`sor-detail-panel ${explorer ? "sor-detail-explorer" : ""}`}
@@ -466,7 +470,7 @@ export default function SalesOpportunityDetailPanel({
                       disabled={!onAction}
                       onClick={(event) => {
                         event.currentTarget.closest("details").open = false;
-                        onAction?.(action.id);
+                        handleAction(action.id);
                       }}
                     >
                       {action.label}
@@ -802,7 +806,7 @@ export default function SalesOpportunityDetailPanel({
               <button
                 type="button"
                 className="sor-detail-primary"
-                onClick={() => onAction?.(primary.id)}
+                onClick={() => handleAction(primary.id)}
                 disabled={!onAction}
               >
                 {primary.label}

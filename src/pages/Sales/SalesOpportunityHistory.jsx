@@ -152,7 +152,7 @@ function EmailDetails({ data }) {
 }
 EmailDetails.propTypes = { data: PropTypes.object.isRequired };
 
-export default function SalesOpportunityHistory({ events }) {
+export default function SalesOpportunityHistory({ events = [] }) {
   const history = Array.isArray(events) ? events.filter((event) => event && typeof event === "object" && !Array.isArray(event)) : [];
   if (!history.length) return null;
   return <section aria-label="Action history" className="mt-4 min-w-0 rounded-md border border-slate-200 bg-white p-4">
@@ -181,4 +181,3 @@ export default function SalesOpportunityHistory({ events }) {
   </section>;
 }
 SalesOpportunityHistory.propTypes = { events: PropTypes.array };
-SalesOpportunityHistory.defaultProps = { events: [] };
