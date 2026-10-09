@@ -23,6 +23,7 @@ import {
   RefreshCw,
   Search,
   SlidersHorizontal,
+  Trash2,
   X,
 } from "lucide-react";
 import salesService from "../../services/sales.service";
@@ -154,6 +155,7 @@ export default function SalesOpportunityRegister({
   onOpenRecord,
   onRetryRecord,
   onOpenFullRecord,
+  onDelete,
   onEdit,
   onCreate,
   onAction,
@@ -1057,6 +1059,17 @@ export default function SalesOpportunityRegister({
                         >
                           <MoreHorizontal size={18} />
                         </button>
+                        {row.can_delete && (
+                          <button
+                            type="button"
+                            className="sor-row-action sor-row-delete"
+                            aria-label={`Delete ${row.deal_code}`}
+                            title={`Delete ${row.deal_code}`}
+                            onClick={() => onDelete(row)}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -1181,6 +1194,7 @@ export default function SalesOpportunityRegister({
         error={recordError}
         onRetry={onRetryRecord}
         onOpenFullRecord={() => onOpenFullRecord(record)}
+        onDelete={record?.can_delete ? () => onDelete(record) : null}
         onEdit={onEdit}
         onAction={onAction}
         actions={actions}
@@ -1210,6 +1224,7 @@ SalesOpportunityRegister.propTypes = {
   onOpenRecord: PropTypes.func,
   onRetryRecord: PropTypes.func.isRequired,
   onOpenFullRecord: PropTypes.func.isRequired,
+  onDelete: PropTypes.func.isRequired,
   onEdit: PropTypes.func.isRequired,
   onCreate: PropTypes.func.isRequired,
   onAction: PropTypes.func.isRequired,
