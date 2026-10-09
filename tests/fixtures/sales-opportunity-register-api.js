@@ -50,7 +50,7 @@ export async function prepareRegister(page, configuration = {}) {
   const state = {
     records: sampleRows(), requests: [], exports: [], pageErrors: [],
     listStatus: 200, listPageStatuses: {}, exportStatus: 200, detailStatuses: {}, detailHolds: {},
-    patchStatuses: {}, patchHolds: {},
+    patchStatuses: {}, patchHolds: {}, deleteStatuses: {},
     ...configuration,
   }
   page.on('pageerror', error => state.pageErrors.push(error.message))
@@ -90,6 +90,15 @@ export async function prepareRegister(page, configuration = {}) {
       } })
     }
     const detail = url.pathname.match(/\/deals\/(opportunity-\d+)\/$/)
+    if (detail && request.method() === 'DELETE') {
+      const identifier = detail[1]
+      const status = state.deleteStatuses[identifier] || 204
+      if (status === 204) {
+        state.records = state.records.filter(item => item.id !== identifier)
+        return route.fulfill({ status, body: '' })
+      }
+      return route.fulfill({ status, json: { detail: 'This opportunity has a linked document workspace and cannot be deleted.' } })
+    }
     if (detail && request.method() === 'PATCH') {
       const identifier = detail[1]
       if (state.patchHolds[identifier]) await state.patchHolds[identifier]

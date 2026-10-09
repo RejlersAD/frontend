@@ -586,6 +586,13 @@ const lifecycleActions = (area, record) => {
         label: "Close opportunity",
         danger: true,
       });
+    // RBAC-gated hard delete (see DealViewSet.destroy / can_delete).
+    if (record.can_delete)
+      actions.push({
+        id: "delete_opportunity",
+        label: "Delete opportunity",
+        danger: true,
+      });
     return actions;
   }
   if (area === "proposals") {
@@ -1169,6 +1176,17 @@ export default function SalesLifecycleArea() {
     setActionWarnings([]);
   };
 
+  const deleteOpportunity = (row) => {
+    showAction({
+      title: "Delete opportunity",
+      submitLabel: "Delete opportunity",
+      description: `Permanently delete ${row.deal_code} — ${row.deal_name}? This cannot be undone. Opportunities with a linked document workspace or project handover cannot be deleted.`,
+      fields: [],
+      deleteId: row.id,
+      execute: () => salesService.deleteDeal(row.id),
+    });
+  };
+
   const openCreate = async (preselectedOpportunity = null) => {
     const suffix = Date.now().toString().slice(-6);
     try {
@@ -1466,6 +1484,16 @@ export default function SalesLifecycleArea() {
     if (handleLetterAction(actionId)) return;
     const confirm = (title, description, execute, submitLabel = title) =>
       showAction({ title, description, execute, submitLabel, fields: [] });
+    if (actionId === "delete_opportunity")
+      return showAction({
+        title: "Delete opportunity",
+        submitLabel: "Delete opportunity",
+        danger: true,
+        description: `Permanently delete ${record.deal_code} — ${record.deal_name}? Generated letters and activity history are removed with it. This cannot be undone.`,
+        fields: [],
+        deleteId: record.id,
+        execute: () => salesService.deleteDeal(record.id),
+      });
     if (actionId === "qualify")
       return showAction(
         {
@@ -1824,6 +1852,20 @@ export default function SalesLifecycleArea() {
         window.dispatchEvent(new Event('notifications-updated'));
       }
       setActionDialog(null);
+      if (actionDialog.deleteId) {
+        if (record?.id === actionDialog.deleteId) {
+          ++recordRequest.current;
+          setRecord(null); setRecordError(""); setRecordLoading(false);
+          setFullRecordOpen(false); setEditing(false);
+          setSearchParams(previous => {
+            const next = new URLSearchParams(previous);
+            next.delete('record'); next.delete('workspace'); next.delete('folder');
+            return next;
+          }, { replace: true });
+        }
+        await load();
+        return;
+      }
       await load();
       if (area === 'proposals' && actionDialog.requiresOpportunity && result?.id) { await openRecord(String(result.id), false); return; }
       if (selectedId && request === recordRequest.current) {
@@ -1891,6 +1933,7 @@ export default function SalesLifecycleArea() {
           onOpenWorkspace={openOpportunityWorkspace} onCloseWorkspace={closeOpportunityWorkspace}
           onRetryRecord={() => record && openRecord(record, false)}
           onOpenFullRecord={(row) => row && openRecord(row, true)}
+          onDelete={deleteOpportunity}
           onEdit={() => { setFullRecordOpen(true); beginEdit(); }}
           onCreate={openCreate} onAction={openLifecycleAction}
           actions={lifecycleActions(area, record)} locked={!record || config.locked(record)}

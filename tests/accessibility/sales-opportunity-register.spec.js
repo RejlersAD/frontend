@@ -89,6 +89,45 @@ test("selecting a row opens the persistent detail rail and full record remains a
   expect(state.pageErrors).toEqual([]);
 });
 
+test("delete action confirms the exact opportunity, supports cancellation and clears its selection", async ({ page }) => {
+  const state = await prepareRegister(page);
+  await vf(page, 0).click();
+  await expect(rail(page)).toContainText("Seawater intake engineering study");
+  await page.getByRole("dialog", { name: "Opportunity record" })
+    .getByRole("button", { name: "Close record" }).click();
+  await register(page).getByRole("button", { name: "Delete Q-102101" }).click();
+  const dialog = page.getByRole("dialog", { name: "Delete opportunity" });
+  await expect(dialog).toContainText("Q-102101 — Seawater intake engineering study");
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(vf(page, 0)).toBeVisible();
+  expect(state.requests.filter(item => item.method === "DELETE")).toHaveLength(0);
+
+  await rail(page).getByLabel("More opportunity actions").click();
+  await rail(page).getByRole("button", { name: "Delete opportunity" }).click();
+  await dialog.getByRole("button", { name: "Delete opportunity" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(vf(page, 0)).toHaveCount(0);
+  await expect(rail(page)).not.toContainText("Seawater intake engineering study");
+  await expect(page).not.toHaveURL(/record=opportunity-0/);
+  expect(state.requests.filter(item => item.method === "DELETE").map(item => item.path))
+    .toEqual(['/api/v1/sales/deals/opportunity-0/']);
+  expect(state.pageErrors).toEqual([]);
+});
+
+test("a protected opportunity remains visible with its server error and can be retried", async ({ page }) => {
+  const state = await prepareRegister(page, { deleteStatuses: { "opportunity-1": 409 } });
+  await register(page).getByRole("button", { name: "Delete Q-102102" }).click();
+  const dialog = page.getByRole("dialog", { name: "Delete opportunity" });
+  await dialog.getByRole("button", { name: "Delete opportunity" }).click();
+  await expect(dialog).toContainText("linked document workspace and cannot be deleted");
+  await expect(vf(page, 1)).toBeVisible();
+  state.deleteStatuses["opportunity-1"] = 0;
+  await dialog.getByRole("button", { name: "Delete opportunity" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(vf(page, 1)).toHaveCount(0);
+  expect(state.pageErrors).toEqual([]);
+});
+
 test("latest row selection wins when an earlier detail response arrives late", async ({
   page,
 }) => {
