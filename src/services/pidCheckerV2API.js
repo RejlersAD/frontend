@@ -64,6 +64,7 @@ export const LEGEND_SECTIONS = [
   { id: 'instrument_typical_letter', label: 'Instrument Typical Letter' },
   { id: 'drawing_cont', label: 'Drawing Continuations' },
   { id: 'general_instrument', label: 'General Instrument or Function Symbols' },
+  { id: 'electrical', label: 'Electrical' },
 ]
 
 // Extraction modes
