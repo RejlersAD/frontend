@@ -27,6 +27,7 @@ export default function SalesLetterPreview({
   loading = false,
   regenerating = false,
   error = null,
+  previewKey = 0,
 }) {
   const iframeRef = useRef(null);
   const [pdfLoaded, setPdfLoaded] = useState(false);
@@ -205,10 +206,13 @@ export default function SalesLetterPreview({
 
         {!pdfError && pdfUrl && (
           <iframe
+            key={previewKey}
             ref={iframeRef}
             src={pdfUrl}
             className="sl-preview-iframe"
             title={`Letter preview: ${letter?.subject}`}
+            onLoad={handleLoad}
+            onError={handleError}
           />
         )}
 
@@ -262,6 +266,7 @@ SalesLetterPreview.propTypes = {
   loading: PropTypes.bool,
   regenerating: PropTypes.bool,
   error: PropTypes.string,
+  previewKey: PropTypes.number,
 };
 
 SalesLetterPreview.defaultProps = {
@@ -276,4 +281,5 @@ SalesLetterPreview.defaultProps = {
   loading: false,
   regenerating: false,
   error: null,
+  previewKey: 0,
 };

@@ -101,21 +101,7 @@ export default function SalesLetterModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-<<<<<<< HEAD
-  // Use backend-provided preview URL (relative path) with token for iframe auth.
-  // The backend returns a relative path; we add token for iframe authentication.
-  const pdfUrl = useMemo(() => {
-    if (!open || !deal || !generatedLetter) return null;
-    const previewPath = generatedLetter.pdf_preview_url;
-    if (!previewPath) return null;
-    const params = new URLSearchParams();
-    const token = localStorage.getItem('radai_access_token');
-    if (token) params.set('token', token);
-    if (previewEpoch) params.set('v', String(previewEpoch));
-    const query = params.toString();
-    return `${previewPath}${query ? `?${query}` : ''}`;
-=======
-  // Same-origin URL served by the backend (iframe-friendly, no blob needed).
+// Same-origin URL served by the backend (iframe-friendly, no blob needed).
   // Built from the backend-returned pdf_preview_url so the iframe always
   // points at the real PDF endpoint, never at an application route.
   const pdfUrl = useMemo(() => {
@@ -124,10 +110,7 @@ export default function SalesLetterModal({
       return salesService.buildLetterPreviewUrl(generatedLetter, previewEpoch);
     }
     return salesService.getLetterPreviewUrl(deal.id, generatedLetter.id, previewEpoch);
->>>>>>> 6c00cb580fac7294c3f515d08f9620f72a009ffd
   }, [open, deal, generatedLetter, previewEpoch]);
-
-  const bumpPreview = useCallback(() => setPreviewEpoch((e) => e + 1), []);
 
   const availableTypes = useMemo(() => {
     if (!deal) return [];
@@ -248,7 +231,21 @@ export default function SalesLetterModal({
         updatedData
       );
       setGeneratedLetter(refreshed);
-      bumpPreview();
+      
+      // Force fetch updated letter from backend to get fresh pdf_preview_url and revision
+      const freshLetters = await salesService.getLetters(deal.id);
+      const freshLetter = (freshLetters.results || freshLetters).find(l => l.id === generatedLetter.id);
+      if (freshLetter) {
+        console.log("[LetterPreview] Regenerated letter:", {
+          id: freshLetter.id,
+          revision: freshLetter.version || freshLetter.revision,
+          pdf_preview_url: freshLetter.pdf_preview_url,
+        });
+        setGeneratedLetter(freshLetter);
+      }
+      
+      // Destroy and recreate iframe with timestamp cache-buster
+      setPreviewEpoch(Date.now());
       return refreshed;
     } catch (err) {
       const msg = err.response?.data?.detail || "Failed to save changes";
@@ -259,7 +256,7 @@ export default function SalesLetterModal({
     } finally {
       setRegenerating(false);
     }
-  }, [deal, generatedLetter, onError, bumpPreview]);
+  }, [deal, generatedLetter, onError]);
 
   const handleRegeneratePdf = useCallback(async () => {
     if (!generatedLetter) return;
@@ -269,12 +266,19 @@ export default function SalesLetterModal({
       await salesService.regenerateLetterPdf(deal.id, generatedLetter.id, generatedLetter.custom_data);
 
       // Refresh letter to surface the bumped revision and attachments.
-      const refreshed = await salesService.getLetters(deal.id);
-      const freshLetter = refreshed.results?.find(l => l.id === generatedLetter.id) || refreshed.find(l => l.id === generatedLetter.id);
+      const freshLetters = await salesService.getLetters(deal.id);
+      const freshLetter = (freshLetters.results || freshLetters).find(l => l.id === generatedLetter.id);
       if (freshLetter) {
+        console.log("[LetterPreview] Regenerated letter:", {
+          id: freshLetter.id,
+          revision: freshLetter.version || freshLetter.revision,
+          pdf_preview_url: freshLetter.pdf_preview_url,
+        });
         setGeneratedLetter(freshLetter);
       }
-      bumpPreview();
+      
+      // Destroy and recreate iframe with timestamp cache-buster
+      setPreviewEpoch(Date.now());
       setPdfError(null);
     } catch (err) {
       const msg = err.response?.data?.detail || "Failed to regenerate PDF";
@@ -283,7 +287,7 @@ export default function SalesLetterModal({
     } finally {
       setRegenerating(false);
     }
-  }, [deal, generatedLetter, onError, bumpPreview]);
+  }, [deal, generatedLetter, onError]);
 
   const handleClose = useCallback(() => {
     onClose?.();
@@ -374,6 +378,7 @@ export default function SalesLetterModal({
         loading={!pdfUrl}
         regenerating={regenerating}
         error={pdfError}
+        previewKey={previewEpoch}
       />
     );
   };
@@ -384,10 +389,11 @@ export default function SalesLetterModal({
       pdfUrl={pdfUrl}
       previewLoading={false}
       previewError={pdfError}
-      onRefreshPreview={bumpPreview}
+      onRefreshPreview={() => setPreviewEpoch(Date.now())}
       onSave={handleSaveEdit}
       onCancel={handleCancelEdit}
       saving={regenerating}
+      previewKey={previewEpoch}
     />
   );
 

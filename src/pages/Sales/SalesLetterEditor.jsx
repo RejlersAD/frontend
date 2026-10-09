@@ -94,6 +94,7 @@ export default function SalesLetterEditor({
   onSave,
   onCancel,
   saving = false,
+  previewKey = 0,
 }) {
   const letterId = letter?.id;
   const [subject, setSubject] = useState(letter?.subject || "");
@@ -424,6 +425,7 @@ export default function SalesLetterEditor({
             ) : pdfUrl ? (
               <>
                 <iframe
+                  key={previewKey}
                   src={pdfUrl}
                   className="sl-editor-preview-iframe"
                   title="Letter PDF preview"
@@ -495,6 +497,7 @@ SalesLetterEditor.propTypes = {
   onSave: PropTypes.func.isRequired,
   onCancel: PropTypes.func.isRequired,
   saving: PropTypes.bool,
+  previewKey: PropTypes.number,
 };
 
 SalesLetterEditor.defaultProps = {
@@ -503,4 +506,5 @@ SalesLetterEditor.defaultProps = {
   previewError: null,
   onRefreshPreview: null,
   saving: false,
+  previewKey: 0,
 };
