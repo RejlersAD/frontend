@@ -169,6 +169,7 @@ export default function SalesOpportunityDetailPanel({
   error = "",
   onRetry,
   onOpenFullRecord,
+  onDelete,
   onEdit,
   onAction,
   actions = [],
@@ -429,6 +430,7 @@ export default function SalesOpportunityDetailPanel({
               </button>
             )}
             {(onOpenFullRecord ||
+              onDelete ||
               (!explorer && onOpenWorkspace) ||
               secondaryActions.length > 0) && (
               <details key={record.id} className="sor-detail-menu">
@@ -460,6 +462,18 @@ export default function SalesOpportunityDetailPanel({
                       }}
                     >
                       Open full record
+                    </button>
+                  )}
+                  {onDelete && (
+                    <button
+                      type="button"
+                      className="sor-detail-danger"
+                      onClick={(event) => {
+                        event.currentTarget.closest("details").open = false;
+                        onDelete();
+                      }}
+                    >
+                      Delete opportunity
                     </button>
                   )}
                   {secondaryActions.map((action) => (
@@ -830,6 +844,7 @@ SalesOpportunityDetailPanel.propTypes = {
   onCloseWorkspace: PropTypes.func,
   onRetry: PropTypes.func,
   onOpenFullRecord: PropTypes.func,
+  onDelete: PropTypes.func,
   onEdit: PropTypes.func,
   onAction: PropTypes.func,
   actions: PropTypes.arrayOf(

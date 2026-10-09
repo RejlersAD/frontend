@@ -739,6 +739,10 @@ class SalesService {
     ).data;
   }
 
+  async deleteDeal(dealId) {
+    return (await apiClient.delete(`${BASE_URL}/deals/${dealId}/`)).data;
+  }
+
   // ============================================================================
   // SALES LETTERS
   // ============================================================================
@@ -791,14 +795,42 @@ class SalesService {
   }
 
   /**
-   * Same-origin URL for the inline PDF preview iframe. Iframes cannot send the
-   * Authorization header, so the JWT travels as a query parameter; the backend
-   * QueryParamJWTAuthentication validates it exactly like the header token.
-   * `cacheBuster` changes after regeneration so the iframe reloads the PDF.
+   * Preview URL for the inline PDF iframe, based on the backend-returned
+   * `pdf_preview_url` — used unchanged so the iframe always loads the real
+   * PDF endpoint, never a React route. The JWT goes in the query string
+   * (iframes cannot send the Authorization header; QueryParamJWTAuthentication
+   * validates it), and `cacheBuster` changes after regeneration.
    *
-   * Always same-origin: strip any absolute origin so the request goes through
-   * the same dev/deployment proxy as the rest of the app — the browser often
-   * cannot reach the raw backend host directly.
+   * Logs the returned URL, the final iframe src and a HEAD status probe so
+   * preview issues are diagnosable from the console.
+   */
+  buildLetterPreviewUrl(letter, cacheBuster = 0) {
+    const returned = letter?.pdf_preview_url || "";
+    const params = new URLSearchParams();
+    const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+    if (token) params.set("token", token);
+    if (cacheBuster) params.set("v", String(cacheBuster));
+    const query = params.toString();
+    const url = query
+      ? `${returned}${returned.includes("?") ? "&" : "?"}${query}`
+      : returned;
+    console.log("[LetterPreview] backend pdf_preview_url:", returned || "(missing)");
+    console.log("[LetterPreview] iframe src:", url || "(empty — iframe stays hidden)");
+    if (url) {
+      fetch(url, { method: "HEAD" })
+        .then((response) =>
+          console.log("[LetterPreview] HEAD status:", response.status, url),
+        )
+        .catch((error) =>
+          console.warn("[LetterPreview] HEAD probe failed:", error.message),
+        );
+    }
+    return url;
+  }
+
+  /**
+   * Fallback builder used only when the backend response carries no
+   * pdf_preview_url. Same-origin guaranteed by stripping any absolute origin.
    */
   getLetterPreviewUrl(dealId, letterId, cacheBuster = 0) {
     const params = new URLSearchParams();

@@ -587,7 +587,7 @@
   padding-inline: 7px;
 }
 .sor-table-scroll .sor-actions-cell {
-  width: 53px;
+  width: 76px;
   text-align: center;
   padding-inline: 5px;
   border-right: 0;
@@ -739,6 +739,10 @@
 .sor-row-action:hover {
   background: #dae9fc;
   color: #075fbc;
+}
+.sor-row-delete:hover {
+  background: #fff1f2;
+  color: #b42318;
 }
 .sor-density-compact {
   --sor-row-height: 36px;
@@ -1246,9 +1250,6 @@
 }
 .sor-essential-columns .sor-col-status {
   width: 98px;
-}
-.sor-essential-columns .sor-actions-cell {
-  display: none;
 }
 .sor-essential-columns .sor-select-cell {
   width: 27px;
