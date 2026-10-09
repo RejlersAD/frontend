@@ -164,7 +164,7 @@ const InvoiceDetail = () => {
         <div className="bg-white rounded-lg shadow-md p-6">
           <h3 className="text-xl font-bold mb-4">Invoice Preview</h3>
           <iframe
-            src={financeService.getInvoicePreviewUrl(id)}
+            src={financeService.getInvoicePreviewUrl(invoice)}
             className="w-full h-[800px] border border-gray-300 rounded"
             title="Invoice PDF"
           />

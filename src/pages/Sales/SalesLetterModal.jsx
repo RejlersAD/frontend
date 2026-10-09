@@ -101,10 +101,18 @@ export default function SalesLetterModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Same-origin URL served by the backend (iframe-friendly, no blob needed).
+  // Use backend-provided preview URL (relative path) with token for iframe auth.
+  // The backend returns a relative path; we add token for iframe authentication.
   const pdfUrl = useMemo(() => {
     if (!open || !deal || !generatedLetter) return null;
-    return salesService.getLetterPreviewUrl(deal.id, generatedLetter.id, previewEpoch);
+    const previewPath = generatedLetter.pdf_preview_url;
+    if (!previewPath) return null;
+    const params = new URLSearchParams();
+    const token = localStorage.getItem('radai_access_token');
+    if (token) params.set('token', token);
+    if (previewEpoch) params.set('v', String(previewEpoch));
+    const query = params.toString();
+    return `${previewPath}${query ? `?${query}` : ''}`;
   }, [open, deal, generatedLetter, previewEpoch]);
 
   const bumpPreview = useCallback(() => setPreviewEpoch((e) => e + 1), []);
