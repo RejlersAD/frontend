@@ -27,8 +27,10 @@ const LETTER_TYPE_ICONS = {
 
 const LETTER_TYPE_DESCRIPTIONS = {
   eoi: "Confirm interest in participating. Use after a Bid or Conditional Bid decision.",
-  regret_expertise: "Decline due to opportunity falling outside core expertise/specialization.",
-  regret_manpower: "Decline due to resource constraints despite alignment with expertise.",
+  regret_expertise:
+    "Decline due to opportunity falling outside core expertise/specialization.",
+  regret_manpower:
+    "Decline due to resource constraints despite alignment with expertise.",
 };
 
 const LETTER_TYPE_BADGE_CLASSES = {
@@ -125,10 +127,12 @@ export default function SalesLetterModal({
     if (generatedLetter.pdf_preview_url) {
       return salesService.buildLetterPreviewUrl(generatedLetter, previewEpoch);
     }
-    return salesService.getLetterPreviewUrl(deal.id, generatedLetter.id, previewEpoch);
+    return salesService.getLetterPreviewUrl(
+      deal.id,
+      generatedLetter.id,
+      previewEpoch,
+    );
   }, [open, deal, generatedLetter, previewEpoch]);
-
-  const bumpPreview = useCallback(() => setPreviewEpoch((e) => e + 1), []);
 
   const availableTypes = useMemo(() => {
     if (!deal) return [];
@@ -151,7 +155,7 @@ export default function SalesLetterModal({
       const letter = await salesService.prepareLetter(
         deal.id,
         selectedType,
-        {}
+        {},
       );
       setGeneratedLetter(letter);
       setStep("preview");
@@ -176,16 +180,30 @@ export default function SalesLetterModal({
     if (!selectedType || generatedLetter || loading || error) return;
     if (!availableTypes.includes(selectedType)) return;
     handleGenerate();
-  }, [open, step, selectedType, generatedLetter, loading, error, availableTypes, handleGenerate]);
+  }, [
+    open,
+    step,
+    selectedType,
+    generatedLetter,
+    loading,
+    error,
+    availableTypes,
+    handleGenerate,
+  ]);
 
   const handleDownloadPdf = useCallback(async () => {
     if (!generatedLetter) return;
     try {
-      const { blob, filename } = await salesService.downloadLetterPdf(deal.id, generatedLetter.id);
+      const { blob, filename } = await salesService.downloadLetterPdf(
+        deal.id,
+        generatedLetter.id,
+      );
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = filename || `${deal.deal_code}-${LETTER_TYPE_LABELS[selectedType].toLowerCase().replace(/\s+/g, "-")}.pdf`;
+      link.download =
+        filename ||
+        `${deal.deal_code}-${LETTER_TYPE_LABELS[selectedType].toLowerCase().replace(/\s+/g, "-")}.pdf`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -209,11 +227,15 @@ export default function SalesLetterModal({
   const handleDownloadDocx = useCallback(async () => {
     if (!generatedLetter) return;
     try {
-      const { blob, filename } = await salesService.downloadLetterDocx(deal.id, generatedLetter.id);
+      const { blob, filename } = await salesService.downloadLetterDocx(
+        deal.id,
+        generatedLetter.id,
+      );
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = filename || `${deal.deal_code}-${generatedLetter.letter_type}.docx`;
+      link.download =
+        filename || `${deal.deal_code}-${generatedLetter.letter_type}.docx`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -272,12 +294,21 @@ export default function SalesLetterModal({
       });
 
       // Refresh letter to surface the bumped revision and attachments.
-      const refreshed = await salesService.getLetters(deal.id);
-      const freshLetter = refreshed.results?.find(l => l.id === generatedLetter.id) || refreshed.find(l => l.id === generatedLetter.id);
+      const freshLetters = await salesService.getLetters(deal.id);
+      const freshLetter = (freshLetters.results || freshLetters).find(
+        (l) => l.id === generatedLetter.id,
+      );
       if (freshLetter) {
+        console.log("[LetterPreview] Regenerated letter:", {
+          id: freshLetter.id,
+          revision: freshLetter.version || freshLetter.revision,
+          pdf_preview_url: freshLetter.pdf_preview_url,
+        });
         setGeneratedLetter(freshLetter);
       }
-      bumpPreview();
+
+      // Destroy and recreate iframe with timestamp cache-buster
+      setPreviewEpoch(Date.now());
       setPdfError(null);
     } catch (err) {
       const msg = extractApiError(err, "Failed to regenerate PDF");
@@ -286,7 +317,7 @@ export default function SalesLetterModal({
     } finally {
       setRegenerating(false);
     }
-  }, [deal, generatedLetter, onError, bumpPreview]);
+  }, [deal, generatedLetter, onError]);
 
   const handleClose = useCallback(() => {
     onClose?.();
@@ -298,8 +329,8 @@ export default function SalesLetterModal({
     <div className="sl-modal-step">
       <h3>Select Letter Type</h3>
       <p className="sl-modal-hint">
-        Based on the Go/No-Go decision ({bidLabel(deal?.bid_decision)}), the following
-        letter types are available:
+        Based on the Go/No-Go decision ({bidLabel(deal?.bid_decision)}), the
+        following letter types are available:
       </p>
       <div className="sl-letter-options">
         {availableTypes.map((type) => {
@@ -315,8 +346,12 @@ export default function SalesLetterModal({
             >
               <div className="sl-letter-option-header">
                 <Icon className="sl-letter-icon" size={24} />
-                <span className="sl-letter-label">{LETTER_TYPE_LABELS[type]}</span>
-                <span className="sl-letter-badge">{LETTER_TYPE_LABELS[type]}</span>
+                <span className="sl-letter-label">
+                  {LETTER_TYPE_LABELS[type]}
+                </span>
+                <span className="sl-letter-badge">
+                  {LETTER_TYPE_LABELS[type]}
+                </span>
               </div>
               <p className="sl-letter-desc">{LETTER_TYPE_DESCRIPTIONS[type]}</p>
             </button>
@@ -377,6 +412,7 @@ export default function SalesLetterModal({
         loading={!pdfUrl}
         regenerating={regenerating}
         error={pdfError}
+        previewKey={previewEpoch}
       />
     );
   };
@@ -387,10 +423,11 @@ export default function SalesLetterModal({
       pdfUrl={pdfUrl}
       previewLoading={false}
       previewError={pdfError}
-      onRefreshPreview={bumpPreview}
+      onRefreshPreview={() => setPreviewEpoch(Date.now())}
       onSave={handleSaveEdit}
       onCancel={handleCancelEdit}
       saving={regenerating}
+      previewKey={previewEpoch}
     />
   );
 
@@ -509,6 +546,10 @@ SalesLetterModal.propTypes = {
   onClose: PropTypes.func.isRequired,
   onLetterGenerated: PropTypes.func,
   onError: PropTypes.func,
-  initialLetterType: PropTypes.oneOf(["eoi", "regret_expertise", "regret_manpower"]),
+  initialLetterType: PropTypes.oneOf([
+    "eoi",
+    "regret_expertise",
+    "regret_manpower",
+  ]),
   open: PropTypes.bool,
 };

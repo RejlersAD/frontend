@@ -491,7 +491,7 @@ const InvoiceDetailModal = ({ invoice, onClose }) => {
         <header className="flex items-center justify-between border-b border-slate-200 px-5 py-4"><div><h2 className="font-bold text-slate-900">{data.invoice_number}</h2><p className="text-xs text-slate-500">{data.tracking_id}</p></div><button onClick={onClose}><XMarkIcon className="h-6 w-6" /></button></header>
         {error ? <div className="m-5 rounded-xl bg-rose-50 p-4 text-rose-700">{error}</div> : (
           <div className="grid gap-5 p-5 lg:grid-cols-2">
-            <iframe title={`Invoice ${data.invoice_number}`} src={financeService.getInvoicePreviewUrl(data.id)} className="h-[650px] w-full rounded-xl border border-slate-200 bg-slate-100" />
+            <iframe title={`Invoice ${data.invoice_number}`} src={financeService.getInvoicePreviewUrl(data)} className="h-[650px] w-full rounded-xl border border-slate-200 bg-slate-100" />
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 {[

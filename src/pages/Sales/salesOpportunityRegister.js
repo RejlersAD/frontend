@@ -47,10 +47,9 @@ export const bidLabel = (value) =>
   Object.hasOwn(BID_LABELS, value) ? BID_LABELS[value] : "No decision";
 export const typeLabel = (value) => {
   const labels = {
-    eio: "EIO",
+    EOI: "EOI",
     budgetary: "Budgetary",
     technical: "Technical",
-    eoi: "EOI",
     commercial: "Commercial",
     techno_commercial: "Techno Commerical",
     other: "Others",
