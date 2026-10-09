@@ -18,6 +18,26 @@ const EMAIL_REQUEST_OPTIONS = {
 };
 
 class SalesService {
+  getApiOrigin() {
+    if (API_BASE_URL.startsWith('http')) {
+      return new URL(API_BASE_URL).origin;
+    }
+    if (typeof window !== 'undefined' && window.location?.origin) {
+      return window.location.origin;
+    }
+    return '';
+  }
+
+  toBackendAbsoluteUrl(pathOrUrl) {
+    if (!pathOrUrl) return '';
+    if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
+
+    const origin = this.getApiOrigin();
+    if (!origin) return pathOrUrl;
+    if (pathOrUrl.startsWith('/')) return `${origin}${pathOrUrl}`;
+    return `${origin}/${pathOrUrl}`;
+  }
+
   // ============================================================================
   // CLIENT MANAGEMENT
   // ============================================================================
@@ -805,27 +825,30 @@ class SalesService {
    * preview issues are diagnosable from the console.
    */
   buildLetterPreviewUrl(letter, cacheBuster = 0) {
-    const returned = letter?.pdf_preview_url || "";
-    const params = new URLSearchParams();
+    const returned = letter?.pdf_preview_url || '';
+    const absolutePreviewUrl = this.toBackendAbsoluteUrl(returned);
+    if (!absolutePreviewUrl) {
+      console.log('[LetterPreview] backend pdf_preview_url:', returned || '(missing)');
+      console.log('[LetterPreview] iframe src:', '(empty — iframe stays hidden)');
+      return '';
+    }
+    const url = new URL(absolutePreviewUrl);
     const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-    if (token) params.set("token", token);
-    if (cacheBuster) params.set("v", String(cacheBuster));
-    const query = params.toString();
-    const url = query
-      ? `${returned}${returned.includes("?") ? "&" : "?"}${query}`
-      : returned;
-    console.log("[LetterPreview] backend pdf_preview_url:", returned || "(missing)");
-    console.log("[LetterPreview] iframe src:", url || "(empty — iframe stays hidden)");
-    if (url) {
-      fetch(url, { method: "HEAD" })
+    if (token) url.searchParams.set('token', token);
+    if (cacheBuster) url.searchParams.set('v', String(cacheBuster));
+    const finalUrl = url.toString();
+    console.log('[LetterPreview] backend pdf_preview_url:', returned || '(missing)');
+    console.log('[LetterPreview] iframe src:', finalUrl);
+    if (finalUrl) {
+      fetch(finalUrl, { method: 'HEAD' })
         .then((response) =>
-          console.log("[LetterPreview] HEAD status:", response.status, url),
+          console.log('[LetterPreview] HEAD status:', response.status, finalUrl),
         )
         .catch((error) =>
-          console.warn("[LetterPreview] HEAD probe failed:", error.message),
+          console.warn('[LetterPreview] HEAD probe failed:', error.message),
         );
     }
-    return url;
+    return finalUrl;
   }
 
   /**
@@ -833,15 +856,13 @@ class SalesService {
    * pdf_preview_url. Same-origin guaranteed by stripping any absolute origin.
    */
   getLetterPreviewUrl(dealId, letterId, cacheBuster = 0) {
-    const params = new URLSearchParams();
+    const previewPath = `/api/v1/sales/deals/${dealId}/letters/${letterId}/pdf/preview/`;
+    const absolutePreviewUrl = this.toBackendAbsoluteUrl(previewPath);
+    const url = new URL(absolutePreviewUrl);
     const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-    if (token) params.set('token', token);
-    if (cacheBuster) params.set('v', String(cacheBuster));
-    const query = params.toString();
-    const basePath = (API_BASE_URL.startsWith('http')
-      ? new URL(API_BASE_URL).pathname
-      : API_BASE_URL).replace(/\/$/, '');
-    return `${basePath}/sales/deals/${dealId}/letters/${letterId}/pdf/preview/${query ? `?${query}` : ''}`;
+    if (token) url.searchParams.set('token', token);
+    if (cacheBuster) url.searchParams.set('v', String(cacheBuster));
+    return url.toString();
   }
 
   async regenerateLetterPdf(dealId, letterId, customData = {}) {
