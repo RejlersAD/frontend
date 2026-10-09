@@ -37,6 +37,22 @@ const LETTER_TYPE_BADGE_CLASSES = {
   regret_manpower: "sl-letter-badge--regret",
 };
 
+function extractApiError(err, fallback) {
+  const data = err?.response?.data;
+  if (!data) return fallback;
+  if (typeof data?.detail === "string") return data.detail;
+  if (Array.isArray(data?.non_field_errors) && data.non_field_errors[0]) {
+    return data.non_field_errors[0];
+  }
+  if (typeof data === "object") {
+    const [firstKey] = Object.keys(data);
+    const firstValue = firstKey ? data[firstKey] : null;
+    if (Array.isArray(firstValue) && firstValue[0]) return `${firstKey}: ${firstValue[0]}`;
+    if (typeof firstValue === "string") return `${firstKey}: ${firstValue}`;
+  }
+  return fallback;
+}
+
 function formatDate(dateString) {
   if (!dateString) return "Not provided";
   const date = new Date(dateString);
@@ -236,7 +252,7 @@ export default function SalesLetterModal({
       bumpPreview();
       return refreshed;
     } catch (err) {
-      const msg = err.response?.data?.detail || "Failed to save changes";
+      const msg = extractApiError(err, "Failed to save changes");
       setError(msg);
       setPdfError(msg);
       onError?.(msg);
@@ -251,7 +267,9 @@ export default function SalesLetterModal({
     setRegenerating(true);
     setPdfError(null);
     try {
-      await salesService.regenerateLetterPdf(deal.id, generatedLetter.id, generatedLetter.custom_data);
+      await salesService.regenerateLetterPdf(deal.id, generatedLetter.id, {
+        custom_data: generatedLetter.custom_data,
+      });
 
       // Refresh letter to surface the bumped revision and attachments.
       const refreshed = await salesService.getLetters(deal.id);
@@ -262,7 +280,7 @@ export default function SalesLetterModal({
       bumpPreview();
       setPdfError(null);
     } catch (err) {
-      const msg = err.response?.data?.detail || "Failed to regenerate PDF";
+      const msg = extractApiError(err, "Failed to regenerate PDF");
       setPdfError(msg);
       onError?.(msg);
     } finally {
