@@ -844,10 +844,12 @@ class SalesService {
     return `${basePath}/sales/deals/${dealId}/letters/${letterId}/pdf/preview/${query ? `?${query}` : ''}`;
   }
 
-  async regenerateLetterPdf(dealId, letterId, customData = {}) {
+  async regenerateLetterPdf(dealId, letterId, letterData = {}) {
     return (
       await apiClient.post(`${BASE_URL}/deals/${dealId}/letters/${letterId}/regenerate-pdf/`, {
-        custom_data: customData,
+        subject: letterData.subject,
+        body: letterData.body,
+        custom_data: letterData.custom_data,
       })
     ).data;
   }

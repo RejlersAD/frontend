@@ -27,8 +27,10 @@ const LETTER_TYPE_ICONS = {
 
 const LETTER_TYPE_DESCRIPTIONS = {
   eoi: "Confirm interest in participating. Use after a Bid or Conditional Bid decision.",
-  regret_expertise: "Decline due to opportunity falling outside core expertise/specialization.",
-  regret_manpower: "Decline due to resource constraints despite alignment with expertise.",
+  regret_expertise:
+    "Decline due to opportunity falling outside core expertise/specialization.",
+  regret_manpower:
+    "Decline due to resource constraints despite alignment with expertise.",
 };
 
 const LETTER_TYPE_BADGE_CLASSES = {
@@ -101,7 +103,7 @@ export default function SalesLetterModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-// Same-origin URL served by the backend (iframe-friendly, no blob needed).
+  // Same-origin URL served by the backend (iframe-friendly, no blob needed).
   // Built from the backend-returned pdf_preview_url so the iframe always
   // points at the real PDF endpoint, never at an application route.
   const pdfUrl = useMemo(() => {
@@ -109,7 +111,11 @@ export default function SalesLetterModal({
     if (generatedLetter.pdf_preview_url) {
       return salesService.buildLetterPreviewUrl(generatedLetter, previewEpoch);
     }
-    return salesService.getLetterPreviewUrl(deal.id, generatedLetter.id, previewEpoch);
+    return salesService.getLetterPreviewUrl(
+      deal.id,
+      generatedLetter.id,
+      previewEpoch,
+    );
   }, [open, deal, generatedLetter, previewEpoch]);
 
   const availableTypes = useMemo(() => {
@@ -133,7 +139,7 @@ export default function SalesLetterModal({
       const letter = await salesService.prepareLetter(
         deal.id,
         selectedType,
-        {}
+        {},
       );
       setGeneratedLetter(letter);
       setStep("preview");
@@ -158,16 +164,30 @@ export default function SalesLetterModal({
     if (!selectedType || generatedLetter || loading || error) return;
     if (!availableTypes.includes(selectedType)) return;
     handleGenerate();
-  }, [open, step, selectedType, generatedLetter, loading, error, availableTypes, handleGenerate]);
+  }, [
+    open,
+    step,
+    selectedType,
+    generatedLetter,
+    loading,
+    error,
+    availableTypes,
+    handleGenerate,
+  ]);
 
   const handleDownloadPdf = useCallback(async () => {
     if (!generatedLetter) return;
     try {
-      const { blob, filename } = await salesService.downloadLetterPdf(deal.id, generatedLetter.id);
+      const { blob, filename } = await salesService.downloadLetterPdf(
+        deal.id,
+        generatedLetter.id,
+      );
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = filename || `${deal.deal_code}-${LETTER_TYPE_LABELS[selectedType].toLowerCase().replace(/\s+/g, "-")}.pdf`;
+      link.download =
+        filename ||
+        `${deal.deal_code}-${LETTER_TYPE_LABELS[selectedType].toLowerCase().replace(/\s+/g, "-")}.pdf`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -191,11 +211,15 @@ export default function SalesLetterModal({
   const handleDownloadDocx = useCallback(async () => {
     if (!generatedLetter) return;
     try {
-      const { blob, filename } = await salesService.downloadLetterDocx(deal.id, generatedLetter.id);
+      const { blob, filename } = await salesService.downloadLetterDocx(
+        deal.id,
+        generatedLetter.id,
+      );
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = filename || `${deal.deal_code}-${generatedLetter.letter_type}.docx`;
+      link.download =
+        filename || `${deal.deal_code}-${generatedLetter.letter_type}.docx`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -218,56 +242,67 @@ export default function SalesLetterModal({
     setPdfError(null);
   }, []);
 
-  const handleSaveEdit = useCallback(async (updatedData) => {
-    if (!generatedLetter) return;
-    setRegenerating(true);
-    setPdfError(null);
-    try {
-      // The regenerate endpoint updates subject/body/custom_data, regenerates
-      // the PDF+DOCX, bumps the revision and re-attaches to Correspondence.
-      const refreshed = await salesService.regenerateLetterPdf(
-        deal.id,
-        generatedLetter.id,
-        updatedData
-      );
-      setGeneratedLetter(refreshed);
-      
-      // Force fetch updated letter from backend to get fresh pdf_preview_url and revision
-      const freshLetters = await salesService.getLetters(deal.id);
-      const freshLetter = (freshLetters.results || freshLetters).find(l => l.id === generatedLetter.id);
-      if (freshLetter) {
-        console.log("[LetterPreview] Regenerated letter:", {
-          id: freshLetter.id,
-          revision: freshLetter.version || freshLetter.revision,
-          pdf_preview_url: freshLetter.pdf_preview_url,
-        });
-        setGeneratedLetter(freshLetter);
+  const handleSaveEdit = useCallback(
+    async (updatedData) => {
+      if (!generatedLetter) return;
+      setRegenerating(true);
+      setPdfError(null);
+      try {
+        // The regenerate endpoint updates subject/body/custom_data, regenerates
+        // the PDF+DOCX, bumps the revision and re-attaches to Correspondence.
+        const refreshed = await salesService.regenerateLetterPdf(
+          deal.id,
+          generatedLetter.id,
+          updatedData,
+        );
+        setGeneratedLetter(refreshed);
+
+        // Force fetch updated letter from backend to get fresh pdf_preview_url and revision
+        const freshLetters = await salesService.getLetters(deal.id);
+        const freshLetter = (freshLetters.results || freshLetters).find(
+          (l) => l.id === generatedLetter.id,
+        );
+        if (freshLetter) {
+          console.log("[LetterPreview] Regenerated letter:", {
+            id: freshLetter.id,
+            revision: freshLetter.version || freshLetter.revision,
+            pdf_preview_url: freshLetter.pdf_preview_url,
+          });
+          setGeneratedLetter(freshLetter);
+        }
+
+        // Destroy and recreate iframe with timestamp cache-buster
+        setPreviewEpoch(Date.now());
+        return refreshed;
+      } catch (err) {
+        const msg = err.response?.data?.detail || "Failed to save changes";
+        setError(msg);
+        setPdfError(msg);
+        onError?.(msg);
+        return null;
+      } finally {
+        setRegenerating(false);
       }
-      
-      // Destroy and recreate iframe with timestamp cache-buster
-      setPreviewEpoch(Date.now());
-      return refreshed;
-    } catch (err) {
-      const msg = err.response?.data?.detail || "Failed to save changes";
-      setError(msg);
-      setPdfError(msg);
-      onError?.(msg);
-      return null;
-    } finally {
-      setRegenerating(false);
-    }
-  }, [deal, generatedLetter, onError]);
+    },
+    [deal, generatedLetter, onError],
+  );
 
   const handleRegeneratePdf = useCallback(async () => {
     if (!generatedLetter) return;
     setRegenerating(true);
     setPdfError(null);
     try {
-      await salesService.regenerateLetterPdf(deal.id, generatedLetter.id, generatedLetter.custom_data);
+      await salesService.regenerateLetterPdf(deal.id, generatedLetter.id, {
+        subject: generatedLetter.subject,
+        body: generatedLetter.body,
+        custom_data: generatedLetter.custom_data,
+      });
 
       // Refresh letter to surface the bumped revision and attachments.
       const freshLetters = await salesService.getLetters(deal.id);
-      const freshLetter = (freshLetters.results || freshLetters).find(l => l.id === generatedLetter.id);
+      const freshLetter = (freshLetters.results || freshLetters).find(
+        (l) => l.id === generatedLetter.id,
+      );
       if (freshLetter) {
         console.log("[LetterPreview] Regenerated letter:", {
           id: freshLetter.id,
@@ -276,7 +311,7 @@ export default function SalesLetterModal({
         });
         setGeneratedLetter(freshLetter);
       }
-      
+
       // Destroy and recreate iframe with timestamp cache-buster
       setPreviewEpoch(Date.now());
       setPdfError(null);
@@ -299,8 +334,8 @@ export default function SalesLetterModal({
     <div className="sl-modal-step">
       <h3>Select Letter Type</h3>
       <p className="sl-modal-hint">
-        Based on the Go/No-Go decision ({bidLabel(deal?.bid_decision)}), the following
-        letter types are available:
+        Based on the Go/No-Go decision ({bidLabel(deal?.bid_decision)}), the
+        following letter types are available:
       </p>
       <div className="sl-letter-options">
         {availableTypes.map((type) => {
@@ -316,8 +351,12 @@ export default function SalesLetterModal({
             >
               <div className="sl-letter-option-header">
                 <Icon className="sl-letter-icon" size={24} />
-                <span className="sl-letter-label">{LETTER_TYPE_LABELS[type]}</span>
-                <span className="sl-letter-badge">{LETTER_TYPE_LABELS[type]}</span>
+                <span className="sl-letter-label">
+                  {LETTER_TYPE_LABELS[type]}
+                </span>
+                <span className="sl-letter-badge">
+                  {LETTER_TYPE_LABELS[type]}
+                </span>
               </div>
               <p className="sl-letter-desc">{LETTER_TYPE_DESCRIPTIONS[type]}</p>
             </button>
@@ -512,6 +551,10 @@ SalesLetterModal.propTypes = {
   onClose: PropTypes.func.isRequired,
   onLetterGenerated: PropTypes.func,
   onError: PropTypes.func,
-  initialLetterType: PropTypes.oneOf(["eoi", "regret_expertise", "regret_manpower"]),
+  initialLetterType: PropTypes.oneOf([
+    "eoi",
+    "regret_expertise",
+    "regret_manpower",
+  ]),
   open: PropTypes.bool,
 };
