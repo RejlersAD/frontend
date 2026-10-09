@@ -865,13 +865,12 @@ class SalesService {
     return url.toString();
   }
 
-  async regenerateLetterPdf(dealId, letterId, letterData = {}) {
+  async regenerateLetterPdf(dealId, letterId, payload = {}) {
     return (
-      await apiClient.post(`${BASE_URL}/deals/${dealId}/letters/${letterId}/regenerate-pdf/`, {
-        subject: letterData.subject,
-        body: letterData.body,
-        custom_data: letterData.custom_data,
-      })
+      await apiClient.post(
+        `${BASE_URL}/deals/${dealId}/letters/${letterId}/regenerate-pdf/`,
+        payload
+      )
     ).data;
   }
 

@@ -39,6 +39,22 @@ const LETTER_TYPE_BADGE_CLASSES = {
   regret_manpower: "sl-letter-badge--regret",
 };
 
+function extractApiError(err, fallback) {
+  const data = err?.response?.data;
+  if (!data) return fallback;
+  if (typeof data?.detail === "string") return data.detail;
+  if (Array.isArray(data?.non_field_errors) && data.non_field_errors[0]) {
+    return data.non_field_errors[0];
+  }
+  if (typeof data === "object") {
+    const [firstKey] = Object.keys(data);
+    const firstValue = firstKey ? data[firstKey] : null;
+    if (Array.isArray(firstValue) && firstValue[0]) return `${firstKey}: ${firstValue[0]}`;
+    if (typeof firstValue === "string") return `${firstKey}: ${firstValue}`;
+  }
+  return fallback;
+}
+
 function formatDate(dateString) {
   if (!dateString) return "Not provided";
   const date = new Date(dateString);
@@ -242,50 +258,31 @@ export default function SalesLetterModal({
     setPdfError(null);
   }, []);
 
-  const handleSaveEdit = useCallback(
-    async (updatedData) => {
-      if (!generatedLetter) return;
-      setRegenerating(true);
-      setPdfError(null);
-      try {
-        // The regenerate endpoint updates subject/body/custom_data, regenerates
-        // the PDF+DOCX, bumps the revision and re-attaches to Correspondence.
-        const refreshed = await salesService.regenerateLetterPdf(
-          deal.id,
-          generatedLetter.id,
-          updatedData,
-        );
-        setGeneratedLetter(refreshed);
-
-        // Force fetch updated letter from backend to get fresh pdf_preview_url and revision
-        const freshLetters = await salesService.getLetters(deal.id);
-        const freshLetter = (freshLetters.results || freshLetters).find(
-          (l) => l.id === generatedLetter.id,
-        );
-        if (freshLetter) {
-          console.log("[LetterPreview] Regenerated letter:", {
-            id: freshLetter.id,
-            revision: freshLetter.version || freshLetter.revision,
-            pdf_preview_url: freshLetter.pdf_preview_url,
-          });
-          setGeneratedLetter(freshLetter);
-        }
-
-        // Destroy and recreate iframe with timestamp cache-buster
-        setPreviewEpoch(Date.now());
-        return refreshed;
-      } catch (err) {
-        const msg = err.response?.data?.detail || "Failed to save changes";
-        setError(msg);
-        setPdfError(msg);
-        onError?.(msg);
-        return null;
-      } finally {
-        setRegenerating(false);
-      }
-    },
-    [deal, generatedLetter, onError],
-  );
+  const handleSaveEdit = useCallback(async (updatedData) => {
+    if (!generatedLetter) return;
+    setRegenerating(true);
+    setPdfError(null);
+    try {
+      // The regenerate endpoint updates subject/body/custom_data, regenerates
+      // the PDF+DOCX, bumps the revision and re-attaches to Correspondence.
+      const refreshed = await salesService.regenerateLetterPdf(
+        deal.id,
+        generatedLetter.id,
+        updatedData
+      );
+      setGeneratedLetter(refreshed);
+      bumpPreview();
+      return refreshed;
+    } catch (err) {
+      const msg = extractApiError(err, "Failed to save changes");
+      setError(msg);
+      setPdfError(msg);
+      onError?.(msg);
+      return null;
+    } finally {
+      setRegenerating(false);
+    }
+  }, [deal, generatedLetter, onError, bumpPreview]);
 
   const handleRegeneratePdf = useCallback(async () => {
     if (!generatedLetter) return;
@@ -293,8 +290,6 @@ export default function SalesLetterModal({
     setPdfError(null);
     try {
       await salesService.regenerateLetterPdf(deal.id, generatedLetter.id, {
-        subject: generatedLetter.subject,
-        body: generatedLetter.body,
         custom_data: generatedLetter.custom_data,
       });
 
@@ -316,7 +311,7 @@ export default function SalesLetterModal({
       setPreviewEpoch(Date.now());
       setPdfError(null);
     } catch (err) {
-      const msg = err.response?.data?.detail || "Failed to regenerate PDF";
+      const msg = extractApiError(err, "Failed to regenerate PDF");
       setPdfError(msg);
       onError?.(msg);
     } finally {
