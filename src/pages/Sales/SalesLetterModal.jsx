@@ -258,6 +258,11 @@ export default function SalesLetterModal({
     setPdfError(null);
   }, []);
 
+  const bumpPreview = useCallback(() => {
+    setPreviewEpoch(Date.now());
+    setPdfError(null);
+  }, []);
+
   const handleSaveEdit = useCallback(async (updatedData) => {
     if (!generatedLetter) return;
     setRegenerating(true);
@@ -308,8 +313,7 @@ export default function SalesLetterModal({
       }
 
       // Destroy and recreate iframe with timestamp cache-buster
-      setPreviewEpoch(Date.now());
-      setPdfError(null);
+      bumpPreview();
     } catch (err) {
       const msg = extractApiError(err, "Failed to regenerate PDF");
       setPdfError(msg);
@@ -317,7 +321,7 @@ export default function SalesLetterModal({
     } finally {
       setRegenerating(false);
     }
-  }, [deal, generatedLetter, onError]);
+  }, [deal, generatedLetter, onError, bumpPreview]);
 
   const handleClose = useCallback(() => {
     onClose?.();
