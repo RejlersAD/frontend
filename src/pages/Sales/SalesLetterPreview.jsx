@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import {
   AlertCircle,
@@ -33,22 +33,22 @@ export default function SalesLetterPreview({
   const [pdfLoaded, setPdfLoaded] = useState(false);
   const [pdfError, setPdfError] = useState(null);
 
-  const handleLoad = () => {
+  const handleLoad = useCallback(() => {
     setPdfLoaded(true);
     setPdfError(null);
-  };
+  }, []);
 
-  const handleError = () => {
+  const handleError = useCallback(() => {
     setPdfError("Failed to load PDF preview");
     setPdfLoaded(true);
-  };
+  }, []);
 
   useEffect(() => {
     setPdfLoaded(false);
     setPdfError(null);
 
     const iframe = iframeRef.current;
-    if (!iframe) return;
+    if (!iframe) return undefined;
 
     iframe.onload = handleLoad;
     iframe.onerror = handleError;
@@ -64,7 +64,7 @@ export default function SalesLetterPreview({
       iframe.onload = null;
       iframe.onerror = null;
     };
-  }, [pdfUrl, handleLoad, handleError]);
+  }, [pdfUrl, previewKey, handleLoad, handleError]);
 
   const handleDownload = () => {
     onDownload?.();
