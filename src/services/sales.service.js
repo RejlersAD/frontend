@@ -759,10 +759,6 @@ class SalesService {
     ).data;
   }
 
-  async deleteDeal(dealId) {
-    return (await apiClient.delete(`${BASE_URL}/deals/${dealId}/`)).data;
-  }
-
   // ============================================================================
   // SALES LETTERS
   // ============================================================================
@@ -804,14 +800,6 @@ class SalesService {
       { responseType: 'blob' }
     );
     return { blob: response.data, filename: responseFilename(response.headers?.['content-disposition']) };
-  }
-
-  async previewLetterPdf(dealId, letterId) {
-    const response = await apiClient.get(
-      `${BASE_URL}/deals/${dealId}/letters/${letterId}/pdf/preview/`,
-      { responseType: 'blob' }
-    );
-    return response.data;
   }
 
   // ============================================================================
@@ -882,49 +870,14 @@ class SalesService {
    * (iframes cannot send the Authorization header; QueryParamJWTAuthentication
    * validates it), and `cacheBuster` changes after regeneration.
    *
-   * Logs the returned URL, the final iframe src and a HEAD status probe so
-   * preview issues are diagnosable from the console.
    */
   buildLetterPreviewUrl(letter, cacheBuster = 0) {
     const returned = letter?.pdf_preview_url || '';
-    const absolutePreviewUrl = this.toBackendAbsoluteUrl(returned);
-    if (!absolutePreviewUrl) {
-      console.log('[LetterPreview] backend pdf_preview_url:', returned || '(missing)');
-      console.log('[LetterPreview] iframe src:', '(empty — iframe stays hidden)');
-      return '';
-    }
-    const url = new URL(absolutePreviewUrl);
     const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-    if (token) url.searchParams.set('token', token);
-    if (cacheBuster) url.searchParams.set('v', String(cacheBuster));
-    const finalUrl = url.toString();
-    console.log('[LetterPreview] backend pdf_preview_url:', returned || '(missing)');
-    console.log('[LetterPreview] iframe src:', finalUrl);
-    if (finalUrl) {
-      fetch(finalUrl, { method: 'HEAD' })
-        .then((response) =>
-          console.log('[LetterPreview] HEAD status:', response.status, finalUrl),
-        )
-        .catch((error) =>
-          console.warn('[LetterPreview] HEAD probe failed:', error.message),
-        );
-    }
-    return finalUrl;
-  }
-
-  /**
-   * Legacy fallback builder kept for non-letter callers only. The letter
-   * preview iframe must NOT use this: it uses buildLetterPreviewUrl() with
-   * the backend-provided `pdf_preview_url` as the single source of truth.
-   * Same-origin guaranteed by stripping any absolute origin.
-   */
-  getLetterPreviewUrl(dealId, letterId, cacheBuster = 0) {
-    const previewPath = `/api/v1/sales/deals/${dealId}/letters/${letterId}/pdf/preview/`;
-    const absolutePreviewUrl = this.toBackendAbsoluteUrl(previewPath);
-    const url = new URL(absolutePreviewUrl);
-    const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-    if (token) url.searchParams.set('token', token);
-    if (cacheBuster) url.searchParams.set('v', String(cacheBuster));
+    if (!returned || !token) return '';
+    const url = new URL(this.toBackendAbsoluteUrl(returned));
+    url.searchParams.set('token', token);
+    url.searchParams.set('v', String(cacheBuster || Date.now()));
     return url.toString();
   }
 
