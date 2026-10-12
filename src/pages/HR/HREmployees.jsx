@@ -47,6 +47,7 @@ import {
   HR_DEFAULT_VIEW_MODE,
   HR_CARD_FIELDS,
   HR_TABLE_COLUMNS,
+  sortEmployeesById,
   HR_DETAIL_TABS,
   HR_DEFAULT_DETAIL_TAB,
   HR_DRAWER_WIDTH_DEFAULT,
@@ -824,7 +825,7 @@ const EmployeeCard = ({ emp, onSelect, onAction }) => (
 // ─────────────────────────────────────────────────────────────────────────────
 // Sub-component: Employees Table (Table view)
 // ─────────────────────────────────────────────────────────────────────────────
-const EmployeesTable = ({ employees, onSelect, onAction }) => (
+const EmployeesTable = ({ employees, onSelect, onAction, employeeIdSort, onEmployeeIdSort }) => (
   <div className="w-full min-w-0 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
     <div className="w-full overflow-x-auto">
       <table className="w-full min-w-full divide-y divide-slate-200">
@@ -833,9 +834,24 @@ const EmployeesTable = ({ employees, onSelect, onAction }) => (
             {HR_TABLE_COLUMNS.map((c) => (
               <th
                 key={c.id}
+                scope="col"
+                aria-sort={c.sortable ? employeeIdSort || "none" : undefined}
                 className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500"
               >
-                {c.label}
+                {c.sortable ? (
+                  <button
+                    type="button"
+                    onClick={onEmployeeIdSort}
+                    aria-label={`Sort ${c.label} ${employeeIdSort === "ascending" ? "descending" : "ascending"}`}
+                    className="inline-flex items-center gap-1.5 rounded hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  >
+                    {c.label}
+                    <span className="inline-flex flex-col" aria-hidden="true">
+                      <HeroIcons.ChevronUpIcon className={`h-3 w-3 ${employeeIdSort === "ascending" ? "text-blue-600" : "text-slate-400"}`} />
+                      <HeroIcons.ChevronDownIcon className={`-mt-1 h-3 w-3 ${employeeIdSort === "descending" ? "text-blue-600" : "text-slate-400"}`} />
+                    </span>
+                  </button>
+                ) : c.label}
               </th>
             ))}
             <th className="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">
@@ -4777,6 +4793,7 @@ export default function HREmployees() {
   const [viewMode, setViewMode] = useState(HR_DEFAULT_VIEW_MODE);
   const [pageSize, setPageSize] = useState(HR_DEFAULT_PAGE_SIZE);
   const [pageIndex, setPageIndex] = useState(0);
+  const [employeeIdSort, setEmployeeIdSort] = useState(null);
   const [selectedEmp, setSelectedEmp] = useState(null);
   const [selectedTab, setSelectedTab] = useState(null); // optional initial tab when opening drawer
   const [selectedEdit, setSelectedEdit] = useState(false);
@@ -4979,17 +4996,24 @@ export default function HREmployees() {
     });
   }, [employees, filterValues, searchTerm, activeKpi]);
 
+  const sortedEmployees = useMemo(
+    () => viewMode === "table" && employeeIdSort
+      ? sortEmployeesById(filteredEmployees, employeeIdSort)
+      : filteredEmployees,
+    [filteredEmployees, employeeIdSort, viewMode],
+  );
+
   // ──────── Pagination (cards/table modes only) ────────
   useEffect(() => {
     setPageIndex(0);
-  }, [searchTerm, filterValues, viewMode, pageSize, selectedKpi]);
+  }, [searchTerm, filterValues, viewMode, pageSize, selectedKpi, employeeIdSort]);
 
   const paginated = useMemo(() => {
     if (viewMode === "dept" || viewMode === "hierarchy")
       return filteredEmployees;
     const start = pageIndex * pageSize;
-    return filteredEmployees.slice(start, start + pageSize);
-  }, [filteredEmployees, pageIndex, pageSize, viewMode]);
+    return sortedEmployees.slice(start, start + pageSize);
+  }, [filteredEmployees, sortedEmployees, pageIndex, pageSize, viewMode]);
 
   const totalPages = Math.max(
     1,
@@ -5244,6 +5268,8 @@ export default function HREmployees() {
                     employees={paginated}
                     onSelect={openEmp}
                     onAction={handleEmployeeAction}
+                    employeeIdSort={employeeIdSort}
+                    onEmployeeIdSort={() => setEmployeeIdSort(previous => previous === "ascending" ? "descending" : "ascending")}
                   />
                 )}
                 {viewMode === "dept" && (

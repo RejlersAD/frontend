@@ -6,7 +6,7 @@
  *   1) Notes        — project header + numbered notes
  *   2) ISLAND       — valves where area = 'ISLAND'
  *   3) FIELD        — valves where area = 'Field'
- *   4) COMBINED MTO — every row, with the BORE column instead of SIZE 2
+ *   4) COMBINED MTO — every row, including BORE
  *   5) Pivot        — aggregated quantity by Type / Class / Size / Tag
  *
  * Soft-coded:
@@ -17,33 +17,33 @@
  */
 import * as XLSX from 'xlsx';
 import {
-  VALVE_COLUMNS, PROJECT_FIELDS, STANDARD_NOTES, DEFAULT_FILENAME,
+  VALVE_COLUMNS, isValveColumnVisible, sizeNBFromLineNumber, allocationTab, PROJECT_FIELDS, STANDARD_NOTES, DEFAULT_FILENAME,
 } from './valveMTO.config';
 
 // ─── Soft-coded sheet definitions ────────────────────────────────────────
 // Each sheet selects its rows + the columns to render.
 const COMMON_COLS = [
-  'sl_no', 'area', 'type', 'pms_class', 'rating', 'size_1',
+  'sl_no', 'area', 'type', 'pms_class', 'piping_class', 'rating', 'size_1', 'qty_observed',
 ];
 
 const SHEET_DEFS = [
   {
     name: 'ISLAND',
-    filter: (rows) => rows.filter((r) => normArea(r.area) === 'island'),
-    columns: [...COMMON_COLS, 'size_2', 'line_number', 'valve_tag', 'description', 'qty_island', 'qty_field', 'unit', 'remarks'],
+    filter: (rows) => rows.filter((r) => allocationTab(r) === 'island'),
+    columns: [...COMMON_COLS, 'size_2', 'pid_number', 'line_number', 'line_list', 'valve_tag', 'description', 'qty_island', 'qty_field', 'unit', 'remarks'],
     headerTitle: 'VALVE MTO — ISLAND',
   },
   {
     name: 'FIELD',
-    filter: (rows) => rows.filter((r) => normArea(r.area) === 'field'),
-    columns: [...COMMON_COLS, 'size_2', 'line_number', 'valve_tag', 'description', 'qty_island', 'qty_field', 'unit', 'remarks'],
+    filter: (rows) => rows.filter((r) => allocationTab(r) === 'field'),
+    columns: [...COMMON_COLS, 'size_2', 'pid_number', 'line_number', 'line_list', 'valve_tag', 'description', 'qty_island', 'qty_field', 'unit', 'remarks'],
     headerTitle: 'VALVE MTO — FIELD',
   },
   {
     name: 'COMBINED MTO',
     filter: (rows) => rows,
-    // The standard COMBINED sheet uses BORE in place of SIZE 2.
-    columns: [...COMMON_COLS, 'bore', 'line_number', 'valve_tag', 'description', 'qty_island', 'qty_field', 'unit', 'remarks'],
+    // The COMBINED sheet includes BORE.
+    columns: [...COMMON_COLS, 'bore', 'pid_number', 'line_number', 'line_list', 'valve_tag', 'description', 'qty_island', 'qty_field', 'unit', 'remarks'],
     headerTitle: 'VALVE MTO — COMBINED',
   },
 ];
@@ -52,10 +52,6 @@ const TITLE_ROW_HEIGHT  = 22;
 const HEADER_ROW_HEIGHT = 30;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
-function normArea(a) {
-  return String(a || '').trim().toLowerCase();
-}
-
 const colByKey = Object.fromEntries(VALVE_COLUMNS.map((c) => [c.key, c]));
 
 const buildHeaderBlock = (project, headerTitle) => {
@@ -74,7 +70,8 @@ const buildHeaderBlock = (project, headerTitle) => {
   ];
 };
 
-const buildDataSheet = ({ name, filter, columns, headerTitle }, rows, project) => {
+const buildDataSheet = ({ name, filter, columns: configuredColumns, headerTitle }, rows, project) => {
+  const columns = configuredColumns.filter(isValveColumnVisible);
   const aoa = [];
   aoa.push(...buildHeaderBlock(project, headerTitle));
 
@@ -86,6 +83,8 @@ const buildDataSheet = ({ name, filter, columns, headerTitle }, rows, project) =
   data.forEach((r, idx) => {
     const line = columns.map((k) => {
       if (k === 'sl_no') return idx + 1;
+      if (k === 'rating') return [r.rating, r.facing].filter(Boolean).join(' ');
+      if (k === 'size_1') return r.size_1 || sizeNBFromLineNumber(r.line_number);
       const v = r[k];
       if (v === undefined || v === null) return '';
       return v;
@@ -132,7 +131,7 @@ const buildPivotSheet = (rows) => {
   }
   const aoa = [
     ['TYPE', '(All)'],
-    ['SIZE 1 (NB)', '(All)'],
+    [colByKey.size_1.label, '(All)'],
     ['PIPING MATERIAL CLASS', '(All)'],
     ['VALVE TAG', '(All)'],
     [],
@@ -164,22 +163,15 @@ export const exportValveMTOWorkbook = ({
 };
 
 // ─── "Download All Data" — raw, complete dump (separate from the
-// standard template above, which stays unchanged) ─────────────────────────
-// Exact customer column set/order/names (16 columns) on every sheet, with
+// standard template above) ────────────────────────────────────────────────
+// Customer column order on every sheet, subject to shared schema visibility, with
 // every row — including the line-recovery placeholder rows the standard
 // export already includes too (neither export has ever filtered those
 // out; nothing to change there).
 //
-// NOTE on what's NOT here: this customer list has no LINE NUMBER, BORE,
-// QTY COMBINED, or OP. STATUS column — all four were in this export's
-// previous column set. line_number in particular is real, well-populated
-// data (the valve's own line/piping tag — not the same thing as the new
-// P&ID NUMBER column below, which is the DRAWING SHEET number). Dropped
-// here only because this exact 16-column list was given as "exact
-// customer column names" to match; flagging in case that omission was
-// unintentional — the data itself isn't lost anywhere else (still a real
-// column in both the model and the standard "Download Valve MTO" export
-// above).
+// Retain review evidence alongside the customer columns: observed count,
+// line number, confidence and location are needed to audit local candidates.
+// BORE, QTY COMBINED and OP. STATUS remain outside this customer view.
 //
 // "RATING / FACING" combines two separate underlying fields (`rating` +
 // the newer `facing` — see apps.valve_mto.models.ValveMTORow's migration
@@ -188,27 +180,32 @@ export const exportValveMTOWorkbook = ({
 // everywhere else (this is purely a display-time join for this column).
 const ALL_DATA_COLUMNS = [
   { key: 'sl_no',          label: 'SL. NO.',                       width:  8, source: (r, idx) => idx + 1 },
-  { key: 'area',           label: 'AREA',                          width: 10, source: (r) => r.area },
-  { key: 'tag_number',     label: 'VALVE TAG',                     width: 14, source: (r) => r.valve_tag },
-  { key: 'valve_type',     label: 'TYPE',                          width: 22, source: (r) => r.type },
+  { key: 'area',           label: 'AREA',                          width: 48, source: (r) => r.area },
+  { key: 'valve_tag',      label: 'VALVE TAG',                     width: 14, source: (r) => r.valve_tag },
+  { key: 'type',           label: 'TYPE',                          width: 22, source: (r) => r.type },
   { key: 'pms_class',      label: 'PIPING MATERIAL CLASS',         width: 22, source: (r) => r.pms_class },
   { key: 'piping_class',   label: 'PIPING CLASS',                  width: 14, source: (r) => r.piping_class },
-  { key: 'rating_facing',  label: 'RATING / FACING',               width: 16, source: (r) => [r.rating, r.facing].filter(Boolean).join(' ') },
-  { key: 'size_primary',   label: 'SIZE 1 (NB)',                   width: 12, source: (r) => r.size_1 },
-  { key: 'size_secondary', label: 'SIZE 2 (NB)',                   width: 14, source: (r) => r.size_2 },
+  { key: 'rating',         label: 'RATING / FACING',               width: 16, source: (r) => [r.rating, r.facing].filter(Boolean).join(' ') },
+  { key: 'size_1',         label: 'SIZE (NB)',                     width: 12, source: (r) => r.size_1 || sizeNBFromLineNumber(r.line_number) },
+  { key: 'size_2',         label: 'SIZE 2 (NB)',                   width: 14, source: (r) => r.size_2 },
   { key: 'pid_number',     label: 'P&ID NUMBER',                   width: 20, source: (r) => r.pid_number },
-  { key: 'line_list_ref',  label: 'LINE LIST',                     width: 18, source: (r) => r.line_list },
+  { key: 'line_list',      label: 'LINE LIST',                     width: 18, source: (r) => r.line_list },
   { key: 'description',    label: 'DESCRIPTION',                   width: 38, source: (r) => r.description },
   { key: 'qty_island',     label: 'Total to be ordered (ISLAND)',  width: 18, source: (r) => Number(r.qty_island) || 0 },
   { key: 'qty_field',      label: 'Total to be ordered (FIELD)',   width: 18, source: (r) => Number(r.qty_field) || 0 },
+  { key: 'qty_observed',   label: 'OBSERVED QTY (REVIEW)', width: 18, source: (r) => r.qty_observed },
+  { key: 'line_number',    label: 'LINE NUMBER', width: 24, source: (r) => r.line_number },
+  { key: 'confidence',    label: 'CONFIDENCE', width: 12, source: (r) => r.confidence },
+  { key: 'location_hint', label: 'LOCATION', width: 30, source: (r) => r.location_hint },
   { key: 'unit',           label: 'UNIT',                          width:  8, source: (r) => r.unit },
   { key: 'remarks',        label: 'REMARKS',                       width: 24, source: (r) => r.remarks },
-];
+].filter(column => isValveColumnVisible(column.key))
+  .map(column => ({ ...column, label: colByKey[column.key].label }));
 
 const ALL_DATA_SHEET_DEFS = [
   { name: 'ALL VALVES',   filter: (rows) => rows },
-  { name: 'ISLAND',       filter: (rows) => rows.filter((r) => normArea(r.area) === 'island') },
-  { name: 'FIELD',        filter: (rows) => rows.filter((r) => normArea(r.area) === 'field') },
+  { name: 'ISLAND',       filter: (rows) => rows.filter((r) => allocationTab(r) === 'island') },
+  { name: 'FIELD',        filter: (rows) => rows.filter((r) => allocationTab(r) === 'field') },
   { name: 'COMBINED MTO', filter: (rows) => rows },
 ];
 

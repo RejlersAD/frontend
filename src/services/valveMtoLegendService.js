@@ -58,3 +58,18 @@ export async function listActiveLegends(section) {
   const res = await apiClient.get(`${LEGENDS_ENDPOINT}active/`, { params })
   return res.data
 }
+
+export async function previewLegendWorkbook({ file }) {
+  const body = new FormData()
+  body.append('file', file)
+  const { data } = await apiClient.post(`${LEGENDS_ENDPOINT}workbook-preview/`, body)
+  return data
+}
+
+export async function importLegendWorkbook({ file, sheetMap }) {
+  const body = new FormData()
+  body.append('file', file)
+  body.append('sheet_map', JSON.stringify(sheetMap))
+  const { data } = await apiClient.post(`${LEGENDS_ENDPOINT}workbook-import/`, body)
+  return data
+}

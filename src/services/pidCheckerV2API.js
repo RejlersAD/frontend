@@ -205,6 +205,49 @@ export async function uploadLegendPack({ file, projectId, name = '', useAi = tru
   return res.data
 }
 
+// Smart multi-sheet Excel workbook import — preview the per-sheet section
+// prediction first (nothing written), then import with the confirmed map.
+const LEGENDS_WORKBOOK_PREVIEW_ENDPOINT = `${BASE_PATH}/legends/workbook-preview/`
+const LEGENDS_WORKBOOK_IMPORT_ENDPOINT = `${BASE_PATH}/legends/workbook-import/`
+const LEGENDS_WORKBOOK_EXPORT_ENDPOINT = `${BASE_PATH}/legends/workbook-export/`
+
+export async function previewLegendWorkbook({ file }) {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await apiClient.post(LEGENDS_WORKBOOK_PREVIEW_ENDPOINT, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return res.data
+}
+
+export async function importLegendWorkbook({ file, sheetMap, projectId }) {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('project_id', projectId)
+  form.append('sheet_map', JSON.stringify(sheetMap || {}))
+  const res = await apiClient.post(LEGENDS_WORKBOOK_IMPORT_ENDPOINT, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return res.data
+}
+
+// Server-side formatted workbook export — styled fields/code tables plus the
+// section symbol pictures embedded as images (the client-side SheetJS export
+// cannot embed images). Returns { blob, filename }.
+export async function exportLegendWorkbook({ projectId, section, legendId } = {}) {
+  const res = await apiClient.get(LEGENDS_WORKBOOK_EXPORT_ENDPOINT, {
+    params: {
+      ...(projectId ? { project_id: projectId } : {}),
+      ...(section ? { section } : {}),
+      ...(legendId ? { legend_id: legendId } : {}),
+    },
+    responseType: 'blob',
+  })
+  const disposition = String(res.headers?.['content-disposition'] || '')
+  const match = disposition.match(/filename="?([^";]+)"?/i)
+  return { blob: res.data, filename: match ? match[1] : 'legend_workbook.xlsx' }
+}
+
 // Add/edit/delete ONE lookup entry in the user's active legend for a
 // section, without resending the whole definition — backs the "+ Add to
 // Legend" quick-add button on an unrecognised finding, and the Manage
@@ -685,7 +728,7 @@ export async function downloadTokenReport({ format = 'xlsx', since, until } = {}
 export default {
   extractLineTags, listExtractions, getExtraction, deleteExtraction,
   listLegends, getLegend, createLegend, updateLegend, deleteLegend,
-  activateLegend, getLegendDefaultTemplate,
+  activateLegend, getLegendDefaultTemplate, exportLegendWorkbook,
   addLegendLookupEntry, editLegendLookupEntry, deleteLegendLookupEntry, listLookupSections,
   getSymbolImages,
   getDefaultSymbolImages, uploadSymbolImage, deleteSymbolImage,

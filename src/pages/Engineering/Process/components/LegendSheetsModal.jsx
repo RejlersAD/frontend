@@ -16,6 +16,8 @@ import projectOrganizerService from '../../../../services/projectOrganizerServic
 import AddToLegendModal from './AddToLegendModal'
 import { emitLegendSync, subscribeLegendSync, LEGEND_SYNC_ACTIONS, LEGEND_SYNC_POLL_MS } from '../../../../config/legendSheetsRules'
 import { parseLegendFile, IMPORT_ACCEPT } from '../../../../config/legendSheetsImport'
+import WorkbookImportModal from '../../Legends/WorkbookImportModal'
+import ImportedWorkbookSheets from '../../Legends/ImportedWorkbookSheets'
 
 // ═════════════════════════════════════════════════════════════════════
 // Soft-coded theme (matches parent page)
@@ -162,6 +164,7 @@ export default function LegendSheetsModal({
   const updateLegendApi = legendApi?.updateLegend || pidUpdateLegend
   const deleteLegendApi = legendApi?.deleteLegend || pidDeleteLegend
   const activateLegendApi = legendApi?.activateLegend || pidActivateLegend
+  const availableSections = legendApi?.sections || LEGEND_SECTIONS
   const [activeSection, setActiveSection] = useState(section || DEFAULT_SECTION)
 
   // ── Project scope — soft-coded selector in the header. When the parent
@@ -190,6 +193,26 @@ export default function LegendSheetsModal({
   // "section::NORMALISED NAME" so FormEditor can look one up per lookup entry.
   const [symbolImages, setSymbolImages] = useState({})
   const refreshSymbolImages = useCallback(async () => {
+    if (legendApi) {
+      try {
+        const records = await listLegendsApi()
+        const map = {}
+        for (const record of records.filter(item => item.is_active)) {
+          for (const sheet of record.definition?.imported_sheets || []) {
+            for (const image of sheet.images || []) {
+              if (image.data_url) map[`${record.section}::${normaliseSymbolName(image.name)}`] = {
+                url: image.data_url, contentType: 'image/png',
+              }
+            }
+          }
+        }
+        setSymbolImages(map)
+      } catch (error) {
+        console.error('[LegendSheetsModal] Could not load isolated workbook pictures', error)
+        toast.error('Could not load workbook pictures. Reopen the legend manager to retry.')
+      }
+      return
+    }
     if (!projectId) { setSymbolImages({}); return }
     try {
       const data = await getSymbolImages(projectId)
@@ -204,7 +227,7 @@ export default function LegendSheetsModal({
     } catch {
       setSymbolImages({})
     }
-  }, [projectId])
+  }, [projectId, legendApi, listLegendsApi])
   useEffect(() => { if (open) refreshSymbolImages() }, [open, projectId, refreshSymbolImages])
 
   // Re-sync internal section when the parent re-opens the modal with a new one.
@@ -214,6 +237,9 @@ export default function LegendSheetsModal({
   const [saving, setSaving] = useState(false)
   const [legends, setLegends] = useState([])
   const [selectedId, setSelectedId] = useState(null)
+  const [workbookFile, setWorkbookFile] = useState(null)
+  const [workbookOpen, setWorkbookOpen] = useState(false)
+  const [workbookSection, setWorkbookSection] = useState(DEFAULT_SECTION)
 
   // Draft (edit form) fields
   const [draftName, setDraftName] = useState('')
@@ -287,14 +313,19 @@ export default function LegendSheetsModal({
             && p.is_active === next[i]?.is_active)
         return same ? prev : next
       })
-      // Clear selection when switching sections so the editor doesn't show a
-      // stale legend belonging to a different section. Only do this for a
-      // user-driven load (tab click / modal open) — a silent background
-      // poll or cross-tab sync must NOT clear it, or the tab the user just
-      // opened blanks itself out a few seconds later. `selected` is derived
-      // from `legends.find(...)` anyway, so if the row really did disappear
+      // On a user-driven load (tab click / modal open), auto-select the
+      // section's active legend (falling back to the most recent one) so
+      // the editor opens populated instead of blank — users shouldn't have
+      // to click the list item to see the rules that are already in force.
+      // A silent background poll or cross-tab sync must NOT change the
+      // selection, or the tab the user just opened blanks/switches itself
+      // a few seconds later. `selected` is derived from
+      // `legends.find(...)` anyway, so if the row really did disappear
       // (deleted elsewhere), it naturally falls back to null on its own.
-      if (!silent) setSelectedId(null)
+      if (!silent) {
+        const auto = filteredRows.find(l => l.is_active) || filteredRows[0] || null
+        setSelectedId(auto ? auto.legend_id : null)
+      }
       // notify parent about active state (only when viewing the section the
       // parent originally opened us with)
       if (onActiveChange && activeSection === section) {
@@ -558,6 +589,16 @@ export default function LegendSheetsModal({
     const f = e.target.files?.[0]
     if (!f) return
     try {
+      if ((!legendApi || legendApi.importLegendWorkbook) && /\.(xlsx|xlsm)$/i.test(f.name)) {
+        if (!legendApi && (!projectId || !projects.some(project => project.project_id === projectId))) {
+          toast.warning('Select a legend-library project in this manager before importing the workbook. Drawing projects and legend-library projects may be different.')
+          return
+        }
+        setWorkbookFile(f)
+        setWorkbookSection(activeSection)
+        setWorkbookOpen(true)
+        return
+      }
       const items = await parseLegendFile(f, `Imported ${activeSection} legend`)
       if (!items.length) { toast.error('No legends found in the file'); return }
       const first = items[0]
@@ -575,7 +616,28 @@ export default function LegendSheetsModal({
     } finally {
       e.target.value = ''
     }
-  }, [section])
+  }, [activeSection, legendApi, projectId, projects])
+
+  const onWorkbookImported = useCallback(async (result) => {
+    const entries = [...(result.created || []), ...(result.updated || [])]
+    for (const entry of entries) {
+      emitLegendSync(LEGEND_SYNC_ACTIONS.UPDATED, { legend_id: entry.legend_id, section: entry.section })
+    }
+    const targetSection = entries.some(entry => entry.section === activeSection)
+      ? activeSection : entries[0]?.section
+    if (targetSection && targetSection !== activeSection) setActiveSection(targetSection)
+    else await refresh()
+    await refreshSymbolImages()
+    if (onActiveChange) {
+      try {
+        const rows = await listLegendsApi(section, projectId || undefined)
+        onActiveChange(rows.find(row => row.is_active) || null)
+      } catch (error) {
+        console.error('[LegendSheetsModal] Failed to refresh extraction legend after import', error)
+        toast.error('Workbook imported, but the extraction legend could not be refreshed. Reopen the legend manager.')
+      }
+    }
+  }, [activeSection, section, refresh, refreshSymbolImages, onActiveChange, listLegendsApi, projectId])
 
   // Switch between Form and JSON tabs. Form → JSON is easy (JSON is source
   // of truth). JSON → Form requires a valid parse first.
@@ -626,7 +688,7 @@ export default function LegendSheetsModal({
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 17, fontWeight: 700, color: THEME_TEXT }}>{title || DEFAULT_TITLE}</div>
             <div style={{ fontSize: 12, color: THEME_MUTED }}>
-              {description || `${DEFAULT_DESCRIPTION_PREFIX}${LEGEND_SECTIONS.map(s => s.label).join(', ')}`}
+              {description || `${DEFAULT_DESCRIPTION_PREFIX}${availableSections.map(s => s.label).join(', ')}`}
             </div>
           </div>
           {/* Project scope selector — empty = personal/global library */}
@@ -645,6 +707,9 @@ export default function LegendSheetsModal({
               }}
             >
               <option value="">Global library (no project)</option>
+              {projectId && !projects.some(project => project.project_id === projectId) && (
+                <option value={projectId} disabled>Select a legend-library project</option>
+              )}
               {projects.map(p => (
                 <option key={p.project_id} value={p.project_id}>{p.name || p.code || p.project_id}</option>
               ))}
@@ -727,7 +792,7 @@ export default function LegendSheetsModal({
                 background: THEME_TAB_BG, borderRadius: 10, padding: 6,
               }}
             >
-              {LEGEND_SECTIONS.map(s => {
+              {availableSections.map(s => {
                 const on = s.id === activeSection
                 return (
                   <button
@@ -767,11 +832,21 @@ export default function LegendSheetsModal({
               >
                 <Download size={14} /> Default
               </button>
-              <label style={{ ...btnGhost(), cursor: 'pointer', display: 'inline-flex' }} title="Import JSON, CSV, or Excel (.xlsx / .xls)">
+              <label style={{ ...btnGhost(), cursor: 'pointer', display: 'inline-flex' }} title={legendApi && !legendApi.importLegendWorkbook
+                ? 'Import JSON, CSV, or Excel field definitions'
+                : 'Import a complete Excel workbook (.xlsx / .xlsm), including every mapped worksheet and embedded symbol, or JSON/CSV field definitions'}>
                 <Upload size={14} /> Import
                 <input type="file" accept={IMPORT_ACCEPT} onChange={onImportJson} style={{ display: 'none' }} />
               </label>
             </div>
+
+            {(!legendApi || legendApi.importLegendWorkbook) && (
+              <div style={{ color: THEME_MUTED, fontSize: 11 }}>
+                Excel workbook import preserves worksheet text and embedded symbols.
+                {legendApi ? 'Preview and confirm the worksheets to import into this isolated library.'
+                  : 'Select a legend-library project above, then preview and confirm the worksheet mapping.'}
+              </div>
+            )}
 
             {loading && (
               <div style={{ color: THEME_MUTED, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -924,9 +999,18 @@ export default function LegendSheetsModal({
                   symbolImages={symbolImages}
                   projectId={projectId}
                   onImagesChanged={refreshSymbolImages}
+                  isolated={Boolean(legendApi)}
                 />
               )}
             </label>
+
+            {(!legendApi || legendApi.importLegendWorkbook) && (
+              <ImportedWorkbookSheets
+                sheets={parsedDefinition?.imported_sheets}
+                projectId={projectId}
+                section={selected?.section || activeSection}
+              />
+            )}
 
             {/* Footer actions */}
             <div style={{ display: 'flex', gap: 8, marginTop: 'auto', flexWrap: 'wrap' }}>
@@ -958,6 +1042,16 @@ export default function LegendSheetsModal({
           </div>
         </div>
       </div>
+      <WorkbookImportModal
+        open={workbookOpen}
+        onClose={() => setWorkbookOpen(false)}
+        file={workbookFile}
+        projectId={projectId}
+        defaultSection={workbookSection}
+        onImported={onWorkbookImported}
+        workbookApi={legendApi}
+        sections={legendApi?.sections}
+      />
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         /* Thin, non-overlapping scrollbars everywhere inside this modal —
@@ -1058,7 +1152,7 @@ function tabBtnStyle(active) {
 // Source-of-truth is a JSON string on the parent; on every change we
 // re-emit the entire definition object.
 // ═════════════════════════════════════════════════════════════════════
-function FormEditor({ definition, onChange, onError, jsonError, activeSection, selectedSection, symbolImages, projectId, onImagesChanged }) {
+function FormEditor({ definition, onChange, onError, jsonError, activeSection, selectedSection, symbolImages, projectId, onImagesChanged, isolated = false }) {
   // Tracks which symbol keys ("section::NAME") currently have an upload in
   // flight, so each cell can show its own small spinner independently.
   const [uploadingKeys, setUploadingKeys] = useState({})
@@ -1074,11 +1168,12 @@ function FormEditor({ definition, onChange, onError, jsonError, activeSection, s
     const rowKey = `${idx}::${code}`
     setDeletingLookupKey(rowKey)
     try {
-      await deleteLegendLookupEntry({ section: activeSection, code })
+      if (!isolated) await deleteLegendLookupEntry({ section: activeSection, code })
       const nextLookup = { ...field.lookup }
       delete nextLookup[code]
       updateField(idx, { lookup: nextLookup })
-      toast.success(`"${code}" removed from the legend.`)
+      if (isolated) toast.info(`"${code}" removed from the draft. Save changes to persist the legend.`)
+      else toast.success(`"${code}" removed from the legend.`)
     } catch (err) {
       toast.error(err.response?.data?.error || err.message || 'Failed to remove.')
     } finally {
@@ -1109,7 +1204,7 @@ function FormEditor({ definition, onChange, onError, jsonError, activeSection, s
   }, [activeSection, definition, symbolImages])
 
   useEffect(() => {
-    if (!neededNamesKey) {
+    if (isolated || !neededNamesKey) {
       // Only clear if there's something to clear (avoid a redundant render).
       setDefaultImages(prev => (Object.keys(prev).length ? {} : prev))
       return undefined
@@ -1131,7 +1226,7 @@ function FormEditor({ definition, onChange, onError, jsonError, activeSection, s
       })
       .catch(() => { if (!cancelled) setDefaultImages(prev => (Object.keys(prev).length ? {} : prev)) })
     return () => { cancelled = true }
-  }, [activeSection, neededNamesKey])
+  }, [activeSection, neededNamesKey, isolated])
 
   // Scroll positions captured just before a symbol cell is clicked, so the
   // "Right: editor" pane (and any scrollable ancestor up to it) can be
@@ -1144,6 +1239,10 @@ function FormEditor({ definition, onChange, onError, jsonError, activeSection, s
   const pendingScrollLockRef = useRef(null)
 
   const handleSymbolImageUpload = useCallback(async (symbolValue, file) => {
+    if (isolated) {
+      toast.warn('Import a complete workbook to replace pictures in this isolated legend library.')
+      return
+    }
     if (!projectId) { toast.warn('Select a project first — pictures are saved per project.'); return }
     const key = `${activeSection}::${normaliseSymbolName(symbolValue)}`
     setUploadingKeys(prev => ({ ...prev, [key]: true }))
@@ -1156,9 +1255,13 @@ function FormEditor({ definition, onChange, onError, jsonError, activeSection, s
     } finally {
       setUploadingKeys(prev => { const next = { ...prev }; delete next[key]; return next })
     }
-  }, [projectId, activeSection, onImagesChanged])
+  }, [projectId, activeSection, onImagesChanged, isolated])
 
   const handleSymbolImageDelete = useCallback(async (symbolValue) => {
+    if (isolated) {
+      toast.warn('Replace the workbook to update its embedded reference pictures.')
+      return
+    }
     if (!projectId) return
     if (!(await radaiConfirm(`Remove the picture for "${symbolValue}"?`))) return
     const key = `${activeSection}::${normaliseSymbolName(symbolValue)}`
@@ -1171,7 +1274,7 @@ function FormEditor({ definition, onChange, onError, jsonError, activeSection, s
     } finally {
       setUploadingKeys(prev => { const next = { ...prev }; delete next[key]; return next })
     }
-  }, [projectId, activeSection, onImagesChanged])
+  }, [projectId, activeSection, onImagesChanged, isolated])
 
   // Paste-from-clipboard — click a symbol cell to focus it, then Ctrl+V a
   // picture copied from Excel/anywhere else. Same upload path as the file
@@ -1616,6 +1719,7 @@ function FormEditor({ definition, onChange, onError, jsonError, activeSection, s
       </div>
 
       <AddToLegendModal
+        localDraft={isolated}
         isOpen={!!lookupRowEditor}
         onClose={() => setLookupRowEditor(null)}
         mode={lookupRowEditor?.mode || 'add'}

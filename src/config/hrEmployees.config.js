@@ -342,10 +342,22 @@ export const HR_CARD_FIELDS = [
 // ─────────────────────────────────────────────────────────────────────────────
 // 8. TABLE COLUMNS
 // ─────────────────────────────────────────────────────────────────────────────
+const employeeIdCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
+
+export const sortEmployeesById = (employees, direction) => {
+  if (!['ascending', 'descending'].includes(direction)) throw new RangeError('Invalid Employee ID sort direction')
+  return [...employees].sort((a, b) => {
+    const left = String(a.employee_id ?? '').trim()
+    const right = String(b.employee_id ?? '').trim()
+    if (!left || !right) return Number(!left) - Number(!right)
+    return employeeIdCollator.compare(left, right) * (direction === 'descending' ? -1 : 1)
+  })
+}
+
 export const HR_TABLE_COLUMNS = [
   { id: 'name',         label: 'Employee',     accessor: (e) => `${e.user?.first_name || ''} ${e.user?.last_name || ''}`.trim() || getEmail(e) },
   { id: 'email',        label: 'Email',        accessor: (e) => getEmail(e) || '—' },
-  { id: 'employee_id',  label: 'Employee ID',  accessor: (e) => e.employee_id || '—' },
+  { id: 'employee_id',  label: 'Employee ID', sortable: true, accessor: (e) => e.employee_id || '—' },
   { id: 'job_title',    label: 'Designation',  accessor: (e) => e.job_title || '—' },
   { id: 'department',   label: 'Department',   accessor: (e) => e.department || '—' },
   { id: 'discipline',   label: 'Discipline',   accessor: (e) => matchDiscipline(e.engineer_profile?.discipline || e.department)?.label || '—' },

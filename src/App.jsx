@@ -164,6 +164,7 @@ import PFDQualityChecker from "./pages/Engineering/Process/PFDQualityChecker";
 import HMBStreamTableConsolidator from "./pages/Engineering/Process/HMBStreamTableConsolidator/HMBStreamTableConsolidator";
 import ManageProjectsPage from "./pages/ProjectOrganizer/ManageProjectsPage";
 import CriticalLineList from "./pages/Engineering/Piping/CriticalLineList";
+import ValveMTO from "./pages/Engineering/Piping/ValveMTO";
 // Electrical Datasheet Components
 import ElectricalDocumentsHub from "./pages/Engineering/Electrical/ElectricalDocumentsHub";
 import ElectricalDatasheetPage from "./pages/Engineering/Electrical/ElectricalDatasheetPage";
@@ -195,7 +196,6 @@ import ValveStandardsPage from "./pages/Engineering/Digitization/ValveStandardsP
 // Piping Components
 import CriticalStressLineList from "./pages/Engineering/Piping/CriticalStressLineList";
 import PipingDataSheet from "./pages/Engineering/Piping/PipingDataSheet";
-import ValveMTO from "./pages/Engineering/Piping/ValveMTO";
 import PipingHub from "./pages/Engineering/Piping/PipingHub";
 // Report Generator Components
 import ReportGenerator from "./pages/Admin/ReportGenerator";
@@ -1349,15 +1349,8 @@ function App() {
                 </ProtectedRoute>
               }
             />
-            {/* Valve MTO (Material Take-Off) */}
-            <Route
-              path="engineering/piping/pms"
-              element={
-                <ModuleProtectedRoute moduleCode="piping_pms">
-                  <ValveMTO />
-                </ModuleProtectedRoute>
-              }
-            />
+            {/* Valve MTO (PMS) — rebuilt on the Line List pattern */}
+            <Route path="engineering/piping/pms" element={<ModuleProtectedRoute moduleCode="piping_pms"><ValveMTO /></ModuleProtectedRoute>} />
             {/* Piping Data Sheet - Main Page */}
             <Route
               path="engineering/piping/datasheet"

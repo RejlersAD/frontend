@@ -18,13 +18,22 @@ import { useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import LegendSheetsCanvas from '../Process/LegendSheetsCanvas';
 import ImportFromRepositoryModal from './ImportFromRepositoryModal';
+import WorkbookImportModal from './WorkbookImportModal';
 import projectOrganizerService from '../../../services/projectOrganizerService';
 import { uploadLegendPack, listLegends } from '../../../services/pidCheckerV2API';
 import { LEGEND_SECTIONS } from '../../../services/pidCheckerV2API';
 import {
   BookOpenIcon, FolderIcon, ArrowUpTrayIcon, ChevronDownIcon,
-  CheckCircleIcon, SparklesIcon, ServerStackIcon,
+  CheckCircleIcon, SparklesIcon, ServerStackIcon, TableCellsIcon,
 } from '@heroicons/react/24/outline';
+
+// ── Soft-coded: Excel workbook import action ────────────────────────────────
+const LM_WORKBOOK = {
+  enabled: true,
+  label: 'Import Excel Workbook',
+  accept: '.xlsx,.xlsm',
+  title: 'Import a multi-sheet legend workbook (.xlsx) — each sheet is previewed and mapped to a legend section',
+};
 
 // ── Soft-coded theme (V1 blue/indigo — matches pid-verification-v1) ─────────
 const LM_THEME = {
@@ -73,6 +82,30 @@ const LegendManagerPage = () => {
   // ── Repository import (R: drive replica → legend pack) ─────────────────
   const [repoOpen, setRepoOpen] = useState(false);
 
+  // ── Excel workbook import (multi-sheet → per-section legends) ──────────
+  const wbInputRef = useRef(null);
+  const [wbFile, setWbFile] = useState(null);
+  const [wbOpen, setWbOpen] = useState(false);
+  const [importedSection, setImportedSection] = useState(null);
+  const [wbDefaultSection, setWbDefaultSection] = useState('line_list');
+
+  const openWorkbookImport = (file) => {
+    if (!selectedProjectId) {
+      toast.warning('Select a project before importing a workbook with text and symbols.');
+      return;
+    }
+    setWbDefaultSection(params.get('section') || 'line_list');
+    setWbFile(file);
+    setWbOpen(true);
+  };
+
+  const handleWorkbookPick = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    openWorkbookImport(file);
+  };
+
   // ── Section coverage (legends present per section in current scope) ──────
   const [coverage, setCoverage] = useState({});
   const [coverageTick, setCoverageTick] = useState(0);
@@ -91,17 +124,15 @@ const LegendManagerPage = () => {
 
   const loadCoverage = useCallback(async () => {
     try {
-      const results = await Promise.all(
-        LEGEND_SECTIONS.map(s =>
-          listLegends(s.id, selectedProjectId || undefined)
-            .then(rows => ({ id: s.id, n: Array.isArray(rows) ? rows.length : 0 }))
-            .catch(() => ({ id: s.id, n: 0 })),
-        ),
-      );
-      const map = {};
-      results.forEach(r => { map[r.id] = r.n; });
+      const rows = await listLegends(undefined, selectedProjectId || undefined);
+      const map = Object.fromEntries(LEGEND_SECTIONS.map(s => [s.id, 0]));
+      for (const row of rows) {
+        if (Object.prototype.hasOwnProperty.call(map, row.section)) map[row.section] += 1;
+      }
       setCoverage(map);
-    } catch { /* silent */ }
+    } catch (error) {
+      console.error('[LegendManager] Failed to load section coverage', error);
+    }
   }, [selectedProjectId]);
 
   useEffect(() => { loadCoverage(); }, [loadCoverage, coverageTick]);
@@ -218,7 +249,21 @@ const LegendManagerPage = () => {
                   boxShadow: '0 2px 8px rgba(59,130,246,0.15)',
                 }}>
                 <ServerStackIcon className="w-4 h-4" /> Import from Repository
-              </button>            </div>
+              </button>
+              {LM_WORKBOOK.enabled && (
+                <>
+                  <input ref={wbInputRef} type="file" accept={LM_WORKBOOK.accept} className="hidden" onChange={handleWorkbookPick} />
+                  <button
+                    onClick={() => wbInputRef.current?.click()}
+                    disabled={!selectedProjectId || packBusy}
+                    title={selectedProjectId ? LM_WORKBOOK.title : 'Select a project first to import a legend workbook'}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-bold transition-all hover:-translate-y-px disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ background: LM_THEME.accent, boxShadow: '0 4px 12px rgba(59,130,246,0.35)' }}>
+                    <TableCellsIcon className="w-4 h-4" /> {LM_WORKBOOK.label}
+                  </button>
+                </>
+              )}
+            </div>
           </div>
 
           {/* Coverage chips */}
@@ -241,6 +286,9 @@ const LegendManagerPage = () => {
           <LegendSheetsCanvas
             projectId={selectedProjectId || null}
             projectName={selectedProject?.name || ''}
+            onWorkbookImport={openWorkbookImport}
+            importVersion={coverageTick}
+            importedSection={importedSection}
           />
         </div>
 
@@ -249,6 +297,20 @@ const LegendManagerPage = () => {
           onClose={() => setRepoOpen(false)}
           project={selectedProject}
           onImport={applyPack}
+        />
+        <WorkbookImportModal
+          open={wbOpen}
+          onClose={() => setWbOpen(false)}
+          file={wbFile}
+          projectId={selectedProjectId}
+          defaultSection={wbDefaultSection}
+          onImported={(result) => {
+            const sections = [...(result.created || []), ...(result.updated || [])].map(item => item.section);
+            const current = params.get('section');
+            setImportedSection(sections.includes(current) ? current
+              : sections.includes('line_list') ? 'line_list' : sections[0] || null);
+            setCoverageTick(t => t + 1);
+          }}
         />
       </div>
     </div>

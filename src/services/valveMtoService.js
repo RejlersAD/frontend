@@ -20,6 +20,7 @@
  * secondary-size columns round-trip correctly.
  */
 import apiClient from './api.service'
+import { sizeNBFromLineNumber, allocationTab } from '../config/valveMTO.config'
 
 const BASE = '/valve-mto/projects/'
 // BYOK connectivity check — this one endpoint lives on the EXTRACTION app
@@ -35,24 +36,10 @@ export function mapLocalRowToServer(row) {
     tag_number: row.valve_tag || '',
     valve_type: row.type || '',
     pms_class: row.pms_class || '',
-    // KNOWN LIMITATION (not fixable from this file alone): apps.valve_mto's
-    // ValveMTORow model has no `piping_class` column at all (confirmed by
-    // reading models.py directly — its own docstring calls itself "the
-    // canonical 17-field schema", which predates this field existing on
-    // the extractor/frontend side), and save_rows()'s own field allowlist
-    // doesn't include it either. Sending it here is still correct/forward-
-    // compatible (the extra key is silently dropped server-side today,
-    // same as any unlisted key — it does NOT error), and makes this the
-    // single place that needs no further change once a migration adds the
-    // column and the allowlist is updated. Until then, piping_class only
-    // round-trips within this browser session (localStorage + the
-    // in-memory `rows` state), not through the server.
     piping_class: row.piping_class || '',
     rating: row.rating || '',
-    // Both real server columns (migration 0003) — unlike piping_class
-    // above, these round-trip fully through save AND read-back.
     facing: row.facing || '',
-    size_primary: row.size_1 || '',
+    size_primary: row.size_1 || sizeNBFromLineNumber(row.line_number),
     size_secondary: row.bore || '',
     size_secondary_2: row.size_2 || '',
     line_number: row.line_number || '',
@@ -62,11 +49,14 @@ export function mapLocalRowToServer(row) {
     qty_island: island,
     qty_field: field,
     qty_combined: island + field,
+    qty_observed: row.qty_observed === '' || row.qty_observed == null ? null : Number(row.qty_observed),
     unit: row.unit || '',
     area: row.area || '',
     operational_status: '',
     remarks: row.remarks || '',
-    tab: String(row.area || '').toLowerCase(),
+    confidence: row.confidence || '',
+    location_hint: row.location_hint || '',
+    tab: allocationTab(row),
   }
 }
 
@@ -75,15 +65,13 @@ export function mapServerRowToLocal(row) {
     id: `v_${row.id}`,
     sl_no: 0,
     area: row.area || '',
+    tab: row.tab || '',
     type: row.valve_type || '',
     pms_class: row.pms_class || '',
-    // Always blank on read-back — see mapLocalRowToServer's own comment;
-    // the server has nowhere to store this yet, so there is nothing to
-    // read back here even though it's sent on save.
-    piping_class: '',
+    piping_class: row.piping_class || '',
     rating: row.rating || '',
     facing: row.facing || '',
-    size_1: row.size_primary || '',
+    size_1: row.size_primary || sizeNBFromLineNumber(row.line_number),
     size_2: row.size_secondary_2 || '',
     bore: row.size_secondary || '',
     line_number: row.line_number || '',
@@ -93,8 +81,11 @@ export function mapServerRowToLocal(row) {
     description: row.description || '',
     qty_island: row.qty_island ?? 0,
     qty_field: row.qty_field ?? 0,
+    qty_observed: row.qty_observed ?? '',
     unit: row.unit || '',
     remarks: row.remarks || '',
+    confidence: row.confidence || '',
+    location_hint: row.location_hint || '',
   }
 }
 
@@ -140,7 +131,7 @@ const valveMtoService = {
   },
 
   async exportXlsx(id, filename = 'ValveMTO.xlsx') {
-    const resp = await apiClient.post(`${BASE}${id}/export/`, null, { responseType: 'blob' })
+    const resp = await apiClient.post(`${BASE}${id}/export/`, {}, { responseType: 'blob' })
     const url = window.URL.createObjectURL(new Blob([resp.data]))
     const link = document.createElement('a')
     link.href = url
@@ -158,7 +149,9 @@ const valveMtoService = {
    * minimal, cheap call, no PDF/image involved.
    */
   async testApiKey(provider, apiKey) {
-    const { data } = await apiClient.post(TEST_KEY_URL, { provider, api_key: apiKey })
+    const { data } = await apiClient.post(TEST_KEY_URL, { provider, api_key: apiKey }, {
+      sensitiveRequest: true, timeout: 30000,
+    })
     return data
   },
 }

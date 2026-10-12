@@ -10,7 +10,7 @@ import {
 
 import {
   listLegends, createLegend, updateLegend, deleteLegend,
-  activateLegend, getLegendDefaultTemplate, LEGEND_SECTIONS,
+  activateLegend, getLegendDefaultTemplate, exportLegendWorkbook, LEGEND_SECTIONS,
 } from '../../../services/pidCheckerV2API'
 import {
   LEGEND_SECTION_RULES, getSectionRules,
@@ -18,6 +18,7 @@ import {
   LEGEND_SYNC_ACTIONS, LEGEND_SYNC_POLL_MS,
 } from '../../../config/legendSheetsRules'
 import { parseLegendFile, IMPORT_ACCEPT } from '../../../config/legendSheetsImport'
+import ImportedWorkbookSheets from '../Legends/ImportedWorkbookSheets'
 
 // ═════════════════════════════════════════════════════════════════════
 // Legend Sheets — full-page CANVAS view
@@ -53,12 +54,15 @@ function fieldsFromDefinition(def) {
 }
 
 
-export default function LegendSheetsCanvas({ projectId = null, projectName = '' }) {
+export default function LegendSheetsCanvas({ projectId = null, projectName = '', onWorkbookImport, importVersion = 0, importedSection = null }) {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const initialSection = params.get('section') || DEFAULT_SECTION
 
   const [activeSection, setActiveSection] = useState(initialSection)
+  useEffect(() => {
+    if (importedSection) setActiveSection(importedSection)
+  }, [importedSection, importVersion])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [legends, setLegends] = useState([])
@@ -97,7 +101,13 @@ export default function LegendSheetsCanvas({ projectId = null, projectName = '' 
           && prev.every((p, i) => p.legend_id === next[i]?.legend_id && p.updated_at === next[i]?.updated_at)
         return same ? prev : next
       })
-      if (!silent) setSelectedId(null)
+      // Auto-select the section's active legend (fallback: most recent) on
+      // user-driven loads so the editor opens populated; silent background
+      // refreshes must never touch the selection.
+      if (!silent) {
+        const auto = next.find(l => l.is_active) || next[0] || null
+        setSelectedId(auto ? auto.legend_id : null)
+      }
     } catch {
       if (!silent) toast.error('Failed to load legends')
     } finally {
@@ -116,12 +126,10 @@ export default function LegendSheetsCanvas({ projectId = null, projectName = '' 
   // identical references.
   const loadAllCounts = useCallback(async () => {
     try {
-      const results = await Promise.all(
-        LEGEND_SECTIONS.map(s => listLegends(s.id, projectId || undefined).then(
-          rows => ({ id: s.id, rows: Array.isArray(rows) ? rows : [] }),
-          ()  => ({ id: s.id, rows: [] }),
-        ))
-      )
+      const rows = await listLegends(undefined, projectId || undefined)
+      const results = LEGEND_SECTIONS.map(s => ({
+        id: s.id, rows: rows.filter(row => row.section === s.id),
+      }))
       const counts = {}
       const active = {}
       results.forEach(({ id, rows }) => {
@@ -145,11 +153,13 @@ export default function LegendSheetsCanvas({ projectId = null, projectName = '' 
         return next
       })
       setLastSync(new Date())
-    } catch { /* silent — auxiliary */ }
+    } catch (error) {
+      console.error('[LegendSheetsCanvas] Failed to load section counts', error)
+    }
   }, [projectId])
 
-  useEffect(() => { refresh() }, [refresh])
-  useEffect(() => { loadAllCounts() }, [loadAllCounts])
+  useEffect(() => { refresh() }, [refresh, importVersion])
+  useEffect(() => { loadAllCounts() }, [loadAllCounts, importVersion])
 
   // Realtime sync: refresh whenever ANY tab/window creates/edits/deletes a
   // legend. Falls back to polling for browsers without BroadcastChannel.
@@ -295,6 +305,10 @@ export default function LegendSheetsCanvas({ projectId = null, projectName = '' 
     const f = e.target.files?.[0]
     if (!f) return
     try {
+      if (onWorkbookImport && /\.(xlsx|xlsm)$/i.test(f.name)) {
+        onWorkbookImport(f)
+        return
+      }
       const items = await parseLegendFile(f, `Imported ${activeSection} legend`)
       if (!items.length) { toast.error('No legends found in the file'); return }
       const first = items[0]
@@ -311,7 +325,7 @@ export default function LegendSheetsCanvas({ projectId = null, projectName = '' 
     } finally {
       e.target.value = ''
     }
-  }, [activeSection])
+  }, [activeSection, onWorkbookImport])
 
   // Rows built from an arbitrary definition (one row per field).
   const rowsFromDefinition = useCallback((def) => {
@@ -432,9 +446,10 @@ export default function LegendSheetsCanvas({ projectId = null, projectName = '' 
 
   const XLSX_HEADERS = ['order','key','label','regex','suffix','optional','separator','notes','lookup']
 
-  const onExportExcel = useCallback(() => {
-    const payload = resolveExportPayload()
-    if (!payload) { toast.warn(nothingToExportMsg()); return }
+  // Quick client-side export (fields only, no symbol images) — used for
+  // unsaved drafts in the editor and as a fallback if the server export
+  // is unavailable.
+  const exportExcelClientSide = useCallback((payload) => {
     const wb = XLSX.utils.book_new()
     // One sheet per legend + a summary Metadata sheet
     const usedNames = new Set()
@@ -473,7 +488,39 @@ export default function LegendSheetsCanvas({ projectId = null, projectName = '' 
       ? `Excel exported (${totalRows} field row${totalRows === 1 ? '' : 's'})`
       : `Excel exported (${payload.items.length} legends, ${totalRows} field rows)`)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resolveExportPayload, rowsFromDefinition, activeSection, legends.length, jsonError])
+  }, [rowsFromDefinition, activeSection])
+
+  const [excelBusy, setExcelBusy] = useState(false)
+
+  // Preferred export: the server builds a formatted workbook — aligned
+  // fields/code tables AND the section symbol pictures embedded as images,
+  // which the client-side SheetJS library cannot do.
+  const onExportExcel = useCallback(async () => {
+    const payload = resolveExportPayload()
+    if (!payload) { toast.warn(nothingToExportMsg()); return }
+    const isDraft = Boolean(parsedDefinition && fieldsFromDefinition(parsedDefinition).length)
+    if (isDraft) { exportExcelClientSide(payload); return }
+    setExcelBusy(true)
+    try {
+      const { blob, filename } = await exportLegendWorkbook({
+        projectId: projectId || undefined,
+        section: payload.mode === 'section' ? activeSection : undefined,
+        legendId: payload.mode === 'single' ? selected?.legend_id : undefined,
+      })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = filename
+      document.body.appendChild(a); a.click(); document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      toast.success(`Excel workbook exported with symbols — ${filename}`)
+    } catch {
+      toast.info('Formatted export unavailable — exported fields only.')
+      exportExcelClientSide(payload)
+    } finally {
+      setExcelBusy(false)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolveExportPayload, parsedDefinition, exportExcelClientSide, projectId, activeSection, selected, legends.length, jsonError])
 
   // Filtered list based on search
   const visibleLegends = useMemo(() => {
@@ -709,7 +756,8 @@ export default function LegendSheetsCanvas({ projectId = null, projectName = '' 
             <button onClick={onLoadDefaultTemplate} style={btnGhost()} title="Load built-in default template">
               <Download size={13} /> Default
             </button>
-            <label style={{ ...btnGhost(), cursor: 'pointer' }} title="Import JSON, CSV, or Excel (.xlsx / .xls)">
+            <label style={{ ...btnGhost(), cursor: 'pointer' }}
+              title="Import JSON, CSV, or Excel. Excel workbooks (.xlsx / .xlsm) import every mapped sheet with text and embedded symbols.">
               <Upload size={13} /> Import
               <input type="file" accept={IMPORT_ACCEPT} onChange={onImportFile} style={{ display: 'none' }} />
             </label>
@@ -875,6 +923,11 @@ export default function LegendSheetsCanvas({ projectId = null, projectName = '' 
           </div>
 
           {/* Comparison rules — soft-coded per section */}
+          <ImportedWorkbookSheets
+            sheets={parsedDefinition?.imported_sheets}
+            projectId={projectId}
+            section={activeSection}
+          />
           <RulesCard sectionId={activeSection} />
 
           {/* JSON editor */}
@@ -924,8 +977,10 @@ export default function LegendSheetsCanvas({ projectId = null, projectName = '' 
                 <CheckCircle2 size={14} /> Activate for {LEGEND_SECTIONS.find(s => s.id === activeSection)?.label || activeSection}
               </button>
             )}
-            <button onClick={onExportExcel} style={btnGhost()} title={exportScopeHint}>
-              <FileSpreadsheet size={14} /> Export Excel <span style={exportScopeBadge}>{exportScopeLabel}</span>
+            <button onClick={onExportExcel} disabled={excelBusy} style={btnGhost()}
+              title={`${exportScopeHint} Formatted workbook with aligned tables and embedded symbol pictures.`}>
+              {excelBusy ? <Loader2 size={14} className="animate-spin" /> : <FileSpreadsheet size={14} />}
+              {excelBusy ? ' Exporting…' : ' Export Excel'} <span style={exportScopeBadge}>{exportScopeLabel}</span>
             </button>
             <button onClick={onExportCsv} style={btnGhost()} title={exportScopeHint}>
               <FileText size={14} /> Export CSV <span style={exportScopeBadge}>{exportScopeLabel}</span>
