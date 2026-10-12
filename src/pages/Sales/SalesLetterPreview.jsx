@@ -1,4 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+} from "react";
 import PropTypes from "prop-types";
 import {
   AlertCircle,
@@ -30,8 +35,11 @@ export default function SalesLetterPreview({
   previewKey = 0,
 }) {
   const iframeRef = useRef(null);
+
   const [pdfLoaded, setPdfLoaded] = useState(false);
   const [pdfError, setPdfError] = useState(null);
+  const [verifiedPreview, setVerifiedPreview] = useState(null);
+  const currentPreview = `${previewKey}-${pdfUrl}`;
 
   const handleLoad = useCallback(() => {
     setPdfLoaded(true);
@@ -39,32 +47,63 @@ export default function SalesLetterPreview({
   }, []);
 
   const handleError = useCallback(() => {
-    setPdfError("Failed to load PDF preview");
     setPdfLoaded(true);
+    setPdfError("Failed to load PDF preview");
   }, []);
 
   useEffect(() => {
     setPdfLoaded(false);
     setPdfError(null);
+    setVerifiedPreview(null);
 
-    const iframe = iframeRef.current;
-    if (!iframe) return undefined;
+    if (!pdfUrl) return;
 
-    iframe.onload = handleLoad;
-    iframe.onerror = handleError;
+    let cancelled = false;
+    let timedOut = false;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, 10000);
 
-    // PDF iframes often don't fire onload reliably across browsers.
-    // Fallback: assume loaded after timeout since the PDF might display anyway.
-    const checkLoad = setTimeout(() => {
-      setPdfLoaded(true);
-    }, 3000);
+    const validatePdf = async () => {
+      try {
+        const response = await fetch(pdfUrl, {
+          method: "HEAD",
+          signal: controller.signal,
+        });
+
+        if (response.status !== 200) {
+          throw new Error(`Preview returned HTTP ${response.status}.`);
+        }
+
+        const contentType = response.headers.get("content-type")?.split(";")[0].trim().toLowerCase();
+        if (contentType !== "application/pdf") {
+          throw new Error(`Preview returned ${contentType || "no Content-Type"} instead of application/pdf.`);
+        }
+
+        if (!cancelled) {
+          setVerifiedPreview(currentPreview);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setPdfError(timedOut
+            ? "PDF preview timed out. You can still download the document."
+            : `Unable to load PDF preview: ${err.message}`);
+        }
+      } finally {
+        clearTimeout(timeout);
+      }
+    };
+
+    validatePdf();
 
     return () => {
-      clearTimeout(checkLoad);
-      iframe.onload = null;
-      iframe.onerror = null;
+      cancelled = true;
+      clearTimeout(timeout);
+      controller.abort();
     };
-  }, [pdfUrl, previewKey, handleLoad, handleError]);
+  }, [pdfUrl, currentPreview]);
 
   const handleDownload = () => {
     onDownload?.();
@@ -72,14 +111,15 @@ export default function SalesLetterPreview({
 
   const handlePrint = () => {
     onPrint?.();
-    // Also try to print via iframe
+
     const iframe = iframeRef.current;
-    if (iframe && iframe.contentWindow) {
+
+    if (iframe?.contentWindow) {
       try {
         iframe.contentWindow.focus();
         iframe.contentWindow.print();
-      } catch (e) {
-        // Cross-origin restriction
+      } catch (err) {
+        console.warn("Print blocked by browser:", err);
       }
     }
   };
@@ -89,9 +129,14 @@ export default function SalesLetterPreview({
   };
 
   const readyFiles =
-    letter?.attachments?.files?.filter((f) => f.status === "ready") || [];
+    letter?.attachments?.files?.filter(
+      (f) => f.status === "ready",
+    ) || [];
+
   const failedFiles =
-    letter?.attachments?.files?.filter((f) => f.status !== "ready") || [];
+    letter?.attachments?.files?.filter(
+      (f) => f.status !== "ready",
+    ) || [];
 
   if (loading && !pdfUrl) {
     return (
@@ -104,65 +149,93 @@ export default function SalesLetterPreview({
 
   return (
     <div
-      className={`sl-preview-container ${fullscreen ? "sl-fullscreen" : ""}`}
+      className={`sl-preview-container ${
+        fullscreen ? "sl-fullscreen" : ""
+      }`}
     >
       <div className="sl-preview-header">
         <div className="sl-preview-title">
-          <h3>{letter?.letter_type_display || "Letter Preview"}</h3>
+          <h3>
+            {letter?.letter_type_display ||
+              "Letter Preview"}
+          </h3>
+
           <span className="sl-preview-badge">
-            {letter?.opportunity_code || letter?.deal_code}
+            {letter?.opportunity_code ||
+              letter?.deal_code}
           </span>
+
           {readyFiles.length > 0 && (
             <span
               className="sl-preview-attached"
-              title={readyFiles.map((f) => f.name).join(", ")}
+              title={readyFiles
+                .map((f) => f.name)
+                .join(", ")}
             >
-              <Paperclip size={13} /> Attached to Correspondence
-              {letter.attachments.version
+              <Paperclip size={13} />
+              {" "}Attached to Correspondence
+              {letter?.attachments?.version
                 ? ` (v${letter.attachments.version})`
                 : ""}
             </span>
           )}
+
           {failedFiles.length > 0 && (
             <span
               className="sl-preview-attach-failed"
               title={failedFiles
-                .map((f) => `${f.name}: ${f.error || "upload failed"}`)
+                .map(
+                  (f) =>
+                    `${f.name}: ${
+                      f.error || "upload failed"
+                    }`
+                )
                 .join("\n")}
             >
-              <AlertCircle size={13} /> Attach failed:{" "}
-              {failedFiles[0].error || "upload failed"}
-              {failedFiles.length > 1
-                ? ` (+${failedFiles.length - 1} more)`
-                : ""}
+              <AlertCircle size={13} />
+              {" "}Attach failed:{" "}
+              {failedFiles[0].error ||
+                "upload failed"}
             </span>
           )}
         </div>
+
         <div className="sl-preview-actions">
           {regenerating && (
-            <button className="sl-btn sl-btn--ghost" disabled>
-              <Loader2 className="sl-spin" size={16} /> Regenerating...
+            <button
+              className="sl-btn sl-btn--ghost"
+              disabled
+            >
+              <Loader2
+                size={16}
+                className="sl-spin"
+              />
+              {" "}Regenerating...
             </button>
           )}
-          {error && (
+
+          {(error || pdfError) && (
             <button
               type="button"
               className="sl-btn sl-btn--ghost sl-btn--error"
               onClick={onRegenerate}
               disabled={regenerating}
             >
-              <RefreshCw size={16} /> Retry
+              <RefreshCw size={16} />
+              {" "}Retry
             </button>
           )}
+
           <button
             type="button"
             className="sl-btn sl-btn--ghost"
             onClick={handleDownload}
-            title="Download PDF"
             disabled={!pdfUrl}
+            title="Download PDF"
           >
             <Download size={16} />
           </button>
+
           <button
             type="button"
             className="sl-btn sl-btn--ghost"
@@ -171,94 +244,105 @@ export default function SalesLetterPreview({
           >
             <FileText size={16} />
           </button>
+
           <button
             type="button"
             className="sl-btn sl-btn--ghost"
             onClick={handlePrint}
-            title="Print"
             disabled={!pdfLoaded}
+            title="Print"
           >
             <Printer size={16} />
           </button>
+
           <button
             type="button"
             className="sl-btn sl-btn--ghost"
             onClick={handleFullscreen}
-            title={fullscreen ? "Exit fullscreen" : "Fullscreen"}
           >
-            {fullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+            {fullscreen ? (
+              <Minimize2 size={16} />
+            ) : (
+              <Maximize2 size={16} />
+            )}
           </button>
+
           <button
             type="button"
             className="sl-btn sl-btn--primary"
             onClick={onEdit}
             disabled={regenerating}
           >
-            <ExternalLink size={16} /> Edit
+            <ExternalLink size={16} />
+            {" "}Edit
           </button>
         </div>
       </div>
 
       <div className="sl-preview-content">
-        {pdfError && (
+        {(error || pdfError) && (
           <div className="sl-preview-error">
-            <p>{pdfError}</p>
-            <button className="sl-btn sl-btn--primary" onClick={onRegenerate}>
-              <RefreshCw size={16} /> Regenerate PDF
+            <AlertCircle size={48} />
+            <p>{error || pdfError}</p>
+
+            <button
+              className="sl-btn sl-btn--primary"
+              onClick={onRegenerate}
+            >
+              <RefreshCw size={16} />
+              {" "}Regenerate PDF
             </button>
           </div>
         )}
 
-        {!pdfError && pdfUrl && (
+        {!error && !pdfError && pdfUrl && verifiedPreview === currentPreview && (
           <iframe
             key={previewKey}
             ref={iframeRef}
-            src={pdfUrl}
+            src={`${pdfUrl}#toolbar=0`}
+            referrerPolicy="no-referrer"
+            title="Letter PDF preview"
             className="sl-preview-iframe"
-            title={`Letter preview: ${letter?.subject}`}
-            allow="fullscreen"
+            onLoad={handleLoad}
+            onError={handleError}
           />
         )}
 
-        {!pdfUrl && !pdfError && (
+        {!error && !pdfError && !pdfUrl && (
           <div className="sl-preview-empty">
-            <ExternalLink size={48} />
+            <FileText size={48} />
+
             <p>No PDF available</p>
-            <button className="sl-btn sl-btn--primary" onClick={onRegenerate}>
-              <RefreshCw size={16} /> Generate PDF
+
+            <button
+              className="sl-btn sl-btn--primary"
+              onClick={onRegenerate}
+            >
+              <RefreshCw size={16} />
+              {" "}Generate PDF
             </button>
           </div>
         )}
 
-        {!pdfLoaded && pdfUrl && !pdfError && (
-          <div className="sl-preview-loading-overlay">
-            <Loader2 className="sl-spin" size={32} />
-            <p>Loading preview...</p>
-          </div>
-        )}
+        {(!pdfLoaded || verifiedPreview !== currentPreview) &&
+          pdfUrl &&
+          !pdfError &&
+          !error && (
+            <div className="sl-preview-loading-overlay">
+              <Loader2
+                className="sl-spin"
+                size={32}
+              />
+              <p>Loading preview...</p>
+            </div>
+          )}
       </div>
     </div>
   );
 }
 
 SalesLetterPreview.propTypes = {
-  letter: PropTypes.shape({
-    id: PropTypes.string,
-    subject: PropTypes.string,
-    letter_type_display: PropTypes.string,
-    opportunity_code: PropTypes.string,
-    deal_code: PropTypes.string,
-    attachments: PropTypes.shape({
-      version: PropTypes.number,
-      files: PropTypes.arrayOf(
-        PropTypes.shape({
-          kind: PropTypes.string,
-          name: PropTypes.string,
-          status: PropTypes.string,
-        }),
-      ),
-    }),
-  }).isRequired,
+  letter: PropTypes.object.isRequired,
   pdfUrl: PropTypes.string,
   onDownload: PropTypes.func,
   onDownloadDocx: PropTypes.func,
