@@ -120,18 +120,15 @@ export default function SalesLetterModal({
   }, [open]);
 
   // Same-origin URL served by the backend (iframe-friendly, no blob needed).
-  // Built from the backend-returned pdf_preview_url so the iframe always
-  // points at the real PDF endpoint, never at an application route.
+  // Built ONLY from the backend-returned pdf_preview_url so the iframe always
+  // points at the real PDF endpoint, never at an application route and never
+  // at a hardcoded backend URL.
   const pdfUrl = useMemo(() => {
     if (!open || !deal || !generatedLetter) return null;
-    if (generatedLetter.pdf_preview_url) {
-      return salesService.buildLetterPreviewUrl(generatedLetter, previewEpoch);
-    }
-    return salesService.getLetterPreviewUrl(
-      deal.id,
-      generatedLetter.id,
-      previewEpoch,
-    );
+    // pdf_preview_url is the single source of truth; buildLetterPreviewUrl
+    // appends ?token=<JWT>&v=<epoch> and returns '' when it is missing so no
+    // iframe is rendered with an invalid URL.
+    return salesService.buildLetterPreviewUrl(generatedLetter, previewEpoch) || null;
   }, [open, deal, generatedLetter, previewEpoch]);
 
   const availableTypes = useMemo(() => {

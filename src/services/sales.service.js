@@ -814,6 +814,67 @@ class SalesService {
     return response.data;
   }
 
+  // ============================================================================
+  // E2E VERIFICATION HELPER — run from DevTools console after generating an
+  // EOI letter. Captures request URL, status, headers and validates the
+  // preview contract: HTTP 200 + Content-Type application/pdf.
+  //
+  //   const r = await salesService.verifyLetterPreviewE2E(letter);
+  //   console.log(r.ok ? 'RESOLVED: YES' : 'RESOLVED: NO', r);
+  //
+  // `letter` is the object returned by prepareLetter()/regenerateLetterPdf()
+  // (must carry pdf_preview_url). Returns { ok, url, status, contentType,
+  //   contentLength, error, backendBody }.
+  // ============================================================================
+  async verifyLetterPreviewE2E(letter, cacheBuster = Date.now()) {
+    const returned = letter?.pdf_preview_url || '';
+    const url = this.buildLetterPreviewUrl(letter, cacheBuster);
+    const report = {
+      ok: false,
+      backendPreviewUrl: returned,
+      url,
+      status: null,
+      contentType: null,
+      contentLength: null,
+      backendBody: null,
+      error: null,
+    };
+    if (!url) {
+      report.error = 'Missing pdf_preview_url from backend — iframe stays hidden by design.';
+      return report;
+    }
+    let response;
+    try {
+      response = await fetch(url, { method: 'GET' });
+    } catch (e) {
+      report.error = `Network error fetching preview: ${e.message}`;
+      return report;
+    }
+    report.status = response.status;
+    report.contentType = response.headers.get('content-type');
+    report.contentLength = response.headers.get('content-length');
+    const blob = await response.blob().catch(() => null);
+    if (response.status !== 200) {
+      // Capture backend validation body for 400 diagnosis.
+      try {
+        report.backendBody = blob ? await blob.text().then((t) => t.slice(0, 2000)) : null;
+      } catch (_) { /* non-text body */ }
+      report.error = `Preview returned ${response.status} (expected 200).`;
+      return report;
+    }
+    if (!String(report.contentType || '').includes('application/pdf')) {
+      report.error = `Wrong Content-Type: ${report.contentType} (expected application/pdf).`;
+      return report;
+    }
+    const header = blob ? await blob.slice(0, 5).text().catch(() => '') : '';
+    if (!String(header).startsWith('%PDF')) {
+      report.error = 'Body is not a PDF (%PDF magic missing).';
+      return report;
+    }
+    report.ok = true;
+    return report;
+  }
+
   /**
    * Preview URL for the inline PDF iframe, based on the backend-returned
    * `pdf_preview_url` — used unchanged so the iframe always loads the real
@@ -852,8 +913,10 @@ class SalesService {
   }
 
   /**
-   * Fallback builder used only when the backend response carries no
-   * pdf_preview_url. Same-origin guaranteed by stripping any absolute origin.
+   * Legacy fallback builder kept for non-letter callers only. The letter
+   * preview iframe must NOT use this: it uses buildLetterPreviewUrl() with
+   * the backend-provided `pdf_preview_url` as the single source of truth.
+   * Same-origin guaranteed by stripping any absolute origin.
    */
   getLetterPreviewUrl(dealId, letterId, cacheBuster = 0) {
     const previewPath = `/api/v1/sales/deals/${dealId}/letters/${letterId}/pdf/preview/`;
