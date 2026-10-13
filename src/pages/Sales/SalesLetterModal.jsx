@@ -119,17 +119,13 @@ export default function SalesLetterModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Same-origin URL served by the backend (iframe-friendly, no blob needed).
-  // Built ONLY from the backend-returned pdf_preview_url so the iframe always
-  // points at the real PDF endpoint, never at an application route and never
-  // at a hardcoded backend URL.
   const pdfUrl = useMemo(() => {
     if (!open || !deal || !generatedLetter) return null;
-    // pdf_preview_url is the single source of truth; buildLetterPreviewUrl
-    // appends ?token=<JWT>&v=<epoch> and returns '' when it is missing so no
-    // iframe is rendered with an invalid URL.
     return salesService.buildLetterPreviewUrl(generatedLetter, previewEpoch) || null;
   }, [open, deal, generatedLetter, previewEpoch]);
+  const previewError = pdfError || (generatedLetter && !pdfUrl
+    ? "PDF preview URL or access token is missing. Please sign in again or regenerate the letter."
+    : null);
 
   const availableTypes = useMemo(() => {
     if (!deal) return [];
@@ -256,27 +252,63 @@ export default function SalesLetterModal({
   }, []);
 
   const bumpPreview = useCallback(() => {
-    setPreviewEpoch(Date.now());
+    setPreviewEpoch((previous) => Math.max(Date.now(), previous + 1));
     setPdfError(null);
   }, []);
+
+  const refreshLetter = useCallback(async (letterId) => {
+    const response = await salesService.getLetters(deal.id);
+    const letters = Array.isArray(response) ? response : response?.results;
+    if (!Array.isArray(letters)) {
+      throw new Error("Unable to read the updated letter list.");
+    }
+    const refreshed = letters.find((letter) => letter.id === letterId);
+    if (!refreshed) {
+      throw new Error("Updated letter was not found. Please reopen the opportunity.");
+    }
+    if (!refreshed.pdf_preview_url) {
+      throw new Error("The backend did not provide a PDF preview URL.");
+    }
+    setGeneratedLetter(refreshed);
+    bumpPreview();
+    return refreshed;
+  }, [deal, bumpPreview]);
+
+  const handleRefreshPreview = useCallback(async () => {
+    if (!generatedLetter) return;
+    try {
+      await refreshLetter(generatedLetter.id);
+      setError("");
+    } catch (err) {
+      const msg = extractApiError(err, err.message || "Failed to refresh PDF preview");
+      setPdfError(msg);
+      onError?.(msg);
+    }
+  }, [generatedLetter, refreshLetter, onError]);
 
   const handleSaveEdit = useCallback(async (updatedData) => {
     if (!generatedLetter) return;
     setRegenerating(true);
     setPdfError(null);
+    setError("");
+    let saved = false;
     try {
-      // The regenerate endpoint updates subject/body/custom_data, regenerates
-      // the PDF+DOCX, bumps the revision and re-attaches to Correspondence.
-      const refreshed = await salesService.regenerateLetterPdf(
+      await salesService.regenerateLetterPdf(
         deal.id,
         generatedLetter.id,
         updatedData
       );
-      setGeneratedLetter(refreshed);
-      bumpPreview();
-      return refreshed;
+      saved = true;
+      return await refreshLetter(generatedLetter.id);
     } catch (err) {
-      const msg = extractApiError(err, "Failed to save changes");
+      const msg = extractApiError(
+        err,
+        err.message && saved
+          ? err.message
+          : saved
+            ? "Changes saved, but the updated letter could not be loaded."
+            : "Failed to save changes",
+      );
       setError(msg);
       setPdfError(msg);
       onError?.(msg);
@@ -284,41 +316,34 @@ export default function SalesLetterModal({
     } finally {
       setRegenerating(false);
     }
-  }, [deal, generatedLetter, onError, bumpPreview]);
+  }, [deal, generatedLetter, onError, refreshLetter]);
 
   const handleRegeneratePdf = useCallback(async () => {
     if (!generatedLetter) return;
     setRegenerating(true);
     setPdfError(null);
+    let regenerated = false;
     try {
       await salesService.regenerateLetterPdf(deal.id, generatedLetter.id, {
         custom_data: generatedLetter.custom_data,
       });
-
-      // Refresh letter to surface the bumped revision and attachments.
-      const freshLetters = await salesService.getLetters(deal.id);
-      const freshLetter = (freshLetters.results || freshLetters).find(
-        (l) => l.id === generatedLetter.id,
-      );
-      if (freshLetter) {
-        console.log("[LetterPreview] Regenerated letter:", {
-          id: freshLetter.id,
-          revision: freshLetter.version || freshLetter.revision,
-          pdf_preview_url: freshLetter.pdf_preview_url,
-        });
-        setGeneratedLetter(freshLetter);
-      }
-
-      // Destroy and recreate iframe with timestamp cache-buster
-      bumpPreview();
+      regenerated = true;
+      await refreshLetter(generatedLetter.id);
     } catch (err) {
-      const msg = extractApiError(err, "Failed to regenerate PDF");
+      const msg = extractApiError(
+        err,
+        err.message && regenerated
+          ? err.message
+          : regenerated
+            ? "PDF regenerated, but the updated letter could not be loaded."
+            : "Failed to regenerate PDF",
+      );
       setPdfError(msg);
       onError?.(msg);
     } finally {
       setRegenerating(false);
     }
-  }, [deal, generatedLetter, onError, bumpPreview]);
+  }, [deal, generatedLetter, onError, refreshLetter]);
 
   const handleClose = useCallback(() => {
     onClose?.();
@@ -405,14 +430,13 @@ export default function SalesLetterModal({
         pdfUrl={pdfUrl}
         onDownload={handleDownloadPdf}
         onDownloadDocx={handleDownloadDocx}
-        onPrint={() => {}}
         onFullscreenToggle={setPreviewFullscreen}
         onRegenerate={handleRegeneratePdf}
         onEdit={handleEdit}
         fullscreen={previewFullscreen}
-        loading={!pdfUrl}
+        loading={loading}
         regenerating={regenerating}
-        error={pdfError}
+        error={previewError}
         previewKey={previewEpoch}
       />
     );
@@ -420,11 +444,13 @@ export default function SalesLetterModal({
 
   const renderEditStep = () => (
     <SalesLetterEditor
+      key={`${generatedLetter?.id}-${generatedLetter?.custom_data?.letterhead?.rev ?? 0}`}
       letter={generatedLetter}
       pdfUrl={pdfUrl}
       previewLoading={false}
-      previewError={pdfError}
-      onRefreshPreview={() => setPreviewEpoch(Date.now())}
+      previewError={previewError}
+      onRefreshPreview={handleRefreshPreview}
+      onPreviewError={setPdfError}
       onSave={handleSaveEdit}
       onCancel={handleCancelEdit}
       saving={regenerating}

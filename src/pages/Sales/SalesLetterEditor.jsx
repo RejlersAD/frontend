@@ -91,6 +91,7 @@ export default function SalesLetterEditor({
   previewLoading = false,
   previewError = null,
   onRefreshPreview,
+  onPreviewError,
   onSave,
   onCancel,
   saving = false,
@@ -427,8 +428,10 @@ export default function SalesLetterEditor({
                 <iframe
                   key={previewKey}
                   src={pdfUrl}
+                  referrerPolicy="no-referrer"
                   className="sl-editor-preview-iframe"
                   title="Letter PDF preview"
+                  onError={() => onPreviewError("Unable to load PDF preview. Please retry.")}
                 />
                 {previewLoading && (
                   <div className="sl-editor-preview-loading">
@@ -494,6 +497,7 @@ SalesLetterEditor.propTypes = {
   previewLoading: PropTypes.bool,
   previewError: PropTypes.string,
   onRefreshPreview: PropTypes.func,
+  onPreviewError: PropTypes.func.isRequired,
   onSave: PropTypes.func.isRequired,
   onCancel: PropTypes.func.isRequired,
   saving: PropTypes.bool,
