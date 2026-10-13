@@ -79,6 +79,7 @@ const KEYFRAMES = `
 const ENABLE_INNOVATIVE_LAYOUT   = false; // DISABLED: Use original single-column layout
 // WORKFLOW_WIDTH_PERCENT moved to "INNOVATIVE WORKFLOW LAYOUT Configuration" section below
 const DOCUMENTATION_ENABLED      = false; // DISABLED: Hide Workflow Documentation panel to maximize canvas space
+const WORKFLOW_SECTION_ENABLED   = false; // DISABLED: Workflow diagram + Smart Documentation moved to the global Help drawer (helpContextRegistry → pid-verification-v1)
 const PROJECTS_PANEL_ENABLED     = true;  // NEW: Project navigator for managing multiple P&IDs
 const LAYOUT_GAP_PX              = 12;    // Tighter gap for dashboard density
 const LAYOUT_RESPONSIVE_BREAKPT  = 'xl';  // stacks on mobile, 3-column on xl+ screens
@@ -3434,7 +3435,10 @@ const PIDVerification = () => {
             </div>
           </div>
 
-          {/* ═══ SMART WORKFLOW SECTION (Collapsible + Split-Screen Mode) ═══ */}
+          {/* ═══ SMART WORKFLOW SECTION (Collapsible + Split-Screen Mode) ═══
+              Removed from the page — now available via the top-header Help button.
+              Set WORKFLOW_SECTION_ENABLED = true to restore this section. */}
+          {WORKFLOW_SECTION_ENABLED && (
           <div style={{
             display: WORKFLOW_SPLIT_SCREEN ? 'grid' : 'block',
             gridTemplateColumns: WORKFLOW_SPLIT_SCREEN 
@@ -5096,6 +5100,7 @@ const PIDVerification = () => {
             )}
 
           </div>
+          )}
 
           <FlashBanner />
 

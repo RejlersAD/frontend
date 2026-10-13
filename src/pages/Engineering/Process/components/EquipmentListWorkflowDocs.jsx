@@ -168,7 +168,7 @@ const iconBtnStyleDark = {
 };
 
 /** Workflow diagram card with loading / error / zoom states (V1 pattern). */
-const WorkflowDiagram = ({ cfg }) => {
+export const WorkflowDiagram = ({ cfg }) => {
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(cfg.defaultCollapsed);
   const [zoom, setZoom]           = useState(100);
@@ -511,23 +511,19 @@ const TabContent = ({ tab }) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-const EquipmentListWorkflowDocs = () => {
-  const cfg = EQ_DOCS_CONFIG;
-  const [docCollapsed, setDocCollapsed] = useState(cfg.docs.defaultCollapsed);
-  const [activeTab, setActiveTab]       = useState(cfg.docs.defaultTab);
+/** Smart Documentation panel — standalone export so the register workspace
+ *  can mount it as its own tab without the split-screen wrapper. */
+export const SmartDocsPanel = ({ cfg }) => {
+  const [docCollapsed, setDocCollapsed] = useState(cfg.defaultCollapsed);
+  const [activeTab, setActiveTab]       = useState(cfg.defaultTab);
 
-  if (!cfg.enabled) return null;
-
-  const wfCfg = cfg.workflow?.enabled ? cfg.workflow : null;
-
-  const docsPanel = cfg.docs.enabled && (
+  return (
     <div style={{
       background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px',
       boxShadow: '0 1px 3px rgba(0,0,0,0.08)', overflow: 'hidden',
       display: 'flex', flexDirection: 'column',
-      // Match the workflow card height (stretch to the grid row).
+      // Fill the grid cell so the docs panel matches the workflow card height.
       height: '100%',
-      maxHeight: cfg.splitScreen.enabled ? 'none' : undefined,
     }}>
       <div style={{
         padding: '14px 20px',
@@ -544,10 +540,10 @@ const EquipmentListWorkflowDocs = () => {
             <BookOpen style={{ width: '16px', height: '16px', color: '#fff' }} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0f172a' }}>{cfg.docs.title}</div>
+            <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0f172a' }}>{cfg.title}</div>
             <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Everything you need to produce a standards-aligned equipment register</div>
           </div>
-          {cfg.docs.collapsible && (
+          {cfg.collapsible && (
             <button onClick={() => setDocCollapsed(c => !c)}
               style={iconBtnStyle}
               onMouseEnter={e => e.currentTarget.style.background = 'rgba(59,130,246,0.12)'}
@@ -588,6 +584,17 @@ const EquipmentListWorkflowDocs = () => {
       )}
     </div>
   );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+const EquipmentListWorkflowDocs = () => {
+  const cfg = EQ_DOCS_CONFIG;
+
+  if (!cfg.enabled) return null;
+
+  const wfCfg = cfg.workflow?.enabled ? cfg.workflow : null;
+
+  const docsPanel = cfg.docs.enabled && <SmartDocsPanel cfg={cfg.docs} />;
 
   if (cfg.splitScreen.enabled && wfCfg) {
     return (

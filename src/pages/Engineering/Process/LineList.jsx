@@ -35,7 +35,6 @@ import apiClient from '../../../services/api.service';
 import * as XLSX from 'xlsx';
 import envConfig from '../../../config/environment.config';
 import WrenchAiDocAssist from '../../../components/Engineering/WrenchAiDocAssist';
-import LineListWorkflowDocs from './components/LineListWorkflowDocs';
 import LegendSheetsModal from './components/LegendSheetsModal';
 import ProjectLegendPanel from '../../../components/Engineering/ProjectLegendPanel';
 import { listLegends } from '../../../services/pidCheckerV2API';
@@ -1557,10 +1556,6 @@ const LineList = () => {
 
           {/* ═══ EXTRACTION WORKSPACE VIEW — shown until results are ready ═══ */}
           {regView === 'extract' && (<>
-          {/* ═══ VERIFICATION WORKFLOW + SMART DOCUMENTATION — V1 split-screen ═══
-              Soft-coded: components/LineListWorkflowDocs.jsx (LL_DOCS_CONFIG) */}
-          <LineListWorkflowDocs />
-
           {/* ── Supported Formats Reference card — soft-coded off (LL_SHOW_FORMATS_REFERENCE) ── */}
           {LL_SHOW_FORMATS_REFERENCE && (
           <div className="rounded-2xl p-5 mb-4 ll-section" style={{

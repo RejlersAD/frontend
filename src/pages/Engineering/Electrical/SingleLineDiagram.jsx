@@ -4,7 +4,7 @@ import { API_BASE_URL } from '../../../config/api.config';
 import {
   Upload as UploadIcon, FileText, Table, CheckCircle, AlertTriangle,
   Loader, X, Download, Zap, Search, Eye, EyeOff, Info,
-  FolderPlus, Package, ArrowLeft, HelpCircle, ChevronDown,
+  FolderPlus, Package, ArrowLeft, ChevronDown,
   ChevronLeft, ChevronRight, Plus, Settings2, ChevronUp, RefreshCw,
   MoreVertical, Pencil, Trash2, Calendar, BarChart3, ArrowRight,
 } from 'lucide-react';
@@ -1058,7 +1058,6 @@ const SingleLineDiagram = () => {
   const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
   const [visibleCols, setVisibleCols] = useState({ equipmentType: true, description: true, remarks: true });
   const [actionsOpen, setActionsOpen] = useState(false);
-  const [helpOpen, setHelpOpen] = useState(false);
   const [uploadSectionOpen, setUploadSectionOpen] = useState(true);
   const [howItWorksOpen, setHowItWorksOpen] = useState(false);
 
@@ -1106,17 +1105,22 @@ const SingleLineDiagram = () => {
 
   const downloadExcel = async (tabId) => {
     if (!results?.job_id) return;
-    const cfg = TAB_CONFIG[tabId];
+    // tabId === 'all' → no source filter: backend returns one workbook with
+    // a sheet per comparison (all four options in a single download).
+    const exportAll = tabId === 'all';
+    const cfg = exportAll ? null : TAB_CONFIG[tabId];
     setDownloadingTab(tabId);
     try {
       const response = await axios.get(`${API_PREFIX}/export/${results.job_id}/`, {
         headers: authHeader(), responseType: 'blob',
-        params: { source: cfg.source },
+        params: exportAll ? {} : { source: cfg.source },
       });
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.download = `${cfg.exportPrefix}_${results.job_id}.xlsx`;
+      link.download = exportAll
+        ? `electrical_comparison_all_${results.job_id}.xlsx`
+        : `${cfg.exportPrefix}_${results.job_id}.xlsx`;
       link.click();
       window.URL.revokeObjectURL(url);
     } catch {
@@ -1269,7 +1273,7 @@ const SingleLineDiagram = () => {
     <div className="min-h-screen" style={{ background: C.bg, fontFamily: FONT_STACK }}>
       {/* ───────────────────────── TOP HEADER ───────────────────────── */}
       <div style={{ background: C.header }}>
-        <div className="max-w-[1600px] mx-auto px-6 py-4 flex items-center justify-between gap-4 flex-wrap">
+        <div className="max-w-[95vw] mx-auto px-6 py-4 flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: C.primary }}>
               <Zap className="w-5 h-5 text-white" />
@@ -1315,17 +1319,6 @@ const SingleLineDiagram = () => {
               </div>
             )}
 
-            <button
-              type="button"
-              onClick={() => setHelpOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold transition-colors"
-              style={{ color: '#cbd5e1', background: 'transparent' }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-            >
-              <HelpCircle className="w-4 h-4" /> Help
-            </button>
-
             {selectedProject && (
               <div className="relative">
                 <button
@@ -1348,6 +1341,16 @@ const SingleLineDiagram = () => {
                         style={{ color: C.textPrimary }}
                       >
                         <Download className="w-4 h-4" /> Export Excel
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!results}
+                        onClick={() => { setActionsOpen(false); downloadExcel('all'); }}
+                        className="w-full text-left px-4 py-2.5 text-sm font-medium flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50"
+                        style={{ color: C.textPrimary }}
+                      >
+                        {downloadingTab === 'all' ? <Loader className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                        Export All (4 sheets)
                       </button>
                       <button
                         type="button"
@@ -1376,7 +1379,7 @@ const SingleLineDiagram = () => {
         </div>
       </div>
 
-      <div className="max-w-[1600px] mx-auto px-6 py-6">
+      <div className="max-w-[95vw] mx-auto px-6 py-6">
         {!selectedProject ? (
           /* ─────────────────── Project Selection Screen ─────────────────── */
           <div className="space-y-5 -mx-6 -mt-6 px-6 pt-6 pb-10" style={{ background: PS.bg, minHeight: 'calc(100vh - 73px)' }}>
@@ -2558,28 +2561,6 @@ const SingleLineDiagram = () => {
         </div>
       )}
 
-      {/* ── Help modal ── */}
-      {helpOpen && (
-        <div className="fixed inset-0 backdrop-blur-sm flex items-center justify-center p-4 z-50" style={{ background: 'rgba(15,23,42,0.45)' }}>
-          <div className="rounded-lg max-w-lg w-full p-6" style={{ background: '#fff', border: `1px solid ${C.border}` }}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-bold flex items-center gap-2" style={{ color: C.textPrimary }}>
-                <HelpCircle className="w-5 h-5" style={{ color: C.primary }} /> How Electrical Comparison Works
-              </h3>
-              <button type="button" onClick={() => setHelpOpen(false)} className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors">
-                <X className="w-5 h-5" style={{ color: C.textSecondary }} />
-              </button>
-            </div>
-            <ul className="space-y-2.5 text-sm" style={{ color: C.textSecondary }}>
-              <li>• Upload a P&ID drawing (PDF) alone to extract electrical tags via AI Vision — no comparison, just the tag list.</li>
-              <li>• Upload Equipment List + Load List (Excel or PDF) alone to compare them directly — no AI Vision needed.</li>
-              <li>• Upload any combination with a P&ID to run full MATCHED / MISSING / EXTRA comparisons.</li>
-              <li>• For &ldquo;Equipment List vs Load List&rdquo;, the Load List PDF&apos;s own &ldquo;PANEL TAG:&rdquo; header is used to verify the panel exists in the Equipment List — not a direct tag match, since panels and motors are different equipment classes.</li>
-              <li>• Click any row in the results table to see its full breakdown (area / type code / sequence) in the detail panel.</li>
-            </ul>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

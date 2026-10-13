@@ -58,7 +58,6 @@ import WrenchAiDocAssist from '../../../components/Engineering/WrenchAiDocAssist
 // Shared project-legend inheritance (bridges local project by NAME)
 import ProjectLegendPanel from '../../../components/Engineering/ProjectLegendPanel';
 import LegendSheetsModal from '../Process/components/LegendSheetsModal';
-import InstrumentIndexWorkflowDocs from './components/InstrumentIndexWorkflowDocs';
 
 // ═════════════════════════════════════════════════════════════════════════════
 // PFD-FORMAT REDESIGN — theme, animations & landing-page primitives
@@ -1309,10 +1308,6 @@ const InstrumentIndex = () => {
             </div>
           </div>
           </div>
-
-          {/* ═══ INSTRUMENT INDEX WORKFLOW + SMART DOCUMENTATION — V1 split-screen ═══
-              Soft-coded: components/InstrumentIndexWorkflowDocs.jsx (INST_DOCS_CONFIG) */}
-          <InstrumentIndexWorkflowDocs />
 
           {/* ── Projects header row ── */}
           <div className="flex items-center justify-between mb-8 flex-wrap gap-3">

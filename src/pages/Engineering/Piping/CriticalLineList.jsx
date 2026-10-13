@@ -137,7 +137,7 @@ const CLL_COLORS = {
 
 // Workflow Diagram Configuration
 const CLL_WORKFLOW_CONFIG = {
-  ENABLED:                true,      // Master toggle for workflow section
+  ENABLED:                false,     // Master toggle for workflow section — DISABLED: workflow + Smart Documentation moved to the global Help drawer (helpContextRegistry → critical-line-list)
   COLLAPSIBLE:            true,      // Allow collapse/expand
   DEFAULT_COLLAPSED:      false,     // Start expanded
   SHOW_CONTROLS:          true,      // Show zoom/fullscreen controls
