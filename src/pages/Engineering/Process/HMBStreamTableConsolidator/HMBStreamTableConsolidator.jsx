@@ -22,7 +22,7 @@ import apiClient from "../../../../services/api.service";
 import ProjectFormModal from "../../../../components/ProjectOrganizer/ProjectFormModal";
 import { PROJECT_ORGANIZER_CONFIG } from "../../../../config/projectOrganizer.config";
 import { createProject as createOrganizerProject } from "../../../../services/projectOrganizerService";
-import { buildComparison, formatValue, rowVaries } from "./compare.ts";
+import { buildComparison, buildStreamMaxima, formatValue, rowVaries } from "./compare.ts";
 import { useCases } from "./useCases";
 import useRadaiChatPage from "../../../../hooks/useRadaiChatPage";
 import "./HMBStreamTableConsolidator.css";
@@ -113,6 +113,24 @@ function formatBytes(sizeBytes) {
 }
 
 const ACCEPTED_FILES = ".xlsx,.xlsm,.xls,.csv";
+
+const MAX_RATE_COLUMNS = [
+  {
+    kind: "liquid",
+    label: "Max Liquid",
+    hint: "Highest Liquid Rate among all selected Comparison Cases",
+  },
+  {
+    kind: "gas",
+    label: "Max Gas",
+    hint: "Highest Gas Rate among all selected Comparison Cases",
+  },
+  {
+    kind: "water",
+    label: "Max Water",
+    hint: "Highest Water Rate among all selected Comparison Cases",
+  },
+];
 
 function Dropzone({ importing, onImport, compact = false }) {
   const inputRef = useRef(null);
@@ -446,6 +464,7 @@ function ComparisonView({ cases }) {
   const scrollRef = useRef(null);
   const sentinelRef = useRef(null);
   const comparison = useMemo(() => buildComparison(cases), [cases]);
+  const streamMaxima = useMemo(() => buildStreamMaxima(cases), [cases]);
   const caseIds = useMemo(() => cases.map((item) => item.id), [cases]);
   const propertyNames = useMemo(
     () =>
@@ -585,6 +604,15 @@ function ComparisonView({ cases }) {
                   </span>
                 </th>
               ))}
+              {MAX_RATE_COLUMNS.map((column) => (
+                <th
+                  key={column.kind}
+                  className="hmbc-max-col"
+                  title={column.hint}
+                >
+                  {column.label}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -599,7 +627,7 @@ function ComparisonView({ cases }) {
                 >
                   {newStream && (
                     <tr className="hmbc-stream-band">
-                      <th colSpan={cases.length + 2}>{row.streamName}</th>
+                      <th colSpan={cases.length + 5}>{row.streamName}</th>
                     </tr>
                   )}
                   <tr
@@ -621,13 +649,33 @@ function ComparisonView({ cases }) {
                         {formatValue(row.values[item.id])}
                       </td>
                     ))}
+                    {MAX_RATE_COLUMNS.map((column) => {
+                      const maximum = streamMaxima.get(row.streamName)?.[
+                        column.kind
+                      ];
+                      return (
+                        <td
+                          key={column.kind}
+                          className={`hmbc-max-cell${maximum?.value == null ? " is-missing" : ""}`}
+                          title={
+                            maximum?.unit
+                              ? `${column.hint} — ${maximum.unit}`
+                              : column.hint
+                          }
+                        >
+                          {maximum?.value == null
+                            ? "—"
+                            : formatValue(maximum.value)}
+                        </td>
+                      );
+                    })}
                   </tr>
                 </Fragment>
               );
             })}
             {!visibleRows.length && (
               <tr>
-                <td className="hmbc-no-results" colSpan={cases.length + 2}>
+                <td className="hmbc-no-results" colSpan={cases.length + 5}>
                   No comparison rows match the current filters.
                 </td>
               </tr>
@@ -651,6 +699,10 @@ function ComparisonView({ cases }) {
         </span>
         <span>
           <i className="is-missing">—</i>Property absent in this case
+        </span>
+        <span>
+          <i className="is-max">MAX</i>Max Liquid / Gas / Water — highest rate
+          across cases for this stream
         </span>
       </div>
     </section>

@@ -687,8 +687,11 @@ const ProcessingConsole = ({ job, partialCount, tipIndex }) => {
   );
 };
 
-const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null } = {}) => {
-  const [file, setFile]                     = useState(null);
+const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null, initialFile = null, previewOnly = false, embedded = false, activeView: activeViewProp, onViewChange } = {}) => {
+  const [file, setFile]                     = useState(initialFile);
+  const [previewError, setPreviewError] = useState('');
+  const [previewLoading, setPreviewLoading] = useState(Boolean(jobId));
+  const [previewRetry, setPreviewRetry] = useState(0);
   const [uploading, setUploading]           = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError]       = useState('');
@@ -766,6 +769,14 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
   // 'classes'  â†’ original piping-class cards
   // 'canvas'   â†’ editable SPEC/CAT workbook canvas (cross-check + edit)
   const [activeView, setActiveView]         = useState('classes');
+  // Embedded hub usage (S3DDataExtractionHub): the host page owns the tab
+  // state via the `activeView` / `onViewChange` props when both are given.
+  const isViewControlled = typeof activeViewProp === 'string' && typeof onViewChange === 'function';
+  const currentView = isViewControlled ? activeViewProp : activeView;
+  const changeView = (view) => {
+    if (isViewControlled) onViewChange(view);
+    else setActiveView(view);
+  };
   const pollRef = useRef(null);
 
   // Fetch backend config once for displaying caps to the user.
@@ -800,6 +811,8 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
   useEffect(() => {
     if (!jobId) return;
     let cancelled = false;
+    setPreviewLoading(true);
+    setPreviewError('');
     (async () => {
       try {
         const jobData = await specCustomizationAPI.getJob(jobId);
@@ -812,11 +825,14 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
           if (!cancelled) setClasses(classList);
         }
       } catch (err) {
+        if (!cancelled) setPreviewError(err?.response?.data?.detail || err?.message || 'Could not load extracted data.');
         console.error('[SpecExtractor] Failed to load job:', err);
+      } finally {
+        if (!cancelled) setPreviewLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [jobId]);
+  }, [jobId, previewRetry]);
 
   // Project-level BYOK defaults: when a project has BYOK configured, preselect
   // its provider/model in the UI so uploads align to that project automatically.
@@ -1166,9 +1182,9 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
   }, []);
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+    <div className={embedded ? 'space-y-4' : 'bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden'}>
       {/* Header strip */}
-      <div className="bg-slate-50 dark:bg-slate-900/40 border-b border-slate-200 dark:border-slate-700 px-4 py-3 flex items-center justify-between">
+      {!previewOnly && <div className="bg-slate-50 dark:bg-slate-900/40 border-b border-slate-200 dark:border-slate-700 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md">
             <SparklesIcon className="w-5 h-5 text-blue-600 dark:text-blue-300" />
@@ -1184,18 +1200,20 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
             <span>chunk={config.chunk_size_pages}p | AI cap={config.max_ai_pages_per_job}p</span>
           </div>
         )}
-      </div>
+      </div>}
 
-      <div className="p-4 space-y-4">
-        <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+      <div className={embedded ? 'space-y-4' : 'p-4 space-y-4'}>
+        {previewOnly && previewLoading && <p role="status">Loading extracted data…</p>}
+        {previewOnly && previewError && <div role="alert"><p>{previewError}</p><button onClick={() => setPreviewRetry(value => value + 1)}>Retry preview</button></div>}
+        {!previewOnly && <><p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
           {PANEL_CONFIG.subtitle}
         </p>
         <ul className="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-xs text-slate-600 dark:text-slate-400 list-disc pl-5">
           {PANEL_CONFIG.helperPoints.map((p) => <li key={p}>{p}</li>)}
-        </ul>
+        </ul></>}
 
         {/* â”€â”€ AI Document Assist (Wrench) â€” soft-coded, optional â”€â”€â”€â”€â”€â”€â”€ */}
-        {SPEC_AI_ASSIST_CONFIG.enabled && !job && (
+        {!previewOnly && SPEC_AI_ASSIST_CONFIG.enabled && !job && (
           <WrenchAiDocAssist
             title={SPEC_AI_ASSIST_CONFIG.title}
             subtitleTag={SPEC_AI_ASSIST_CONFIG.subtitleTag}
@@ -1218,7 +1236,7 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
         )}
 
         {/* â”€â”€ Upload zone â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-        {!job && (
+        {!previewOnly && !job && (
           <div
             onDragOver={handleDragOver}
             onDragEnter={handleDragOver}
@@ -1455,12 +1473,12 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
         )}
 
         {/* â”€â”€ Job status â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-        {job && (
+        {!embedded && job && (
           <div className="border border-slate-200 dark:border-slate-700 rounded-xl p-5 bg-slate-50/60 dark:bg-slate-900/30">
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <div className="flex items-center gap-3 min-w-0">
                 <div className={`px-2.5 py-1 text-xs font-semibold rounded-md border ${statusMeta.color}`}>
-                  {statusMeta.label}
+                  {job.extraction_completeness?.state === 'partial' ? 'Partial extraction' : statusMeta.label}
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
@@ -1476,6 +1494,7 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
                   <>
                     <button
                       onClick={handleExportSmartplantSpec}
+                      disabled={job.extraction_completeness?.state === 'partial'}
                       title="SmartPlant 3D â€” Piping Spec Rules workbook (25 sheets)"
                       className="px-3 py-1.5 text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg hover:bg-indigo-100 inline-flex items-center gap-1"
                     >
@@ -1483,6 +1502,7 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
                     </button>
                     <button
                       onClick={handleExportSmartplantCat}
+                      disabled={job.extraction_completeness?.state === 'partial'}
                       title="SmartPlant 3D â€” Component Catalog workbook (23 sheets)"
                       className="px-3 py-1.5 text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 inline-flex items-center gap-1"
                     >
@@ -1510,7 +1530,7 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
                     <XMarkIcon className="w-4 h-4" /> Cancel
                   </button>
                 )}
-                {isTerminal && (
+                {isTerminal && !previewOnly && (
                   <button
                     onClick={handleReset}
                     className="px-3 py-1.5 text-xs font-semibold bg-slate-50 text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-100 inline-flex items-center gap-1"
@@ -1522,7 +1542,7 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
             </div>
 
             {/* Progress bar */}
-            <div className="mt-4">
+            {!previewOnly && <div className="mt-4">
               <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 mb-1">
                 <span>{livePhase || (isTerminal ? statusMeta.label : 'Starting...')}</span>
                 <span>{progressPct}%</span>
@@ -1543,7 +1563,7 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
                 <div>Pages: {job.pages_processed}</div>
                 <div>Classes: {partialCount}</div>
               </div>
-            </div>
+            </div>}
 
             {/* Animated AI-processing insights (hidden when job is finished). */}
             {job && !isTerminal && (
@@ -1566,16 +1586,16 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
         {job?.status === 'completed' && (
           <div className="space-y-4">
             {/* â”€â”€ View tabs (Piping Classes â‡„ Workbook Canvas) â”€â”€â”€â”€â”€â”€ */}
-            <div className="flex flex-wrap items-center gap-2">
+            {!embedded && <div className="flex flex-wrap items-center gap-2">
               {[
                 { key: 'classes', label: 'Piping Classes',  hint: 'Extracted spec cards' },
                 { key: 'canvas',  label: 'Workbook Canvas', hint: 'Cross-check & edit SPEC / CAT data' },
               ].map((tab) => (
                 <button
                   key={tab.key}
-                  onClick={() => setActiveView(tab.key)}
+                  onClick={() => changeView(tab.key)}
                   className={`px-3.5 py-1.5 text-xs font-semibold rounded-full border transition ${
-                    activeView === tab.key
+                    currentView === tab.key
                       ? 'bg-gradient-to-r from-blue-500 to-rose-500 text-white border-transparent shadow'
                       : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-blue-300 hover:text-blue-600'
                   }`}
@@ -1584,15 +1604,15 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
                   {tab.label}
                 </button>
               ))}
-              {activeView === 'canvas' && (
+              {currentView === 'canvas' && (
                 <span className="text-[11px] text-slate-500 dark:text-slate-400 italic">
                   Cell changes autosave and are included in the downloaded workbook.
                 </span>
               )}
-            </div>
+            </div>}
 
-            {activeView === 'canvas' ? (
-              <WorkbookCanvas job={job} />
+            {currentView === 'canvas' ? (
+              embedded ? null : <WorkbookCanvas job={job} />
             ) : classes.length === 0 ? (
             <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50/60 dark:bg-amber-900/10 dark:border-amber-700 px-6 py-10 text-center space-y-3">
               <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-900/40 mb-1">
@@ -1608,7 +1628,7 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
             ) : (
             <>
             {/* â”€â”€ 1. AI Insight Banner â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-5 shadow-xl">
+            {!previewOnly && <><div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-5 shadow-xl">
               {/* Animated glow blobs */}
               <div className="absolute -top-16 -left-16 w-64 h-64 bg-blue-500/20 rounded-full blur-3xl animate-pulse" />
               <div className="absolute -bottom-16 -right-16 w-64 h-64 bg-violet-500/20 rounded-full blur-3xl animate-pulse"
@@ -1693,6 +1713,7 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
             </div>
 
             {/* â”€â”€ 3. Filter / search bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+            </>}
             <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 space-y-2">
               <div className="flex items-center gap-2">
                 <div className="relative flex-1">
@@ -1701,7 +1722,7 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
                     type="text"
                     value={classSearch}
                     onChange={(e) => setClassSearch(e.target.value)}
-                    placeholder="Search by class code, material grade, rating, flange facingâ€¦"
+                    placeholder="Search by class code, material grade, rating, flange facing…"
                     className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-400"
                   />
                 </div>
@@ -1738,7 +1759,7 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
                             : 'bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-blue-50'
                         }`}
                       >
-                        {rating} <span className="opacity-70">Â· {count}</span>
+                        {rating} <span className="opacity-70">· {count}</span>
                       </button>
                     ))}
                 </div>
@@ -1821,7 +1842,7 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
                               )}
                               {cls.source_pages?.length === 2 && (
                                 <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-slate-50 text-slate-600 border border-slate-200 rounded">
-                                  p.{cls.source_pages[0]}â€“{cls.source_pages[1]}
+                                  p.{cls.source_pages[0]}–{cls.source_pages[1]}
                                 </span>
                               )}
                               {/* ASME validation badge (advisory, soft-coded) */}

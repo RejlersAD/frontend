@@ -61,6 +61,9 @@ test('HMB Stream Table Consolidator loads supplied demos and builds the large co
   await expect(page.getByRole('heading', { name: 'Cross-case comparison' })).toBeVisible({ timeout: 60000 })
   await expect(page.getByText('283 streams · 56,914 rows · 3 cases')).toBeVisible()
   await expect(page.getByText('12,940', { exact: true })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: 'Max Liquid' })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: 'Max Gas' })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: 'Max Water' })).toBeVisible()
 
   const firstColumnFilter = page.getByRole('combobox', { name: 'Filter by stream or property' })
   await firstColumnFilter.selectOption({ index: 1 })
@@ -94,6 +97,8 @@ test('HMB Stream Table Consolidator loads supplied demos and builds the large co
   const workbook = XLSX.read(archivedWorkbook, { type: 'buffer' })
   expect(workbook.SheetNames).toEqual(['Summary', 'Comparison'])
   expect(XLSX.utils.decode_range(workbook.Sheets.Comparison['!ref']).e.r).toBeGreaterThan(56900)
+  const comparisonRows = XLSX.utils.sheet_to_json(workbook.Sheets.Comparison, { header: 1 })
+  expect(comparisonRows[1].slice(-3)).toEqual(['Max Liquid', 'Max Gas', 'Max Water'])
   await expect(dialog).toHaveCount(0)
 
   await page.getByRole('button', { name: 'Reset session' }).click()
