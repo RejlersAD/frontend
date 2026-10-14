@@ -76,6 +76,7 @@ import {
   HR_SALARY_CONFIG,
   HR_EDITABLE_FIELDS,
   HR_EDIT_VALIDATION,
+  HR_EDIT_VALIDATION_POLICY,
   HR_EDIT_COPY,
   HR_STATUSES,
   formatYearsOfService,
@@ -3568,6 +3569,9 @@ const DetailDrawer = ({
   const [tab, setTab] = useState(initialTab || HR_DEFAULT_DETAIL_TAB);
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({});
+  // Snapshot of the values loaded into the form — lets validation distinguish
+  // "user blanked a required field" from "field was already blank in the DB".
+  const initialFormDataRef = useRef({});
   const [formErrors, setFormErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
@@ -3707,7 +3711,7 @@ const DetailDrawer = ({
     if (!isEditing || !emp) return;
     const ep = emp.engineer_profile || {};
     const user = emp.user || {};
-    setFormData({
+    const initial = {
       // User fields
       first_name: user.first_name || "",
       last_name: user.last_name || "",
@@ -3738,7 +3742,9 @@ const DetailDrawer = ({
       "payroll.grade": "",
       "payroll.joining_date": "",
       "payroll.notes": "",
-    });
+    };
+    initialFormDataRef.current = initial;
+    setFormData(initial);
     setFormErrors({});
     setSaveError(null);
     setSaveSuccess(false);
@@ -3756,53 +3762,61 @@ const DetailDrawer = ({
     setSaveSuccess(false);
   }, []);
 
-  // Validate form before save
+  // Validate form before save. Returns the error map (empty = valid).
   const validateForm = useCallback(() => {
     const errors = {};
-    const allFields = [
-      ...(HR_EDITABLE_FIELDS.overview || []),
-      ...(HR_EDITABLE_FIELDS.employment || []),
-      ...(HR_EDITABLE_FIELDS.competency || []),
-    ];
+    const policy = HR_EDIT_VALIDATION_POLICY || {};
+    const initial = initialFormDataRef.current || {};
+    // Tab id === HR_EDITABLE_FIELDS group key (overview / employment / competency)
+    const allFields = ["overview", "employment", "competency"].flatMap((tabId) =>
+      (HR_EDITABLE_FIELDS[tabId] || []).map((field) => ({ ...field, tabId })),
+    );
+    // Booleans (false) and numbers (0) are real values; only null/undefined,
+    // whitespace-only strings and empty arrays count as missing.
+    const isMissing = (v) =>
+      v === null ||
+      v === undefined ||
+      (typeof v === "string" && !v.trim()) ||
+      (Array.isArray(v) && v.length === 0);
 
     allFields.forEach((field) => {
+      if (policy.skipReadOnly && field.readOnly) return;
       const value = formData[field.id];
+      const strValue = typeof value === "string" ? value : value == null ? "" : String(value);
+      const initialStr = initial[field.id] == null ? "" : String(initial[field.id]);
+      const checkFormat = policy.validateUnchangedFormats !== false || strValue !== initialStr;
 
       // Required field validation
-      if (
-        field.required &&
-        (!value || (typeof value === "string" && !value.trim()))
-      ) {
-        errors[field.id] = HR_EDIT_VALIDATION.required(field.label);
+      if (field.required && isMissing(value)) {
+        const wasAlreadyBlank = isMissing(initial[field.id]);
+        if (!(policy.allowLegacyBlankRequired && wasAlreadyBlank)) {
+          errors[field.id] = HR_EDIT_VALIDATION.required(field.label);
+        }
       }
 
       // Email validation
       if (
+        checkFormat &&
         field.type === "email" &&
-        value &&
-        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+        strValue &&
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(strValue)
       ) {
         errors[field.id] = HR_EDIT_VALIDATION.email;
       }
 
       // Phone validation (basic)
-      if (
-        field.type === "tel" &&
-        value &&
-        value.length > 0 &&
-        value.length < 7
-      ) {
+      if (checkFormat && field.type === "tel" && strValue && strValue.length < 7) {
         errors[field.id] = HR_EDIT_VALIDATION.phone;
       }
 
-      // Min/max length
-      if (field.minLength && value && value.length < field.minLength) {
+      // Min/max length (maxLength mirrors the DB column size — always enforced)
+      if (checkFormat && field.minLength && strValue && strValue.length < field.minLength) {
         errors[field.id] = HR_EDIT_VALIDATION.minLength(
           field.label,
           field.minLength,
         );
       }
-      if (field.maxLength && value && value.length > field.maxLength) {
+      if (field.maxLength && strValue && strValue.length > field.maxLength) {
         errors[field.id] = HR_EDIT_VALIDATION.maxLength(
           field.label,
           field.maxLength,
@@ -3811,7 +3825,16 @@ const DetailDrawer = ({
     });
 
     setFormErrors(errors);
-    return Object.keys(errors).length === 0;
+    const errorIds = Object.keys(errors);
+    if (errorIds.length && policy.focusFirstErrorTab) {
+      const firstTab = allFields.find((f) => errors[f.id])?.tabId;
+      if (firstTab) setTab(firstTab);
+    }
+    return Object.fromEntries(
+      allFields
+        .filter((f) => errors[f.id])
+        .map((f) => [f.id, { message: errors[f.id], tabId: f.tabId }]),
+    );
   }, [formData]);
 
   // Check if user has edit permission
@@ -3839,8 +3862,17 @@ const DetailDrawer = ({
 
   // Handle save
   const handleSave = useCallback(async () => {
-    if (!validateForm()) {
-      setSaveError("Please fix validation errors before saving");
+    const validationErrors = validateForm();
+    const invalidIds = Object.keys(validationErrors);
+    if (invalidIds.length) {
+      const tabLabel = (id) => HR_DETAIL_TABS.find((t) => t.id === id)?.label || id;
+      setSaveError(
+        HR_EDIT_VALIDATION.summary(
+          invalidIds.map(
+            (id) => `${validationErrors[id].message} (${tabLabel(validationErrors[id].tabId)} tab)`,
+          ),
+        ),
+      );
       return;
     }
 
@@ -4015,9 +4047,30 @@ const DetailDrawer = ({
       }, 3000);
     } catch (err) {
       console.error("[HR] Failed to update employee:", err);
+      // DRF returns field errors as { field: ["msg", ...] } — map them onto
+      // the form so the offending input is highlighted, and show them inline.
+      const data = err?.response?.data;
+      const fieldErrors = {};
+      if (data && typeof data === "object" && !Array.isArray(data)) {
+        Object.entries(data).forEach(([key, val]) => {
+          if (["error", "detail", "message"].includes(key)) return;
+          const msg = Array.isArray(val) ? val.join(" ") : typeof val === "string" ? val : null;
+          if (msg) fieldErrors[key === "manager_id" ? "manager" : key] = msg;
+        });
+      }
+      if (Object.keys(fieldErrors).length) {
+        setFormErrors((prev) => ({ ...prev, ...fieldErrors }));
+      }
+      const fieldSummary = Object.entries(fieldErrors)
+        .map(([key, msg]) => {
+          const label = Object.values(HR_EDITABLE_FIELDS).flat().find((f) => f.id === key)?.label || key;
+          return `${label}: ${msg}`;
+        })
+        .join("; ");
       setSaveError(
-        err?.response?.data?.error ||
-          err?.response?.data?.detail ||
+        data?.error ||
+          data?.detail ||
+          fieldSummary ||
           err?.message ||
           HR_EDIT_COPY.errorMessage,
       );

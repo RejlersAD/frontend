@@ -30,6 +30,12 @@ export const HR_STATUSES = {
 export const getStatusMeta = (status) =>
   HR_STATUSES[status] || { label: status || 'Unknown', dot: 'bg-slate-400', tone: 'bg-slate-100 text-slate-600 border-slate-200' }
 
+// Soft-coded: statuses that may be WRITTEN via the edit form. Must mirror the
+// backend UserProfile.STATUS_CHOICES (rbac_user_profiles.status) — any other
+// value is rejected by the API with a 400. Display-only statuses (e.g.
+// 'on_leave', derived from leave data) stay in HR_STATUSES for badges only.
+export const HR_EDITABLE_STATUS_KEYS = ['active', 'inactive', 'suspended', 'pending']
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 2. ENGINEERING DISCIPLINES — Oil & Gas EPC taxonomy
 //    These are surfaced as filters and as colour tags on employee cards.
@@ -569,6 +575,28 @@ export const HR_EDIT_CONFIG = {
   salaryRequiredPermission: 'hr.salary.update',
 }
 
+// Soft-coded: edit-form validation policy.
+//   skipReadOnly          — read-only fields are never validated (the user
+//                           cannot change them, so they must not block a save).
+//   allowLegacyBlankRequired — a required field that was ALREADY blank in the
+//                           database (legacy/imported record) does not block
+//                           saving unrelated edits. The DB columns are
+//                           blank=True; required-ness is a UI policy enforced
+//                           only once a value exists (user cannot blank it).
+//   focusFirstErrorTab    — switch the drawer to the tab holding the first
+//                           invalid field so the error is visible.
+//   validateUnchangedFormats — when false, format checks (email / phone /
+//                           min-length) only run on fields the user edited, so
+//                           legacy imported values (e.g. phone "nan") do not
+//                           block unrelated edits. DB max-length is always
+//                           enforced.
+export const HR_EDIT_VALIDATION_POLICY = {
+  skipReadOnly: true,
+  allowLegacyBlankRequired: true,
+  focusFirstErrorTab: true,
+  validateUnchangedFormats: false,
+}
+
 // Soft-coded: Salary increment limits and validation rules
 export const HR_SALARY_CONFIG = {
   // Maximum allowed percentage increase per edit (soft-coded limit)
@@ -608,6 +636,7 @@ export const HR_EDITABLE_FIELDS = {
       label: 'First Name', 
       type: 'text', 
       required: true,
+      maxLength: 150,
       placeholder: 'e.g., Mohammed',
       helpText: 'Legal first name as per Emirates ID'
     },
@@ -616,6 +645,7 @@ export const HR_EDITABLE_FIELDS = {
       label: 'Last Name', 
       type: 'text', 
       required: true,
+      maxLength: 150,
       placeholder: 'e.g., Al-Rahman',
       helpText: 'Legal last name as per Emirates ID'
     },
@@ -628,9 +658,9 @@ export const HR_EDITABLE_FIELDS = {
       readOnly: true,
       helpText: 'Primary email for login. Contact IT to change.'
     },
-    { id: 'employee_id', label: 'Employee ID', type: 'text', placeholder: 'e.g., EMP001' },
-    { id: 'phone', label: 'Phone', type: 'tel', placeholder: '+971 50 123 4567' },
-    { id: 'location', label: 'Office Location', type: 'text', placeholder: 'Dubai, UAE' },
+    { id: 'employee_id', label: 'Employee ID', type: 'text', placeholder: 'e.g., EMP001', maxLength: 50 },
+    { id: 'phone', label: 'Phone', type: 'tel', placeholder: '+971 50 123 4567', maxLength: 20 },
+    { id: 'location', label: 'Office Location', type: 'text', placeholder: 'Dubai, UAE', maxLength: 100 },
     { 
       id: 'is_mfa_enabled', 
       label: 'Two-Factor Auth (2FA)', 
@@ -655,13 +685,13 @@ export const HR_EDITABLE_FIELDS = {
       readOnly: true,  // Usually fixed; change via admin
       helpText: 'Organisation assignment cannot be changed here. Use Admin panel.'
     },
-    { id: 'department', label: 'Department', type: 'text', placeholder: 'e.g., Process Engineering', required: true },
-    { id: 'job_title', label: 'Organizational role / Job title', type: 'text', placeholder: 'Select a suggestion or enter the recorded job title', required: true },
+    { id: 'department', label: 'Department', type: 'text', placeholder: 'e.g., Process Engineering', required: true, maxLength: 100 },
+    { id: 'job_title', label: 'Organizational role / Job title', type: 'text', placeholder: 'Select a suggestion or enter the recorded job title', required: true, maxLength: 100 },
     { 
       id: 'status', 
       label: 'Employment Status', 
       type: 'select',
-      options: Object.entries(HR_STATUSES).map(([v, m]) => ({ value: v, label: m.label })),
+      options: HR_EDITABLE_STATUS_KEYS.map((v) => ({ value: v, label: HR_STATUSES[v]?.label || v })),
       required: true,
       helpText: 'Active = working, Inactive = on leave, Suspended = access blocked'
     },
@@ -806,6 +836,7 @@ export const HR_EDITABLE_FIELDS = {
 // Validation messages (soft-coded for i18n readiness)
 export const HR_EDIT_VALIDATION = {
   required: (field) => `${field} is required`,
+  summary: (items) => `Please fix validation errors before saving: ${items.join('; ')}`,
   email: 'Please enter a valid email address',
   phone: 'Please enter a valid phone number',
   minLength: (field, min) => `${field} must be at least ${min} characters`,
