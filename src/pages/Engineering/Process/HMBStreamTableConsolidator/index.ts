@@ -32,14 +32,20 @@ export interface ComparisonRow {
   editedFlags: Record<string, boolean>
 }
 
-/** Highest liquid/gas/water rate of one stream across all selected cases */
-export interface StreamRateMaximum {
-  value: number | null
-  unit: string
+/**
+ * Governing-case calculation for one stream and phase: the case with the
+ * highest criterion value (Light Liquid Act Flow / Std Ideal Gas Vol Flow /
+ * Heavy Liquid Flow) is identified, and its entire stream column is copied.
+ */
+export interface GoverningCaseColumn {
+  /** Comparison case that governs this phase (null when none reported a value) */
+  caseName: string | null
+  /** Copied cell values keyed by lowercase property name */
+  values: Record<string, CellValue>
 }
 
-export interface StreamMaxima {
-  liquid: StreamRateMaximum
-  gas: StreamRateMaximum
-  water: StreamRateMaximum
+export interface StreamGoverningColumns {
+  liquid: GoverningCaseColumn
+  gas: GoverningCaseColumn
+  water: GoverningCaseColumn
 }

@@ -1,4 +1,4 @@
-import type { CaseData, ComparisonRow, StreamMaxima } from './index.ts'
+import type { CaseData, ComparisonRow, StreamGoverningColumns } from './index.ts'
 
 /**
  * Build the cross-case comparison matrix.
@@ -120,25 +120,33 @@ const normalizeRateName = (name: string): string =>
 
 /**
  * Score how well a property name represents the requested phase rate.
- * 0 = not a rate for that phase; higher = more specific/standard naming.
+ * 0 = not a rate for that phase; higher = closer to the criterion row:
+ *   liquid → "Light Liquid Act Flow" (light liquid family)
+ *   water  → "Heavy Liquid Flow" (heavy liquid family)
+ *   gas    → "Std Ideal Gas Vol Flow" / "Standard Gas Flow" (standard gas)
+ * Lower tiers keep the columns useful when a workbook only carries a more
+ * generic flow name for that phase.
  */
 function rateMatchScore(kind: RateKind, propertyName: string): number {
   const n = normalizeRateName(propertyName)
   if (!/\b(flow|rate)\b/.test(n)) return 0
-  const phase =
-    kind === 'liquid'
-      ? /\b(liquid|liq)\b/.test(n)
-      : kind === 'water'
-        ? /\bwater\b/.test(n)
-        : /\b(gas|vapour|vapor)\b/.test(n)
-  if (!phase) return 0
-  if (n === `${kind} rate` || (kind === 'gas' && /^(vapour|vapor) rate$/.test(n)))
-    return 100
-  if (/\b(std|standard)\b/.test(n)) return 90
-  if (/vol(ume)? flow/.test(n)) return 80
-  if (/mass flow/.test(n)) return 60
-  if (/molar flow/.test(n)) return 40
-  return 20
+  const has = (re: RegExp) => re.test(n)
+  if (kind === 'gas') {
+    if (has(/\b(gas|vapour|vapor)\b/) && has(/\b(std|standard)\b/)) return 100
+    if (has(/\b(gas|vapour|vapor)\b/)) return 60
+    return 0
+  }
+  if (kind === 'water') {
+    if (has(/\bheavy\b/) && has(/\b(liquid|liq)\b/))
+      return 100 + (has(/\bvol(ume)?\b/) ? 10 : 0)
+    if (has(/\bwater\b/)) return 70
+    return 0
+  }
+  // liquid
+  if (has(/\blight\b/) && has(/\b(liquid|liq)\b/))
+    return 100 + (has(/\b(act|actual)\b/) ? 10 : 0)
+  if (has(/\b(liquid|liq)\b/)) return 40
+  return 0
 }
 
 function bestRateProperty(stream: CaseData['streams'][number], kind: RateKind) {
@@ -152,11 +160,17 @@ function bestRateProperty(stream: CaseData['streams'][number], kind: RateKind) {
 }
 
 /**
- * Highest liquid/gas/water rate per stream across all selected comparison
- * cases, keyed by display stream name (same keying as comparison rows).
- * Only included streams and finite numeric values participate.
+ * Governing-case columns per stream across all selected comparison cases,
+ * keyed by display stream name (same keying as comparison rows).
+ * For each phase the case with the highest criterion value governs
+ * (Light Liquid Act Flow → liquid, Std Ideal Gas Vol Flow → gas,
+ * Heavy Liquid Flow → water); that case's entire stream column is copied
+ * property-by-property. Only included streams and finite numeric criterion
+ * values participate; ties go to the earliest imported case.
  */
-export function buildStreamMaxima(cases: CaseData[]): Map<string, StreamMaxima> {
+export function buildGoverningCaseColumns(
+  cases: CaseData[],
+): Map<string, StreamGoverningColumns> {
   const displayName = new Map<string, string>() // lower -> first-seen display name
   for (const c of cases) {
     for (const s of c.streams) {
@@ -166,16 +180,17 @@ export function buildStreamMaxima(cases: CaseData[]): Map<string, StreamMaxima> 
     }
   }
 
-  const maxima = new Map<string, StreamMaxima>()
+  const columns = new Map<string, StreamGoverningColumns>()
   for (const [key, name] of displayName) {
-    const entry: StreamMaxima = {
-      liquid: { value: null, unit: '' },
-      gas: { value: null, unit: '' },
-      water: { value: null, unit: '' },
+    const entry: StreamGoverningColumns = {
+      liquid: { caseName: null, values: {} },
+      gas: { caseName: null, values: {} },
+      water: { caseName: null, values: {} },
     }
     for (const kind of RATE_KINDS) {
       let maxValue: number | null = null
-      let unit = ''
+      let governing: CaseData['streams'][number] | null = null
+      let governingCaseName: string | null = null
       for (const c of cases) {
         const stream = c.streams.find(
           (s) => s.included && s.name.trim().toLowerCase() === key,
@@ -186,12 +201,19 @@ export function buildStreamMaxima(cases: CaseData[]): Map<string, StreamMaxima> 
           continue
         if (maxValue === null || match.value > maxValue) {
           maxValue = match.value
-          unit = match.unit || unit
+          governing = stream
+          governingCaseName = c.name
         }
       }
-      entry[kind] = { value: maxValue, unit }
+      if (!governing) continue
+      const values: StreamGoverningColumns['liquid']['values'] = {}
+      for (const p of governing.properties) {
+        const pk = p.name.trim().toLowerCase()
+        if (!(pk in values)) values[pk] = p.value
+      }
+      entry[kind] = { caseName: governingCaseName, values }
     }
-    maxima.set(name, entry)
+    columns.set(name, entry)
   }
-  return maxima
+  return columns
 }
