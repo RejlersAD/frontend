@@ -22,6 +22,16 @@ export const previewTable    = (database, table, limit = 5) =>
 export const fetchLive       = (cacheBuster)       => unwrap(apiClient.get(TIMESHEET_ENDPOINTS.live, cacheBuster ? { params: { _t: cacheBuster } } : {}))
 export const fetchDaily      = (date)              => unwrap(apiClient.get(TIMESHEET_ENDPOINTS.daily,   { params: date ? { date } : {} }))
 export const fetchMonthly    = (year, month)       => unwrap(apiClient.get(TIMESHEET_ENDPOINTS.monthly, { params: { year, month } }))
+export const uploadDailyAttendance = (file, year, month) => {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('year', String(year))
+  form.append('month', String(month))
+  return unwrap(apiClient.post(TIMESHEET_ENDPOINTS.manualUpload, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000,
+  }))
+}
 export const fetchUserHistory = (params)           => unwrap(apiClient.get(TIMESHEET_ENDPOINTS.user,    { params }))
 export const lookupByCode     = (code)             => unwrap(apiClient.get(TIMESHEET_ENDPOINTS.lookupByCode, { params: { code } }))
 
@@ -54,7 +64,7 @@ export const downloadYearlyPdf     = (year)        => downloadBlob(TIMESHEET_END
 
 export default {
   fetchHealth, listDatabases, listTables, listColumns, previewTable,
-  fetchLive, fetchDaily, fetchMonthly, fetchUserHistory, lookupByCode,
+  fetchLive, fetchDaily, fetchMonthly, uploadDailyAttendance, fetchUserHistory, lookupByCode,
   fetchMyLiveAttendance, fetchMyMonthlyAttendance, fetchMyDailyAttendance,
   downloadDailyExcel, downloadMonthlyExcel, downloadMonthlyPdf,
   downloadSummaryExcel, downloadSummaryPdf,

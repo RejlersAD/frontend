@@ -1,0 +1,14 @@
+/* Shared RADAI treatment for Attendance, Leave and Salary workspaces. */
+.radai-payroll-module { min-width: 0; color: #0f172a; }
+.radai-payroll-module table { font-size: 14px; line-height: 1.5; }
+.radai-payroll-module thead th { background: #f8fafc; color: #64748b; font-size: 12px; font-weight: 500; text-transform: none; letter-spacing: normal; }
+.radai-payroll-module tbody td { border-color: #eef2f7; }
+.radai-payroll-module input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.radai-payroll-module select { border-color: #e2e8f0; border-radius: 8px; font-size: 14px; }
+.radai-payroll-module button { transition: background-color 120ms, border-color 120ms, color 120ms; }
+.radai-payroll-module button:focus-visible { outline: 2px solid #6366f1; outline-offset: 2px; }
+.radai-payroll-module h2, .radai-payroll-module h3 { font-weight: 600; }
+.radai-payroll-module input:focus-visible, .radai-payroll-module select:focus-visible { outline-color: #6366f1; }
+@media (prefers-reduced-motion: reduce) { .radai-payroll-module button { transition: none; } }
+
+.radai-payroll-module .recharts-responsive-container { min-width: 0; overflow: clip; }

@@ -1,0 +1,6 @@
+.schedule-row-title { margin: 0; color: #102951; font-size: 14px; font-weight: 600; }
+.schedule-row-impact { margin: 0; color: #385173; font-size: 13px; line-height: 1.6; }
+.schedule-row-affected { margin: 0; max-height: 210px; overflow-y: auto; padding: 10px 12px 10px 30px; border: 1px solid #dbe5f3; border-radius: 4px; color: #233d65; background: #f7faff; font-size: 12px; line-height: 1.7; }
+.schedule-row-affected span { color: #5d7393; }
+.wbd-dialog .schedule-row-delete { color: #fff; border-color: #c32839; background: #c32839; }
+.wbd-dialog .schedule-row-delete:hover:not(:disabled) { border-color: #a72030; background: #a72030; }

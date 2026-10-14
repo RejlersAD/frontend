@@ -1,0 +1,59 @@
+.planning-operational-controls { color: #153464; font: 12px/1.5 "Segoe UI", Arial, sans-serif; min-width: 0; }
+.planning-operational-controls h2, .planning-operational-controls h3, .planning-operational-controls h4 { color: #0b2252; margin: 0 0 6px; }
+.planning-operational-controls h2 { display: flex; align-items: center; gap: 7px; font-size: 18px; }
+.planning-operational-controls h3 { font-size: 15px; }
+.planning-operational-controls p { margin: 6px 0 12px; }
+.planning-operational-controls button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 32px; padding: 5px 10px; color: #174880; background: #fff; border: 1px solid #c7d7eb; border-radius: 4px; font: inherit; cursor: pointer; }
+.planning-operational-controls button:disabled { opacity: .55; cursor: not-allowed; }
+.planning-operational-controls button.poc-primary { background: #0751ff; border-color: #0751ff; color: #fff; }
+.planning-operational-controls :focus-visible { outline: 2px solid #0751ff; outline-offset: 2px; }
+.poc-header, .poc-section > header { display: flex; align-items: start; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.poc-section { margin-top: 16px; padding: 15px; border: 1px solid #dce6f3; border-radius: 5px; background: #fff; }
+.poc-section > section { margin-top: 20px; }
+.poc-actions, .poc-toolbar, .poc-tabs, .poc-pagination { display: flex; align-items: end; flex-wrap: wrap; gap: 8px; }
+.poc-toolbar { padding: 12px 0; }
+.poc-tabs { border-bottom: 1px solid #dce6f3; padding: 10px 0; align-items: center; }
+.poc-tabs button[aria-selected=true], .poc-actions button[aria-pressed=true] { background: #edf4ff; border-color: #95b7f8; color: #0751d7; }
+.planning-operational-controls label { display: flex; flex-direction: column; gap: 5px; margin: 6px 0; font-size: 12px; }
+.planning-operational-controls input, .planning-operational-controls textarea, .planning-operational-controls select { max-width: 100%; min-height: 32px; border: 1px solid #c7d7eb; border-radius: 4px; padding: 6px 8px; color: #153464; background: #fff; font: inherit; }
+.planning-operational-controls input[type=checkbox] { width: 16px; min-height: 16px; }
+.planning-operational-controls textarea { min-height: 55px; resize: vertical; }
+.planning-operational-controls fieldset { min-width: 0; margin: 10px 0; padding: 0; border: 0; }
+.poc-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.planning-operational-controls label.poc-check { flex-direction: row; align-items: center; gap: 8px; }
+.poc-report-state, .poc-note { color: #526987; font-size: 11px; }
+.poc-message { display: flex; align-items: start; gap: 7px; padding: 10px; border: 1px solid #cbd9ed; border-radius: 4px; background: #f5f9ff; }
+.poc-message.is-error { border-color: #e9c1bc; background: #fff5f3; color: #902f29; }
+.poc-message.is-warning { border-color: #e7d3aa; background: #fff8eb; color: #775115; }
+.poc-message svg { flex-shrink: 0; margin-top: 2px; }
+.poc-table { max-width: 100%; max-height: 480px; overflow: auto; border: 1px solid #dce6f3; margin: 12px 0; }
+.poc-table table { border-collapse: collapse; min-width: 720px; width: 100%; font-size: 11px; }
+.poc-table th, .poc-table td { text-align: left; vertical-align: top; padding: 8px; border-bottom: 1px solid #e1e9f4; max-width: 290px; overflow-wrap: anywhere; }
+.poc-table thead th { background: #f5f8fd; position: sticky; top: 0; z-index: 1; font-weight: 600; }
+.poc-table th[scope=row] { font-weight: 400; min-width: 155px; }
+.poc-table th span, .poc-table small { display: block; color: #526987; }
+.poc-table input[type=number] { width: 112px; }
+.poc-table input[type=date] { width: 133px; }
+.poc-table textarea { min-width: 180px; width: 100%; }
+.poc-table select { min-width: 142px; }
+.poc-pagination { justify-content: end; align-items: center; margin: 10px 0; }
+.poc-pagination > span { margin-right: auto; }
+.poc-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 14px 0; }
+.poc-metrics > div { padding: 10px; border: 1px solid #dce6f3; background: #fafcff; border-radius: 4px; }
+.poc-metrics dt { color: #526987; font-size: 11px; }
+.poc-metrics dd { margin: 3px 0; color: #0b2252; font-size: 17px; font-weight: 600; }
+.poc-metrics small { display: block; color: #775115; }
+.poc-issues { list-style: none; padding: 0; margin: 10px 0; }
+.poc-issues li { display: flex; gap: 8px; align-items: start; background: #fff8eb; border: 1px solid #e7d3aa; border-radius: 4px; padding: 10px; margin: 7px 0; }
+.poc-issues small { display: block; }
+.poc-issues button { margin-left: auto; flex-shrink: 0; }
+.poc-issues svg { flex-shrink: 0; margin-top: 3px; }
+.planning-operational-controls summary { color: #0751d7; cursor: pointer; }
+.planning-operational-controls code { display: block; overflow-wrap: anywhere; padding: 6px 0; }
+.poc-value-points > div { display: flex; flex-direction: column; gap: 5px; margin: 8px 0; }
+.poc-curve { width: 100%; min-height: 220px; max-height: 350px; }
+.poc-curve text { fill: #526987; font: 10px "Segoe UI", Arial, sans-serif; }
+.poc-legend { display: flex; flex-wrap: wrap; gap: 16px; margin: 10px 0; }
+.poc-legend span { display: flex; align-items: center; gap: 6px; }
+.poc-legend i { display: inline-block; height: 3px; width: 20px; }
+@media(max-width: 600px) { .poc-section { padding: 10px; } .poc-fields { grid-template-columns: 1fr; } .poc-toolbar > label { width: 100%; } .poc-tabs { gap: 5px; } .poc-tabs button { padding: 5px 7px; } }

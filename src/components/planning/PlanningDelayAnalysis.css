@@ -1,0 +1,15 @@
+.planning-delay-analysis .pda-badge { display: inline-flex; align-items: center; padding: 3px 7px; border-radius: 4px; border: 1px solid #bbd0e9; background: #f1f6fc; color: #174880; font-size: 11px; }
+.planning-delay-analysis .pda-badge.is-proposed { border-color: #e6cf9c; background: #fff8e8; color: #785013; }
+.planning-delay-analysis .pda-picker, .planning-delay-analysis .pda-change, .planning-delay-analysis .pda-relationship { border: 1px solid #dce6f3; border-radius: 5px; padding: 10px; margin: 10px 0; }
+.planning-delay-analysis legend { font-weight: 600; padding: 0 5px; }
+.pda-pick-list, .pda-event-choices { max-height: 230px; overflow: auto; }
+.pda-changes > header, .pda-alternatives > header { display: flex; align-items: start; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+.pda-alternatives, .pda-recommendation { padding-top: 18px; margin-top: 18px; border-top: 1px solid #dce6f3; }
+.pda-alternative { border-left: 3px solid #cbbbea; margin: 15px 0; padding: 0 0 10px 14px; }
+.pda-evidence-line { display: flex; gap: 10px; align-items: end; }
+.pda-evidence-line label { flex: 1; }
+.pda-json { max-height: 260px; max-width: 100%; overflow: auto; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid #dce6f3; background: #f7faff; padding: 10px; }
+.pda-review > header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: start; gap: 12px; padding-top: 14px; }
+.pda-review dt { color: #526987; }
+.pda-review dd { margin: 2px 0 10px; overflow-wrap: anywhere; }
+.pda-path-basis { display: block; margin: 2px 0 10px; color: #526987; }

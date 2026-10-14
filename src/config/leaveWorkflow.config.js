@@ -381,7 +381,7 @@ export const LEAVE_NOTIFICATION_TEMPLATES = {
       title: 'Leave Request Rejected',
       body: 'Your leave request has been rejected by {rm_name}',
       icon: 'XCircleIcon',
-      actionUrl: '/hr/leave',
+      actionUrl: '/hr/Employeprofile',
     },
   },
 
@@ -405,7 +405,7 @@ export const LEAVE_NOTIFICATION_TEMPLATES = {
       title: 'Leave Request Approved',
       body: 'Your leave request has been fully approved',
       icon: 'CheckBadgeIcon',
-      actionUrl: '/hr/leave',
+      actionUrl: '/hr/Employeprofile',
     },
     // Also notify RM
     secondaryRecipient: 'reporting_manager',
@@ -432,7 +432,7 @@ export const LEAVE_NOTIFICATION_TEMPLATES = {
       title: 'Leave Request Rejected',
       body: 'Your leave request has been rejected by HR',
       icon: 'XCircleIcon',
-      actionUrl: '/hr/leave',
+      actionUrl: '/hr/Employeprofile',
     },
     // Also notify RM
     secondaryRecipient: 'reporting_manager',

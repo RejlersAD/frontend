@@ -21,6 +21,7 @@ export const TIMESHEET_ENDPOINTS = {
   live:              '/timesheet/live/',
   daily:             '/timesheet/daily/',
   monthly:           '/timesheet/monthly/',
+  manualUpload:      '/timesheet/manual-upload/',
   user:              '/timesheet/user/',
   lookupByCode:      '/timesheet/lookup-by-code/',
   exportDaily:       '/timesheet/export/daily/',
@@ -42,6 +43,10 @@ export const TIMESHEET_ENDPOINTS = {
 export const TIMESHEET_POLL_MS = Number(
   import.meta.env?.VITE_TIMESHEET_POLL_MS || 30000
 )
+
+// Shared client-side pagination for the Live, Daily and Monthly tables.
+export const TIMESHEET_TABLE_PAGE_SIZES = [10, 25, 50, 100]
+export const TIMESHEET_TABLE_DEFAULT_PAGE_SIZE = 25
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 3. TABS shown across the top of the Time Sheet view
@@ -136,7 +141,7 @@ const cardColumn = { id: 'card1', label: 'Card 1', accessor: (r) => safe(cardFro
 export const PUNCH_TYPE_LABELS = {
   in:      'IN',
   out:     'OUT',
-  unknown: '—',
+  unknown: 'NO PUNCH',
 }
 const punchTypeLabel = (r) => {
   if (r.is_in === true)  return PUNCH_TYPE_LABELS.in
@@ -158,7 +163,9 @@ export const TIMESHEET_DAILY_COLUMNS = [
   { id: 'dept',     label: 'Dept',     accessor: (r) => safe(r.radai_department || r.department) },
   { id: 'first_in', label: 'First In', accessor: (r) => fmtTime(r.first_in) },
   { id: 'last_out', label: 'Last Out', accessor: (r) => fmtTime(r.last_out) },
-  { id: 'hours',    label: 'Hours',    accessor: (r) => (r.hours_worked ?? 0).toFixed(2) },
+  { id: 'hours',    label: 'Regular Hours', accessor: (r) => (r.regular_hours ?? r.hours_worked ?? 0).toFixed(2) },
+  { id: 'overtime', label: 'Recorded OT (Unapproved)', accessor: (r) => (r.overtime_hours ?? 0).toFixed(2) },
+  { id: 'presence', label: 'Total Presence', accessor: (r) => (r.total_presence_hours ?? r.hours_worked ?? 0).toFixed(2) },
   { id: 'late',     label: 'Late?',    accessor: (r) => (r.is_late ? 'Yes' : 'No') },
   { id: 'full',     label: 'Full Day?', accessor: (r) => (r.is_full_day ? 'Yes' : 'No') },
 ]
@@ -171,7 +178,9 @@ export const TIMESHEET_MONTHLY_COLUMNS = [
   { id: 'full',         label: 'Full Days',    accessor: (r) => r.full_days || 0 },
   { id: 'half',         label: 'Half Days',    accessor: (r) => r.half_days || 0 },
   { id: 'late',         label: 'Late',         accessor: (r) => r.late_arrivals || 0 },
-  { id: 'hours',        label: 'Total Hours',  accessor: (r) => (r.total_hours || 0).toFixed(2) },
+  { id: 'hours',        label: 'Regular Hours', accessor: (r) => (r.total_hours || 0).toFixed(2) },
+  { id: 'overtime',     label: 'Recorded OT (Unapproved)', accessor: (r) => (r.overtime_hours || 0).toFixed(2) },
+  { id: 'presence',     label: 'Total Presence', accessor: (r) => (r.total_presence_hours || r.total_hours || 0).toFixed(2) },
   { id: 'avg',          label: 'Avg/Day',      accessor: (r) => (r.avg_hours_per_day || 0).toFixed(2) },
 ]
 
@@ -237,12 +246,12 @@ export const TIMESHEET_COPY = {
   // Soft-coded stale sync detection (when DB has events but they’re too old)
   liveStaleSyncTitle: 'Sync agent has stopped running',
   liveStaleSyncSubtitle: (
-    'The database has attendance records, but they are outside the rolling time window. ' +
-    'This usually means the office-side sync agent has stopped running.'
+    'No heartbeat has been received from the office-side sync agent within the configured threshold. ' +
+    'Attendance records may therefore be out of date.'
   ),
   liveStaleSyncAction: 'Restart the sync agent on the office server',
-  liveStaleSyncLastEvent: 'Last punch synced:',
-  liveStaleSyncAge: 'Data age:',
+  liveStaleSyncLastEvent: 'Last punch received:',
+  liveStaleSyncAge: 'Agent heartbeat age:',
   
   // Soft-coded prefix shown next to the rolling-window cutoff time
   liveWindowPrefix: 'Showing punches since',

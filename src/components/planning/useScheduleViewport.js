@@ -1,0 +1,40 @@
+import { useLayoutEffect } from 'react'
+
+/** Fill the visible application pane, keeping both scrollbars and the schedule footer in view. */
+export default function useScheduleViewport(ref, tab) {
+  useLayoutEffect(() => {
+    const canvas = ref.current
+    if (!canvas) return undefined
+    let frame
+    const update = () => {
+      const viewport = canvas.querySelector('.p6-viewport')
+      if (!viewport) return
+      const main = canvas.closest('.main-content')
+      const mainBottom = main?.getBoundingClientRect().bottom ?? window.innerHeight
+      const viewportBottom = window.visualViewport ? window.visualViewport.offsetTop + window.visualViewport.height : window.innerHeight
+      const body = canvas.closest('.pp-body')
+      const bottomSpace = Math.max(6, body ? parseFloat(getComputedStyle(body).paddingBottom) || 0 : 0)
+      // Toolbar controls sit above the viewport; reserve only its footer content.
+      const footer = canvas.querySelector('.sc-footer')
+      const footerGap = footer ? parseFloat(getComputedStyle(footer).marginTop) || 0 : 0
+      const border = parseFloat(getComputedStyle(canvas).borderBottomWidth) || 0
+      const reserved = ['.p6-scrollbars', '.sc-footer'].reduce((sum, selector) => sum + (canvas.querySelector(selector)?.getBoundingClientRect().height || 0), bottomSpace + footerGap + border)
+      const height = Math.max(100, Math.floor(Math.min(mainBottom, viewportBottom) - viewport.getBoundingClientRect().top - reserved))
+      canvas.style.setProperty('--p6-viewport-height', `${height}px`)
+    }
+    const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(update) }
+    const observer = new ResizeObserver(schedule)
+    const main = canvas.closest('.main-content')
+    for (const element of [main, canvas.parentElement, canvas.querySelector('.sc-commandbar'), canvas.querySelector('.sc-filterbar'), canvas.querySelector('.p6-controls'), canvas.querySelector('.sc-footer'), canvas.closest('.project-performance-workspace')?.querySelector('.pd-header')]) {
+      if (element) observer.observe(element)
+    }
+    window.addEventListener('resize', schedule)
+    window.visualViewport?.addEventListener('resize', schedule)
+    update()
+    return () => {
+      observer.disconnect(); cancelAnimationFrame(frame)
+      window.removeEventListener('resize', schedule)
+      window.visualViewport?.removeEventListener('resize', schedule)
+    }
+  }, [ref, tab])
+}

@@ -6,12 +6,11 @@
 import { useEffect, useState } from 'react'
 import { useSelector } from 'react-redux'
 import * as HeroIcons from '@heroicons/react/24/outline'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
+import PayrollEngine from './PayrollEngine'
 import payrollService from '../../../services/payroll.service'
 import payrollEngineService from '../../../services/payrollEngine.service'
-import timesheetSvc from '../../../services/timesheet.service'
 import {
-  PAYROLL_KPIS, ATT_KPIS, PAYROLL_RUN_COLUMNS, PAYROLL_COPY,
+  PAYROLL_KPIS, PAYROLL_COPY,
   PAYROLL_KPI_REPORTS, PAYROLL_SLIP_STATUS, PAYROLL_ALERT_SEVERITY,
   PAYROLL_RUN_COPY, PAYROLL_RUN_MONTHS,
   PAYROLL_WORKFLOW_STAGES,
@@ -28,7 +27,6 @@ const Spinner = () => (
   </svg>
 )
 
-const PIE_COLORS = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4']
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Approval Pipeline Widget — compact summary embedded in the main dashboard.
@@ -95,7 +93,7 @@ function ApprovalPipelineWidget({ data, onViewAll }) {
       </div>
 
       {/* Stage KPI mini-bar */}
-      <div className="grid grid-cols-6 gap-2 mb-4">
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-4">
         {PIPELINE_STAGE_KPIS.map(({ key, label, cls }) => (
           <div key={key} className={`rounded-lg border px-2 py-2 text-center ${cls}`}>
             <div className="text-lg font-bold leading-tight">{summary.by_stage?.[key] ?? 0}</div>
@@ -208,6 +206,10 @@ const normaliseRun = (r) => ({
   total_gross_salary: r.total_gross,
   total_net_salary:   r.total_net,
 })
+
+// Dashboard charts and table read from the canonical payroll engine. The
+// finance payroll-runs endpoint is retained only for legacy screens.
+
 
 // EmployeeLeaveRecord API rows expose total_earned/total_taken/leave_balance;
 // the leave-record report columns expect days_earned/days_taken/balance.
@@ -492,69 +494,29 @@ function KpiReportModal({ reportId, onClose }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // KPI tile — now a clickable button that opens the drill-down modal
 // ─────────────────────────────────────────────────────────────────────────────
+const KPI_STYLE = {
+  gross: 'border-indigo-200 from-indigo-50 text-indigo-700',
+  net: 'border-emerald-200 from-emerald-50 text-emerald-700',
+  pending: 'border-amber-200 from-amber-50 text-amber-700',
+  ytd: 'border-violet-200 from-violet-50 text-violet-700',
+  alerts: 'border-rose-200 from-rose-50 text-rose-700',
+}
 function KpiTile({ kpi, summary, onClick }) {
   const Icon = HeroIcons[kpi.icon] || HeroIcons.ChartBarIcon
-  const val = kpi.compute(summary)
-  const isSalaryTile = ['gross', 'net', 'ytd'].includes(kpi.id)
-  const isZeroSalary = isSalaryTile && (parseFloat(summary?.[
-    kpi.id === 'gross' ? 'current_month_gross' :
-    kpi.id === 'net'   ? 'current_month_net'   : 'ytd_payroll'
-  ] ?? 0) === 0)
-  const noRuns = !summary?.latest_run?.id
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={`Click to view ${kpi.label} report`}
-      className={`rounded-xl border p-4 ${kpi.tone} border-current/10 relative text-left w-full hover:shadow-md hover:scale-[1.02] active:scale-[0.99] transition-all cursor-pointer group`}
-    >
-      <div className="flex items-center gap-2 mb-1">
-        <Icon className="w-4 h-4 opacity-70" />
-        <span className="text-xs font-semibold uppercase tracking-wider opacity-70">{kpi.label}</span>
-      </div>
-      <div className="text-xl font-bold leading-tight">{val}{kpi.suffix}</div>
-      {kpi.sub && summary && (
-        <div className="text-[10px] opacity-60 mt-0.5 font-normal">{kpi.sub(summary)}</div>
-      )}
-      {isSalaryTile && isZeroSalary && noRuns && (
-        <div className="text-[10px] opacity-60 mt-1 font-normal">No payroll runs yet</div>
-      )}
-      <div className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-60 transition-opacity text-[10px] uppercase tracking-widest">
-        View →
-      </div>
-    </button>
-  )
+  return <button type="button" onClick={onClick} className={`min-w-0 rounded-xl border bg-gradient-to-br to-white p-4 text-left transition-colors hover:border-indigo-400 focus-visible:outline-indigo-600 ${KPI_STYLE[kpi.id] || 'border-blue-200 from-blue-50 text-blue-700'}`}>
+    <div className="flex items-center justify-between gap-2"><span className="text-xs font-medium">{kpi.label}</span><Icon className="h-4 w-4 shrink-0 opacity-70" /></div>
+    <p className="mt-3 break-words text-xl font-semibold tracking-tight tabular-nums">{kpi.compute(summary)}<span className="ml-1 text-xs font-normal">{kpi.id === 'pending' ? ' requests' : kpi.suffix}</span></p>
+    {kpi.sub && summary && <p className="mt-1 text-xs opacity-75">{kpi.sub(summary)}</p>}
+  </button>
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Leave intelligence tile — clickable button
-// ─────────────────────────────────────────────────────────────────────────────
-function LeaveTile({ icon, label, value, sub, bg, border, textColor, subColor, onClick }) {
+function LeaveTile({ icon, label, value, sub, textColor, onClick }) {
   const Icon = HeroIcons[icon] ?? HeroIcons.CalendarDaysIcon
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={`Click to view ${label} report`}
-      className={`${bg} rounded-lg p-3 border ${border} text-left w-full hover:shadow-md hover:scale-[1.02] active:scale-[0.99] transition-all cursor-pointer group relative`}
-    >
-      <div className="flex items-center gap-1.5 mb-1">
-        <Icon className={`w-3.5 h-3.5 ${textColor}`} />
-        <span className={`text-[10px] font-semibold uppercase tracking-wider ${textColor}`}>{label}</span>
-      </div>
-      <div className={`text-2xl font-bold ${textColor}`}>{value}</div>
-      <div className={`text-[10px] mt-0.5 ${subColor}`}>{sub}</div>
-      <div className={`absolute bottom-1.5 right-2 opacity-0 group-hover:opacity-50 transition-opacity text-[9px] uppercase tracking-widest ${textColor}`}>
-        View →
-      </div>
-    </button>
-  )
+  return <button type="button" onClick={onClick} className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 text-left transition-colors hover:border-indigo-300 hover:bg-indigo-50/30 focus-visible:outline-indigo-600">
+    <div className="flex items-start justify-between gap-2"><span className="text-xs text-slate-500">{label}</span><Icon className={`h-4 w-4 shrink-0 ${textColor}`} /></div>
+    <p className={`mt-2 text-xl font-semibold tabular-nums ${textColor}`}>{value}</p><p className="mt-1 text-xs text-slate-500">{sub}</p>
+  </button>
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Edit Payroll Run modal
-// ─────────────────────────────────────────────────────────────────────────────
 function RunEditModal({ run, onClose, onSaved }) {
   const [form, setForm] = useState({
     run_code:     run.run_code     || '',
@@ -803,16 +765,11 @@ function DeleteConfirmModal({ run, onClose, onDeleted }) {
   )
 }
 
-export default function PayrollDashboard({ onSelectRun, onSwitchTab }) {
+export default function PayrollDashboard({ onSelectRun, onSwitchTab, activeRunId, initialTab }) {
   const [summary,      setSummary]      = useState(null)
-  const [runs,         setRuns]         = useState([])
   const [loading,      setLoading]      = useState(true)
   const [error,        setError]        = useState(null)
-  const [processing,   setProcessing]   = useState(null)
   const [reportId,     setReportId]     = useState(null)
-  const [editRun,      setEditRun]      = useState(null)
-  const [deleteRun,    setDeleteRun]    = useState(null)
-  const [attStats,     setAttStats]     = useState(null)
   const [trackerData,  setTrackerData]  = useState(null)   // approval pipeline widget
 
   // Role — used to gate the Approval Pipeline widget
@@ -828,49 +785,39 @@ export default function PayrollDashboard({ onSelectRun, onSwitchTab }) {
   useEffect(() => {
     setLoading(true)
     Promise.all([
+      payrollEngineService.getDashboardSummary().catch(() => null),
       payrollService.getDashboardSummary().catch(() => null),
-      payrollService.getPayrollRuns({ page_size: 12 }).catch(() => ({ results: [] })),
-    ]).then(async ([s, r]) => {
+    ]).then(async ([engineSummary, legacySummary]) => {
+      // Payroll values come from Payroll Engine; leave intelligence still
+      // comes from the HR/payroll summary until that API is consolidated.
+      const s = engineSummary || legacySummary
+        ? {
+            ...(legacySummary || {}),
+            ...(engineSummary || {}),
+            current_year: engineSummary?.year ?? legacySummary?.current_year,
+            current_month: engineSummary?.month ?? legacySummary?.current_month,
+          }
+        : null
       // The backend summary counts draft payslips across every PayrollRun
       // (all months), but the Pending Approvals modal only ever shows the
       // current month's run — recompute the card's count the same way so
       // both agree.
       if (s) {
+        // Pending Approvals = draft payslips for the current run + leave
+        // requests awaiting RM/HR action (backend-computed, always current).
+        const leavePending = s.leave_pending_approvals ?? 0
         const run = await fetchCurrentMonthRun().catch(() => null)
         if (run) {
           const pendingResp = await payrollEngineService
             .listPayslips({ run: run.id, status: 'draft', page_size: 1 })
             .catch(() => null)
-          s.pending_approvals = pendingResp?.count ?? s.pending_approvals
+          s.pending_approvals = (pendingResp?.count ?? s.pending_approvals ?? 0) + leavePending
         } else {
-          s.pending_approvals = 0
+          s.pending_approvals = leavePending
         }
       }
       setSummary(s)
-      setRuns(r?.results ?? r ?? [])
     }).catch((e) => setError(e.message)).finally(() => setLoading(false))
-
-    // Attendance stats — non-blocking, biometric data is optional
-    const now = new Date()
-    timesheetSvc.fetchMonthly(now.getFullYear(), now.getMonth() + 1)
-      .then((res) => {
-        const rows = res?.rows ?? []
-        if (!rows.length) return
-        const totalEmployees = rows.length
-        const presentCount   = rows.filter((r) => (r.days_present ?? 0) > 0).length
-        const totalHours     = rows.reduce((s, r) => s + (r.total_hours ?? 0), 0)
-        const avgHoursPerDay = totalEmployees
-          ? rows.reduce((s, r) => s + (r.avg_hours_per_day ?? 0), 0) / totalEmployees
-          : 0
-        setAttStats({
-          presentCount,
-          totalEmployees,
-          attendanceRateMtd: totalEmployees ? (presentCount / totalEmployees) * 100 : 0,
-          avgHoursPerDay,
-          totalHours,
-        })
-      })
-      .catch(() => {}) // biometric tile degrades gracefully
   }, [])
 
   // Approval tracker — loaded separately; only for super-admins.
@@ -884,28 +831,6 @@ export default function PayrollDashboard({ onSelectRun, onSwitchTab }) {
     })
   }, [isSuperAdmin])
 
-  // Build trend data from runs list
-  const trendData = [...runs].reverse().slice(0, 6).map((r) => ({
-    period: `${String(r.month).padStart(2,'0')}/${String(r.year).slice(-2)}`,
-    gross:  parseFloat(r.total_gross_salary) || 0,
-    net:    parseFloat(r.total_net_salary)   || 0,
-  }))
-
-  const reloadRuns = async () => {
-    const r = await payrollService.getPayrollRuns({ page_size: 12 }).catch(() => ({ results: [] }))
-    setRuns(r?.results ?? r ?? [])
-  }
-
-  const handleProcess = async (runId) => {
-    setProcessing(runId)
-    try {
-      await payrollService.processPayrollRun(runId)
-      await reloadRuns()
-    } finally {
-      setProcessing(null)
-    }
-  }
-
   if (loading) return (
     <div className="flex items-center justify-center h-64">
       <Spinner />
@@ -918,53 +843,31 @@ export default function PayrollDashboard({ onSelectRun, onSwitchTab }) {
   )
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* KPI Tiles */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7 gap-3">
         {PAYROLL_KPIS.map((kpi) => (
           <KpiTile key={kpi.id} kpi={kpi} summary={summary} onClick={() => setReportId(kpi.id)} />
         ))}
       </div>
 
-      {/* Attendance KPI Tiles — live biometric data (non-clickable, gracefully hidden if unavailable) */}
-      {attStats && (
-        <div className="flex items-center gap-4 flex-wrap">
-          <div className="flex items-center gap-1.5 text-xs text-slate-400 uppercase tracking-wider">
-            <HeroIcons.SignalIcon className="w-3.5 h-3.5" />
-            Biometric Attendance
-          </div>
-          {ATT_KPIS.map((kpi) => {
-            const Icon = HeroIcons[kpi.icon] || HeroIcons.ClockIcon
-            return (
-              <div
-                key={kpi.id}
-                className={`rounded-xl border p-4 ${kpi.tone} border-current/10 min-w-[160px] flex-1 max-w-xs`}
-              >
-                <div className="flex items-center gap-2 mb-1">
-                  <Icon className="w-4 h-4 opacity-70" />
-                  <span className="text-xs font-semibold uppercase tracking-wider opacity-70">{kpi.label}</span>
-                </div>
-                <div className="text-xl font-bold leading-tight">{kpi.compute(attStats)}</div>
-                <div className="text-[10px] opacity-60 mt-0.5">{kpi.sub(attStats)}</div>
-              </div>
-            )
-          })}
-        </div>
-      )}
+      <section className="radai-payroll-module min-w-0" aria-label="Payroll management workspace">
+        <PayrollEngine activeRunId={activeRunId} initialTab={activeRunId ? undefined : initialTab || 'runs'} onSelectRun={onSelectRun} onSwitchTab={onSwitchTab} />
+      </section>
 
-      {/* Leave Intelligence Panel — always shown when summary is loaded */}
+      {/* Leave overview Panel — always shown when summary is loaded */}
       {summary && (
         <div className="bg-white rounded-xl border border-slate-200 p-5">
           <div className="flex items-center gap-2 mb-4">
             <HeroIcons.CalendarDaysIcon className="w-4 h-4 text-indigo-500" />
             <h3 className="text-sm font-semibold text-slate-700">
-              Leave Intelligence — {summary.current_year}
+              Leave overview — {summary.current_year}
             </h3>
             <span className="ml-auto text-xs text-slate-400">
               {MONTH_NAMES[(summary.current_month ?? new Date().getMonth() + 1) - 1]} {summary.current_year ?? new Date().getFullYear()}
             </span>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
             {/* Employees tracked */}
             <LeaveTile
               icon="UsersIcon" label="Employees Tracked"
@@ -1028,156 +931,11 @@ export default function PayrollDashboard({ onSelectRun, onSwitchTab }) {
         />
       )}
 
-      {/* Charts row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Bar chart — payroll trend */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-5">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">Monthly Payroll Trend (last 6 months)</h3>
-          {trendData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={trendData} barGap={4}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="period" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v/1000).toFixed(0)}k`} />
-                <Tooltip formatter={(v) => fmtCurrency(v)} />
-                <Bar dataKey="gross" name="Gross" fill="#3b82f6" radius={[3,3,0,0]} />
-                <Bar dataKey="net"   name="Net"   fill="#10b981" radius={[3,3,0,0]} />
-                <Legend />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-48 flex items-center justify-center text-slate-400 text-sm">No run data yet</div>
-          )}
-        </div>
-
-        {/* Pie — run status distribution */}
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">Run Status Distribution</h3>
-          {runs.length > 0 ? (() => {
-            const statusCounts = runs.reduce((acc, r) => { acc[r.status] = (acc[r.status] || 0) + 1; return acc }, {})
-            const pieData = Object.entries(statusCounts).map(([name, value]) => ({ name: runStatusMeta(name).label, value }))
-            return (
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={3} dataKey="value">
-                    {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            )
-          })() : (
-            <div className="h-48 flex items-center justify-center text-slate-400 text-sm">No runs yet</div>
-          )}
-        </div>
-      </div>
-
-      {/* Payroll Runs Table */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-slate-700">Payroll Runs</h3>
-          <span className="text-xs text-slate-500">{runs.length} runs</span>
-        </div>
-        {runs.length === 0 ? (
-          <div className="p-10 text-center text-slate-400 text-sm">
-            <HeroIcons.InboxIcon className="w-10 h-10 mx-auto mb-2 opacity-40" />
-            No payroll runs found
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="bg-slate-50">
-                <tr>
-                  {PAYROLL_RUN_COLUMNS.map((c) => (
-                    <th key={c.id} className="text-left px-4 py-2 text-xs font-semibold text-slate-600 uppercase tracking-wider">{c.label}</th>
-                  ))}
-                  <th className="text-left px-4 py-2 text-xs font-semibold text-slate-600 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {runs.map((r) => (
-                  <tr
-                    key={r.id}
-                    className="hover:bg-slate-50 cursor-pointer"
-                    onClick={() => onSelectRun?.(r)}
-                  >
-                    {PAYROLL_RUN_COLUMNS.map((c) => {
-                      const v = c.accessor(r)
-                      if (c.cellType === 'run_status') {
-                        const m = runStatusMeta(v)
-                        return (
-                          <td key={c.id} className="px-4 py-3">
-                            <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${m.tone}`}>{m.label}</span>
-                          </td>
-                        )
-                      }
-                      return <td key={c.id} className="px-4 py-3 text-slate-700">{v}</td>
-                    })}
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        {/* Process */}
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); handleProcess(r.id) }}
-                          disabled={r.status === 'completed' || processing === r.id}
-                          title="Process this payroll run"
-                          className="text-xs px-2.5 py-1 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-md transition"
-                        >
-                          {processing === r.id ? '…' : 'Process'}
-                        </button>
-                        {/* Edit */}
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); setEditRun(r) }}
-                          title={r.status !== 'draft' ? PAYROLL_RUN_COPY.tooltipEdit + ' (draft only)' : PAYROLL_RUN_COPY.tooltipEdit}
-                          className="text-xs px-2.5 py-1 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-md transition flex items-center gap-1"
-                        >
-                          <HeroIcons.PencilSquareIcon className="w-3 h-3" />
-                          Edit
-                        </button>
-                        {/* Delete */}
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); setDeleteRun(r) }}
-                          title={r.status !== 'draft' ? PAYROLL_RUN_COPY.tooltipDelete + ' (draft only)' : PAYROLL_RUN_COPY.tooltipDelete}
-                          className="text-xs px-2.5 py-1 bg-rose-600 hover:bg-rose-700 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-md transition flex items-center gap-1"
-                        >
-                          <HeroIcons.TrashIcon className="w-3 h-3" />
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
       {/* KPI drill-down report modal */}
       {reportId && (
         <KpiReportModal reportId={reportId} onClose={() => setReportId(null)} />
       )}
 
-      {/* Edit payroll run modal */}
-      {editRun && (
-        <RunEditModal
-          run={editRun}
-          onClose={() => setEditRun(null)}
-          onSaved={() => { setEditRun(null); reloadRuns() }}
-        />
-      )}
-
-      {/* Delete payroll run confirmation */}
-      {deleteRun && (
-        <DeleteConfirmModal
-          run={deleteRun}
-          onClose={() => setDeleteRun(null)}
-          onDeleted={() => { setDeleteRun(null); reloadRuns() }}
-        />
-      )}
     </div>
   )
 }

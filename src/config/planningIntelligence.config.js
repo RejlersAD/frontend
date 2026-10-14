@@ -8,8 +8,17 @@
 export const PLANNING_ENDPOINTS = {
   projects: '/planning-intelligence/projects/',
   project: (id) => `/planning-intelligence/projects/${id}/`,
+  enterpriseContract: (id) => `/planning-intelligence/projects/${id}/enterprise-contract/`,
+  syncFromEnterprise: (id) => `/planning-intelligence/projects/${id}/sync-from-enterprise/`,
   analyze: (id) => `/planning-intelligence/projects/${id}/analyze/`,
   generate: (id) => `/planning-intelligence/projects/${id}/generate/`,
+  generationPreview: (id) => `/planning-intelligence/projects/${id}/generation-preview/`,
+  workflowTemplates: '/planning-intelligence/workflow-templates/',
+  dependencyTemplates: '/planning-intelligence/dependency-templates/',
+  scheduleConfigurations: '/planning-intelligence/schedule-configurations/',
+  scheduleConfiguration: (id) => `/planning-intelligence/schedule-configurations/${id}/`,
+  scheduleDefaultProposals: '/planning-intelligence/schedule-default-proposals/',
+  scheduleDefaultProposalDecision: (id) => `/planning-intelligence/schedule-default-proposals/${id}/decision/`,
 
   aiSettings: (id) => `/planning-intelligence/projects/${id}/ai-settings/`,
   aiSettingsTest: (id) => `/planning-intelligence/projects/${id}/ai-settings/test/`,
@@ -19,8 +28,117 @@ export const PLANNING_ENDPOINTS = {
 
   generations: '/planning-intelligence/generations/',
   generation: (id) => `/planning-intelligence/generations/${id}/`,
-  // In-place hand-edit of a generation's wbs/activities/eddr/manhours/
-  // milestones/narrative (Project Scheduler correction — same version).
+  materializeGeneration: (id) => `/planning-intelligence/generations/${id}/materialize/`,
+  calendars: '/planning-intelligence/calendars/',
+  calendarExceptions: '/planning-intelligence/calendar-exceptions/',
+  schedules: '/planning-intelligence/schedules/',
+  schedule: (id) => `/planning-intelligence/schedules/${id}/`,
+  createScheduleVersion: (id) => `/planning-intelligence/schedules/${id}/create-version/`,
+  scheduleVersions: '/planning-intelligence/schedule-versions/',
+  scheduleVersion: (id) => `/planning-intelligence/schedule-versions/${id}/`,
+  scheduleWorkspace: (id) => `/planning-intelligence/schedule-versions/${id}/workspace/`,
+  bulkScheduleActivities: (id) => `/planning-intelligence/schedule-versions/${id}/bulk-activities/`,
+  calculateScheduleVersion: (id) => `/planning-intelligence/schedule-versions/${id}/calculate/`,
+  rebuildScheduleLogic: (id) => `/planning-intelligence/schedule-versions/${id}/rebuild-generated-logic/`,
+  approveScheduleVersion: (id) => `/planning-intelligence/schedule-versions/${id}/approve/`,
+  runScheduleAssurance: (id) => `/planning-intelligence/schedule-versions/${id}/run-assurance/`,
+  approveScheduleAssurance: (id) => `/planning-intelligence/schedule-versions/${id}/approve-assurance/`,
+  baselineScheduleVersion: (id) => `/planning-intelligence/schedule-versions/${id}/baseline/`,
+  scheduleControls: (id) => `/planning-intelligence/schedule-versions/${id}/controls/`,
+  scheduleProgress: (id) => `/planning-intelligence/schedule-versions/${id}/progress/`,
+  captureScheduleControls: (id) => `/planning-intelligence/schedule-versions/${id}/capture-controls/`,
+  dailyFieldUpdates: '/planning-intelligence/daily-field-updates/',
+  dailyFieldUpdate: (id) => `/planning-intelligence/daily-field-updates/${id}/`,
+  submitDailyFieldUpdate: (id) => `/planning-intelligence/daily-field-updates/${id}/submit/`,
+  approveDailyFieldUpdate: (id) => `/planning-intelligence/daily-field-updates/${id}/approve/`,
+  rejectDailyFieldUpdate: (id) => `/planning-intelligence/daily-field-updates/${id}/reject/`,
+  scheduleGovernance: (id) => `/planning-intelligence/schedule-versions/${id}/governance/`,
+  governanceItems: (id) => `/planning-intelligence/schedule-versions/${id}/governance-items/`,
+  governanceItem: (id) => `/planning-intelligence/schedule-versions/${id}/governance-item/`,
+  governanceComments: (id) => `/planning-intelligence/schedule-versions/${id}/governance-comments/`,
+  resolveGovernanceComment: (id) => `/planning-intelligence/schedule-versions/${id}/resolve-governance-comment/`,
+  scheduleReviews: (id) => `/planning-intelligence/schedule-versions/${id}/reviews/`,
+  scheduleReviewDecision: (id) => `/planning-intelligence/schedule-versions/${id}/review-decision/`,
+  exportScheduleVersion: (id, format) => `/planning-intelligence/schedule-versions/${id}/export/?export_format=${format}`,
+  integrationEndpoints: '/planning-intelligence/integration-endpoints/',
+  integrationEndpoint: (id) => `/planning-intelligence/integration-endpoints/${id}/`,
+  publishIntegration: (id) => `/planning-intelligence/integration-endpoints/${id}/publish/`,
+  integrationDeliveries: '/planning-intelligence/integration-deliveries/',
+  retryIntegrationDelivery: (id) => `/planning-intelligence/integration-deliveries/${id}/retry/`,
+  scheduleExportRecords: '/planning-intelligence/schedule-export-records/',
+  technicalProposals: '/planning-intelligence/technical-proposals/',
+  technicalProposal: (id) => `/planning-intelligence/technical-proposals/${id}/`,
+  proposalTransition: (id) => `/planning-intelligence/technical-proposals/${id}/transition/`,
+  proposalRefresh: (id) => `/planning-intelligence/technical-proposals/${id}/refresh/`,
+  proposalExport: (id, format) => `/planning-intelligence/technical-proposals/${id}/export/?export_format=${format}`,
+  proposalPreview: id => `/planning-intelligence/technical-proposals/${id}/export/?export_format=pdf&preview=1`,
+  proposalWorkflowUsers: id => `/planning-intelligence/technical-proposals/${id}/workflow-users/`,
+  proposalSubmitReview: id => `/planning-intelligence/technical-proposals/${id}/submit-review/`,
+  proposalReassignReviewer: id => `/planning-intelligence/technical-proposals/${id}/reassign-reviewer/`,
+  proposalReassignApprover: id => `/planning-intelligence/technical-proposals/${id}/reassign-approver/`,
+  proposalReviewDecision: id => `/planning-intelligence/technical-proposals/${id}/review-decision/`,
+  proposalApprovalDecision: id => `/planning-intelligence/technical-proposals/${id}/approval-decision/`,
+  proposalIssue: id => `/planning-intelligence/technical-proposals/${id}/issue/`,
+  proposalReopen: id => `/planning-intelligence/technical-proposals/${id}/reopen/`,
+  proposalIssuedFile: (id, fileId) => `/planning-intelligence/technical-proposals/${id}/issued-files/${fileId}/`,
+  proposalWorkflowInbox: '/planning-intelligence/technical-proposals/workflow-inbox/',
+  proposalExportRecords: '/planning-intelligence/proposal-export-records/',
+  enterprisePortfolio: '/planning-intelligence/enterprise/portfolio/',
+  enterpriseReadiness: '/planning-intelligence/enterprise/readiness/',
+  enterpriseRetention: '/planning-intelligence/enterprise/retention/',
+  enterpriseRetentionCleanup: '/planning-intelligence/enterprise/retention-cleanup/',
+  wbsNodes: '/planning-intelligence/wbs-nodes/',
+  wbsNode: (id) => `/planning-intelligence/wbs-nodes/${id}/`,
+  activities: '/planning-intelligence/activities/',
+  activity: (id) => `/planning-intelligence/activities/${id}/`,
+  relationships: '/planning-intelligence/relationships/',
+  relationship: (id) => `/planning-intelligence/relationships/${id}/`,
+  resources: '/planning-intelligence/resources/',
+  resource: (id) => `/planning-intelligence/resources/${id}/`,
+  assignments: '/planning-intelligence/assignments/',
+  assignment: (id) => `/planning-intelligence/assignments/${id}/`,
+  baselines: '/planning-intelligence/baselines/',
+  calculationRuns: '/planning-intelligence/calculation-runs/',
+  documentProfiles: '/planning-intelligence/document-profiles/',
+  intelligenceRuns: '/planning-intelligence/intelligence-runs/',
+  latestIntelligenceRun: '/planning-intelligence/intelligence-runs/latest/',
+  intelligenceRun: (id) => `/planning-intelligence/intelligence-runs/${id}/`,
+  confirmIntelligencePreview: (id) => `/planning-intelligence/intelligence-runs/${id}/confirm-preview/`,
+  addIntelligenceFact: (id) => `/planning-intelligence/intelligence-runs/${id}/add-fact/`,
+  intelligenceFacts: '/planning-intelligence/intelligence-facts/',
+  reviewIntelligenceFact: (id) => `/planning-intelligence/intelligence-facts/${id}/review/`,
+  intelligenceConflicts: '/planning-intelligence/intelligence-conflicts/',
+  resolveIntelligenceConflict: (id) => `/planning-intelligence/intelligence-conflicts/${id}/resolve/`,
+  documentAuthorityRules: '/planning-intelligence/document-authority-rules/',
+  scheduleBases: '/planning-intelligence/schedule-bases/',
+  scheduleBasis: (id) => `/planning-intelligence/schedule-bases/${id}/`,
+  buildScheduleBasis: (id) => `/planning-intelligence/intelligence-runs/${id}/build-schedule-basis/`,
+  approveScheduleBasis: (id) => `/planning-intelligence/schedule-bases/${id}/approve/`,
+  reviewBasisDeliverables: (id) => `/planning-intelligence/schedule-bases/${id}/review-deliverables/`,
+  basisDeliverables: '/planning-intelligence/basis-deliverables/',
+  reviewBasisDeliverable: (id) => `/planning-intelligence/basis-deliverables/${id}/review/`,
+  generationPlans: '/planning-intelligence/generation-plans/',
+  generationPlan: (id) => `/planning-intelligence/generation-plans/${id}/`,
+  buildGenerationPlan: (basisId) => `/planning-intelligence/schedule-bases/${basisId}/build-generation-plan/`,
+  approveGenerationPlan: (id) => `/planning-intelligence/generation-plans/${id}/approve/`,
+  reviewGenerationDependencies: (id) => `/planning-intelligence/generation-plans/${id}/review-dependencies/`,
+  addGenerationDependency: (id) => `/planning-intelligence/generation-plans/${id}/add-dependency/`,
+  planDeliverable: (id) => `/planning-intelligence/plan-deliverables/${id}/`,
+  generationDependency: (id) => `/planning-intelligence/generation-dependencies/${id}/`,
+  jobs: '/planning-intelligence/jobs/',
+  activeJob: '/planning-intelligence/jobs/active/',
+  jobProgress: (id) => `/planning-intelligence/jobs/${id}/progress/`,
+  job: (id) => `/planning-intelligence/jobs/${id}/`,
+  cancelJob: (id) => `/planning-intelligence/jobs/${id}/cancel/`,
+  auditEvents: '/planning-intelligence/audit-events/',
+  buildWorkablePlan: (id) => `/planning-intelligence/projects/${id}/build-workable-plan/`,
+  workablePlanStatus: (id) => `/planning-intelligence/projects/${id}/workable-plan-status/`,
+  workBreakdown: (id) => `/planning-intelligence/projects/${id}/work-breakdown/`,
+  manualWorkBreakdown: (id) => `/planning-intelligence/projects/${id}/manual-work-breakdown/`,
+  eligiblePlanningEmployees: (id) => `/planning-intelligence/projects/${id}/eligible-employees/`,
+  employeeActivity: (id) => `/planning-intelligence/projects/${id}/employee-activity/`,
+  approveWorkableBaseline: (id) => `/planning-intelligence/projects/${id}/approve-workable-baseline/`,
+  // Planner corrections create an immutable child revision.
   editGeneration: (id) => `/planning-intelligence/generations/${id}/edit/`,
   // NOTE: query param is `export_format` (not `format`) because DRF's own
   // content-negotiation intercepts a query param literally named `format`
@@ -32,6 +150,7 @@ export const PLANNING_ENDPOINTS = {
 
 // File categories — mirrors backend/apps/planning_intelligence/config.py FILE_CATEGORIES
 export const PLANNING_FILE_CATEGORIES = [
+  { value: 'agreement', label: 'Agreement / Contract', icon: '📄' },
   { value: 'sow', label: 'Scope of Work (SOW)', icon: '📜' },
   { value: 'wbs', label: 'WBS Structure', icon: '🗂️' },
   { value: 'mdr', label: 'Master Deliverable Register (MDR)', icon: '📚' },
@@ -58,6 +177,17 @@ export const PLANNING_WORKFLOW_STEPS = [
   { id: 'narrative',    label: 'Narrative',             icon: '📝', description: 'Auto-composed schedule basis',       accent: 'from-indigo-500 to-blue-600',   requiresGeneration: true },
   { id: 'presentation', label: 'PowerPoint Presentation', icon: '📊', description: 'Client-ready summary deck',         accent: 'from-rose-500 to-orange-500',   requiresGeneration: true },
   { id: 'export',       label: 'Export',                icon: '⬇️', description: 'CSV, Excel, Primavera, JSON',        accent: 'from-slate-600 to-slate-800',   requiresGeneration: true },
+  { id: 'proposal',     label: 'Final Project Proposal', icon: '📑', description: 'Sales · enterprise technical proposal', accent: 'from-indigo-600 to-violet-700', requiresGeneration: true },
+]
+
+// Primary lifecycle navigation. Detailed tools remain available as secondary
+// tasks inside one of these five stages.
+export const PLANNING_WORKFLOW_STAGES = [
+  { id: 'setup', label: 'Setup', description: 'Create the planning record and add source files', stepIds: ['upload'] },
+  { id: 'inputs', label: 'Collect Inputs', description: 'Review extracted requirements and assumptions', stepIds: ['intelligence'] },
+  { id: 'build', label: 'Build Plan', description: 'Develop WBS, schedule, deliverables, and resources', stepIds: ['wbs', 'schedule', 'eddr', 'manhours'] },
+  { id: 'validate', label: 'Validate & Approve', description: 'Check quality and resolve planning exceptions', stepIds: ['validation'] },
+  { id: 'publish', label: 'Publish Baseline', description: 'Prepare controlled outputs and publish the plan', stepIds: ['narrative', 'presentation', 'export', 'proposal'] },
 ]
 
 // Soft-coded layout tokens so the page's "canvas" sizing / hero styling can be
@@ -65,34 +195,6 @@ export const PLANNING_WORKFLOW_STEPS = [
 export const PLANNING_UI = {
   heroIcon: '🧭',
   heroGradient: 'from-violet-600 via-indigo-600 to-blue-600',
-}
-
-// Canvas width modes — user-toggleable between a comfortable reading width
-// ("original") and a near edge-to-edge working width ("full"). Persisted in
-// localStorage so the preference survives reloads/navigation.
-export const CANVAS_MODES = {
-  ORIGINAL: 'original',
-  FULL: 'full',
-}
-
-export const CANVAS_MODE_STORAGE_KEY = 'planningPackages.canvasMode'
-
-export const CANVAS_MODE_OPTIONS = [
-  { value: CANVAS_MODES.ORIGINAL, label: 'Original', icon: '🗗' },
-  { value: CANVAS_MODES.FULL, label: 'Full Screen', icon: '🖥️' },
-]
-
-// Tailwind classes per canvas mode — widened "original" width and a near-full
-// "full" width, each paired with matching outer page padding.
-export const CANVAS_MODE_STYLES = {
-  [CANVAS_MODES.ORIGINAL]: {
-    container: 'max-w-[1800px]',
-    pagePadding: 'px-4 sm:px-6 lg:px-10',
-  },
-  [CANVAS_MODES.FULL]: {
-    container: 'max-w-none',
-    pagePadding: 'px-2 sm:px-3 lg:px-5',
-  },
 }
 
 export const PARSE_STATUS_STYLES = {
@@ -127,8 +229,8 @@ export const EXPORT_CATEGORY_ORDER = ['Schedule Data', 'Spreadsheet', 'Documents
 // Slide outline shown to the user before they download the PowerPoint deck —
 // purely descriptive; the backend (export_utils.generation_to_pptx_bytes)
 // is the single source of truth for actual slide content/order. Deck is
-// built on Rejlers' own corporate template (cover/agenda/content/table/
-// closing layouts), so exports are on-brand in both local and production.
+// uses the Rejlers corporate template when that optional backend asset is
+// available, otherwise it generates a complete branded widescreen deck.
 export const PRESENTATION_SLIDE_OUTLINE = [
   { icon: '🧭', title: 'Cover — Project Snapshot' },
   { icon: '📑', title: 'Agenda' },
@@ -155,16 +257,19 @@ export const PLANNING_MAX_FILE_MB = 100
 // expandable one (icon, responsible role, full deliverable checklist).
 // Add a discipline by appending a row here — no JSX changes required.
 // ─────────────────────────────────────────────────────────────────────────
+// chartColor: hex form of each accent gradient's start color — Recharts fills
+// need a real CSS color, not a Tailwind class, so charts stay visually tied
+// to the same per-discipline color used in badges/cards throughout this page.
 export const PLANNING_DISCIPLINE_META = {
-  process:         { label: 'Process Engineering',         icon: '🧪', accent: 'from-sky-500 to-blue-600',       responsibleRole: 'Lead Process Engineer' },
-  piping:          { label: 'Piping Engineering',           icon: '🛢️', accent: 'from-amber-500 to-orange-600',   responsibleRole: 'Lead Piping Engineer' },
-  mechanical:      { label: 'Mechanical Engineering',       icon: '⚙️', accent: 'from-slate-500 to-slate-700',    responsibleRole: 'Mechanical Engineer' },
-  civil:           { label: 'Civil / Structural Engineering', icon: '🏗️', accent: 'from-stone-500 to-stone-700', responsibleRole: 'Civil Engineer' },
-  electrical:      { label: 'Electrical Engineering',       icon: '⚡', accent: 'from-yellow-500 to-amber-600',   responsibleRole: 'Electrical Engineer' },
-  instrumentation: { label: 'Instrumentation & Control',    icon: '🎛️', accent: 'from-emerald-500 to-teal-600',   responsibleRole: 'Instrumentation Engineer' },
-  telecom:         { label: 'Telecom',                      icon: '📡', accent: 'from-indigo-500 to-violet-600',  responsibleRole: 'Instrumentation Engineer' },
+  process:         { label: 'Process Engineering',         icon: '🧪', accent: 'from-sky-500 to-blue-600',       chartColor: '#0ea5e9', responsibleRole: 'Lead Process Engineer' },
+  piping:          { label: 'Piping Engineering',           icon: '🛢️', accent: 'from-amber-500 to-orange-600',   chartColor: '#f59e0b', responsibleRole: 'Lead Piping Engineer' },
+  mechanical:      { label: 'Mechanical Engineering',       icon: '⚙️', accent: 'from-slate-500 to-slate-700',    chartColor: '#64748b', responsibleRole: 'Mechanical Engineer' },
+  civil:           { label: 'Civil / Structural Engineering', icon: '🏗️', accent: 'from-stone-500 to-stone-700', chartColor: '#78716c', responsibleRole: 'Civil Engineer' },
+  electrical:      { label: 'Electrical Engineering',       icon: '⚡', accent: 'from-yellow-500 to-amber-600',   chartColor: '#eab308', responsibleRole: 'Electrical Engineer' },
+  instrumentation: { label: 'Instrumentation & Control',    icon: '🎛️', accent: 'from-emerald-500 to-teal-600',   chartColor: '#10b981', responsibleRole: 'Instrumentation Engineer' },
+  telecom:         { label: 'Telecom',                      icon: '📡', accent: 'from-indigo-500 to-violet-600',  chartColor: '#6366f1', responsibleRole: 'Instrumentation Engineer' },
 }
-export const DEFAULT_DISCIPLINE_META = { label: '', icon: '📄', accent: 'from-slate-400 to-slate-600', responsibleRole: 'Engineer' }
+export const DEFAULT_DISCIPLINE_META = { label: '', icon: '📄', accent: 'from-slate-400 to-slate-600', chartColor: '#94a3b8', responsibleRole: 'Engineer' }
 
 // ─────────────────────────────────────────────────────────────────────────
 // BYOK (Bring Your Own Key) — Claude/Anthropic augmentation, per project.
@@ -178,13 +283,12 @@ export const AI_PROVIDERS = [
 ]
 
 export const CLAUDE_MODEL_OPTIONS = [
-  { value: 'claude-opus-4-1-20250805', label: 'Claude Opus 4.1 (most capable — recommended)', recommended: true },
-  { value: 'claude-opus-4-20250514', label: 'Claude Opus 4', recommended: false },
-  { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4 (balanced cost/quality)', recommended: false },
-  { value: 'claude-3-5-haiku-20241022', label: 'Claude Haiku 3.5 (fastest / cheapest)', recommended: false },
+  { value: 'claude-opus-5', label: 'Claude Opus 5 (most capable — recommended)', recommended: true },
+  { value: 'claude-sonnet-5', label: 'Claude Sonnet 5 (balanced cost/quality)', recommended: false },
+  { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5 (fastest / cheapest)', recommended: false },
 ]
 
-export const DEFAULT_CLAUDE_MODEL = 'claude-opus-4-1-20250805'
+export const DEFAULT_CLAUDE_MODEL = 'claude-opus-5'
 
 // Simple client-side sanity check before submitting (backend re-validates).
 export const CLAUDE_API_KEY_PATTERN = /^sk-ant-[A-Za-z0-9\-_]{20,}$/

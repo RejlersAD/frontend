@@ -21,7 +21,7 @@ import apiClient from '../../services/api.service'
 
 const DEFAULTS = {
   endpoint:     '/marketing-analytics/realtime/',
-  pollMs:       30_000,
+  pollMs:       300_000, // was 30s
   topRowsLimit: 5,
   timeoutMs:    12_000,
   adminOnly:    false,

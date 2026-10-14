@@ -34,6 +34,7 @@ import { PageControlButtons } from '../../components/Common/PageControlButtons';
 import { usePageControls } from '../../hooks/usePageControls';
 import { PROCUREMENT_CONFIG, getVendorRating } from '../../config/procurement.config';
 import AIVendorCreator from './AIVendorCreator';
+import { readVendorDraft, clearVendorDraft } from '../../services/vendorDraft';
 
 // Soft-coded layout configuration
 const LAYOUT_CONFIG = {
@@ -85,9 +86,10 @@ const VendorManagement = () => {
   const [filterRating, setFilterRating] = useState('all');
   const [filterCompleteness, setFilterCompleteness] = useState('all');
   const [activeKpi, setActiveKpi] = useState('total');
-  const [showAICreator, setShowAICreator] = useState(false);
-  const [editMode, setEditMode] = useState(false);
-  const [selectedVendor, setSelectedVendor] = useState(null);
+  const [recoveredDraft] = useState(readVendorDraft);
+  const [showAICreator, setShowAICreator] = useState(() => Boolean(recoveredDraft));
+  const [editMode, setEditMode] = useState(() => recoveredDraft?.editMode || false);
+  const [selectedVendor, setSelectedVendor] = useState(() => recoveredDraft?.vendorData || null);
   const [detailVendor, setDetailVendor] = useState(null);
   const [enrichmentVendor, setEnrichmentVendor] = useState(undefined);
   const [viewMode, setViewMode] = useState('table'); // 'table' or 'cards'
@@ -99,7 +101,8 @@ const VendorManagement = () => {
   const [actionLoading, setActionLoading] = useState(false);
 
   const pageControls = usePageControls({
-    autoRefreshInterval: 60,
+    autoRefreshInterval: 60000,
+    enableAutoRefresh: !showAICreator,
     features: { autoRefresh: true, fullscreen: true, sidebar: true }
   });
 
@@ -146,8 +149,8 @@ const VendorManagement = () => {
   }, []);
 
   useEffect(() => {
-    fetchVendors();
-  }, [fetchVendors, pageControls.isRefreshing]);
+    if (!showAICreator) fetchVendors();
+  }, [fetchVendors, pageControls.isRefreshing, showAICreator]);
 
   // Soft-coded filter logic with safe array handling
   const filteredVendors = Array.isArray(vendors) ? vendors.filter(vendor => {
@@ -1122,6 +1125,7 @@ const VendorManagement = () => {
       <AIVendorCreator
         isOpen={showAICreator}
         onClose={() => {
+          clearVendorDraft();
           setShowAICreator(false);
           setEditMode(false);
           setSelectedVendor(null);

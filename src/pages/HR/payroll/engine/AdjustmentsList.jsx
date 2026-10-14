@@ -1,3 +1,4 @@
+import { radaiConfirm, radaiAlert } from '../../../../services/radaiDialog'
 /**
  * Adjustments dashboard for the Payroll Engine.
  *
@@ -161,26 +162,26 @@ export default function AdjustmentsList() {
 
   const handleCancelOne = async (a) => {
     if (!isEditable(a)) return
-    if (!window.confirm(`Cancel adjustment "${a.label}" for ${a.employee_name}?`)) return
+    if (!(await radaiConfirm(`Cancel adjustment "${a.label}" for ${a.employee_name}?`))) return
     markBusy(a.id, true)
     try {
       const updated = await payrollEngineService.cancelAdjustment(a.id)
       setItems((prev) => prev.map((x) => (x.id === a.id ? updated : x)))
     } catch (e) {
-      alert(e?.response?.data?.error || e.message || 'Failed to cancel adjustment.')
+      await radaiAlert(e?.response?.data?.error || e.message || 'Failed to cancel adjustment.')
     } finally {
       markBusy(a.id, false)
     }
   }
 
   const handleDelete = async (a) => {
-    if (!window.confirm(`Permanently delete adjustment "${a.label}"? This cannot be undone.`)) return
+    if (!(await radaiConfirm(`Permanently delete adjustment "${a.label}"? This cannot be undone.`))) return
     markBusy(a.id, true)
     try {
       await payrollEngineService.deleteAdjustment(a.id)
       setItems((prev) => prev.filter((x) => x.id !== a.id))
     } catch (e) {
-      alert(e?.response?.data?.error || e.message || 'Failed to delete adjustment.')
+      await radaiAlert(e?.response?.data?.error || e.message || 'Failed to delete adjustment.')
     } finally {
       markBusy(a.id, false)
     }
@@ -189,13 +190,13 @@ export default function AdjustmentsList() {
   const handleBulkCancel = async () => {
     const ids = Array.from(selectedIds)
     if (ids.length === 0) return
-    if (!window.confirm(`Cancel ${ids.length} adjustment${ids.length === 1 ? '' : 's'}?`)) return
+    if (!(await radaiConfirm(`Cancel ${ids.length} adjustment${ids.length === 1 ? '' : 's'}?`))) return
     try {
       const res = await payrollEngineService.bulkCancelAdjustments(ids)
       await load()
-      alert(`Cancelled ${res.cancelled} of ${res.requested} adjustment${res.requested === 1 ? '' : 's'}.`)
+      await radaiAlert(`Cancelled ${res.cancelled} of ${res.requested} adjustment${res.requested === 1 ? '' : 's'}.`)
     } catch (e) {
-      alert(e?.response?.data?.error || e.message || 'Bulk cancel failed.')
+      await radaiAlert(e?.response?.data?.error || e.message || 'Bulk cancel failed.')
     }
   }
 

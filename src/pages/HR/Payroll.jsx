@@ -9,63 +9,70 @@
  *   When user clicks a workflow notification, they're navigated here with ?run=<id>
  *   The component auto-switches to the "engine" tab and selects that payroll run.
  */
+import './payroll/radaiPayroll.css'
 import { useState, useEffect, useCallback } from 'react'
 import { useSelector } from 'react-redux'
-import { useSearchParams } from 'react-router-dom'
+import { Navigate, useSearchParams } from 'react-router-dom'
 import * as HeroIcons from '@heroicons/react/24/outline'
 import {
   PAYROLL_TABS,
   PAYROLL_DEFAULT_TAB,
-  PAYROLL_COPY,
-  PAYROLL_FULLSCREEN_ENABLED,
 } from '../../config/hrPayroll.config'
 
 // Lazy-import modules (all exist in the payroll/ subfolder)
 import PayrollDashboard      from './payroll/PayrollDashboard'
 import AttendanceDashboard   from './payroll/AttendanceDashboard'
 import LeaveDashboard        from './payroll/LeaveDashboard'
-import PayrollEngine         from './payroll/PayrollEngine'
 import ApprovalTracker       from './payroll/ApprovalTracker'
 
 const TAB_COMPONENTS = {
   dashboard:  PayrollDashboard,
   attendance: AttendanceDashboard,
   leave:      LeaveDashboard,
-  engine:     PayrollEngine,
+  engine:     PayrollDashboard,
+  salary:     PayrollDashboard,
   tracker:    ApprovalTracker,
 }
 
-export default function Payroll() {
-  const [searchParams] = useSearchParams()
-  const [activeTab,    setActiveTab]    = useState(PAYROLL_DEFAULT_TAB)
+export default function Payroll({ module = 'payroll' }) {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [activeTab,    setActiveTab]    = useState(module === 'payroll' ? PAYROLL_DEFAULT_TAB : module)
   const [activeRunId,  setActiveRunId]  = useState(null)
-  const [isFullscreen, setIsFullscreen] = useState(false)
 
   // ── Notification deep-link handling ────────────────────────────────────────
   // When user clicks a workflow notification, auto-switch to engine tab and select the run
   useEffect(() => {
+    if (module !== 'payroll') { setActiveTab(module); setActiveRunId(null); return }
     const runIdFromUrl = searchParams.get('run')
+    const tabFromUrl = searchParams.get('tab')
     if (runIdFromUrl) {
       setActiveRunId(runIdFromUrl)
-      setActiveTab('engine')  // Auto-switch to engine tab
-      console.log(`[Payroll] Notification deep-link detected: run=${runIdFromUrl}, switching to engine tab`)
-    }
-  }, [searchParams])
-
-  // Sync state with native fullscreenchange so the button icon stays accurate
-  useEffect(() => {
-    const onFsChange = () => setIsFullscreen(!!document.fullscreenElement)
-    document.addEventListener('fullscreenchange', onFsChange)
-    return () => document.removeEventListener('fullscreenchange', onFsChange)
-  }, [])
-
-  const toggleFullscreen = useCallback(() => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {})
+      setActiveTab('salary')
+      console.log(`[Payroll] Notification deep-link detected: run=${runIdFromUrl}, switching to Salary Management`)
     } else {
-      document.exitFullscreen().catch(() => {})
+      // `engine` was the former top-level route. Keep bookmarks and
+      // notifications working while presenting one canonical workspace.
+      const canonicalTab = tabFromUrl === 'engine' ? 'salary' : tabFromUrl
+      if (canonicalTab && PAYROLL_TABS.some((tab) => tab.id === canonicalTab)) {
+        setActiveTab(canonicalTab)
+        if (tabFromUrl === 'engine') {
+          const next = new URLSearchParams(searchParams)
+          next.set('tab', 'salary')
+          setSearchParams(next, { replace: true })
+        }
+      }
     }
-  }, [])
+  }, [searchParams, setSearchParams, module])
+
+  const selectTab = useCallback((tabId) => {
+    const canonicalTab = tabId === 'engine' ? 'salary' : tabId
+    setActiveTab(canonicalTab)
+    if (canonicalTab !== 'salary') setActiveRunId(null)
+    const next = new URLSearchParams(searchParams)
+    next.set('tab', canonicalTab)
+    if (canonicalTab !== 'salary') next.delete('run')
+    setSearchParams(next, { replace: true })
+  }, [searchParams, setSearchParams])
 
   // ── Role-based tab visibility ────────────────────────────────────────────
   const rbacUser   = useSelector(s => s.rbac?.currentUser)
@@ -74,57 +81,49 @@ export default function Payroll() {
     authUser?.is_staff ||
     authUser?.is_superuser ||
     rbacUser?.roles?.some(r =>
-      r.code?.startsWith('hr') || r.code === 'admin' || r.code === 'superadmin'
+      r.code?.startsWith('hr') || ['admin', 'superadmin', 'super_admin'].includes(r.code)
     )
   ) ?? false
   // Approval Tracker is restricted to super-admins and platform admins
   const isSuperAdmin = (
     authUser?.is_superuser ||
-    rbacUser?.roles?.some(r => r.code === 'superadmin' || r.code === 'admin')
+    rbacUser?.roles?.some(r => ['admin', 'superadmin', 'super_admin'].includes(r.code))
   ) ?? false
   const visibleTabs = PAYROLL_TABS.filter(tab =>
-    (!tab.hrOnly || isHRManager) && (!tab.adminOnly || isSuperAdmin)
+    tab.id !== 'salary' && (!tab.hrOnly || isHRManager) && (!tab.adminOnly || isSuperAdmin)
   )
 
-  const ActiveModule = TAB_COMPONENTS[activeTab]
+  const [headerActions, setHeaderActions] = useState(null)
+  const effectiveTab = module === 'payroll' ? activeTab : module
+  const ActiveModule = TAB_COMPONENTS[effectiveTab]
+  const title = module === 'attendance' ? 'Attendance Management' : module === 'leave' ? 'Leave Management' : 'Payroll Management'
+  const ModuleIcon = module === 'attendance' ? HeroIcons.ClipboardDocumentCheckIcon : module === 'leave' ? HeroIcons.CalendarDaysIcon : HeroIcons.BanknotesIcon
+  const legacyTab = searchParams.get('tab')?.replace(/,$/, '')
+  if (module === 'payroll' && ['attendance', 'leave'].includes(legacyTab)) {
+    const remaining = new URLSearchParams(searchParams)
+    remaining.delete('tab')
+    return <Navigate to={{ pathname: `/hr/${legacyTab}`, search: remaining.toString() }} replace />
+  }
 
   return (
-    <div className="bg-slate-50">
+    <div className={`min-h-screen bg-slate-50 ${module === 'attendance' ? 'attendance-page' : ''}`}>
+      {module === 'attendance' && <h1 className="sr-only">Attendance Management</h1>}
       {/* Page Header */}
-      <div className="bg-white border-b border-slate-200">
-        <div className="px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between flex-wrap gap-3">
+      {module !== 'attendance' && <div className="border-b border-slate-200 bg-white">
+        <div className="px-4 py-5 sm:px-6 lg:px-8">
+          <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                <HeroIcons.BanknotesIcon className="w-6 h-6 text-blue-600" />
-                {PAYROLL_COPY.pageTitle}
+              <h1 className="flex items-center gap-3 text-xl font-semibold tracking-tight text-slate-900">
+                <span className="rounded-lg border border-indigo-100 bg-indigo-50 p-2"><ModuleIcon className="h-5 w-5 text-indigo-600" /></span>
+                {title}
               </h1>
-              <p className="text-sm text-slate-500 mt-0.5">{PAYROLL_COPY.pageSubtitle}</p>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5">
-                <HeroIcons.ShieldCheckIcon className="w-4 h-4 text-emerald-500" />
-                PostgreSQL · AWS S3 · Rule-based AI
-              </div>
-              {PAYROLL_FULLSCREEN_ENABLED && (
-                <button
-                  type="button"
-                  onClick={toggleFullscreen}
-                  title={PAYROLL_COPY.fullscreenTitle}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-slate-50 text-slate-600 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700 transition-colors"
-                >
-                  {isFullscreen
-                    ? <HeroIcons.ArrowsPointingInIcon  className="w-4 h-4" />
-                    : <HeroIcons.ArrowsPointingOutIcon className="w-4 h-4" />
-                  }
-                  {isFullscreen ? PAYROLL_COPY.fullscreenExit : PAYROLL_COPY.fullscreenEnter}
-                </button>
-              )}
-            </div>
+            {module === 'leave' && <div ref={setHeaderActions} />}
+
           </div>
 
           {/* Tab Navigation */}
-          <div className="mt-4 flex gap-1 overflow-x-auto pb-0.5 scrollbar-hide">
+          {module === 'payroll' && visibleTabs.length > 1 && <div className="mt-4 flex flex-wrap gap-1 rounded-lg bg-slate-50 p-1">
             {visibleTabs.map((tab) => {
               const Icon = HeroIcons[tab.icon] || HeroIcons.ChartBarIcon
               const isActive = activeTab === tab.id
@@ -132,33 +131,35 @@ export default function Payroll() {
                 <button
                   key={tab.id}
                   type="button"
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => selectTab(tab.id)}
                   title={tab.description}
-                  className={`flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium rounded-t-lg border-b-2 whitespace-nowrap transition-colors ${
+                  className={`flex min-w-0 items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-all ${
                     isActive
-                      ? 'border-blue-600 text-blue-700 bg-blue-50/60'
-                      : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                      ? 'border-indigo-200 bg-white text-indigo-700 shadow-sm'
+                      : 'border-transparent bg-transparent text-slate-600 hover:bg-white hover:text-indigo-700'
                   }`}
                 >
-                  <Icon className="w-4 h-4" />
-                  {tab.label}
+                  <span className={`flex h-5 w-5 shrink-0 items-center justify-center ${isActive ? 'text-indigo-600' : 'text-slate-400'}`}><Icon className="h-4 w-4" /></span>
+                  <span className="truncate">{tab.label}</span>
                 </button>
               )
             })}
-          </div>
+          </div>}
         </div>
-      </div>
+      </div>}
 
       {/* Module Content */}
-      <div className="px-4 sm:px-6 lg:px-8 py-6">
+      <div className={`px-4 py-5 sm:px-6 lg:px-8 ${effectiveTab !== 'dashboard' ? 'radai-payroll-module' : ''} ${module === 'attendance' ? 'attendance-page-content' : ''}`}>
         {ActiveModule ? (
           <ActiveModule
+            headerActions={headerActions}
             activeRunId={activeRunId}
+            initialTab={activeTab === 'salary' && !activeRunId ? 'employees' : undefined}
             onSelectRun={(run) => {
               const id = typeof run === 'string' ? run : run?.id
               setActiveRunId(id)
             }}
-            onSwitchTab={(tabId) => setActiveTab(tabId)}
+            onSwitchTab={selectTab}
           />
         ) : (
           <div className="bg-white rounded-xl border border-slate-200 p-14 text-center text-slate-400">

@@ -1,6 +1,10 @@
-﻿/**
+import { useCurrentProfilePhoto } from '../../components/Layout/ProfilePhotoContext'
+import ProfileTimesheetTables from '../../components/HR/ProfileTimesheetTables'
+import { useSearchParams } from 'react-router-dom'
+import { radaiAlert, radaiConfirm } from '../../services/radaiDialog'
+/**
  * Employee Self-Service (ESS) Portal
- * Route: /hr/leave
+ * Route: /hr/Employeprofile
  * ============================================================
  * A standalone employee-facing dashboard. Read-only integration
  * with existing payroll, timesheet, and RBAC services.
@@ -20,7 +24,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useSelector } from 'react-redux'
+import { LeavePanel, ProfileLeaveSummary, ProfileLeaveRequests } from '../../components/HR/ProfileLeaveWorkspace'
+import { useDispatch, useSelector } from 'react-redux'
 import * as HeroIcons from '@heroicons/react/24/outline'
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
@@ -28,11 +33,28 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, AreaChart, Area,
 } from 'recharts'
-import PeopleNav from '../../components/PeopleNav/PeopleNav'
 import rbacService   from '../../services/rbac.service'
 import payrollService from '../../services/payroll.service'
 import payrollEngineService from '../../services/payrollEngine.service'
 import timesheetSvc   from '../../services/timesheet.service'
+import siteVisitService from '../../services/siteVisit.service'
+import notificationService from '../../services/notification.service'
+import EmployeeServiceRequestsPanel from '../../components/HR/EmployeeServiceRequestsPanel'
+import EmployeeTalentPerformancePanel from '../../components/HR/EmployeeTalentPerformancePanel'
+import EmployeeWorkforceSchedulePanel from '../../components/HR/EmployeeWorkforceSchedulePanel'
+import UnifiedHRWorkspacePanel from '../../components/HR/UnifiedHRWorkspacePanel'
+import HRAssistantPanel from '../../components/HR/HRAssistantPanel'
+import EmployeeTabLoading from '../../components/HR/EmployeeTabLoading'
+import MySignaturePanel from '../../components/HR/MySignaturePanel'
+import MyDigitalStampPanel from '../../components/HR/MyDigitalStampPanel'
+import Profile from '../Profile'
+import DocumentUploadSection from '../../components/Profile/DocumentUploadSection'
+import ProfileOverviewWorkspace, { ProfileWorkspaceNavigation } from '../../components/HR/ProfileOverviewWorkspace'
+import ProfileMetricCard from '../../components/HR/ProfileMetricCard'
+import '../../components/HR/ProfileTabWorkspace.css'
+import apiClient from '../../services/api.service'
+import { updateUser } from '../../store/slices/authSlice'
+import { API_BASE_URL } from '../../config/api.config'
 import { fmtCurrency } from '../../config/hrPayroll.config'
 import { ESS_LEAVE_TYPE_CONFIG, ESS_FEATURES, ESS_LEAVE_FORM_FIELDS, LEAVE_YEAR, DAILY_TRACKER_PRIORITIES, DAILY_TRACKER_STATUSES, DAILY_TRACKER_PROJECT_CATEGORIES, DAILY_TRACKER_COPY, DAILY_TRACKER_APPROVAL_STATUSES, DAILY_TRACKER_WIZARD_STEPS, DAILY_TRACKER_SUBMIT_TO_OPTIONS, ESS_ATT_MONTHS_BACK, ESS_ATT_STANDARD_DAY_HRS, ESS_ATT_MAX_DAILY_HRS, ESS_ATT_STANDARD_WORKING_DAYS, ESS_ATT_RATE_GOOD, ESS_ATT_RATE_WARN, ESS_ATT_PARTIAL_DAY_HRS, ESS_ATT_OVERTIME_HRS, ESS_ATT_FEATURES, ESS_ATT_DAY_STATUS, ESS_ATT_DOW, ESS_ATT_COPY, ESS_TIMESHEET_TABS, ESS_TIMESHEET_DEFAULT_TAB, ESS_TIMESHEET_POLL_MS, ESS_TIMESHEET_COPY, ESS_TIMESHEET_STATUS } from '../../config/hrLeave.config'
 
@@ -42,15 +64,22 @@ import { ESS_LEAVE_TYPE_CONFIG, ESS_FEATURES, ESS_LEAVE_FORM_FIELDS, LEAVE_YEAR,
 
 const ESS_TABS = [
   { id: 'overview',    label: 'Overview',        icon: 'HomeIcon' },
+  { id: 'career',      label: 'Career Profile',  icon: 'AcademicCapIcon' },
+  { id: 'documents', label: 'Documents', icon: 'DocumentTextIcon' },
+  { id: 'notifications', label: 'Notifications', icon: 'BellIcon' },
+  { id: 'team', label: 'Team calendar', icon: 'UserGroupIcon' },
+  { id: 'signature',   label: 'My Signature',    icon: 'PencilSquareIcon' },
+  { id: 'workspace',   label: 'My Work',         icon: 'Squares2X2Icon' },
   { id: 'leave',       label: 'Leave',           icon: 'CalendarDaysIcon' },
-  { id: 'attendance',  label: 'Attendance',      icon: 'ClipboardDocumentCheckIcon' },
-  { id: 'timesheet',   label: 'Timesheet',       icon: 'ClockIcon' },
+  { id: 'attendance',  label: 'Work & Attendance', icon: 'ClipboardDocumentCheckIcon' },
   { id: 'payroll',     label: 'Payroll',         icon: 'BanknotesIcon' },
-  { id: 'team',          label: 'Team',            icon: 'UserGroupIcon' },
+  { id: 'requests',    label: 'My Requests',     icon: 'InboxStackIcon' },
+  { id: 'performance', label: 'Performance',     icon: 'ChartBarSquareIcon' },
+  { id: 'schedule',    label: 'Schedule',        icon: 'CalendarIcon' },
   { id: 'daily_tracker', label: 'Daily Tracker',   icon: 'ClipboardDocumentListIcon' },
   { id: 'site_visits', label: 'Site Visits',    icon: 'MapPinIcon' },
   { id: 'twin',        label: 'Digital Twin',    icon: 'SparklesIcon' },
-  { id: 'notifications', label: 'Notifications', icon: 'BellIcon' },
+  { id: 'assistant',     label: 'HR Assistant',   icon: 'ChatBubbleLeftRightIcon' },
 ]
 
 // Leave type config sourced from hrLeave.config.js \u2014 single source of truth
@@ -109,31 +138,12 @@ const Icon = ({ name, className = 'w-5 h-5' }) => {
 }
 
 const KpiCard = ({ icon, label, value, sub, tone = 'blue', trend = null }) => {
-  const tones = {
-    blue:   { bg: 'bg-blue-50',   border: 'border-blue-100',   text: 'text-blue-700',   icon: 'text-blue-500' },
-    green:  { bg: 'bg-emerald-50',border: 'border-emerald-100',text: 'text-emerald-700',icon: 'text-emerald-500' },
-    amber:  { bg: 'bg-amber-50',  border: 'border-amber-100',  text: 'text-amber-700',  icon: 'text-amber-500' },
-    purple: { bg: 'bg-violet-50', border: 'border-violet-100', text: 'text-violet-700', icon: 'text-violet-500' },
-    rose:   { bg: 'bg-rose-50',   border: 'border-rose-100',   text: 'text-rose-700',   icon: 'text-rose-500' },
-    slate:  { bg: 'bg-slate-50',  border: 'border-slate-100',  text: 'text-slate-700',  icon: 'text-slate-500' },
-  }
-  const t = tones[tone] || tones.blue
-  return (
-    <div className={`${t.bg} ${t.border} border rounded-xl p-4 flex flex-col gap-1`}>
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">{label}</span>
-        <Icon name={icon} className={`w-4 h-4 ${t.icon}`} />
-      </div>
-      <div className={`text-2xl font-bold ${t.text}`}>{value ?? EMPTY_DISPLAY}</div>
-      {sub && <div className="text-xs text-slate-400">{sub}</div>}
-      {trend !== null && (
-        <div className={`text-xs flex items-center gap-1 mt-0.5 ${trend >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-          <Icon name={trend >= 0 ? 'ArrowUpIcon' : 'ArrowDownIcon'} className="w-3 h-3" />
-          {Math.abs(trend)}% vs last month
-        </div>
-      )}
-    </div>
-  )
+  return <ProfileMetricCard icon={<Icon name={icon} />} label={label} value={value ?? EMPTY_DISPLAY} sub={sub} tone={tone}>
+    {trend !== null && <div className={`text-xs flex items-center gap-1 mt-0.5 ${trend >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+      <Icon name={trend >= 0 ? 'ArrowUpIcon' : 'ArrowDownIcon'} className="w-3 h-3" />
+      {Math.abs(trend)}% vs last month
+    </div>}
+  </ProfileMetricCard>
 }
 
 const SectionCard = ({ title, subtitle, icon, action, children, className = '' }) => (
@@ -236,7 +246,7 @@ const roleLabel = (role) => {
 }
 
 // Build a simple AI insight engine from live data
-const generateInsights = ({ leaveRecord, monthlyTs, today, slips }) => {
+const generateInsights = ({ leaveRecord, monthlyTs, today, slips, salaryVisible = false }) => {
   const insights = []
   const now = new Date()
 
@@ -307,7 +317,7 @@ const generateInsights = ({ leaveRecord, monthlyTs, today, slips }) => {
         id: 'payslip',
         icon: 'BanknotesIcon',
         severity: 'info',
-        title: `Latest payslip: ${fmtCurrency(net)} net`,
+        title: salaryVisible ? `Latest payslip: ${fmtCurrency(net)} net` : 'Latest payslip is available',
         description: `Your most recent salary slip (${MONTH_SHORT[(latest.month || 1) - 1]} ${latest.year}) has status: ${latest.status || 'generated'}.`,
       })
     }
@@ -337,7 +347,24 @@ const INSIGHT_TONES = {
 // Section: Employee Profile Header
 // -----------------------------------------------------------------------------
 
-const EmployeeProfileHeader = ({ profile, leaveRecord, monthlyTs, salaryInfo, loading }) => {
+const EmployeeProfileHeader = ({
+  profile,
+  leaveRecord,
+  monthlyTs,
+  salaryInfo,
+  loading,
+  activeTab,
+  onTabChange,
+  tabBadges,
+  salaryVisible,
+  onToggleSalary,
+  uploadingPhoto,
+  photoUploadState,
+  onPhotoUpload,
+  todayData,
+  liveAttendance,
+  authenticatedPhotoUrl,
+}) => {
   // UserProfileSerializer declares first_name/last_name/username write_only —
   // they're never present on the GET response. The real values live on the
   // nested `user` object (UserSerializer), same as used elsewhere in this file.
@@ -345,131 +372,167 @@ const EmployeeProfileHeader = ({ profile, leaveRecord, monthlyTs, salaryInfo, lo
     ? [profile.user?.first_name, profile.user?.last_name].filter(Boolean).join(' ') || profile.user?.username
     : null
   const initials = name ? avatarInitials(name) : '??'
+  const [photoFailed, setPhotoFailed] = useState(false)
+  const photoInputRef = useRef(null)
+  const rawPhotoUrl = authenticatedPhotoUrl || profile?.profile_photo
+  const photoUrl = useMemo(() => {
+    if (!rawPhotoUrl) return null
+    if (/^(https?:|data:|blob:)/i.test(rawPhotoUrl)) return rawPhotoUrl
+    const backendOrigin = API_BASE_URL.replace(/\/api\/v1\/?$/, '')
+    return new URL(rawPhotoUrl, backendOrigin || window.location.origin).toString()
+  }, [rawPhotoUrl])
 
-  const quickStats = [
-    {
-      label: 'Leave Balance',
-      value: leaveRecord ? `${Number(leaveRecord.leave_balance).toFixed(1)} d` : EMPTY_DISPLAY,
-      icon: 'CalendarDaysIcon',
-      tone: 'blue',
-    },
-    {
-      label: 'Month Hours',
-      value: monthlyTs ? fmtHours(monthlyTs.total_hours) : EMPTY_DISPLAY,
-      icon: 'ClockIcon',
-      tone: 'green',
-    },
-    {
-      label: 'Month OT',
-      value: monthlyTs ? fmtHours(monthlyTs.total_overtime) : EMPTY_DISPLAY,
-      icon: 'ArrowTrendingUpIcon',
-      tone: 'amber',
-    },
-    {
-      label: 'Basic Salary',
-      value: salaryInfo ? fmtCurrency(salaryInfo.basic_salary) : EMPTY_DISPLAY,
-      icon: 'BanknotesIcon',
-      tone: 'purple',
-    },
-  ]
+  useEffect(() => setPhotoFailed(false), [photoUrl])
+
+  const jobTitle = profile?.engineer_profile?.designation || profile?.designation || profile?.job_title
+  const email = profile?.email || profile?.user?.email
+  const location = profile?.office_location || profile?.location
+  const presence = useMemo(() => {
+    const liveData = liveAttendance?.data || liveAttendance
+    const userActivity = liveAttendance?.user_activity
+    const checkIn = todayData?.check_in_time || todayData?.first_in
+    const checkOut = todayData?.check_out_time || todayData?.last_out
+    const attendanceStatus = String(todayData?.status || '').toLowerCase()
+    const lastLoginValue = userActivity?.last_login || profile?.last_login_at || profile?.last_login || profile?.user?.last_login
+    const lastLogin = lastLoginValue ? new Date(lastLoginValue) : null
+    const hasValidLogin = lastLogin && !Number.isNaN(lastLogin.getTime())
+    const loginIsRecent = hasValidLogin && (Date.now() - lastLogin.getTime()) <= (30 * 60 * 1000)
+    const loginIsToday = hasValidLogin && lastLogin.toDateString() === new Date().toDateString()
+    const punchInCount = Number(liveData?.punch_in_count ?? todayData?.punch_in_count)
+    const punchOutCount = Number(liveData?.punch_out_count ?? todayData?.punch_out_count)
+    const hasAuthoritativeLiveState = typeof liveData?.is_in === 'boolean'
+    const isPunchedIn = hasAuthoritativeLiveState
+      ? liveData.is_in
+      : todayData?.is_in === true
+        || (Number.isFinite(punchInCount) && Number.isFinite(punchOutCount) && punchInCount > punchOutCount)
+        || Boolean(checkIn && !checkOut)
+    const loginIsActive = userActivity?.is_active === true || loginIsRecent
+    const hasRecordedActivity = Boolean(
+      checkIn
+      || checkOut
+      || liveData?.last_punch
+      || loginIsToday
+      || (attendanceStatus && !['missing', 'absent'].includes(attendanceStatus))
+    )
+
+    if (isPunchedIn || loginIsActive) {
+      return {
+        label: isPunchedIn ? 'In office' : 'Active online',
+        className: 'bg-emerald-500',
+      }
+    }
+    if (hasRecordedActivity) {
+      return { label: 'Away', className: 'bg-slate-400' }
+    }
+    return { label: 'No activity today', className: 'bg-rose-500' }
+  }, [liveAttendance, profile, todayData])
 
   return (
-    <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 rounded-2xl shadow-lg overflow-hidden">
-      <div className="px-6 py-6">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5">
-          {/* Avatar */}
-          <div className="relative flex-shrink-0">
-            {profile?.profile_photo ? (
+    <section className="epw-profile-header">
+      {/* Facebook-style cover: visual context first, controls stay secondary. */}
+      <div className="epw-cover">
+        <div className="absolute inset-0 bg-[linear-gradient(125deg,#1877F2_0%,#1769d2_50%,#0d47a1_100%)]" />
+        <div className="absolute -right-20 -top-28 h-80 w-80 rounded-full border-[52px] border-white/10" />
+        <div className="absolute bottom-[-190px] left-[12%] h-96 w-96 rounded-full border-[70px] border-white/[0.07]" />
+        <div className="absolute inset-0 opacity-20 [background-image:radial-gradient(circle_at_center,white_1px,transparent_1px)] [background-size:28px_28px]" />
+        <div className="relative flex h-full items-start p-5 sm:p-7">
+          <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-black/10 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-sm">
+            <Icon name="UserCircleIcon" className="h-4 w-4" />
+            Employee Profile
+          </div>
+        </div>
+      </div>
+
+      <div className="epw-identity">
+        <div className="epw-identity-row">
+          <div className="epw-avatar">
+            {photoUrl && !photoFailed ? (
               <img
-                src={profile.profile_photo}
-                alt={name}
-                className="w-20 h-20 rounded-2xl object-cover border-4 border-white/30 shadow-lg"
+                src={photoUrl}
+                alt={name || 'Employee'}
+                onError={() => setPhotoFailed(true)}
+                className="h-[140px] w-[140px] rounded-full border-[5px] border-white bg-white object-cover shadow-md"
               />
             ) : (
-              <div className="w-20 h-20 rounded-2xl bg-white/20 border-4 border-white/30 flex items-center justify-center">
-                <span className="text-2xl font-bold text-white">{initials}</span>
+              <div className="flex h-[140px] w-[140px] items-center justify-center rounded-full border-[5px] border-white bg-blue-100 shadow-md">
+                <span className="text-4xl font-bold text-[#1877F2]">{initials}</span>
               </div>
             )}
-            <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-emerald-400 border-2 border-white shadow" title="Active" />
+            <span
+              className={`absolute bottom-2 right-2 h-7 w-7 rounded-full border-4 border-white ${presence.className}`}
+              title={presence.label}
+              aria-label={`Presence: ${presence.label}`}
+            />
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="sr-only"
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                event.target.value = ''
+                if (file) onPhotoUpload(file)
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => photoInputRef.current?.click()}
+              disabled={uploadingPhoto || loading}
+              className="absolute bottom-1 left-1 grid h-10 w-10 place-items-center rounded-full border-2 border-white bg-[#1877F2] text-white shadow-md transition hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-70"
+              aria-label={uploadingPhoto ? 'Uploading profile picture' : photoUrl ? 'Change profile picture' : 'Upload profile picture'}
+              title={photoUrl ? 'Change profile picture' : 'Upload a profile picture'}
+            >
+              <Icon name={uploadingPhoto ? 'ArrowPathIcon' : 'CameraIcon'} className={`h-5 w-5 ${uploadingPhoto ? 'animate-spin' : ''}`} />
+            </button>
           </div>
 
-          {/* Info */}
-          <div className="flex-1 min-w-0">
+          <div className="epw-profile-name">
             {loading ? (
               <div className="space-y-2">
-                <SkeletonBox className="h-6 w-48 bg-white/20" />
-                <SkeletonBox className="h-4 w-32 bg-white/20" />
+                <SkeletonBox className="h-8 w-56" />
+                <SkeletonBox className="h-4 w-72 max-w-full" />
               </div>
             ) : (
               <>
-                <h1 className="text-2xl font-bold text-white truncate">{name || 'Employee'}</h1>
-                <div className="flex flex-wrap gap-3 mt-1 text-blue-100 text-sm">
-                  {profile?.employee_id && (
-                    <span className="flex items-center gap-1">
-                      <Icon name="IdentificationIcon" className="w-4 h-4" />
-                      {profile.employee_id}
-                    </span>
-                  )}
-                  {(profile?.engineer_profile?.designation || profile?.designation) && (
-                    <span className="flex items-center gap-1">
-                      <Icon name="BriefcaseIcon" className="w-4 h-4" />
-                      {profile?.engineer_profile?.designation || profile?.designation}
-                    </span>
-                  )}
-                  {profile?.department && (
-                    <span className="flex items-center gap-1">
-                      <Icon name="BuildingOfficeIcon" className="w-4 h-4" />
-                      {profile.department}
-                    </span>
-                  )}
-                  {profile?.email && (
-                    <span className="flex items-center gap-1">
-                      <Icon name="EnvelopeIcon" className="w-4 h-4" />
-                      {profile.email}
-                    </span>
-                  )}
+                <h1 className="truncate text-3xl font-bold tracking-tight text-slate-900">{name || 'Employee'}</h1>
+                <p className="mt-1 text-sm font-medium text-slate-600">
+                  {[jobTitle, profile?.department].filter(Boolean).join(` ${BULLET_DISPLAY} `) || 'RADAI Employee'}
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+                  {profile?.employee_id && <span className="inline-flex items-center gap-1.5"><Icon name="IdentificationIcon" className="h-4 w-4" />{profile.employee_id}</span>}
+                  {email && <span className="inline-flex items-center gap-1.5"><Icon name="EnvelopeIcon" className="h-4 w-4" />{email}</span>}
+                  {location && <span className="inline-flex items-center gap-1.5"><Icon name="MapPinIcon" className="h-4 w-4" />{location}</span>}
                 </div>
-                <div className="mt-2 flex items-center gap-2">
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-400/20 text-emerald-200 text-xs font-medium border border-emerald-300/30">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                    {profile?.is_active !== false ? 'Active Employee' : 'Inactive'}
-                  </span>
-                  {profile?.roles?.[0] && (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/10 text-white/80 text-xs font-medium border border-white/20">
-                      {roleLabel(profile.roles[0])}
-                    </span>
-                  )}
-                </div>
+                {photoUploadState && (
+                  <p
+                    role="status"
+                    aria-live="polite"
+                    className={`mt-2 text-xs font-medium ${photoUploadState.type === 'error' ? 'text-rose-600' : 'text-emerald-600'}`}
+                  >
+                    {photoUploadState.message}
+                  </p>
+                )}
               </>
             )}
           </div>
 
-          {/* ESS badge */}
-          <div className="hidden lg:flex flex-col items-end gap-1">
-            <div className="flex items-center gap-2 bg-white/10 border border-white/20 rounded-xl px-4 py-2">
-              <Icon name="SparklesIcon" className="w-5 h-5 text-blue-200" />
-              <div>
-                <div className="text-white font-semibold text-sm">My Workspace</div>
-                <div className="text-blue-200 text-xs">My Profile</div>
-              </div>
-            </div>
+          <div className="epw-profile-badges">
+            <span className={`inline-flex items-center rounded-lg px-3 py-2 text-xs font-semibold ${profile?.is_active !== false ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+              {profile?.is_active !== false ? 'Active Employee' : 'Inactive'}
+            </span>
+            {profile?.roles?.[0] && (
+              <span className="inline-flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700">
+                <Icon name="ShieldCheckIcon" className="h-4 w-4 text-[#1877F2]" />
+                {roleLabel(profile.roles[0])}
+              </span>
+            )}
           </div>
         </div>
 
-        {/* Quick stats row */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5">
-          {quickStats.map((s) => (
-            <div key={s.label} className="bg-white/10 border border-white/20 rounded-xl p-3 backdrop-blur-sm">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-blue-200 text-xs">{s.label}</span>
-                <Icon name={s.icon} className="w-4 h-4 text-blue-200" />
-              </div>
-              <div className="text-white font-bold text-lg">{s.value}</div>
-            </div>
-          ))}
-        </div>
       </div>
-    </div>
+
+      <ProfileWorkspaceNavigation activeTab={activeTab} onChange={onTabChange} />
+    </section>
   )
 }
 
@@ -613,200 +676,6 @@ const AIInsightsPanel = ({ insights, loading }) => (
 // Section: Leave Dashboard
 // -----------------------------------------------------------------------------
 
-const LeaveBalanceSection = ({ leaveRecord, requests, loading }) => {
-  const earned    = Number(leaveRecord?.total_earned)   || 0
-  const encashed  = Number(leaveRecord?.total_encashed) || 0
-  const balance   = Number(leaveRecord?.leave_balance)  || 0
-
-  // Calculate taken days per leave type from requests (approved only)
-  const approvedRequests = (requests || []).filter(r => r.status?.toUpperCase() === 'APPROVED')
-  
-  // Group approved requests by leave type and calculate total days taken
-  const leaveTypeUsage = approvedRequests.reduce((acc, req) => {
-    // Extract leave type name from API response
-    // API returns: leave_type (ID) and leave_type_detail (object with name, code, etc.)
-    let leaveTypeName = ''
-    if (req.leave_type_detail && req.leave_type_detail.name) {
-      leaveTypeName = req.leave_type_detail.name
-    } else if (req.leave_type_detail && req.leave_type_detail.code) {
-      leaveTypeName = req.leave_type_detail.code
-    } else if (typeof req.leave_type_display === 'string') {
-      leaveTypeName = req.leave_type_display
-    } else if (typeof req.leave_type === 'string') {
-      leaveTypeName = req.leave_type
-    } else {
-      leaveTypeName = 'annual'  // default fallback
-    }
-    
-    leaveTypeName = String(leaveTypeName).toLowerCase()
-    const days = Number(req.days_requested || req.duration_days || req.days || 0)
-    
-    // Match to config key (annual, sick, emergency, etc.)
-    let configKey = 'annual'  // default
-    if (leaveTypeName.includes('sick')) configKey = 'sick'
-    else if (leaveTypeName.includes('emergency')) configKey = 'emergency'
-    else if (leaveTypeName.includes('compassionate')) configKey = 'compassionate'
-    else if (leaveTypeName.includes('maternity')) configKey = 'maternity'
-    else if (leaveTypeName.includes('paternity')) configKey = 'paternity'
-    else if (leaveTypeName.includes('study')) configKey = 'study'
-    else if (leaveTypeName.includes('unpaid')) configKey = 'unpaid'
-    else if (leaveTypeName.includes('annual')) configKey = 'annual'
-    
-    acc[configKey] = (acc[configKey] || 0) + days
-    return acc
-  }, {})
-
-  // Days Taken = sum across all leave types, computed live from approved
-  // requests — not leaveRecord.total_taken, which is a static snapshot from
-  // the one-off HR Excel import and is never updated as leave gets approved
-  // through the app (it stays 0 while leaveTypeUsage correctly shows real usage).
-  const taken = Object.values(leaveTypeUsage).reduce((sum, d) => sum + d, 0)
-
-  // Filter to only show enabled leave types (soft-coded control)
-  const leaveTypes = Object.entries(LEAVE_TYPE_CONFIG)
-    .filter(([key, cfg]) => cfg.enabled !== false)  // Default to true if enabled flag not set
-    .map(([key, cfg]) => ({
-      ...cfg,
-      key,
-      balance: key === 'annual' ? balance : 0,
-      taken:   leaveTypeUsage[key] || 0,  // Use calculated usage from requests
-    }))
-
-  const pieData = [
-    { name: 'Taken',    value: taken,   fill: '#3b82f6' },
-    { name: 'Balance',  value: balance, fill: '#10b981' },
-    { name: 'Encashed', value: encashed, fill: '#f59e0b' },
-  ].filter(d => d.value > 0)
-
-  const pending  = (requests || []).filter(r => r.status?.toUpperCase() === 'PENDING')
-  const approved = (requests || []).filter(r => r.status?.toUpperCase() === 'APPROVED')
-  const upcoming = approved.filter(r => new Date(r.start_date) >= new Date())
-
-  // Check if we have leave data (for production data availability check)
-  const hasLeaveData = leaveRecord && (balance > 0 || taken > 0 || earned > 0 || encashed > 0)
-
-  return (
-    <div className="space-y-5">
-      {/* Leave Balance Snapshot */}
-      {ESS_FEATURES.showLeaveBalanceSnapshot && (
-        <>
-          {(!hasLeaveData && ESS_FEATURES.requireLeaveDataForSnapshot) ? (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-700">
-              <div className="flex items-center gap-2">
-                <Icon name="ExclamationTriangleIcon" className="w-5 h-5 flex-shrink-0" />
-                <div>
-                  <div className="font-semibold">Leave data not available</div>
-                  <div className="text-xs text-amber-600 mt-1">
-                    Leave balance records will appear here once your HR administrator configures your leave entitlement.
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-              <KpiCard icon="CalendarDaysIcon" label="Annual Balance"  value={`${balance.toFixed(1)} d`}  sub={`${earned.toFixed(1)} earned`} tone="blue" />
-              <KpiCard icon="ClipboardDocumentCheckIcon" label="Days Taken" value={`${taken.toFixed(1)} d`} sub="This year" tone="green" />
-              <KpiCard icon="BanknotesIcon" label="Encashed" value={`${encashed.toFixed(1)} d`} sub="Leave encashment" tone="amber" />
-              <KpiCard icon="ClockIcon" label="Pending Requests" value={pending.length} sub="Awaiting approval" tone={pending.length > 0 ? 'rose' : 'slate'} />
-            </div>
-          )}
-        </>
-      )}
-
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-        {/* Leave type cards */}
-        <div className="xl:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {leaveTypes.map((lt) => (
-            <div key={lt.key} className={`${lt.bg} border rounded-xl p-4`}>
-              <div className="flex items-center justify-between mb-3">
-                <div className={`text-sm font-semibold ${lt.text}`}>{lt.label}</div>
-                {lt.entitlement > 0 && (
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full bg-white/60 ${lt.text}`}>
-                    {lt.entitlement} d/yr
-                  </span>
-                )}
-              </div>
-              {lt.key === 'annual' ? (
-                <>
-                  <div className={`text-3xl font-bold ${lt.text}`}>{balance.toFixed(1)}</div>
-                  <div className="text-xs text-slate-500 mt-0.5">days remaining</div>
-                  <div className="mt-3">
-                    <ProgressBar
-                      value={taken}
-                      max={lt.entitlement}
-                      color={lt.bar}
-                      label="Used"
-                    />
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className={`text-3xl font-bold ${lt.text}`}>{lt.taken.toFixed(1)}</div>
-                  <div className="text-xs text-slate-500 mt-0.5">days taken this year</div>
-                  {lt.entitlement > 0 && (
-                    <div className="mt-3">
-                      <ProgressBar
-                        value={lt.taken}
-                        max={lt.entitlement}
-                        color={lt.bar}
-                        label="Used"
-                      />
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          ))}
-        </div>
-
-        {/* Pie chart */}
-        <SectionCard title="Leave Distribution" icon="ChartPieIcon">
-          {loading ? (
-            <SkeletonBox className="h-40 w-full" />
-          ) : pieData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={180}>
-              <PieChart>
-                <Pie data={pieData} dataKey="value" cx="50%" cy="50%" outerRadius={65} innerRadius={35}>
-                  {pieData.map((entry, i) => (
-                    <Cell key={i} fill={entry.fill} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(v) => [`${Number(v).toFixed(1)} d`]} />
-                <Legend iconType="circle" iconSize={8} />
-              </PieChart>
-            </ResponsiveContainer>
-          ) : (
-            <EmptyNotice icon="ChartPieIcon" message="No leave data" />
-          )}
-        </SectionCard>
-      </div>
-
-      {/* Upcoming approved leaves */}
-      {upcoming.length > 0 && (
-        <SectionCard title="Upcoming Approved Leave" icon="CalendarDaysIcon">
-          <div className="divide-y divide-slate-100">
-            {upcoming.slice(0, 5).map((r) => (
-              <div key={r.id} className="py-2.5 flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-medium text-slate-800">{r.leave_type_display || r.leave_type || 'Leave'}</div>
-                  <div className="text-xs text-slate-400">{fmtDate(r.start_date)} â†’ {fmtDate(r.end_date)}</div>
-                </div>
-                <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-full">
-                  {Number(r.days_requested ?? 0)} day{Number(r.days_requested ?? 0) !== 1 ? 's' : ''}
-                </span>
-              </div>
-            ))}
-          </div>
-        </SectionCard>
-      )}
-    </div>
-  )
-}
-
-// -----------------------------------------------------------------------------
-// Section: Leave Request Form
-// -----------------------------------------------------------------------------
-
 const LeaveRequestForm = ({ leaveTypes, leaveRecord, requests, onSubmit, submitting, submitResult }) => {
   const [form, setForm] = useState({
     leave_type: '',
@@ -839,12 +708,12 @@ const LeaveRequestForm = ({ leaveTypes, leaveRecord, requests, onSubmit, submitt
       if (dow !== 0 && dow !== 6) days++
       d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)
     }
-    if (form.half_day) days = Math.max(0.5, days - 0.5)
+    if (form.half_day && form.start_date === form.end_date && days === 1) days = 0.5
     setCalcDays(days)
 
     // Conflict detection against approved requests
     const hasConflict = (requests || []).some(r => {
-      if (!['approved', 'pending'].includes(r.status)) return false
+      if (!['APPROVED', 'PENDING', 'RM_APPROVED'].includes(r.status?.toUpperCase())) return false
       const rs = new Date(r.start_date)
       const re = new Date(r.end_date)
       return s <= re && e >= rs
@@ -869,7 +738,7 @@ const LeaveRequestForm = ({ leaveTypes, leaveRecord, requests, onSubmit, submitt
   const types = leaveTypes?.length > 0 ? leaveTypes : defaultTypes
 
   return (
-    <SectionCard title="Apply for Leave" subtitle="Submit a new leave request" icon="PencilSquareIcon">
+    <LeavePanel title="Apply for leave" subtitle="Choose your dates. Your line manager reviews first, then HR.">
       {submitResult?.success && (
         <div className="mb-4 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl p-3 text-sm flex items-center gap-2">
           <Icon name="CheckCircleIcon" className="w-4 h-4 flex-shrink-0" />
@@ -892,7 +761,7 @@ const LeaveRequestForm = ({ leaveTypes, leaveRecord, requests, onSubmit, submitt
               value={form.leave_type}
               onChange={(e) => set('leave_type', e.target.value)}
               required
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
             >
               <option value="">Select leave type{ELLIPSIS_DISPLAY}</option>
               {types.map(t => (
@@ -901,16 +770,10 @@ const LeaveRequestForm = ({ leaveTypes, leaveRecord, requests, onSubmit, submitt
             </select>
           </div>
 
-          {/* Half day toggle */}
           <div className="flex items-end">
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <div
-                onClick={() => set('half_day', !form.half_day)}
-                className={`w-10 h-5 rounded-full transition-colors ${form.half_day ? 'bg-blue-500' : 'bg-slate-200'} relative`}
-              >
-                <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${form.half_day ? 'translate-x-5' : 'translate-x-0.5'}`} />
-              </div>
-              <span className="text-sm text-slate-600">Half Day</span>
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              <input type="checkbox" checked={form.half_day} onChange={event => set('half_day', event.target.checked)} />
+              Half day (one working day only)
             </label>
           </div>
 
@@ -923,7 +786,7 @@ const LeaveRequestForm = ({ leaveTypes, leaveRecord, requests, onSubmit, submitt
               onChange={(e) => set('start_date', e.target.value)}
               required
               min={todayStr()}
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
           </div>
 
@@ -936,7 +799,7 @@ const LeaveRequestForm = ({ leaveTypes, leaveRecord, requests, onSubmit, submitt
               onChange={(e) => set('end_date', e.target.value)}
               required
               min={form.start_date || todayStr()}
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
           </div>
         </div>
@@ -949,7 +812,7 @@ const LeaveRequestForm = ({ leaveTypes, leaveRecord, requests, onSubmit, submitt
             onChange={(e) => set('reason', e.target.value)}
             rows={3}
             placeholder={"Briefly describe your reason for leave\u2026"}
-            className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+            className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
           />
         </div>
         
@@ -970,7 +833,7 @@ const LeaveRequestForm = ({ leaveTypes, leaveRecord, requests, onSubmit, submitt
               onChange={(e) => set('contact_number', e.target.value)}
               required={ESS_LEAVE_FORM_FIELDS.contact_number.required}
               placeholder={ESS_LEAVE_FORM_FIELDS.contact_number.placeholder}
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
           </div>
         )}
@@ -988,7 +851,7 @@ const LeaveRequestForm = ({ leaveTypes, leaveRecord, requests, onSubmit, submitt
               onChange={(e) => set('substitute_name', e.target.value)}
               required={ESS_LEAVE_FORM_FIELDS.substitute_name.required}
               placeholder={ESS_LEAVE_FORM_FIELDS.substitute_name.placeholder}
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
           </div>
         )}
@@ -1005,17 +868,17 @@ const LeaveRequestForm = ({ leaveTypes, leaveRecord, requests, onSubmit, submitt
                 ref={fileInputRef}
                 type="file"
                 accept={ESS_LEAVE_FORM_FIELDS.attachment.accept}
-                onChange={(e) => {
+                onChange={async (e) => {
                   const file = e.target.files?.[0]
                   if (file && file.size > ESS_LEAVE_FORM_FIELDS.attachment.maxSize) {
-                    alert(`File size must be less than ${ESS_LEAVE_FORM_FIELDS.attachment.maxSize / 1048576}MB`)
+                    await radaiAlert(`File size must be less than ${ESS_LEAVE_FORM_FIELDS.attachment.maxSize / 1048576}MB`)
                     e.target.value = ''
                     return
                   }
                   set('attachment', file)
                 }}
                 required={ESS_LEAVE_FORM_FIELDS.attachment.required}
-                className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
               />
               {form.attachment && (
                 <div className="mt-1 text-xs text-slate-600 flex items-center gap-2">
@@ -1047,27 +910,27 @@ const LeaveRequestForm = ({ leaveTypes, leaveRecord, requests, onSubmit, submitt
               {form.leave_type === 'annual' && (
                 <div>Balance after approval: <strong>{(balance - calcDays).toFixed(1)} days</strong></div>
               )}
-              {conflict && <div>âš  Overlapping leave request detected</div>}
+              {conflict && <div>Warning: overlapping leave request detected</div>}
               {insufficient && <div>Insufficient annual leave balance</div>}
             </div>
           </div>
         )}
 
-        <div className="flex items-center justify-between pt-1">
+        <div className="flex flex-col items-stretch gap-3 border-t border-slate-100 pt-4">
           <div className="text-xs text-slate-400">
-            Request will go to your manager for approval
+            Line manager review, then HR final approval
           </div>
           <button
             type="submit"
             disabled={submitting || insufficient || !form.leave_type || !form.start_date || !form.end_date}
-            className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-indigo-700 text-white text-sm font-medium rounded-lg hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {submitting ? <Spinner size="sm" /> : <Icon name="PaperAirplaneIcon" className="w-4 h-4" />}
             Submit Request
           </button>
         </div>
       </form>
-    </SectionCard>
+    </LeavePanel>
   )
 }
 
@@ -1097,8 +960,15 @@ const AttendanceAnalytics = ({ profile, monthlyTs, loading: parentLoading }) => 
     if (!code) return
     setFetching(true)
     // Use new self-service endpoint that auto-filters by logged-in user
-    timesheetSvc.fetchMyMonthlyAttendance(selYear, selMonth)
+    let cancelled = false
+    const requestedYear = selYear
+    const requestedMonth = selMonth
+    timesheetSvc.fetchMyMonthlyAttendance(requestedYear, requestedMonth)
       .then(res => {
+        if (
+          cancelled || Number(res?.year) !== requestedYear ||
+          Number(res?.month) !== requestedMonth
+        ) return
         // New endpoint returns { data: {...}, employee_code, email, year, month }
         if (res?.data) {
           setSelData(res.data)
@@ -1106,8 +976,9 @@ const AttendanceAnalytics = ({ profile, monthlyTs, loading: parentLoading }) => 
           setSelData(null)
         }
       })
-      .catch(() => setSelData(null))
-      .finally(() => setFetching(false))
+      .catch(() => { if (!cancelled) setSelData(null) })
+      .finally(() => { if (!cancelled) setFetching(false) })
+    return () => { cancelled = true }
   }, [selYear, selMonth, profile])
 
   const loading = parentLoading || fetching
@@ -1421,8 +1292,11 @@ const ESSTimesheetView = ({ profile }) => {
     if (activeTab !== 'daily') return
     setLoadingDaily(true)
     setError(null)
-    timesheetSvc.fetchMyDailyAttendance(selectedDate)
+    let cancelled = false
+    const requestedDate = selectedDate
+    timesheetSvc.fetchMyDailyAttendance(requestedDate)
       .then(data => {
+        if (cancelled || data?.date !== requestedDate) return
         if (!data.configured) {
           setError(ESS_TIMESHEET_COPY.notConfigured)
           setDailyData(null)
@@ -1435,11 +1309,13 @@ const ESSTimesheetView = ({ profile }) => {
         }
       })
       .catch(err => {
+        if (cancelled) return
         console.error('[ESS Timesheet] Daily fetch failed:', err)
         setError(err?.response?.data?.error || err.message || 'Failed to load daily data')
         setDailyData(null)
       })
-      .finally(() => setLoadingDaily(false))
+      .finally(() => { if (!cancelled) setLoadingDaily(false) })
+    return () => { cancelled = true }
   }, [activeTab, selectedDate])
 
   // Fetch Monthly data
@@ -1447,8 +1323,15 @@ const ESSTimesheetView = ({ profile }) => {
     if (activeTab !== 'monthly') return
     setLoadingMonthly(true)
     setError(null)
-    timesheetSvc.fetchMyMonthlyAttendance(selectedYear, selectedMonth)
+    let cancelled = false
+    const requestedYear = selectedYear
+    const requestedMonth = selectedMonth
+    timesheetSvc.fetchMyMonthlyAttendance(requestedYear, requestedMonth)
       .then(data => {
+        if (
+          cancelled || Number(data?.year) !== requestedYear ||
+          Number(data?.month) !== requestedMonth
+        ) return
         if (!data.configured) {
           setError(ESS_TIMESHEET_COPY.notConfigured)
           setMonthlyData(null)
@@ -1461,12 +1344,24 @@ const ESSTimesheetView = ({ profile }) => {
         }
       })
       .catch(err => {
+        if (cancelled) return
         console.error('[ESS Timesheet] Monthly fetch failed:', err)
         setError(err?.response?.data?.error || err.message || 'Failed to load monthly data')
         setMonthlyData(null)
       })
-      .finally(() => setLoadingMonthly(false))
+      .finally(() => { if (!cancelled) setLoadingMonthly(false) })
+    return () => { cancelled = true }
   }, [activeTab, selectedYear, selectedMonth])
+
+  const activeTimesheetLoading = (
+    (activeTab === 'live' && loadingLive)
+    || (activeTab === 'daily' && loadingDaily)
+    || (activeTab === 'monthly' && loadingMonthly)
+  )
+
+  if (activeTimesheetLoading) {
+    return <EmployeeTabLoading message="Loading your timesheet…" />
+  }
 
   return (
     <div className="space-y-5">
@@ -1825,9 +1720,9 @@ const TimesheetInsights = ({ monthlyTs, userHistory, loading }) => {
 // Section: Payroll Snapshot (read-only)
 // -----------------------------------------------------------------------------
 
-const PayrollSnapshot = ({ salaryInfo, slips, loading }) => {
+const PayrollSnapshot = ({ salaryInfo, slips, loading, salaryVisible, onToggleSalary }) => {
   const latest = slips?.[0] || null
-  const basic  = parseFloat(salaryInfo?.basic_salary)           || 0
+  const basic  = parseFloat(salaryInfo?.basic_salary ?? salaryInfo?.basic) || 0
   const gross  = parseFloat(latest?.gross_salary)               || 0
   const net    = parseFloat(latest?.net_salary)                 || 0
   const ot     = parseFloat(latest?.overtime_pay)               || 0
@@ -1841,16 +1736,41 @@ const PayrollSnapshot = ({ salaryInfo, slips, loading }) => {
     }))
   }, [slips])
 
+  const privateAmount = (amount) => {
+    if (!(amount > 0)) return EMPTY_DISPLAY
+    return salaryVisible ? fmtCurrency(amount) : '****'
+  }
+
   return (
     <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+        <div className="flex items-center gap-3">
+          <span className="grid h-10 w-10 place-items-center rounded-full bg-blue-50 text-[#1877F2]">
+            <Icon name="LockClosedIcon" className="h-5 w-5" />
+          </span>
+          <div>
+            <div className="text-sm font-semibold text-slate-900">Salary privacy</div>
+            <div className="text-xs text-slate-500">Compensation values are hidden by default.</div>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onToggleSalary}
+          className="inline-flex items-center gap-2 rounded-lg bg-[#1877F2] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
+        >
+          <Icon name={salaryVisible ? 'EyeSlashIcon' : 'EyeIcon'} className="h-4 w-4" />
+          {salaryVisible ? 'Hide salary' : 'Show salary'}
+        </button>
+      </div>
+
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-4">
-        <KpiCard icon="BanknotesIcon"     label="Basic Salary"    value={basic > 0 ? fmtCurrency(basic) : EMPTY_DISPLAY} sub="Monthly" tone="blue" />
-        <KpiCard icon="ArrowUpIcon"       label="Gross Earnings"  value={gross > 0 ? fmtCurrency(gross) : EMPTY_DISPLAY} sub={latest ? `${MONTH_SHORT[(latest.month||1)-1]} ${latest.year}` : 'Latest'} tone="green" />
+        <KpiCard icon="BanknotesIcon"     label="Basic Salary"    value={privateAmount(basic)} sub="Monthly" tone="blue" />
+        <KpiCard icon="ArrowUpIcon"       label="Gross Earnings"  value={privateAmount(gross)} sub={latest ? `${MONTH_SHORT[(latest.month||1)-1]} ${latest.year}` : 'Latest'} tone="green" />
         {ESS_ATT_FEATURES.showOvertime && (
-          <KpiCard icon="ArrowTrendingUpIcon" label="Overtime Pay"  value={ot > 0 ? fmtCurrency(ot) : EMPTY_DISPLAY} sub="Included in gross" tone="amber" />
+          <KpiCard icon="ArrowTrendingUpIcon" label="Overtime Pay"  value={privateAmount(ot)} sub="Included in gross" tone="amber" />
         )}
-        <KpiCard icon="MinusCircleIcon"   label="Deductions"      value={deductions > 0 ? fmtCurrency(deductions) : EMPTY_DISPLAY} sub="This month" tone="rose" />
-        <KpiCard icon="CurrencyDollarIcon" label="Net Salary"     value={net > 0 ? fmtCurrency(net) : EMPTY_DISPLAY} sub={latest?.status || EMPTY_DISPLAY} tone="purple" />
+        <KpiCard icon="MinusCircleIcon"   label="Deductions"      value={privateAmount(deductions)} sub="This month" tone="rose" />
+        <KpiCard icon="CurrencyDollarIcon" label="Net Salary"     value={privateAmount(net)} sub={latest?.status || EMPTY_DISPLAY} tone="purple" />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
@@ -1858,6 +1778,12 @@ const PayrollSnapshot = ({ salaryInfo, slips, loading }) => {
         <SectionCard title="Salary History" subtitle="Net vs Gross (last 6 months)" icon="ChartBarIcon">
           {loading ? (
             <SkeletonBox className="h-52 w-full" />
+          ) : !salaryVisible ? (
+            <div className="flex h-52 flex-col items-center justify-center gap-2 rounded-xl bg-[#F0F2F5] text-center text-slate-500">
+              <Icon name="EyeSlashIcon" className="h-8 w-8 text-slate-400" />
+              <div className="text-sm font-semibold text-slate-700">Salary trend hidden</div>
+              <div className="max-w-xs text-xs">Select “Show salary” to reveal compensation history for this session.</div>
+            </div>
           ) : history.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={history} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
@@ -1900,7 +1826,7 @@ const PayrollSnapshot = ({ salaryInfo, slips, loading }) => {
                       <div className="text-sm font-medium text-slate-800">
                         {MONTH_SHORT[(s.month || 1) - 1]} {s.year}
                       </div>
-                      <div className="text-xs text-slate-400">Net: {fmtCurrency(s.net_salary)}</div>
+                      <div className="text-xs text-slate-400">Net: {salaryVisible ? fmtCurrency(s.net_salary) : '****'}</div>
                     </div>
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusMeta}`}>
                       {s.status?.replace(/_/g, ' ') || 'generated'}
@@ -1922,8 +1848,33 @@ const PayrollSnapshot = ({ salaryInfo, slips, loading }) => {
 // Section: Team Availability Calendar
 // -----------------------------------------------------------------------------
 
-const TeamCalendar = ({ calendarData, loading }) => {
+const TeamCalendar = () => {
   const [viewMonth, setViewMonth] = useState({ year: nowYear(), month: nowMonth() })
+  const [calendarData, setCalendarData] = useState({})
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  const loadCalendar = useCallback(() => {
+    setLoading(true)
+    setError('')
+    payrollService.getLeaveCalendar(viewMonth.year, viewMonth.month)
+      .then(data => setCalendarData(data?.calendar || {}))
+      .catch(() => {
+        setCalendarData({})
+        setError('Team availability could not be loaded. Please try again.')
+      })
+      .finally(() => setLoading(false))
+  }, [viewMonth])
+
+  useEffect(() => {
+    loadCalendar()
+    window.addEventListener('leave-approval-updated', loadCalendar)
+    window.addEventListener('focus', loadCalendar)
+    return () => {
+      window.removeEventListener('leave-approval-updated', loadCalendar)
+      window.removeEventListener('focus', loadCalendar)
+    }
+  }, [loadCalendar])
 
   const prevMonth = () => setViewMonth(({ year, month }) =>
     month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 })
@@ -1944,11 +1895,11 @@ const TeamCalendar = ({ calendarData, loading }) => {
   // Map leave events: { 'YYYY-MM-DD': [name, ...] }
   const leaveMap = useMemo(() => {
     const m = {}
-    ;(calendarData || []).forEach(ev => {
-      const key = ev.date || ev.leave_date
-      if (!key) return
-      if (!m[key]) m[key] = []
-      m[key].push(ev.employee_name || ev.name || 'Employee')
+    Object.entries(calendarData || {}).forEach(([employeeCode, dates]) => {
+      Object.entries(dates || {}).forEach(([date, event]) => {
+        if (!m[date]) m[date] = []
+        m[date].push(`${event?.employee_name || employeeCode || 'Employee'}${event?.half_day ? ' (half day)' : ''}`)
+      })
     })
     return m
   }, [calendarData])
@@ -1958,6 +1909,8 @@ const TeamCalendar = ({ calendarData, loading }) => {
   const isToday = (d) => d === todayD.getDate() && month === todayD.getMonth() + 1 && year === todayD.getFullYear()
 
   const dayKey = (d) => `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`
+
+  if (loading) return <EmployeeTabLoading message="Loading team availability…" />
 
   return (
     <SectionCard
@@ -1978,8 +1931,12 @@ const TeamCalendar = ({ calendarData, loading }) => {
         </div>
       }
     >
-      {loading ? (
-        <SkeletonBox className="h-64 w-full" />
+      {error ? (
+        <div className="py-12 text-center">
+          <Icon name="ExclamationTriangleIcon" className="w-8 h-8 text-amber-500 mx-auto mb-2" />
+          <p className="text-sm text-slate-600">{error}</p>
+          <button onClick={loadCalendar} className="mt-3 text-sm font-medium text-blue-600 hover:text-blue-700">Retry</button>
+        </div>
       ) : (
         <>
           <div className="grid grid-cols-7 mb-2">
@@ -2039,66 +1996,8 @@ const TeamCalendar = ({ calendarData, loading }) => {
 // Section: Notifications
 // -----------------------------------------------------------------------------
 
-const NotificationsCenter = ({ requests, loading }) => {
-  const [readIds, setReadIds] = useState(new Set())
-
-  const notifications = useMemo(() => {
-    const items = []
-
-    ;(requests || []).forEach(r => {
-      if (r.status === 'approved') {
-        items.push({
-          id: `leave_approved_${r.id}`,
-          type: 'leave',
-          priority: 'medium',
-          title: 'Leave Request Approved',
-          message: `Your ${r.leave_type_display || 'leave'} request (${fmtDate(r.start_date)} \u2013 ${fmtDate(r.end_date)}) has been approved.`,
-          icon: 'CheckCircleIcon',
-          time: r.approved_at || r.updated_at,
-        })
-      }
-      if (r.status === 'rejected') {
-        items.push({
-          id: `leave_rejected_${r.id}`,
-          type: 'leave',
-          priority: 'high',
-          title: 'Leave Request Rejected',
-          message: `Your ${r.leave_type_display || 'leave'} request was rejected.${r.rejection_note ? ` Reason: ${r.rejection_note}` : ''}`,
-          icon: 'XCircleIcon',
-          time: r.updated_at,
-        })
-      }
-      if (r.status?.toUpperCase() === 'PENDING') {
-        items.push({
-          id: `leave_pending_${r.id}`,
-          type: 'leave',
-          priority: 'low',
-          title: 'Leave Request Pending',
-          message: `Your leave request for ${fmtDate(r.start_date)} is awaiting manager approval.`,
-          icon: 'ClockIcon',
-          time: r.created_at,
-        })
-      }
-      if (r.status?.toUpperCase() === 'RM_APPROVED') {
-        items.push({
-          id: `leave_rm_approved_${r.id}`,
-          type: 'leave',
-          priority: 'medium',
-          title: 'Manager Approved — Awaiting HR',
-          message: `Your leave request for ${fmtDate(r.start_date)} was approved by your manager and is now awaiting HR final approval.`,
-          icon: 'CheckBadgeIcon',
-          time: r.rm_reviewed_at || r.updated_at,
-        })
-      }
-    })
-
-    return items.sort((a, b) => {
-      const pri = { high: 0, medium: 1, low: 2 }
-      return (pri[a.priority] || 2) - (pri[b.priority] || 2)
-    })
-  }, [requests])
-
-  const unread = notifications.filter(n => !readIds.has(n.id)).length
+const NotificationsCenter = ({ notifications, loading, onMarkRead, onMarkAllRead }) => {
+  const unread = (notifications || []).filter(n => !n.is_read).length
 
   return (
     <SectionCard
@@ -2108,7 +2007,7 @@ const NotificationsCenter = ({ requests, loading }) => {
       action={
         unread > 0 ? (
           <button
-            onClick={() => setReadIds(new Set(notifications.map(n => n.id)))}
+            onClick={onMarkAllRead}
             className="text-xs text-blue-600 hover:text-blue-700 font-medium"
           >
             Mark all read
@@ -2122,18 +2021,18 @@ const NotificationsCenter = ({ requests, loading }) => {
         <EmptyNotice icon="BellSlashIcon" message="No notifications at this time" />
       ) : (
         <div className="space-y-2">
-          {notifications.map(n => {
-            const isRead = readIds.has(n.id)
-            const pm = NOTIFICATION_PRIORITY[n.priority] || NOTIFICATION_PRIORITY.low
+          {(notifications || []).map(n => {
+            const isRead = Boolean(n.is_read)
+            const pm = NOTIFICATION_PRIORITY[n.priority?.toLowerCase()] || NOTIFICATION_PRIORITY.low
             return (
               <div
                 key={n.id}
                 className={`rounded-xl border p-3 cursor-pointer transition-colors ${isRead ? 'bg-slate-50 border-slate-100' : 'bg-white border-slate-200 shadow-sm'}`}
-                onClick={() => setReadIds(prev => new Set([...prev, n.id]))}
+                onClick={() => !isRead && onMarkRead(n.id)}
               >
                 <div className="flex items-start gap-3">
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${pm.badge}`}>
-                    <Icon name={n.icon} className="w-4 h-4" />
+                    <Icon name={n.category_icon || 'BellIcon'} className="w-4 h-4" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
@@ -2141,7 +2040,10 @@ const NotificationsCenter = ({ requests, loading }) => {
                       {!isRead && <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${pm.dot}`} />}
                     </div>
                     <p className="text-xs text-slate-500 line-clamp-2">{n.message}</p>
-                    {n.time && <div className="text-[10px] text-slate-400 mt-1">{fmtDate(n.time)}</div>}
+                    <div className="flex items-center gap-3 mt-1">
+                      {(n.time_ago || n.created_at) && <div className="text-[10px] text-slate-400">{n.time_ago || fmtDate(n.created_at)}</div>}
+                      {n.action_url && <a href={n.action_url} onClick={e => e.stopPropagation()} className="text-[10px] font-medium text-blue-600 hover:text-blue-700">{n.action_label || 'Open'}</a>}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2150,6 +2052,110 @@ const NotificationsCenter = ({ requests, loading }) => {
         </div>
       )}
     </SectionCard>
+  )
+}
+
+// -----------------------------------------------------------------------------
+// Section: My Site Visits
+// -----------------------------------------------------------------------------
+
+const SiteVisitsPanel = () => {
+  const [requests, setRequests] = useState([])
+  const [checkIns, setCheckIns] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  const loadSiteVisits = useCallback(() => {
+    setLoading(true)
+    setError('')
+    Promise.all([
+      siteVisitService.getMyRequests().catch(() => null),
+      siteVisitService.getMyCheckIns().catch(() => null),
+    ]).then(([requestRes, checkInRes]) => {
+      if (requestRes === null && checkInRes === null) {
+        setError('Your site visit data could not be loaded.')
+      }
+      setRequests(Array.isArray(requestRes) ? requestRes : requestRes?.results || [])
+      setCheckIns(Array.isArray(checkInRes) ? checkInRes : checkInRes?.results || [])
+    }).finally(() => setLoading(false))
+  }, [])
+
+  useEffect(() => { loadSiteVisits() }, [loadSiteVisits])
+
+  const statusClass = status => ({
+    APPROVED: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    PENDING: 'bg-amber-50 text-amber-700 border-amber-200',
+    REJECTED: 'bg-rose-50 text-rose-700 border-rose-200',
+    CANCELLED: 'bg-slate-50 text-slate-600 border-slate-200',
+  }[String(status || '').toUpperCase()] || 'bg-blue-50 text-blue-700 border-blue-200')
+
+  const pending = requests.filter(r => String(r.status).toUpperCase() === 'PENDING').length
+  const approved = requests.filter(r => String(r.status).toUpperCase() === 'APPROVED').length
+  const active = checkIns.filter(v => !v.check_out_time).length
+
+  if (loading) return <EmployeeTabLoading message="Loading your site visits…" />
+
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard icon="ClockIcon" label="Pending Requests" value={loading ? ELLIPSIS_DISPLAY : pending} sub="Awaiting approval" tone="amber" />
+        <KpiCard icon="CheckBadgeIcon" label="Approved Visits" value={loading ? ELLIPSIS_DISPLAY : approved} sub="My requests" tone="green" />
+        <KpiCard icon="MapPinIcon" label="Active Check-ins" value={loading ? ELLIPSIS_DISPLAY : active} sub="Not checked out" tone="blue" />
+        <KpiCard icon="ClipboardDocumentCheckIcon" label="Visit Records" value={loading ? ELLIPSIS_DISPLAY : checkIns.length} sub="My history" tone="purple" />
+      </div>
+
+      {error && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-center justify-between gap-3">
+          <span className="text-sm text-amber-800">{error}</span>
+          <button onClick={loadSiteVisits} className="text-sm font-semibold text-blue-600">Retry</button>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+        <SectionCard title="My Visit Requests" subtitle="Latest approval activity" icon="ClipboardDocumentListIcon">
+          {loading ? <SkeletonBox className="h-44 w-full" /> : requests.length === 0 ? (
+            <EmptyNotice icon="MapPinIcon" message="No site visit requests found" />
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {requests.slice(0, 6).map(r => (
+                <div key={r.id} className="py-3 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-slate-800 truncate">{r.site_name || r.site_client || 'Client site'}</div>
+                    <div className="text-xs text-slate-500">{fmtDate(r.start_date)} {EMPTY_DISPLAY} {fmtDate(r.end_date)}</div>
+                    {r.purpose && <div className="text-xs text-slate-400 truncate mt-0.5">{r.purpose}</div>}
+                  </div>
+                  <span className={`text-[11px] px-2 py-0.5 rounded-full border font-medium ${statusClass(r.status)}`}>{r.status || 'Pending'}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </SectionCard>
+
+        <SectionCard title="My Check-in History" subtitle="GPS attendance records" icon="MapPinIcon">
+          {loading ? <SkeletonBox className="h-44 w-full" /> : checkIns.length === 0 ? (
+            <EmptyNotice icon="MapPinIcon" message="No site check-ins found" />
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {checkIns.slice(0, 6).map(v => (
+                <div key={v.id} className="py-3 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-slate-800 truncate">{v.site_name || v.site_client || 'Client site'}</div>
+                    <div className="text-xs text-slate-500">{fmtDate(v.check_in_time)} {BULLET_DISPLAY} {v.duration_hours ? `${v.duration_hours} h` : 'In progress'}</div>
+                  </div>
+                  <span className={`text-[11px] px-2 py-0.5 rounded-full border font-medium ${v.check_out_time ? statusClass('APPROVED') : statusClass('ACTIVE')}`}>{v.status_label || (v.check_out_time ? 'Completed' : 'Active')}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </SectionCard>
+      </div>
+
+      <div className="flex justify-end">
+        <a href="/hr/site-visits" className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 text-sm font-semibold shadow-sm">
+          <Icon name="MapPinIcon" className="w-4 h-4" /> Request visit or check in
+        </a>
+      </div>
+    </div>
   )
 }
 
@@ -2401,11 +2407,11 @@ function ActivityWizard({ initial, onSave, onClose, submitting, alreadyLoggedHou
     return () => window.removeEventListener('keydown', h)
   }, [onClose])
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
     const h = parseFloat(form.hours_spent)
     if (!form.task_title.trim() || isNaN(h) || h <= 0) return
-    if (h > cfg.maxHoursWarning && !window.confirm(`${h}h seems high. Continue?`)) return
+    if (h > cfg.maxHoursWarning && !(await radaiConfirm(`${h}h seems high. Continue?`))) return
     onSave({ ...form, hours_spent: h.toFixed(2) })
   }
 
@@ -2449,7 +2455,7 @@ function ActivityWizard({ initial, onSave, onClose, submitting, alreadyLoggedHou
           {isToday && !initial && (
             <div className="mt-3">
               <div className="flex justify-between text-[10px] text-white/60 mb-1">
-                <span>Today's logged hours</span>
+                <span>Today&apos;s logged hours</span>
                 <span>{alreadyLoggedHours.toFixed(1)}h{selectedH > 0 ? ` + ${selectedH}h this entry` : ''} / 8h</span>
               </div>
               <div className="h-1.5 bg-white/20 rounded-full overflow-hidden relative">
@@ -2863,7 +2869,7 @@ function DailyTrackerTab({ currentUser }) {
   }
 
   async function handleDelete(id) {
-    if (!window.confirm('Delete this activity log?')) return
+    if (!(await radaiConfirm('Delete this activity log?'))) return
     try {
       await payrollService.deleteDailyLog(id)
       setLogs(p => p.filter(l => l.id !== id))
@@ -2900,6 +2906,8 @@ function DailyTrackerTab({ currentUser }) {
   }
 
   // -- Render ----------------------------------------------------------------
+  if (loading) return <EmployeeTabLoading message="Loading your daily activities…" />
+
   return (
     <div className="space-y-5">
 
@@ -2958,14 +2966,8 @@ function DailyTrackerTab({ currentUser }) {
         ].map(tile => {
           const Icon = HeroIcons[tile.icon]
           return (
-            <div key={tile.label} className={`rounded-2xl p-4 ${tile.bg} border border-white/60`}>
-              <div className="flex items-center gap-2 mb-1">
-                {Icon && <Icon className={`h-4 w-4 ${tile.color}`} />}
-                <span className="text-xs text-slate-500 font-medium">{tile.label}</span>
-              </div>
-              <p className={`text-2xl font-bold ${tile.color}`}>{tile.value}</p>
-              <p className="text-[10px] text-slate-400 mt-0.5">{tile.sub}</p>
-            </div>
+            <ProfileMetricCard key={tile.label} icon={Icon && <Icon />} label={tile.label} value={tile.value} sub={tile.sub}
+              tone={({ 'bg-indigo-50': 'blue', 'bg-emerald-50': 'green', 'bg-red-50': 'rose', 'bg-purple-50': 'purple' })[tile.bg]} />
           )
         })}
       </div>
@@ -3279,31 +3281,62 @@ function DailyTrackerTab({ currentUser }) {
 // -----------------------------------------------------------------------------
 
 export default function EmployeeSelfService() {
+  const dispatch = useDispatch()
   const { user: authUser } = useSelector((s) => s.auth) || {}
   const { currentUser }    = useSelector((s) => s.rbac) || {}
   const authProfile = currentUser || authUser
 
-  const now = new Date()
-  const [activeTab, setActiveTab] = useState('overview')
+  const [profileParams] = useSearchParams()
+  const [activeTab, setActiveTabState] = useState(() => {
+    const requestedTab = new URLSearchParams(window.location.search).get('tab')
+    return requestedTab === 'timesheet' ? 'attendance' : requestedTab === 'overtime' ? 'requests' : ESS_TABS.some((tab) => tab.id === requestedTab) ? requestedTab : 'overview'
+  })
+  const setActiveTab = tab => setActiveTabState(tab === 'timesheet' ? 'attendance' : tab)
+  useEffect(() => {
+    const tab = profileParams.get('tab')
+    if (tab === 'timesheet') setActiveTab('attendance')
+    else if (tab === 'overtime') setActiveTab('requests')
+    else if (ESS_TABS.some(item => item.id === tab)) setActiveTab(tab)
+  }, [profileParams])
+  const [salaryVisible, setSalaryVisible] = useState(false)
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [photoUploadState, setPhotoUploadState] = useState(null)
+  const { photo: authenticatedPhotoUrl } = useCurrentProfilePhoto()
 
   // -- Data state --------------------------------------------------------------
   const [profile,      setProfile]      = useState(null)
   const [monthlyTs,    setMonthlyTs]    = useState(null)
   const [todayTs,      setTodayTs]      = useState(null)
+  const [liveAttendance, setLiveAttendance] = useState(null)
   const [userHistory,  setUserHistory]  = useState(null)
   const [leaveRecord,  setLeaveRecord]  = useState(null)
+  const [leaveAvailable, setLeaveAvailable] = useState(false)
+  const [profileDocuments, setProfileDocuments] = useState(null)
+  const [organizationEmployees, setOrganizationEmployees] = useState(undefined)
+  const [downloadingOverview, setDownloadingOverview] = useState(false)
+  const [overviewError, setOverviewError] = useState('')
   const [leaveTypes,   setLeaveTypes]   = useState([])
   const [leaveRequests,setLeaveRequests]= useState([])
-  const [calendarData, setCalendarData] = useState([])
   const [salaryInfo,   setSalaryInfo]   = useState(null)
   const [slips,        setSlips]        = useState([])
+  const [notifications,setNotifications]= useState([])
 
   // -- Loading / error state ---------------------------------------------------
   const [loadingProfile,  setLoadingProfile]  = useState(true)
   const [loadingTs,       setLoadingTs]       = useState(true)
   const [loadingLeave,    setLoadingLeave]    = useState(true)
+  const [leaveRevision, setLeaveRevision] = useState(0)
+  useEffect(() => {
+    const refresh = () => setLeaveRevision(value => value + 1)
+    window.addEventListener('leave-approval-updated', refresh)
+    window.addEventListener('focus', refresh)
+    return () => {
+      window.removeEventListener('leave-approval-updated', refresh)
+      window.removeEventListener('focus', refresh)
+    }
+  }, [])
   const [loadingPayroll,  setLoadingPayroll]  = useState(true)
-  const [loadingCalendar, setLoadingCalendar] = useState(true)
+  const [loadingNotifications, setLoadingNotifications] = useState(true)
 
   // -- Leave form state --------------------------------------------------------
   const [submitting,    setSubmitting]    = useState(false)
@@ -3317,6 +3350,73 @@ export default function EmployeeSelfService() {
       .catch(() => setProfile(authProfile))
       .finally(() => setLoadingProfile(false))
   }, [])
+
+  const handleProfilePhotoUpload = useCallback(async (file) => {
+    const supportedTypes = ['image/jpeg', 'image/png', 'image/webp']
+    if (!supportedTypes.includes(file.type)) {
+      setPhotoUploadState({ type: 'error', message: 'Choose a JPEG, PNG or WebP image.' })
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setPhotoUploadState({ type: 'error', message: 'The image must be 5 MB or smaller.' })
+      return
+    }
+
+    setUploadingPhoto(true)
+    setPhotoUploadState(null)
+    const formData = new FormData()
+    formData.append('photo', file)
+
+    try {
+      const response = await apiClient.post('/users/employees/my-profile-photo/', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      const photoUrl = response?.data?.photo_url
+      if (!photoUrl) throw new Error('The server did not return the uploaded photo.')
+
+      setProfile((current) => ({ ...current, profile_photo: photoUrl }))
+      dispatch(updateUser({ profile_photo: photoUrl }))
+      window.dispatchEvent(new Event('radai:profile-photo-changed'))
+      setPhotoUploadState({ type: 'success', message: 'Profile picture updated successfully.' })
+    } catch (error) {
+      const message = error?.response?.data?.error
+        || error?.response?.data?.detail
+        || error?.message
+        || 'The profile picture could not be uploaded.'
+      setPhotoUploadState({ type: 'error', message })
+    } finally {
+      setUploadingPhoto(false)
+    }
+  }, [dispatch])
+
+  useEffect(() => {
+    let active = true
+    apiClient.get('/rbac/users/reporting-managers/')
+      .then(response => { if (active) setOrganizationEmployees(response.data?.results || []) })
+      .catch(() => { if (active) setOrganizationEmployees(null) })
+    apiClient.get('/rbac/profile-documents/my_documents/')
+      .then(response => { if (active) setProfileDocuments(Array.isArray(response.data) ? response.data : response.data?.results || []) })
+      .catch(() => { if (active) setProfileDocuments(null) })
+    return () => { active = false }
+  }, [])
+
+  const downloadOverviewPayslip = async slip => {
+    if (!slip?.id) return
+    setDownloadingOverview(true)
+    setOverviewError('')
+    try {
+      const blob = await payrollEngineService.downloadPayslipXlsx(slip.id)
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `payslip-${slip.run_cycle || slip.id}.xlsx`
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch { setOverviewError('Payslip download failed. Open Pay & benefits to try again.') }
+    finally { setDownloadingOverview(false) }
+  }
 
   // -- Load timesheet data for current user ------------------------------------
   useEffect(() => {
@@ -3355,6 +3455,28 @@ export default function EmployeeSelfService() {
     }).finally(() => setLoadingTs(false))
   }, [profile])
 
+  // Live presence is authoritative for the latest IN/OUT punch and also
+  // carries the current authenticated RADAI activity heartbeat.
+  useEffect(() => {
+    let cancelled = false
+    const refreshPresence = () => {
+      timesheetSvc.fetchMyLiveAttendance()
+        .then((response) => {
+          if (!cancelled) setLiveAttendance(response)
+        })
+        .catch(() => {
+          // Retain the last known state during a temporary biometric outage.
+        })
+    }
+
+    refreshPresence()
+    const timer = window.setInterval(refreshPresence, 60 * 1000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [])
+
   // -- Load leave data ---------------------------------------------------------
   useEffect(() => {
     setLoadingLeave(true)
@@ -3368,11 +3490,19 @@ export default function EmployeeSelfService() {
       // mine=true forces scoping to the current user's own requests even when
       // they hold an HR/Admin role (which otherwise gets unrestricted visibility
       // for the Leave Management / Approval Tracker views).
-      payrollService.getLeaveRequests({ mine: true, page_size: 50 }).catch(() => ({ results: [] })),
-      // Backend auto-scopes to current user's employee_id with intelligent fallback
-      // No need to pass employee_code or search - backend detects from auth user
-      payrollService.getLeaveRecords({ page_size: 5 }).catch(() => ({ results: [] })),
+      payrollService.getLeaveRequests({ mine: true, year: new Date().getFullYear(), page_size: 50 }).catch(() => null),
+      // 2026-08-31: this call had no `mine: true` (unlike its sibling right
+      // above) — the comment below claimed the backend "auto-scopes... no
+      // need to pass employee_code", but it never actually did that for an
+      // HR/Admin-role user (the same "unrestricted visibility unless told
+      // otherwise" behavior mine:true exists to override on the request
+      // above). An HR Manager/admin viewing their OWN profile got the
+      // unfiltered list back and picked up an arbitrary employee's balance
+      // instead of their own — confirmed live for a super_admin account.
+      // mine=true forces self-scoping regardless of role, same as above.
+      payrollService.getLeaveRecords({ mine: true, year: new Date().getFullYear(), page_size: 5 }).catch(() => ({ results: [] })),
     ]).then(([types, reqRes, recRes]) => {
+      setLeaveAvailable(reqRes !== null)
       // Filter leave types to only show enabled types from ESS_LEAVE_TYPE_CONFIG.
       // To enable/disable a type, change `enabled` in hrLeave.config.js — no code change needed.
       const enabledCategories = Object.keys(LEAVE_TYPE_CONFIG).filter(
@@ -3397,7 +3527,7 @@ export default function EmployeeSelfService() {
       const recs = Array.isArray(recRes) ? recRes : recRes?.results || []
       setLeaveRecord(recs.length > 0 ? recs[0] : null)
     }).finally(() => setLoadingLeave(false))
-  }, [profile])
+  }, [profile, leaveRevision])
 
   // -- Load payroll data -------------------------------------------------------
   useEffect(() => {
@@ -3412,11 +3542,14 @@ export default function EmployeeSelfService() {
       empCode
         ? payrollEngineService.listPayslips({ employee_no: empCode, page_size: 12 }).catch(() => ({ results: [] }))
         : Promise.resolve({ results: [] }),
+      empCode
+        ? payrollEngineService.listEmployees({ search: empCode, is_active: true, page_size: 10 }).catch(() => ({ results: [] }))
+        : Promise.resolve({ results: [] }),
       // EmployeeSalaryInfo: filter by user UUID (added in backend fix)
       userId
         ? payrollService.getEmployeeSalaryInfo({ employee: userId }).catch(() => null)
         : Promise.resolve(null),
-    ]).then(([slipRes, info]) => {
+    ]).then(([slipRes, employeeRes, info]) => {
       const rawSlips = Array.isArray(slipRes) ? slipRes : slipRes?.results || []
       // Normalise payroll_engine field names to what PayrollSnapshot already
       // reads (gross_salary/net_salary/month/year), and sort most-recent-run
@@ -3435,19 +3568,45 @@ export default function EmployeeSelfService() {
           }
         })
       setSlips(slipList)
+      const employees = Array.isArray(employeeRes) ? employeeRes : employeeRes?.results || []
+      const payrollEmployee = employees.find(e => String(e.employee_no) === String(empCode)) || null
       const infoList = Array.isArray(info) ? info : info?.results || [info]
-      setSalaryInfo(infoList.find(Boolean) || null)
+      const legacyInfo = infoList.find(Boolean) || null
+      setSalaryInfo(payrollEmployee || legacyInfo ? {
+        ...(legacyInfo || {}),
+        ...(payrollEmployee || {}),
+        basic_salary: payrollEmployee?.basic ?? legacyInfo?.basic_salary,
+      } : null)
     }).finally(() => setLoadingPayroll(false))
   }, [profile])
 
-  // -- Load team calendar ------------------------------------------------------
+  // -- Load current user's notifications --------------------------------------
   useEffect(() => {
-    setLoadingCalendar(true)
-    payrollService.getLeaveCalendar(now.getFullYear(), now.getMonth() + 1)
-      .then(data => setCalendarData(Array.isArray(data) ? data : data?.results || []))
-      .catch(() => setCalendarData([]))
-      .finally(() => setLoadingCalendar(false))
+    setLoadingNotifications(true)
+    notificationService.getNotifications({ page_size: 100 })
+      .then(data => setNotifications(Array.isArray(data) ? data : data?.results || []))
+      .catch(() => setNotifications([]))
+      .finally(() => setLoadingNotifications(false))
   }, [])
+
+  const handleMarkNotificationRead = useCallback(async (id) => {
+    setNotifications(items => items.map(n => n.id === id ? { ...n, is_read: true } : n))
+    try {
+      await notificationService.markAsRead(id)
+    } catch {
+      setNotifications(items => items.map(n => n.id === id ? { ...n, is_read: false } : n))
+    }
+  }, [])
+
+  const handleMarkAllNotificationsRead = useCallback(async () => {
+    const previous = notifications
+    setNotifications(items => items.map(n => ({ ...n, is_read: true })))
+    try {
+      await notificationService.markAllAsRead()
+    } catch {
+      setNotifications(previous)
+    }
+  }, [notifications])
 
   // -- Derived: AI insights ----------------------------------------------------
   const insights = useMemo(() => generateInsights({
@@ -3455,7 +3614,8 @@ export default function EmployeeSelfService() {
     monthlyTs,
     today: todayTs,
     slips,
-  }), [leaveRecord, monthlyTs, todayTs, slips])
+    salaryVisible,
+  }), [leaveRecord, monthlyTs, todayTs, slips, salaryVisible])
 
   // -- Leave request submit ----------------------------------------------------
   const handleLeaveSubmit = useCallback(async (form) => {
@@ -3498,7 +3658,8 @@ export default function EmployeeSelfService() {
         response = await payrollService.createLeaveRequest(payload)
       }
       
-      setSubmitResult({ success: true, message: 'Leave request submitted successfully! Awaiting manager approval.' })
+      window.dispatchEvent(new Event('leave-approval-updated'))
+      setSubmitResult({ success: true, message: `Leave request submitted. Awaiting ${response?.line_manager_name || 'line manager'} approval, followed by HR.` })
       // Reload requests — mine=true scopes to current user even for HR/Admin roles
       const reqRes = await payrollService.getLeaveRequests({ mine: true, page_size: 50 }).catch(() => ({ results: [] }))
       const reqs   = Array.isArray(reqRes) ? reqRes : reqRes?.results || []
@@ -3506,7 +3667,7 @@ export default function EmployeeSelfService() {
     } catch (err) {
       const msg = err?.response?.data?.detail ||
                   err?.response?.data?.non_field_errors?.[0] ||
-                  Object.values(err?.response?.data || {})?.[0]?.[0] ||
+                  Object.values(err?.response?.data || {}).flat().join(' ') ||
                   'Failed to submit leave request. Please try again.'
       setSubmitResult({ error: msg })
     } finally {
@@ -3515,8 +3676,8 @@ export default function EmployeeSelfService() {
   }, [profile])
 
   // -- Tab notification badges -------------------------------------------------
-  const pendingLeave   = leaveRequests.filter(r => r.status?.toUpperCase() === 'PENDING').length
-  const unreadNotifs   = leaveRequests.filter(r => ['APPROVED','REJECTED','RM_REJECTED'].includes(r.status?.toUpperCase())).length
+  const pendingLeave   = leaveRequests.filter(r => ['PENDING', 'RM_APPROVED'].includes(r.status?.toUpperCase())).length
+  const unreadNotifs   = notifications.filter(n => !n.is_read).length
 
   // Days Taken — live sum from approved requests. Matches LeaveBalanceSection's
   // calculation on the Leave tab exactly (same leaveRequests state, same
@@ -3535,55 +3696,50 @@ export default function EmployeeSelfService() {
   const renderSection = () => {
     // Check if profile is incomplete (missing employee_id or has placeholder/marker)
     const empId = profile?.employee_id
+    const employeeIdentifier = currentUser?.email || authProfile?.email || profile?.user_email || profile?.email || empId
     const invalidMarkers = ['DELETED', 'TEST_ACCOUNT', 'EXTERNAL']
     const needsConfig = !empId || empId === '' || empId.includes('@') || empId.startsWith('EMP') || invalidMarkers.includes(empId)
+
+    const loadingByTab = {
+      overview: loadingProfile || loadingTs || loadingLeave || loadingPayroll,
+      leave: loadingProfile || loadingLeave,
+      attendance: loadingProfile,
+      payroll: loadingProfile || loadingPayroll,
+      twin: loadingProfile || loadingTs || loadingLeave || loadingPayroll,
+      notifications: loadingNotifications,
+    }
+    const loadingMessageByTab = {
+      overview: 'Loading your employee overview…',
+      leave: 'Loading your leave information…',
+      attendance: 'Loading your attendance…',
+      payroll: 'Loading your payroll information…',
+      twin: 'Loading your employee insights…',
+      notifications: 'Loading your notifications…',
+    }
+
+    if (loadingByTab[activeTab]) {
+      return <EmployeeTabLoading message={loadingMessageByTab[activeTab]} />
+    }
     
     switch (activeTab) {
       case 'overview':
-        return (
-          <div className="space-y-5">
-            {/* Profile Configuration Alert */}
-            {needsConfig && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                <div className="flex items-start gap-3">
-                  <Icon name="ExclamationTriangleIcon" className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                  <div className="flex-1">
-                    <div className="font-semibold text-amber-900 text-sm mb-1">
-                      Profile Configuration Required
-                    </div>
-                    <div className="text-amber-700 text-sm leading-relaxed">
-                      Your employee ID is not configured. Attendance and leave data require a valid employee ID linked to the biometric system.
-                      Please contact HR (<a href="mailto:hr@rejlers.ae" className="underline hover:text-amber-900">hr@rejlers.ae</a>) to complete your profile setup.
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-            
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-              <div className="xl:col-span-2">
-                <TodayStatusCard todayData={todayTs} loading={loadingTs} />
-              </div>
-              <AIInsightsPanel insights={insights} loading={loadingTs || loadingLeave || loadingPayroll} />
-            </div>
+        return <ProfileOverviewWorkspace
+          profile={profile} organizationEmployees={organizationEmployees} todayData={todayTs} monthlyTs={monthlyTs}
+          leaveRecord={leaveRecord}
+          leaveRequests={leaveRequests} leaveAvailable={leaveAvailable}
+          slips={slips} documents={profileDocuments} onNavigate={setActiveTab}
+          onDownloadPayslip={downloadOverviewPayslip} downloading={downloadingOverview}
+          downloadError={overviewError}
+        />
 
-            {/* Quick leave balance preview */}
-            <SectionCard title="Leave Balance Snapshot" icon="CalendarDaysIcon">
-              {loadingLeave ? (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {[...Array(4)].map((_, i) => <SkeletonBox key={i} className="h-16" />)}
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <KpiCard icon="CalendarDaysIcon" label="Annual Balance" value={`${Number(leaveRecord?.leave_balance||0).toFixed(1)} d`} sub="Remaining" tone="blue" />
-                  <KpiCard icon="CheckCircleIcon" label="Days Taken" value={`${totalDaysTaken.toFixed(1)} d`} sub="This year" tone="green" />
-                  <KpiCard icon="ClockIcon" label="Pending" value={pendingLeave} sub="Awaiting approval" tone={pendingLeave ? 'amber' : 'slate'} />
-                  <KpiCard icon="BanknotesIcon" label="Encashed" value={`${Number(leaveRecord?.total_encashed||0).toFixed(1)} d`} sub={`${new Date().toLocaleString('default',{month:'short',year:'numeric'})} YTD`} tone="purple" />
-                </div>
-              )}
-            </SectionCard>
-          </div>
-        )
+      case 'documents':
+        return <div className="rounded-xl border border-slate-200 bg-white p-5"><DocumentUploadSection /></div>
+
+      case 'career':
+        return <Profile embedded />
+
+      case 'signature':
+        return <div className="space-y-5"><MySignaturePanel /><MyDigitalStampPanel /></div>
 
       case 'leave':
         return (
@@ -3605,12 +3761,13 @@ export default function EmployeeSelfService() {
               </div>
             )}
             
-            <LeaveBalanceSection
+            <ProfileLeaveSummary
+              typeConfig={LEAVE_TYPE_CONFIG}
               leaveRecord={leaveRecord}
               requests={leaveRequests}
               loading={loadingLeave}
             />
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+            <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(320px,0.85fr)_minmax(0,1.65fr)]">
               <LeaveRequestForm
                 leaveTypes={leaveTypes}
                 leaveRecord={leaveRecord}
@@ -3619,76 +3776,40 @@ export default function EmployeeSelfService() {
                 submitting={submitting}
                 submitResult={submitResult}
               />
-              <SectionCard title="My Leave Requests" subtitle="Recent requests" icon="ClipboardDocumentListIcon">
-                {loadingLeave ? (
-                  <div className="space-y-2">{[...Array(4)].map((_, i) => <SkeletonBox key={i} className="h-12" />)}</div>
-                ) : leaveRequests.length === 0 ? (
-                  <EmptyNotice icon="CalendarDaysIcon" message="No leave requests found" />
-                ) : (
-                  <div className="divide-y divide-slate-100 max-h-96 overflow-y-auto">
-                    {leaveRequests.slice(0, 15).map(r => {
-                      const st = (r.status || '').toUpperCase()
-                      const sm = {
-                        PENDING:     'bg-amber-50 text-amber-700 border-amber-200',
-                        RM_APPROVED: 'bg-blue-50 text-blue-700 border-blue-200',
-                        RM_REJECTED: 'bg-orange-50 text-orange-700 border-orange-200',
-                        APPROVED:    'bg-emerald-50 text-emerald-700 border-emerald-200',
-                        REJECTED:    'bg-rose-50 text-rose-700 border-rose-200',
-                        CANCELLED:   'bg-slate-50 text-slate-500 border-slate-200',
-                      }[st] || 'bg-slate-50 text-slate-500 border-slate-200'
-                      const stLabel = r.status_display || {
-                        PENDING:     'Pending',
-                        RM_APPROVED: 'Awaiting HR',
-                        RM_REJECTED: 'Rejected by Manager',
-                        APPROVED:    'Approved',
-                        REJECTED:    'Rejected',
-                        CANCELLED:   'Cancelled',
-                      }[st] || st
-                      return (
-                        <div key={r.id} className="py-2.5">
-                          <div className="flex items-center justify-between gap-2">
-                            <div>
-                              <div className="text-sm font-medium text-slate-800">
-                                {r.leave_type_display || r.leave_type || 'Leave'}
-                              </div>
-                              <div className="text-xs text-slate-400">
-                                {fmtDate(r.start_date)} {EMPTY_DISPLAY} {fmtDate(r.end_date)}
-                                {r.duration_days ? ` ${BULLET_DISPLAY} ${r.duration_days}d` : ''}
-                              </div>
-                            </div>
-                            <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${sm}`}>
-                              {stLabel}
-                            </span>
-                          </div>
-                          {r.reason && <div className="text-xs text-slate-400 mt-0.5 truncate">{r.reason}</div>}
-                          {/* Show RM reviewer when applicable */}
-                          {(st === 'RM_APPROVED' || st === 'APPROVED') && r.rm_reviewed_by_name && (
-                            <div className="text-xs text-blue-500 mt-0.5">
-                              Manager: {r.rm_reviewed_by_name}
-                              {r.rm_reviewed_at && ` · ${r.rm_reviewed_at.slice(0,10)}`}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </SectionCard>
+              <ProfileLeaveRequests requests={leaveRequests} loading={loadingLeave} />
             </div>
           </div>
         )
 
       case 'attendance':
-        return <AttendanceAnalytics profile={profile} monthlyTs={monthlyTs} loading={loadingTs} />
-
       case 'timesheet':
-        return <ESSTimesheetView profile={profile} />
+        return <ProfileTimesheetTables profile={profile} />
 
       case 'payroll':
-        return <PayrollSnapshot salaryInfo={salaryInfo} slips={slips} loading={loadingPayroll} />
+        return (
+          <PayrollSnapshot
+            salaryInfo={salaryInfo}
+            slips={slips}
+            loading={loadingPayroll}
+            salaryVisible={salaryVisible}
+            onToggleSalary={() => setSalaryVisible((visible) => !visible)}
+          />
+        )
+
+      case 'workspace':
+        return <UnifiedHRWorkspacePanel />
+
+      case 'requests':
+        return <EmployeeServiceRequestsPanel employeeIdentifier={employeeIdentifier} />
+
+      case 'performance':
+        return <EmployeeTalentPerformancePanel employee={{ id: employeeIdentifier }} profileWorkspace />
+
+      case 'schedule':
+        return <EmployeeWorkforceSchedulePanel employee={{ id: employeeIdentifier }} />
 
       case 'team':
-        return <TeamCalendar calendarData={calendarData} loading={loadingCalendar} />
+        return <TeamCalendar />
 
       case 'daily_tracker':
         return <DailyTrackerTab currentUser={currentUser || authProfile} />
@@ -3705,24 +3826,20 @@ export default function EmployeeSelfService() {
         )
 
       case 'notifications':
-        return <NotificationsCenter requests={leaveRequests} loading={loadingLeave} />
+        return (
+          <NotificationsCenter
+            notifications={notifications}
+            loading={loadingNotifications}
+            onMarkRead={handleMarkNotificationRead}
+            onMarkAllRead={handleMarkAllNotificationsRead}
+          />
+        )
 
       case 'site_visits':
-        return (
-          <div className="bg-white p-6 rounded-lg shadow-sm">
-            <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-sm text-blue-800">
-                <strong>GPS-Based Site Visit Tracking</strong> - Request site visits, check-in/out with GPS, and track off-site attendance.
-              </p>
-              <a href="/hr/site-visits" className="mt-2 inline-block px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">
-                Open Site Visit Tracker →
-              </a>
-            </div>
-            <p className="text-sm text-slate-500">
-              Note: Site visit feature is available at <a href="/hr/site-visits" className="text-blue-600 underline">/hr/site-visits</a>
-            </p>
-          </div>
-        )
+        return <SiteVisitsPanel />
+
+      case 'assistant':
+        return <HRAssistantPanel />
 
       default:
         return null
@@ -3730,13 +3847,8 @@ export default function EmployeeSelfService() {
   }
 
   return (
-    <div className="bg-slate-50">
-      {/* People nav cross-link */}
-      <div className="px-4 sm:px-6 lg:px-8 pt-4">
-        <PeopleNav activeId="ess" />
-      </div>
-
-      <div className="px-4 sm:px-6 lg:px-8 py-5 space-y-5">
+    <div className="epw-page">
+      <div className="epw-container">
         {/* -- Profile Header -- */}
         <EmployeeProfileHeader
           profile={profile}
@@ -3744,49 +3856,27 @@ export default function EmployeeSelfService() {
           monthlyTs={monthlyTs}
           salaryInfo={salaryInfo}
           loading={loadingProfile}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          tabBadges={tabBadges}
+          salaryVisible={salaryVisible}
+          onToggleSalary={() => setSalaryVisible((visible) => !visible)}
+          uploadingPhoto={uploadingPhoto}
+          photoUploadState={photoUploadState}
+          onPhotoUpload={handleProfilePhotoUpload}
+          todayData={todayTs}
+          liveAttendance={liveAttendance}
+          authenticatedPhotoUrl={authenticatedPhotoUrl}
         />
 
-        {/* -- Tab Navigation -- */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
-          <div className="px-4 pt-1 pb-0 flex gap-0.5 overflow-x-auto scrollbar-hide border-b border-slate-100">
-            {ESS_TABS.map(tab => {
-              const isActive = tab.id === activeTab
-              const badge    = tabBadges[tab.id]
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`
-                    flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium
-                    whitespace-nowrap transition-colors flex-shrink-0 relative
-                    border-b-2 -mb-px
-                    ${isActive
-                      ? 'bg-blue-50/70 text-blue-700 border-blue-500 rounded-t-lg'
-                      : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50 border-transparent rounded-t-lg'}
-                  `}
-                >
-                  <Icon name={tab.icon} className={`w-4 h-4 ${isActive ? 'text-blue-600' : 'text-slate-400'}`} />
-                  {tab.label}
-                  {badge && (
-                    <span className="ml-1 min-w-[18px] h-[18px] px-1 rounded-full bg-blue-600 text-white text-[10px] font-bold flex items-center justify-center">
-                      {badge}
-                    </span>
-                  )}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-
         {/* -- Active Section -- */}
-        <div>
+        <div className={`epw-active-section${activeTab === 'overview' ? '' : ' epw-tab-content'}`} data-profile-tab={activeTab}>
           {renderSection()}
         </div>
 
         {/* -- Footer -- */}
-        <div className="pb-6 text-center text-xs text-slate-400 flex items-center justify-center gap-1">
-          <Icon name="ShieldCheckIcon" className="w-3.5 h-3.5 text-emerald-400" />
-          You are viewing your own personal workspace. Data is securely scoped to your account.
+        <div className="epw-footer">
+          Your personal workspace · Only your own employee records are shown.
         </div>
       </div>
     </div>

@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../../services/radaiDialog'
 /**
  * Site Visit Tracking Page
  * GPS-based attendance for off-site engineers
@@ -166,9 +167,9 @@ const SiteVisits = () => {
 
       // Validate accuracy
       if (position.accuracy > 50) {
-        const proceed = window.confirm(
+        const proceed = (await radaiConfirm(
           `GPS accuracy is ${Math.round(position.accuracy)}m (threshold: 50m). Continue anyway?`
-        );
+        ));
         if (!proceed) {
           setLoading(false);
           return;
@@ -178,9 +179,9 @@ const SiteVisits = () => {
       // Check distance from site
       const distance = calculateSiteDistance(selectedSite);
       if (distance && distance > selectedSite.geofence_radius) {
-        const proceed = window.confirm(
+        const proceed = (await radaiConfirm(
           `You are ${distance}m from the site (geofence: ${selectedSite.geofence_radius}m). Continue anyway?`
-        );
+        ));
         if (!proceed) {
           setLoading(false);
           return;

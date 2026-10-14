@@ -1,289 +1,166 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+/* eslint-disable react/prop-types */
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  ArchiveBoxIcon,
-  ArrowPathIcon,
-  ArrowRightIcon,
-  CheckCircleIcon,
-  ChevronRightIcon,
-  ClipboardDocumentCheckIcon,
-  Cog6ToothIcon,
-  CurrencyDollarIcon,
-  DocumentTextIcon,
-  ExclamationTriangleIcon,
-  ShieldCheckIcon,
-  ShoppingCartIcon,
-  TruckIcon,
-  UserGroupIcon,
-  XMarkIcon,
-} from '@heroicons/react/24/outline';
+import { ArrowDownTrayIcon, ArrowPathIcon, ArrowRightIcon, BanknotesIcon, CheckCircleIcon, ChevronDownIcon, CircleStackIcon, ClockIcon, CubeIcon, CurrencyDollarIcon, DocumentTextIcon, EllipsisVerticalIcon, ExclamationTriangleIcon, InformationCircleIcon, LockClosedIcon, PlusIcon, ShoppingCartIcon, TruckIcon, UserGroupIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { Bar, BarChart, CartesianGrid, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import apiClient from '../../services/api.service';
-import { PageControlButtons } from '../../components/Common/PageControlButtons';
-import { usePageControls } from '../../hooks/usePageControls';
+import './ProcurementDashboard.css';
 
-const EMPTY_STATS = {
-  requisitions: { total: 0, pending: 0, approved: 0, rejected: 0 },
-  orders: { total: 0, draft: 0, sent: 0, acknowledged: 0, completed: 0, total_value: 0 },
-  receipts: { total: 0, pending: 0, accepted: 0, rejected: 0, quality_passed: 0, quality_failed: 0 },
-  vendors: { total: 0, active: 0, complete: 0, averageCompleteness: 0 },
+const EMPTY = { generated_at: null, scope: {}, terminology: {}, metrics: { counts: {}, cycle_time: {} }, actions: [], supplier_spend: [], purchasing_flow: {}, recent_decisions: [], supplier_watch: [], data_quality: { limitations: [] } };
+const STATUS_COLORS = { draft: '#2494ff', sent: '#97d0ff', acknowledged: '#ffca5f', in_progress: '#74b4c3', partially_received: '#ccd9e9', completed: '#526d91', cancelled: '#c19cb5' };
+const number = (value) => new Intl.NumberFormat('en-GB').format(Number(value || 0));
+const money = (value, compact = false) => value == null ? 'Unavailable' : `AED ${new Intl.NumberFormat('en-GB', { notation: compact ? 'compact' : 'standard', maximumFractionDigits: compact ? 1 : 0 }).format(Number(value))}`;
+const percent = (value) => value == null ? '—' : `${number(value)}%`;
+const formatDate = (value, includeTime = false) => value && !Number.isNaN(new Date(value).getTime()) ? new Intl.DateTimeFormat('en-GB', includeTime ? { dateStyle: 'medium', timeStyle: 'short' } : { dateStyle: 'medium' }).format(new Date(value)) : '—';
+const initialScope = () => ({ scope: 'portfolio', project: '', department: '', period_start: `${new Date().getFullYear()}-01-01`, period_end: `${new Date().getFullYear()}-12-31` });
+const requestProblem = (error) => {
+  const status = error.response?.status;
+  if (!error.response) return 'Cannot load procurement data. Check your connection and try again.';
+  if (status === 401) return 'Your session has expired. Sign in again to view procurement data.';
+  if (status === 403) return 'Your account does not have access to this procurement report.';
+  return typeof error.response?.data?.detail === 'string' ? error.response.data.detail : 'Procurement data is temporarily unavailable. Please try again.';
 };
 
-const VENDOR_FIELDS = [
-  'vendor_code', 'name', 'contact_person', 'email', 'phone', 'address', 'country',
-  'trade_license_number', 'vat_number', 'categories', 'certifications',
-];
+function Panel({ title, subtitle, action, children, className = '', summary }) {
+  return <section className={`proc-overview-panel ${className}`} aria-label={title}><div className="proc-overview-panel-header"><div><div className="proc-overview-panel-title"><h2>{title}</h2>{summary}</div>{subtitle && <p>{subtitle}</p>}</div>{action}</div>{children}</section>;
+}
+function TextLink({ to, children }) { return <Link className="proc-overview-text-link" to={to}>{children}<ArrowRightIcon aria-hidden="true" /></Link>; }
+function TableButton({ to, children, label }) { return <Link className="proc-overview-table-button" to={to} aria-label={label}>{children}</Link>; }
+function Signal({ label, value, context, icon: Icon, tone = 'blue', detail, children, info, to }) {
+  return <article className="proc-overview-signal"><span className={`proc-overview-signal-icon proc-overview-tone-${tone}`}><Icon aria-hidden="true" /></span><div className="proc-overview-signal-copy"><div className="proc-overview-signal-label">{to ? <Link to={to}>{label}</Link> : label}<span role="img" title={info} tabIndex={0} aria-label={info}><InformationCircleIcon aria-hidden="true" /></span></div><strong>{value}</strong><p>{context}</p>{detail && <small>{detail}</small>}</div>{children}</article>;
+}
+function EmptyState({ children }) { return <p className="proc-overview-empty">{children}</p>; }
+function SpendTooltip({ active, payload }) {
+  if (!active || !payload?.length) return null;
+  const row = payload[0].payload;
+  return <div className="proc-overview-chart-tooltip"><strong>{row.fullLabel}</strong><span>{money(row.displayAmount)}</span><small>{number(row.order_count)} purchase orders in month</small></div>;
+}
 
-const hasValue = (value) => (
-  Array.isArray(value) ? value.length > 0 : value !== null && value !== undefined && String(value).trim() !== ''
-);
+function SpendChart({ trend, mode }) {
+  const rows = useMemo(() => (trend?.months || []).map((row) => {
+    const date = new Date(`${row.month}-01T12:00:00`);
+    const amount = mode === 'cumulative' ? row.cumulative_amount : row.amount;
+    return { ...row, label: date.toLocaleDateString('en-GB', { month: 'short' }), fullLabel: date.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }), displayAmount: amount, value: amount == null ? null : Number(amount) / 1000 };
+  }), [trend, mode]);
+  if (!trend) return <EmptyState>Monthly spend data is not available yet.</EmptyState>;
+  if (!trend.conversion_complete) return <EmptyState>Spend chart unavailable: an approved FX rate is missing for {trend.missing_currencies?.join(', ')}.</EmptyState>;
+  if (!rows.some((row) => Number(row.amount))) return <EmptyState>No committed spend in this reporting period.</EmptyState>;
+  return <div className="proc-overview-chart" role="img" aria-label={`${mode === 'cumulative' ? 'Cumulative' : 'Monthly'} committed spend in AED. ${rows.map((row) => `${row.fullLabel}: ${money(row.displayAmount)}`).join('; ')}`}>
+    <ResponsiveContainer width="100%" height="100%"><BarChart data={rows} margin={{ top: 22, right: 12, bottom: 0, left: -14 }} barCategoryGap="22%" accessibilityLayer>
+      <defs><linearGradient id="proc-overview-spend-gradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#409fff" /><stop offset="100%" stopColor="#0784f5" /></linearGradient></defs>
+      <CartesianGrid stroke="#e7eef7" vertical={false} />
+      <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#32517c' }} axisLine={{ stroke: '#c7d7e9' }} tickLine={false} interval="preserveStartEnd" minTickGap={12} />
+      <YAxis tick={{ fontSize: 10, fill: '#32517c' }} tickLine={false} axisLine={{ stroke: '#c7d7e9' }} tickFormatter={(value) => number(value)} />
+      <Tooltip content={<SpendTooltip />} cursor={{ fill: '#eef6ff' }} />
+      <Bar dataKey="value" fill="url(#proc-overview-spend-gradient)" maxBarSize={46} radius={[1, 1, 0, 0]} isAnimationActive={false}>
+        {rows.map((row, index) => <Cell key={row.month} fillOpacity={index === rows.length - 1 ? 0.62 : 1} />)}
+        {rows.length <= 12 && <LabelList dataKey="value" position="top" fill="#10254e" fontSize={10} fontWeight={600} formatter={(value) => value ? new Intl.NumberFormat('en-GB', { maximumFractionDigits: 1 }).format(value) : ''} />}
+      </Bar>
+    </BarChart></ResponsiveContainer>
+  </div>;
+}
 
-const vendorCompleteness = (vendor = {}) => {
-  const completed = VENDOR_FIELDS.filter((field) => hasValue(vendor[field])).length;
-  return Math.round((completed / VENDOR_FIELDS.length) * 100);
-};
+function PurchasingFlow({ flow }) {
+  const stages = [
+    { label: 'Requisitions', value: flow.requisitions, icon: DocumentTextIcon, detail: 'in reporting period', to: '/procurement/requisitions' },
+    { label: 'Approved', value: flow.approved_requisitions, icon: CheckCircleIcon, tone: 'green', percent: flow.approval_percent, detail: 'of requisitions', to: '/procurement/requisitions' },
+    { label: 'Purchase orders', value: flow.purchase_orders, icon: ShoppingCartIcon, detail: 'in reporting period', to: '/procurement/orders' },
+    { label: 'Supplier acknowledged', value: flow.supplier_acknowledged_orders, icon: UserGroupIcon, tone: 'amber', percent: flow.acknowledgement_percent, detail: 'of POs issued', to: '/procurement/orders' },
+    { label: 'Receipts', value: flow.orders_with_accepted_receipts, icon: CubeIcon, tone: 'amber', percent: flow.receipt_coverage_percent, detail: 'of POs issued', to: '/procurement/receipts' },
+  ];
+  return <div className="proc-overview-flow">{stages.map(({ label, value, icon: Icon, tone = 'blue', percent: stagePercent, detail, to }) => <div className={`proc-overview-flow-step proc-overview-flow-${tone}`} key={label}><Link to={to} className="proc-overview-flow-chevron"><span className="proc-overview-flow-label"><span className={`proc-overview-flow-icon proc-overview-tone-${tone}`}><Icon aria-hidden="true" /></span><span>{label}</span></span><strong>{value == null ? '—' : number(value)}</strong></Link><div className="proc-overview-flow-caption">{stagePercent != null && <strong>{percent(stagePercent)}</strong>}<span>{detail}</span></div></div>)}</div>;
+}
 
-const percentage = (value, total) => (total > 0 ? Math.round((value / total) * 100) : 0);
+function OrderStatus({ status }) {
+  if (!status) return <EmptyState>Purchase order status data is not available yet.</EmptyState>;
+  let offset = 0;
+  return <div className="proc-overview-order-breakdown"><div className="proc-overview-donut" role="img" aria-label={`${number(status.total)} purchase orders. ${status.statuses.map((row) => `${row.label}: ${row.count}`).join('; ')}`}><svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="46" fill="none" stroke="#eef3f9" strokeWidth="20" />{status.statuses.map((row) => {
+    const length = status.total ? row.count / status.total * 100 : 0;
+    const segment = <circle key={row.status} cx="60" cy="60" r="46" fill="none" stroke={STATUS_COLORS[row.status] || '#94a3b8'} strokeWidth="20" pathLength="100" strokeDasharray={`${length} ${100 - length}`} strokeDashoffset={-offset} transform="rotate(-90 60 60)" />;
+    offset += length;
+    return segment;
+  })}</svg><div><strong>{number(status.total)}</strong><span>POs</span></div></div><ul className="proc-overview-status-legend">{status.statuses.filter((row) => row.count || !['in_progress', 'cancelled'].includes(row.status)).map((row) => <li key={row.status}><span className="proc-overview-dot" style={{ background: STATUS_COLORS[row.status] || '#94a3b8' }} /><span>{row.label}</span><strong>{number(row.count)}</strong><span>{percent(row.percent)}</span></li>)}</ul></div>;
+}
 
-const formatCurrency = (value) => new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  notation: value >= 1000000 ? 'compact' : 'standard',
-  maximumFractionDigits: value >= 1000000 ? 1 : 0,
-}).format(value || 0);
-
-const ProcurementDashboard = () => {
-  const [stats, setStats] = useState(EMPTY_STATS);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [lastUpdated, setLastUpdated] = useState(null);
-
-  const pageControls = usePageControls({
-    autoRefreshInterval: 30,
-    features: { autoRefresh: true, fullscreen: true, sidebar: true },
-  });
-
-  const fetchDashboardData = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const results = await Promise.allSettled([
-        apiClient.get('/procurement/requisitions/dashboard/').then((response) => response.data),
-        apiClient.get('/procurement/orders/dashboard/').then((response) => response.data),
-        apiClient.get('/procurement/receipts/dashboard/').then((response) => response.data),
-        apiClient.get('/procurement/vendors/', { params: { page_size: 1000 } }).then((response) => response.data),
-      ]);
-      const extract = (result, fallback) => (result.status === 'fulfilled' ? result.value : fallback);
-      const prStats = extract(results[0], { totals: {} });
-      const poStats = extract(results[1], { totals: {} });
-      const receiptStats = extract(results[2], { totals: {} });
-      const vendorStats = extract(results[3], { results: [], count: 0 });
-      const vendorList = Array.isArray(vendorStats) ? vendorStats : (vendorStats?.results || []);
-      const completeness = vendorList.map(vendorCompleteness);
-      const failedRequests = results.filter((result) => result.status === 'rejected').length;
-
-      setStats({
-        requisitions: { ...EMPTY_STATS.requisitions, ...(prStats?.totals || {}) },
-        orders: { ...EMPTY_STATS.orders, ...(poStats?.totals || {}) },
-        receipts: { ...EMPTY_STATS.receipts, ...(receiptStats?.totals || {}) },
-        vendors: {
-          total: Number(vendorStats?.count ?? vendorList.length) || 0,
-          active: vendorList.filter((vendor) => vendor?.status === 'active').length,
-          complete: completeness.filter((score) => score >= 85).length,
-          averageCompleteness: completeness.length
-            ? Math.round(completeness.reduce((sum, score) => sum + score, 0) / completeness.length)
-            : 0,
-        },
-      });
-      if (failedRequests) {
-        setError({ message: `${failedRequests} data source${failedRequests > 1 ? 's are' : ' is'} temporarily unavailable. Available metrics are shown.` });
-      }
-      setLastUpdated(new Date());
-    } catch (requestError) {
-      console.error('Error fetching procurement dashboard:', requestError);
-      setError({ message: 'Unable to refresh the procurement dashboard.' });
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+export default function ProcurementDashboard() {
+  const [report, setReport] = useState(EMPTY), [projects, setProjects] = useState([]);
+  const [applied, setApplied] = useState(initialScope), [filters, setFilters] = useState(initialScope);
+  const [scopeOpen, setScopeOpen] = useState(false), [loading, setLoading] = useState(true), [error, setError] = useState('');
+  const [mode, setMode] = useState('monthly'), [snapshotStatus, setSnapshotStatus] = useState(''), [snapshotBusy, setSnapshotBusy] = useState(false), [refreshKey, setRefreshKey] = useState(0);
+  const scopeRef = useRef(null), scopeButtonRef = useRef(null), controlsRef = useRef(null), menusRef = useRef(null);
+  useEffect(() => { const controller = new AbortController(); apiClient.get('/projects/', { params: { page_size: 250, ordering: 'code' }, signal: controller.signal }).then(({ data }) => setProjects(Array.isArray(data) ? data : data.results || [])).catch(() => {}); return () => controller.abort(); }, []);
   useEffect(() => {
-    fetchDashboardData();
-  }, [fetchDashboardData, pageControls.isRefreshing]);
+    const controller = new AbortController(); setLoading(true); setError(''); setReport(EMPTY);
+    apiClient.get('/procurement/governance/dashboard/', { params: Object.fromEntries(Object.entries(applied).filter(([, value]) => value)), signal: controller.signal })
+      .then(({ data }) => { if (!controller.signal.aborted) setReport(data); })
+      .catch((requestError) => { if (!controller.signal.aborted) { setError(requestProblem(requestError)); setReport(EMPTY); } })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [applied, refreshKey]);
+  useEffect(() => {
+    const closeOnOutside = (event) => { if (!scopeRef.current?.contains(event.target)) setScopeOpen(false); menusRef.current?.querySelectorAll('details[open]').forEach((menu) => { if (!menu.contains(event.target)) menu.open = false; }); };
+    const closeOnEscape = (event) => { if (event.key === 'Escape') { if (scopeOpen) { setScopeOpen(false); scopeButtonRef.current?.focus(); } menusRef.current?.querySelectorAll('details[open]').forEach((menu) => { menu.open = false; menu.querySelector('summary')?.focus(); }); } };
+    document.addEventListener('pointerdown', closeOnOutside); document.addEventListener('keydown', closeOnEscape);
+    return () => { document.removeEventListener('pointerdown', closeOnOutside); document.removeEventListener('keydown', closeOnEscape); };
+  }, [scopeOpen]);
+  const counts = report.metrics?.counts || {}, cycle = report.metrics?.cycle_time || {}, flow = report.purchasing_flow || {};
+  const commitment = report.metrics?.po_commitment_aed, readiness = report.supplier_readiness;
+  const supplierGroup = report.supplier_spend_aed || report.supplier_spend?.find((group) => group.currency === 'AED');
+  const suppliers = supplierGroup?.conversion_complete === false || supplierGroup?.missing_currencies?.length ? [] : supplierGroup?.suppliers || [];
+  const maxSpend = Math.max(...suppliers.map((row) => Number(row.amount)), 0);
+  const ready = Boolean(report.generated_at) && !loading && !error, display = (value) => ready ? value : '—';
+  const scopeText = applied.scope === 'project' ? projects.find((item) => String(item.id) === String(applied.project))?.code || 'Selected project' : applied.scope === 'department' ? applied.department || 'My department' : applied.scope === 'my_projects' ? 'My projects' : 'Current portfolio';
+  const selectedYear = applied.period_start?.endsWith('-01-01') && applied.period_end === `${applied.period_start.slice(0, 4)}-12-31` ? applied.period_start.slice(0, 4) : !applied.period_start && !applied.period_end ? 'all' : 'custom';
+  const years = [...new Set([new Date().getFullYear(), Number(report.as_of_date?.slice(0, 4)) || new Date().getFullYear(), ...(selectedYear !== 'all' && selectedYear !== 'custom' ? [Number(selectedYear)] : [])])].flatMap((year) => [year, year - 1, year - 2]);
+  const changeYear = (year) => { if (year === 'custom') { setFilters(applied); setScopeOpen(true); return; } const next = { ...applied, period_start: year === 'all' ? '' : `${year}-01-01`, period_end: year === 'all' ? '' : `${year}-12-31` }; setApplied(next); setFilters(next); };
+  const showControls = () => { if (controlsRef.current) { controlsRef.current.open = true; controlsRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); controlsRef.current.querySelector('summary')?.focus({ preventScroll: true }); } };
+  const closeMenus = () => menusRef.current?.querySelectorAll('details[open]').forEach((menu) => { menu.open = false; });
+  const exportReport = (format) => {
+    const rows = [['Month', 'Currency', 'Committed spend', 'Cumulative spend', 'Purchase orders'], ...(report.spend_trend?.months || []).map((row) => [row.month, 'AED', row.amount ?? '', row.cumulative_amount ?? '', row.order_count])];
+    const content = format === 'csv' ? rows.map((row) => row.join(',')).join('\r\n') : JSON.stringify(report, null, 2);
+    const url = URL.createObjectURL(new Blob([content], { type: format === 'csv' ? 'text/csv;charset=utf-8' : 'application/json' }));
+    const anchor = document.createElement('a'); anchor.href = url; anchor.download = `procurement-${report.as_of_date || 'report'}.${format}`; document.body.appendChild(anchor); anchor.click(); anchor.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); closeMenus();
+  };
+  const createSnapshot = async () => { setSnapshotBusy(true); setSnapshotStatus('Creating reporting snapshot…'); try { const { data } = await apiClient.post('/procurement/governance/snapshots/', Object.fromEntries(Object.entries(applied).filter(([, value]) => value))); setSnapshotStatus(`Snapshot ${data.id.slice(0, 8)} locked · checksum ${data.checksum.slice(0, 10)}`); } catch (requestError) { setSnapshotStatus(`Snapshot could not be created. ${requestProblem(requestError)}`); } finally { setSnapshotBusy(false); } };
 
-  const dashboard = useMemo(() => {
-    const requisitionApproval = percentage(stats.requisitions.approved, stats.requisitions.total);
-    const orderClosure = percentage(stats.orders.completed, stats.orders.total);
-    const receiptAcceptance = percentage(stats.receipts.accepted, stats.receipts.total);
-    const inspected = (stats.receipts.quality_passed || 0) + (stats.receipts.quality_failed || 0);
-    const vendorAttention = Math.max(stats.vendors.total - stats.vendors.complete, 0);
-    return {
-      requisitionApproval,
-      orderClosure,
-      receiptAcceptance,
-      qualityPassRate: percentage(stats.receipts.quality_passed, inspected),
-      vendorActivation: percentage(stats.vendors.active, stats.vendors.total),
-      readiness: Math.round((requisitionApproval + orderClosure + receiptAcceptance + stats.vendors.averageCompleteness) / 4),
-      vendorAttention,
-      actionCount: (stats.requisitions.pending || 0) + (stats.orders.draft || 0)
-        + (stats.receipts.pending || 0) + vendorAttention,
-    };
-  }, [stats]);
-
-  const kpis = [
-    { title: 'Requisitions', value: stats.requisitions.total, label: `${stats.requisitions.pending || 0} awaiting approval`, progress: dashboard.requisitionApproval, progressLabel: 'Approval rate', icon: DocumentTextIcon, href: '/procurement/requisitions', accent: 'bg-sky-50 text-sky-700 ring-sky-100' },
-    { title: 'Purchase Orders', value: stats.orders.total, label: `${stats.orders.draft || 0} drafts need action`, progress: dashboard.orderClosure, progressLabel: 'Closure rate', icon: ShoppingCartIcon, href: '/procurement/orders', accent: 'bg-teal-50 text-[#008f80] ring-teal-100' },
-    { title: 'Goods Receipts', value: stats.receipts.total, label: `${stats.receipts.pending || 0} pending inspection`, progress: dashboard.receiptAcceptance, progressLabel: 'Acceptance rate', icon: ArchiveBoxIcon, href: '/procurement/receipts', accent: 'bg-violet-50 text-violet-700 ring-violet-100' },
-    { title: 'Qualified Vendors', value: stats.vendors.active, label: `${dashboard.vendorAttention} profiles need review`, progress: stats.vendors.averageCompleteness, progressLabel: 'Data completeness', icon: UserGroupIcon, href: '/procurement/vendors', accent: 'bg-amber-50 text-amber-700 ring-amber-100' },
-  ];
-
-  const actionQueue = [
-    { label: 'Requisitions awaiting approval', value: stats.requisitions.pending || 0, href: '/procurement/requisitions', icon: ClipboardDocumentCheckIcon },
-    { label: 'Draft orders awaiting submission', value: stats.orders.draft || 0, href: '/procurement/orders', icon: ShoppingCartIcon },
-    { label: 'Receipts awaiting inspection', value: stats.receipts.pending || 0, href: '/procurement/receipts', icon: ArchiveBoxIcon },
-    { label: 'Vendor profiles needing review', value: dashboard.vendorAttention, href: '/procurement/vendors', icon: UserGroupIcon },
-  ];
-
-  const workflows = [
-    { name: 'Purchase Requisitions', code: 'PR', icon: DocumentTextIcon, total: stats.requisitions.total, awaiting: stats.requisitions.pending, completed: stats.requisitions.approved, rejected: stats.requisitions.rejected, readiness: dashboard.requisitionApproval, href: '/procurement/requisitions' },
-    { name: 'Purchase Orders', code: 'PO', icon: ShoppingCartIcon, total: stats.orders.total, awaiting: stats.orders.draft, completed: stats.orders.completed, rejected: 0, readiness: dashboard.orderClosure, href: '/procurement/orders' },
-    { name: 'Goods Receipts', code: 'GRN', icon: ArchiveBoxIcon, total: stats.receipts.total, awaiting: stats.receipts.pending, completed: stats.receipts.accepted, rejected: stats.receipts.rejected, readiness: dashboard.receiptAcceptance, href: '/procurement/receipts' },
-    { name: 'Vendor Qualification', code: 'VDR', icon: UserGroupIcon, total: stats.vendors.total, awaiting: dashboard.vendorAttention, completed: stats.vendors.complete, rejected: 0, readiness: stats.vendors.averageCompleteness, href: '/procurement/vendors' },
-  ];
-
-  const readinessMetrics = [
-    { label: 'Workflow readiness', value: dashboard.readiness, caption: 'Average across procurement controls', icon: Cog6ToothIcon },
-    { label: 'Quality pass rate', value: dashboard.qualityPassRate, caption: 'NDT / PMI inspection outcomes', icon: ShieldCheckIcon },
-    { label: 'Vendor activation', value: dashboard.vendorActivation, caption: 'Active suppliers in the register', icon: UserGroupIcon },
-    { label: 'Receipt acceptance', value: dashboard.receiptAcceptance, caption: 'Accepted goods receipt records', icon: CheckCircleIcon },
-  ];
-
-  return (
-    <div className="min-h-screen bg-slate-50" style={pageControls.styles.container}>
-      <div className="pb-10" style={pageControls.styles.content}>
-        <header className="border-b border-slate-200 bg-white">
-          <div className="px-4 py-7 sm:px-6 lg:px-8">
-            <div className="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
-              <div className="max-w-3xl">
-                <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-[#008f80]">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-50 text-[#008f80] ring-1 ring-teal-100"><TruckIcon className="h-5 w-5" /></span>
-                  Procurement command center
-                </div>
-                <h1 className="text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">Procurement Management · Oil &amp; Gas</h1>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Control supplier qualification, requisitions, orders, receipts, and quality readiness from one operational workspace.</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <PageControlButtons
-                  isFullscreen={pageControls.isFullscreen}
-                  toggleFullscreen={pageControls.toggleFullscreen}
-                  sidebarVisible={pageControls.sidebarVisible}
-                  toggleSidebar={pageControls.toggleSidebar}
-                  autoRefreshEnabled={pageControls.autoRefreshEnabled}
-                  toggleAutoRefresh={pageControls.toggleAutoRefresh}
-                  isRefreshing={pageControls.isRefreshing}
-                  manualRefresh={pageControls.manualRefresh}
-                />
-                <Link to="/procurement/requisitions" className="inline-flex items-center gap-2 rounded-lg bg-[#00a896] px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-teal-950/20 transition hover:bg-[#009688]"><DocumentTextIcon className="h-5 w-5" /> New Requisition</Link>
-              </div>
-            </div>
-            <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-slate-200 pt-4 text-xs text-slate-500">
-              <span className="inline-flex items-center gap-2"><span className={`h-2 w-2 rounded-full ${error ? 'bg-amber-400' : 'bg-emerald-400'}`} />{error ? 'Partial data available' : 'All procurement services connected'}</span>
-              <span>{loading ? 'Refreshing operational data…' : `Last updated ${lastUpdated?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || 'just now'}`}</span>
-              <span className="font-semibold text-[#008f80]">{dashboard.actionCount} actions require attention</span>
-            </div>
-          </div>
-        </header>
-
-        <main className="space-y-7 px-4 py-7 sm:px-6 lg:px-8">
-          {error && (
-            <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900">
-              <ExclamationTriangleIcon className="mt-0.5 h-5 w-5 flex-none text-amber-600" />
-              <p className="flex-1 text-sm font-medium">{error.message}</p>
-              <button type="button" onClick={fetchDashboardData} className="rounded-md p-1 text-amber-700 hover:bg-amber-100" aria-label="Retry dashboard refresh"><ArrowPathIcon className="h-5 w-5" /></button>
-              <button type="button" onClick={() => setError(null)} className="rounded-md p-1 text-amber-700 hover:bg-amber-100" aria-label="Dismiss alert"><XMarkIcon className="h-5 w-5" /></button>
-            </div>
-          )}
-
-          <section aria-labelledby="dashboard-kpis">
-            <div className="mb-4 flex items-end justify-between gap-4">
-              <div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#008f80]">Live portfolio</p><h2 id="dashboard-kpis" className="mt-1 text-xl font-bold text-slate-950">Procurement at a glance</h2></div>
-              <p className="hidden text-sm text-slate-500 sm:block">Select a card to open its working list</p>
-            </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {kpis.map((card) => (
-                <Link key={card.title} to={card.href} className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-[#00a896]/60 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-[#00a896]">
-                  <div className="flex items-start justify-between"><span className={`rounded-xl p-3 ring-1 ${card.accent}`}><card.icon className="h-6 w-6" /></span><ArrowRightIcon className="h-5 w-5 text-slate-300 transition group-hover:translate-x-1 group-hover:text-[#00a896]" /></div>
-                  <p className="mt-5 text-sm font-semibold text-slate-500">{card.title}</p>
-                  <div className="mt-1 flex items-end justify-between gap-3"><p className="text-3xl font-bold tracking-tight text-slate-950">{loading ? '—' : card.value}</p><span className="text-xs font-bold text-slate-500">{card.progress}%</span></div>
-                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-[#00a896] transition-all" style={{ width: `${card.progress}%` }} /></div>
-                  <div className="mt-3 flex items-center justify-between gap-2 text-xs"><span className="font-semibold text-amber-700">{card.label}</span><span className="text-slate-400">{card.progressLabel}</span></div>
-                </Link>
-              ))}
-            </div>
-          </section>
-
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" aria-labelledby="action-queue">
-            <div className="mb-4 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-600">Action queue</p><h2 id="action-queue" className="mt-1 text-lg font-bold text-slate-950">Items awaiting action</h2></div><span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">{dashboard.actionCount} open</span></div>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-              {actionQueue.map((item) => (
-                <Link key={item.label} to={item.href} className="group flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4 transition hover:border-[#00a896]/50 hover:bg-teal-50/40">
-                  <span className="flex h-10 w-10 flex-none items-center justify-center rounded-lg bg-white text-slate-600 shadow-sm ring-1 ring-slate-200"><item.icon className="h-5 w-5" /></span>
-                  <div className="min-w-0 flex-1"><p className="text-xl font-bold text-slate-950">{loading ? '—' : item.value}</p><p className="truncate text-xs font-medium text-slate-500">{item.label}</p></div><ChevronRightIcon className="h-4 w-4 text-slate-300 group-hover:text-[#00a896]" />
-                </Link>
-              ))}
-            </div>
-          </section>
-
-          <div className="grid grid-cols-1 gap-7 2xl:grid-cols-[minmax(0,1.65fr)_minmax(320px,0.7fr)]">
-            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" aria-labelledby="workflow-control">
-              <div className="flex flex-col gap-2 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#008f80]">Process control</p><h2 id="workflow-control" className="mt-1 text-lg font-bold text-slate-950">Procurement workflow status</h2></div><span className="text-xs text-slate-500">Calculated from current records</span></div>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-slate-200">
-                  <thead className="bg-slate-50 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500"><tr><th className="px-5 py-3">Workflow</th><th className="px-4 py-3 text-right">Total</th><th className="px-4 py-3 text-right">Awaiting action</th><th className="px-4 py-3 text-right">Completed</th><th className="min-w-40 px-4 py-3">Readiness</th><th className="px-5 py-3 text-right">Open</th></tr></thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {workflows.map((workflow) => (
-                      <tr key={workflow.code} className="transition hover:bg-slate-50">
-                        <td className="px-5 py-4"><div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 text-slate-600"><workflow.icon className="h-5 w-5" /></span><div><p className="text-sm font-bold text-slate-900">{workflow.name}</p><p className="text-xs text-slate-400">{workflow.code} register</p></div></div></td>
-                        <td className="px-4 py-4 text-right text-sm font-bold text-slate-800">{workflow.total || 0}</td>
-                        <td className="px-4 py-4 text-right"><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${workflow.awaiting ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>{workflow.awaiting || 0}</span></td>
-                        <td className="px-4 py-4 text-right"><span className="text-sm font-bold text-emerald-700">{workflow.completed || 0}</span>{workflow.rejected > 0 && <p className="mt-1 text-[11px] text-rose-600">{workflow.rejected} rejected</p>}</td>
-                        <td className="px-4 py-4"><div className="flex items-center gap-3"><div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-[#00a896]" style={{ width: `${workflow.readiness}%` }} /></div><span className="w-9 text-right text-xs font-bold text-slate-600">{workflow.readiness}%</span></div></td>
-                        <td className="px-5 py-4 text-right"><Link to={workflow.href} className="inline-flex items-center gap-1 text-xs font-bold text-[#008f80] hover:text-[#006f65]">View <ChevronRightIcon className="h-4 w-4" /></Link></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-
-            <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" aria-labelledby="commercial-summary">
-              <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#008f80]">Commercial</p><h2 id="commercial-summary" className="mt-1 text-lg font-bold text-slate-950">Order value</h2></div><span className="rounded-xl bg-teal-50 p-3 text-[#008f80]"><CurrencyDollarIcon className="h-6 w-6" /></span></div>
-              <p className="mt-7 text-4xl font-bold tracking-tight text-slate-950">{loading ? '—' : formatCurrency(stats.orders.total_value)}</p><p className="mt-2 text-sm text-slate-500">Across {stats.orders.total || 0} purchase orders</p>
-              <div className="my-6 border-t border-slate-100" />
-              <div className="space-y-3 text-sm"><div className="flex justify-between"><span className="text-slate-500">Acknowledged orders</span><span className="font-bold text-slate-800">{stats.orders.acknowledged || 0}</span></div><div className="flex justify-between"><span className="text-slate-500">Orders sent</span><span className="font-bold text-slate-800">{stats.orders.sent || 0}</span></div><div className="flex justify-between"><span className="text-slate-500">Completed orders</span><span className="font-bold text-emerald-700">{stats.orders.completed || 0}</span></div></div>
-              <Link to="/procurement/orders" className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:border-[#00a896] hover:text-[#008f80]">Review purchase orders <ArrowRightIcon className="h-4 w-4" /></Link>
-            </aside>
-          </div>
-
-          <section aria-labelledby="industry-readiness">
-            <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#008f80]">Oil &amp; gas assurance</p><h2 id="industry-readiness" className="mt-1 text-xl font-bold text-slate-950">Operational control readiness</h2></div><p className="text-sm text-slate-500">Live ratios—no estimated or fabricated values</p></div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {readinessMetrics.map((metric) => (
-                <div key={metric.label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                  <div className="flex items-center justify-between"><span className="rounded-xl bg-slate-100 p-2.5 text-slate-600"><metric.icon className="h-5 w-5" /></span><span className={`text-sm font-bold ${metric.value >= 85 ? 'text-emerald-600' : metric.value >= 60 ? 'text-amber-600' : 'text-rose-600'}`}>{metric.value}%</span></div>
-                  <h3 className="mt-4 text-sm font-bold text-slate-900">{metric.label}</h3><p className="mt-1 text-xs leading-5 text-slate-500">{metric.caption}</p>
-                  <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-gradient-to-r from-[#00a896] to-sky-400" style={{ width: `${metric.value}%` }} /></div>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="rounded-2xl bg-gradient-to-r from-slate-900 to-[#063c43] p-5 text-white shadow-lg" aria-labelledby="quick-actions">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-200">Create &amp; manage</p><h2 id="quick-actions" className="mt-1 text-lg font-bold">Continue a procurement workflow</h2></div><div className="grid grid-cols-2 gap-2 sm:grid-cols-4"><Link to="/procurement/requisitions" className="rounded-lg bg-white/10 px-4 py-2.5 text-center text-sm font-bold ring-1 ring-white/15 hover:bg-white/15">Requisitions</Link><Link to="/procurement/orders" className="rounded-lg bg-white/10 px-4 py-2.5 text-center text-sm font-bold ring-1 ring-white/15 hover:bg-white/15">Orders</Link><Link to="/procurement/receipts" className="rounded-lg bg-white/10 px-4 py-2.5 text-center text-sm font-bold ring-1 ring-white/15 hover:bg-white/15">Receipts</Link><Link to="/procurement/vendors" className="rounded-lg bg-[#00a896] px-4 py-2.5 text-center text-sm font-bold hover:bg-[#009688]">Vendors</Link></div></div>
-          </section>
-        </main>
+  return <div className="procurement-overview proc-overview-workspace">
+    <header className="proc-overview-heading"><div><h1>Procurement</h1><p>Monitor spend, purchasing activity and supplier readiness</p></div><div className="proc-overview-toolbar" ref={menusRef}>
+      <span className="proc-overview-updated" role="status"><ClockIcon aria-hidden="true" />{loading ? 'Updating report…' : report.generated_at ? `Updated ${formatDate(report.generated_at, true)}` : 'Awaiting report'}</span>
+      <div className="proc-overview-scope" ref={scopeRef}><button type="button" ref={scopeButtonRef} className="proc-overview-button" onClick={() => { setFilters(applied); setScopeOpen(!scopeOpen); }} aria-expanded={scopeOpen} aria-controls="procurement-reporting-scope">{scopeText}<ChevronDownIcon aria-hidden="true" /></button>
+        {scopeOpen && <form id="procurement-reporting-scope" className="proc-overview-scope-form" aria-label="Dashboard reporting scope" onSubmit={(event) => { event.preventDefault(); setApplied({ ...filters }); setScopeOpen(false); scopeButtonRef.current?.focus(); }}><div className="proc-overview-scope-title"><h2>Reporting scope</h2><button type="button" className="proc-overview-icon-button" aria-label="Close reporting scope" onClick={() => { setScopeOpen(false); scopeButtonRef.current?.focus(); }}><XMarkIcon /></button></div><p>Choose the portfolio and period for this report.</p><div className="proc-overview-scope-fields"><label>Scope<select value={filters.scope} onChange={(event) => setFilters({ ...filters, scope: event.target.value, project: '', department: '' })}><option value="portfolio">Authorised portfolio</option><option value="my_projects">My projects</option><option value="project">One project</option><option value="department">Department</option></select></label>
+          {filters.scope === 'project' && <label>Enterprise project<select required value={filters.project} onChange={(event) => setFilters({ ...filters, project: event.target.value })}><option value="">Select project</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.code} — {project.name}</option>)}</select></label>}
+          {filters.scope === 'department' && <label>Department<input value={filters.department} placeholder="My department" onChange={(event) => setFilters({ ...filters, department: event.target.value })} /></label>}
+          <label>From<input type="date" value={filters.period_start} max={filters.period_end || undefined} onChange={(event) => setFilters({ ...filters, period_start: event.target.value })} /></label><label>To<input type="date" value={filters.period_end} min={filters.period_start || undefined} onChange={(event) => setFilters({ ...filters, period_end: event.target.value })} /></label></div><div className="proc-overview-form-actions"><button type="button" className="proc-overview-button" onClick={() => { setScopeOpen(false); scopeButtonRef.current?.focus(); }}>Cancel</button><button type="submit" className="proc-overview-button proc-overview-primary">Apply scope</button></div></form>}
       </div>
-    </div>
-  );
-};
+      <details className="proc-overview-menu proc-overview-currency"><summary className="proc-overview-button" aria-label="Reporting currency: AED">AED<ChevronDownIcon aria-hidden="true" /></summary><div className="proc-overview-menu-content"><strong>Reporting currency: AED</strong><p>Amounts use the controlled Finance FX rates. Original currencies remain available in the exported report.</p></div></details>
+      <label className="proc-overview-year"><span className="proc-overview-sr-only">Reporting period</span><select aria-label="Reporting period" value={selectedYear} onChange={(event) => changeYear(event.target.value)}>{[...new Set(years)].sort((a, b) => b - a).map((year) => <option key={year} value={year}>FY {year}</option>)}<option value="all">All time</option><option value="custom">Custom period</option></select><ChevronDownIcon aria-hidden="true" /></label>
+      <details className="proc-overview-menu"><summary className="proc-overview-button"><ArrowDownTrayIcon aria-hidden="true" />Export<ChevronDownIcon aria-hidden="true" /></summary><div className="proc-overview-menu-content"><button type="button" disabled={!ready} onClick={() => exportReport('json')}>Full report (JSON)</button><button type="button" disabled={!ready || !report.spend_trend} onClick={() => exportReport('csv')}>Monthly spend (CSV)</button></div></details>
+      <details className="proc-overview-menu"><summary className="proc-overview-button proc-overview-more" aria-label="More procurement actions"><EllipsisVerticalIcon /></summary><div className="proc-overview-menu-content"><button type="button" disabled={loading} onClick={() => { setRefreshKey((key) => key + 1); closeMenus(); }}><ArrowPathIcon />Refresh report</button><button type="button" onClick={() => { showControls(); closeMenus(); }}><InformationCircleIcon />Reporting controls</button><Link to="/procurement/projects/reconciliation">Resolve project links</Link></div></details>
+      <Link to="/procurement/requisitions/new" className="proc-overview-button proc-overview-primary proc-overview-new"><PlusIcon aria-hidden="true" />New requisition</Link>
+    </div></header>
 
-export default ProcurementDashboard;
+    {error && <div className="proc-overview-error" role="alert"><ExclamationTriangleIcon aria-hidden="true" /><span>{error}</span><button type="button" className="proc-overview-button" onClick={() => setRefreshKey((key) => key + 1)}>Try again</button></div>}
+    <div className="proc-overview-content" aria-busy={loading}>
+      <section className="proc-overview-signals" aria-label="Key procurement signals">
+        <Signal label="Committed spend" value={display(money(commitment?.amount))} context={ready ? `${number(flow.issued_purchase_orders ?? counts.purchase_orders)} purchase orders` : 'Awaiting procurement data'} detail={ready ? commitment?.conversion_complete ? 'Approved FX conversion applied' : 'FX conversion incomplete' : null} icon={CircleStackIcon} info="Issued purchase order commitments, converted to AED. Draft and cancelled orders are excluded."><div className="proc-overview-sparkline" aria-hidden="true">{(report.spend_trend?.months || []).slice(-7).map((row) => <span key={row.month} style={{ height: `${Math.max(5, Number(row.amount || 0) / Math.max(1, ...(report.spend_trend?.months || []).map((month) => Number(month.amount || 0))) * 36)}px` }} />)}</div></Signal>
+        <Signal label="Pending decisions" value={display(number(counts.pending_approvals))} context={ready ? counts.pending_approvals ? 'Approvals awaiting a decision' : 'No approvals waiting' : 'Awaiting procurement data'} icon={CheckCircleIcon} tone={counts.pending_approvals ? 'amber' : 'green'} to="/approvals" info="Submitted and in-review requisitions in the selected scope." />
+        <Signal label="Draft purchase orders" value={display(number(counts.draft_purchase_orders))} context={ready ? counts.draft_purchase_orders ? 'Ready for review' : 'No drafts awaiting completion' : 'Awaiting procurement data'} icon={DocumentTextIcon} tone="amber" to="/procurement/orders?status=draft" info="Purchase orders in draft status, excluded from committed spend." />
+        <Signal label="Delivery visibility" value={display(`${number(cycle.on_time_delivery_population)} of ${number(cycle.completed_order_population)} measurable`)} context={ready ? cycle.on_time_delivery_population ? `${percent(cycle.on_time_delivery_percent)} delivered on time` : cycle.completed_order_population ? 'Receipt dates incomplete' : 'No completed orders yet' : 'Awaiting procurement data'} icon={TruckIcon} tone="slate" info="Completed purchase orders with both expected and actual delivery dates recorded." />
+      </section>
+      <section className={`proc-overview-attention ${ready && !counts.supplier_watch ? 'proc-overview-attention-clear' : ''}`} aria-label="Action required"><span className="proc-overview-attention-icon">{ready && !counts.supplier_watch ? <CheckCircleIcon aria-hidden="true" /> : <ExclamationTriangleIcon aria-hidden="true" />}</span><div><h2>{!ready ? 'Checking supplier readiness' : counts.supplier_watch ? `${number(counts.supplier_watch)} supplier record${counts.supplier_watch === 1 ? '' : 's'} need${counts.supplier_watch === 1 ? 's' : ''} attention` : 'Supplier records are up to date'}</h2><p>{ready && !counts.supplier_watch ? 'No required-data or compliance issues in this scope.' : 'Tax information, contact details or compliance records require review.'}</p></div><span className="proc-overview-attention-owner">Owner: Procurement Data Team <span>·</span> Due not set.</span><Link to="/procurement/vendors" className="proc-overview-button proc-overview-primary">Review suppliers</Link></section>
+
+      <div className="proc-overview-grid proc-overview-chart-grid"><Panel title="Spend overview" subtitle={`${mode === 'cumulative' ? 'Cumulative' : 'Committed'} spend by month (AED thousands)`} className="proc-overview-spend-panel" action={<div className="proc-overview-spend-actions"><strong>{display(money(commitment?.amount, true))}</strong><div className="proc-overview-segmented" aria-label="Spend chart view">{['monthly', 'cumulative'].map((view) => <button key={view} type="button" aria-pressed={mode === view} onClick={() => setMode(view)}>{view === 'monthly' ? 'Monthly' : 'Cumulative'}</button>)}</div></div>}>
+        {loading ? <EmptyState>Loading committed spend…</EmptyState> : <SpendChart trend={report.spend_trend} mode={mode} />}<div className="proc-overview-chart-footer"><span><i className="proc-overview-dot" />Committed spend</span><TextLink to="/procurement/orders">Open spend analysis</TextLink></div></Panel>
+        <Panel title="Purchasing flow" subtitle="Documents in the selected reporting period." action={<TextLink to="/procurement/requisitions">Open workflow</TextLink>} className="proc-overview-flow-panel"><PurchasingFlow flow={ready ? flow : {}} /><p className="proc-overview-flow-note"><InformationCircleIcon aria-hidden="true" />Receipt coverage counts issued POs with an accepted receipt.</p></Panel></div>
+
+      <div className="proc-overview-grid proc-overview-middle-grid"><Panel title="Spend by supplier" subtitle="Top suppliers by committed spend (AED)" action={<TextLink to="/procurement/vendors">View suppliers</TextLink>} className="proc-overview-suppliers-panel"><ol className="proc-overview-supplier-bars">{suppliers.slice(0, 3).map((supplier, index) => <li key={supplier.supplier_id || supplier.supplier}><span>{index + 1}.</span><span className="proc-overview-supplier-name" title={supplier.supplier}>{supplier.supplier}</span><span className="proc-overview-bar-track"><span style={{ width: `${maxSpend ? Math.max(1, Number(supplier.amount) / maxSpend * 100) : 0}%` }} /></span><strong>{money(supplier.amount)}</strong><span>{percent(supplier.percent)}</span></li>)}</ol>{!suppliers.length && <EmptyState>{loading ? 'Loading supplier spend…' : supplierGroup?.missing_currencies?.length ? 'Supplier spend unavailable until missing FX rates are configured.' : 'No supplier commitments in this scope.'}</EmptyState>}<div className="proc-overview-info-strip"><InformationCircleIcon aria-hidden="true" />Values are shown in AED. FX conversion uses approved Finance rates.</div></Panel>
+        <Panel title="Purchase order status" className="proc-overview-status-panel"><div className="proc-overview-status-content"><OrderStatus status={ready ? report.purchase_order_status : null} /><div className="proc-overview-order-actions"><div><span className="proc-overview-action-icon proc-overview-tone-amber"><DocumentTextIcon aria-hidden="true" /></span><p>{display(number(counts.draft_purchase_orders))} drafts awaiting completion</p><TableButton to="/procurement/orders?status=draft">Review drafts</TableButton></div><div><span className="proc-overview-action-icon proc-overview-tone-amber"><UserGroupIcon aria-hidden="true" /></span><p>View issued purchase orders</p><TableButton to="/procurement/orders?status=sent">Review orders</TableButton></div></div></div></Panel></div>
+
+      <div className="proc-overview-grid proc-overview-table-grid"><Panel title="Recent purchasing decisions" action={<TextLink to="/approvals">View all</TextLink>} className="proc-overview-decisions-panel"><div className="proc-overview-table-scroll" tabIndex={0} role="region" aria-label="Recent procurement approvals"><table className="proc-overview-table" data-table-typography="preserve"><caption className="proc-overview-sr-only">Recent procurement approvals</caption><thead><tr>{['Reference', 'Type', 'Description', 'Supplier', 'Owner', 'Decision date', 'Status', 'Action'].map((label) => <th key={label} scope="col">{label}</th>)}</tr></thead><tbody>{report.recent_decisions.slice(0, 4).map((row) => <tr key={`${row.type}-${row.record}`}><th scope="row" title={row.record}>{row.record}</th><td>{row.type === 'PO approved' ? 'Purchase order' : row.type === 'PR approved' ? 'Recommendation' : row.type}</td><td title={row.title}>{row.title}</td><td title={row.supplier}>{row.supplier || '—'}</td><td title={row.owner}>{row.owner || '—'}</td><td>{formatDate(row.decided_at)}</td><td><span className="proc-overview-badge proc-overview-badge-green">Approved</span></td><td><TableButton to={row.href} label={`Open ${row.record}`}>Open</TableButton></td></tr>)}</tbody></table>{!report.recent_decisions.length && <EmptyState>{loading ? 'Loading purchasing decisions…' : 'No recorded approvals in this scope.'}</EmptyState>}</div></Panel>
+        <Panel title="Supplier readiness" summary={readiness && <span className="proc-overview-readiness-summary">{readiness.complete} of {readiness.total} suppliers complete · <strong>{percent(readiness.complete_percent)}</strong></span>} action={<TextLink to="/procurement/vendors">View all suppliers</TextLink>} className="proc-overview-readiness-panel"><div className="proc-overview-table-scroll" tabIndex={0} role="region" aria-label="Supplier readiness exceptions"><table className="proc-overview-table" data-table-typography="preserve"><caption className="proc-overview-sr-only">Suppliers with compliance or required-data exceptions</caption><thead><tr>{['Supplier', 'Missing requirements', 'Severity', 'Owner', 'Action'].map((label) => <th key={label} scope="col">{label}</th>)}</tr></thead><tbody>{report.supplier_watch.slice(0, 3).map((row) => <tr key={row.id}><th scope="row" title={row.supplier}>{row.supplier}</th><td title={row.issue}>{row.issue}{row.issue_count > 1 ? ` +${row.issue_count - 1}` : ''}</td><td><span className={`proc-overview-badge proc-overview-badge-${row.severity === 'high' ? 'red' : row.severity === 'low' ? 'green' : 'amber'}`}>{row.severity}</span></td><td>Procurement<br />Data Team</td><td><TableButton to={row.href} label={`Review ${row.supplier}`}>Review</TableButton></td></tr>)}</tbody></table>{!report.supplier_watch.length && <EmptyState>{loading ? 'Loading supplier readiness…' : 'No supplier master-data exceptions.'}</EmptyState>}</div></Panel></div>
+
+      <section className="proc-overview-controls-strip" aria-label="Procurement controls"><h2>Procurement controls</h2><div><BanknotesIcon aria-hidden="true" /><span>Reporting currency<strong>AED</strong></span></div><div><CurrencyDollarIcon aria-hidden="true" /><span>FX conversion<strong>{display(commitment?.conversion_complete ? 'Applied' : 'Incomplete')}</strong><small>Approved Finance rates</small></span></div><div><DocumentTextIcon aria-hidden="true" /><span>PO acknowledgement<strong>{display(percent(flow.acknowledgement_percent))}</strong></span></div><div><CubeIcon aria-hidden="true" /><span>Receipt coverage<strong>{display(percent(flow.receipt_coverage_percent))}</strong><small>{ready && flow.issued_purchase_orders != null ? `${flow.orders_with_accepted_receipts || 0} of ${flow.issued_purchase_orders} issued POs` : 'Accepted receipts'}</small></span></div><div><UserGroupIcon aria-hidden="true" /><span>Supplier master completeness<strong>{display(percent(readiness?.master_data_complete_percent))}</strong><small>{readiness ? `${readiness.master_data_complete} of ${readiness.total} suppliers complete` : 'Readiness data unavailable'}</small></span></div><button type="button" onClick={showControls} className="proc-overview-text-link">View procurement controls<ArrowRightIcon aria-hidden="true" /></button></section>
+      <details ref={controlsRef} className="proc-overview-controls-details"><summary>Metric definitions and reporting controls</summary><div className="proc-overview-controls-body"><section><h2>Reporting controls</h2><p>Enterprise project linking: <strong>{percent(report.data_quality?.canonical_project_link_percent)}</strong> · Definition {report.definition_version || '—'}</p><p>{flow.cohort_description || 'Requisitions and purchase orders are selected by their own document dates; stage counts can represent different cohorts.'}</p><p>{flow.receipt_cohort_description}</p><ul>{report.data_quality?.limitations?.map((item) => <li key={item}>{item}</li>)}</ul><div className="proc-overview-snapshot-actions"><button type="button" onClick={createSnapshot} disabled={!ready || snapshotBusy} className="proc-overview-button"><LockClosedIcon aria-hidden="true" />{snapshotBusy ? 'Locking snapshot…' : 'Lock snapshot'}</button><TextLink to="/procurement/projects/reconciliation">Resolve project links</TextLink></div><p role="status">{snapshotStatus}</p></section><section><h2>Controlled definitions</h2><dl>{Object.entries(report.terminology).map(([term, definition]) => <div key={term}><dt>{term.replaceAll('_', ' ')}</dt><dd>{definition}</dd></div>)}</dl></section></div></details>
+    </div>
+  </div>;
+}

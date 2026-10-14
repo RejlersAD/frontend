@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../../services/radaiDialog'
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import rbacService from '../../services/rbac.service';
@@ -63,7 +64,7 @@ const DuplicateDetectionModal = ({ isOpen, onClose, onResolved }) => {
       return;
     }
 
-    const confirmed = window.confirm(config.messages.confirm.resolve);
+    const confirmed = (await radaiConfirm(config.messages.confirm.resolve));
     if (!confirmed) return;
 
     setLoading(true);

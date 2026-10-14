@@ -1,3 +1,4 @@
+import { radaiConfirm, radaiAlert } from '../../../services/radaiDialog'
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import apiClient from '../../../services/api.service';
@@ -135,7 +136,7 @@ const ElectricalDatasheetFormPage = () => {
   };
 
   const handleFileRemove = async (file, index) => {
-    if (confirm('Are you sure you want to remove this file?')) {
+    if ((await radaiConfirm('Are you sure you want to remove this file?'))) {
       try {
         const updatedFiles = uploadedFiles.filter((_, i) => i !== index);
         
@@ -150,7 +151,7 @@ const ElectricalDatasheetFormPage = () => {
         setFormData(updatedFormData);
       } catch (error) {
         console.error('Error removing file:', error);
-        alert('Failed to remove file');
+        await radaiAlert('Failed to remove file');
       }
     }
   };
@@ -164,11 +165,11 @@ const ElectricalDatasheetFormPage = () => {
       if (response.data.download_url) {
         window.open(response.data.download_url, '_blank');
       } else {
-        alert('Download URL not available');
+        await radaiAlert('Download URL not available');
       }
     } catch (error) {
       console.error('Error downloading file:', error);
-      alert('Failed to download file');
+      await radaiAlert('Failed to download file');
     }
   };
 

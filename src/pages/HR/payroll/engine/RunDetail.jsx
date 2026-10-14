@@ -1,3 +1,4 @@
+import { radaiConfirm, radaiAlert } from '../../../../services/radaiDialog'
 import React, { useEffect, useState, useMemo, useRef } from 'react'
 import { useSelector } from 'react-redux'
 import * as HeroIcons from '@heroicons/react/24/outline'
@@ -9,9 +10,11 @@ import {
 import StatusBadge from './StatusBadge'
 import PayslipDetailModal from './PayslipDetailModal'
 import BulkDeductionModal from './BulkDeductionModal'
+import PayrollApprovalDialog from './PayrollApprovalDialog'
 import ComparisonPanel from './ComparisonPanel'
 import ExternalUploadPanel from './ExternalUploadPanel'
 import './payrollTable.css'
+import { payrollApprovalTransitions } from '../../../../utils/approvalCapabilities'
 
 function formatDateTime(iso) {
   if (!iso) return '—'
@@ -31,12 +34,6 @@ function formatDate(iso) {
     })
   } catch { return iso }
 }
-
-const TRANSITION_BUTTONS = [
-  { status: WORKFLOW_STATUS.HR_APPROVED,      label: 'HR Approve',      fn: 'hrApproveRun',      tone: 'blue' },
-  { status: WORKFLOW_STATUS.FINANCE_APPROVED, label: 'Finance Approve', fn: 'financeApproveRun', tone: 'amber' },
-  { status: WORKFLOW_STATUS.RELEASED,         label: 'Release',         fn: 'releaseRun',        tone: 'green' },
-]
 
 const TONE_CLASS = {
   blue:  'bg-blue-600 hover:bg-blue-700 text-white',
@@ -66,8 +63,12 @@ export default function RunDetail({ runId, onBack, canvasModeKey }) {
   const [search, setSearch] = useState('')
   const [selectedSlip, setSelectedSlip] = useState(null)
   const [bulkOpen, setBulkOpen] = useState(false)
+  const [approvalAction, setApprovalAction] = useState(null)
   const [showUploadPanel, setShowUploadPanel] = useState(false)
   const [deletingSlipId, setDeletingSlipId] = useState(null)
+  const [compliance, setCompliance] = useState(null)
+  const [paymentBatch, setPaymentBatch] = useState(null)
+  const [accountingExport, setAccountingExport] = useState(null)
 
   const load = async () => {
     if (!runId) return
@@ -117,19 +118,24 @@ export default function RunDetail({ runId, onBack, canvasModeKey }) {
     return () => container.removeEventListener('scroll', handleScroll)
   }, [payslips, canvasMode])
 
-  const handleTransition = async (apiFn) => {
-    setBusy(true); setError(null)
+  const handleTransition = async (note) => {
+    const current = await payrollEngineService.getRun(run.id)
+    setRun(current)
+    if (!payrollApprovalTransitions(current).some(action => action.fn === approvalAction?.fn)) {
+      setApprovalAction(null)
+      setError('This approval is no longer available to you at the current stage.')
+      return
+    }
     try {
-      const note = prompt('Optional note for this transition:') || ''
-      await payrollEngineService[apiFn](run.id, note)
+      await payrollEngineService[approvalAction.fn](run.id, note)
+      setApprovalAction(null)
+    } finally {
       await load()
-    } catch (e) {
-      setError(e?.response?.data?.error || e.message)
-    } finally { setBusy(false) }
+    }
   }
 
   const handleRevert = async () => {
-    if (!confirm('Revert this run back to Draft?')) return
+    if (!(await radaiConfirm('Revert this run back to Draft?'))) return
     setBusy(true); setError(null)
     try {
       await payrollEngineService.revertRun(run.id, 'Reverted by user')
@@ -157,18 +163,18 @@ export default function RunDetail({ runId, onBack, canvasModeKey }) {
         + 'This rewrites each payslip’s Hours column with the live biometric total. '
         + 'Totals, gross and net are not recomputed (Hours is informational only).\n\n'
         + 'Proceed?'
-    if (!confirm(msg)) return
+    if (!(await radaiConfirm(msg))) return
     setBusy(true); setError(null)
     try {
       const result = await payrollEngineService.refreshRunHoursFromTimesheet(run.id, { force })
       await load()
       const missing = (result?.missing || []).length
-      alert(
+      ;(await radaiAlert(
         `Hours refreshed from Time Sheet${result?.forced ? ' (FORCED)' : ''}.\n\n`
         + `Updated: ${result?.updated ?? 0}\n`
         + `Unchanged: ${result?.unchanged ?? 0}\n`
         + (missing ? `Missing biometric data: ${missing} employee(s)` : 'All employees matched.')
-      )
+      ))
     } catch (e) {
       setError(e?.response?.data?.error || e.message)
     } finally { setBusy(false) }
@@ -181,10 +187,43 @@ export default function RunDetail({ runId, onBack, canvasModeKey }) {
     } catch (e) { setError(e?.response?.data?.error || e.message) }
   }
 
+  const runCompliance = async () => {
+    setBusy(true); setError(null)
+    try { setCompliance(await payrollEngineService.runComplianceCheck(run.id)) }
+    catch (e) { setError(e?.response?.data?.error || e.message) }
+    finally { setBusy(false) }
+  }
+
+  const generatePayment = async (batchType) => {
+    setBusy(true); setError(null)
+    try { setPaymentBatch(await payrollEngineService.generatePaymentBatch(run.id, batchType)) }
+    catch (e) { setError(e?.response?.data?.error || e.message) }
+    finally { setBusy(false) }
+  }
+
+  const downloadPayment = async () => {
+    try {
+      const type = paymentBatch?.batch_type || 'wps'
+      downloadBlob(await payrollEngineService.downloadPaymentFile(run.id, type), `${type}_${run.cycle_code}.csv`)
+    } catch (e) { setError(e?.response?.data?.error || e.message) }
+  }
+
+  const generateJournal = async () => {
+    setBusy(true); setError(null)
+    try { setAccountingExport(await payrollEngineService.generateAccountingExport(run.id, 'generic')) }
+    catch (e) { setError(e?.response?.data?.error || e.message) }
+    finally { setBusy(false) }
+  }
+
+  const downloadJournal = async () => {
+    try { downloadBlob(await payrollEngineService.downloadAccountingFile(run.id, accountingExport?.target_system || 'generic'), `payroll_journal_${run.cycle_code}.csv`) }
+    catch (e) { setError(e?.response?.data?.error || e.message) }
+  }
+
   const handleDeleteSlip = async (slip) => {
     const label = slip.snapshot_full_name || `payslip #${slip.id}`
     const msg = `Delete payslip for ${label}?\n\nUse this when an employee is terminated or no longer on payroll. This cannot be undone.`
-    if (!confirm(msg)) return
+    if (!(await radaiConfirm(msg))) return
     setDeletingSlipId(slip.id); setError(null)
     try {
       await payrollEngineService.deletePayslip(slip.id)
@@ -206,15 +245,7 @@ export default function RunDetail({ runId, onBack, canvasModeKey }) {
     </div>
   )
 
-  const nextStatuses = {
-    [WORKFLOW_STATUS.DRAFT]: [WORKFLOW_STATUS.HR_APPROVED],
-    [WORKFLOW_STATUS.HR_APPROVED]: [WORKFLOW_STATUS.FINANCE_APPROVED],
-    [WORKFLOW_STATUS.FINANCE_APPROVED]: [WORKFLOW_STATUS.RELEASED],
-    [WORKFLOW_STATUS.RELEASED]: [],
-  }
-  const availableTransitions = TRANSITION_BUTTONS.filter(
-    (b) => nextStatuses[run.status]?.includes(b.status)
-  )
+  const availableTransitions = payrollApprovalTransitions(run)
 
   return (
     <div className="space-y-4">
@@ -236,6 +267,24 @@ export default function RunDetail({ runId, onBack, canvasModeKey }) {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+        <IntegrationCard icon="ShieldCheckIcon" title="Payroll Compliance" subtitle="UAE identity, banking, net-pay and reconciliation controls">
+          {compliance && <ResultBadge tone={compliance.status === 'failed' ? 'red' : compliance.status === 'warning' ? 'amber' : 'green'}>{compliance.status} · {compliance.error_count} errors · {compliance.warning_count} warnings</ResultBadge>}
+          <button disabled={busy} onClick={runCompliance} className="mt-3 w-full rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Run compliance check</button>
+        </IntegrationCard>
+        {['wps', 'bank'].map((type) => (
+          <IntegrationCard key={type} icon={type === 'wps' ? 'CreditCardIcon' : 'BuildingLibraryIcon'} title={type === 'wps' ? 'WPS' : 'Banking'}>
+            {paymentBatch?.batch_type === type && <ResultBadge tone={paymentBatch.validation_errors?.length ? 'red' : 'green'}>{paymentBatch.record_count} records / {paymentBatch.status}</ResultBadge>}
+            <div className="mt-3 flex gap-2">
+              <button disabled={busy} onClick={() => generatePayment(type)} className="flex-1 rounded-md bg-indigo-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">Generate</button>
+              <button disabled={paymentBatch?.batch_type !== type || paymentBatch?.status === 'draft'} onClick={downloadPayment} className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-xs font-semibold disabled:opacity-40">Export</button>
+            </div>
+          </IntegrationCard>
+        ))}
+        <IntegrationCard icon="CalculatorIcon" title="Accounting Journal" subtitle="Balanced payroll journal for Dynamics, SAP, Oracle or CSV">
+          {accountingExport && <ResultBadge tone={accountingExport.total_debit === accountingExport.total_credit ? 'green' : 'red'}>{accountingExport.reference} · {accountingExport.status}</ResultBadge>}
+          <div className="mt-3 grid grid-cols-2 gap-2"><button disabled={busy} onClick={generateJournal} className="rounded-md bg-emerald-600 px-2 py-2 text-xs font-semibold text-white">Generate</button><button disabled={!accountingExport} onClick={downloadJournal} className="rounded-md border border-slate-300 px-2 py-2 text-xs font-semibold disabled:opacity-40">Export CSV</button></div>
+        </IntegrationCard>
+
             {run.status === WORKFLOW_STATUS.DRAFT && (
               <button
                 onClick={() => setBulkOpen(true)}
@@ -262,7 +311,7 @@ export default function RunDetail({ runId, onBack, canvasModeKey }) {
               <button
                 key={b.status}
                 disabled={busy}
-                onClick={() => handleTransition(b.fn)}
+                onClick={() => setApprovalAction(b)}
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md ${TONE_CLASS[b.tone]} disabled:opacity-50`}
               >
                 <HeroIcons.CheckCircleIcon className="w-4 h-4" />
@@ -316,14 +365,6 @@ export default function RunDetail({ runId, onBack, canvasModeKey }) {
               Payslip Pack
             </button>
           </div>
-        </div>
-
-        {/* KPI tiles */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
-          <KpiTile label="Total Gross" value={formatCurrency(run.total_gross)} tone="blue" />
-          <KpiTile label="Total Deductions" value={formatCurrency(run.total_deductions)} tone="amber" />
-          <KpiTile label="Net Payable" value={formatCurrency(run.total_net)} tone="emerald" />
-          <KpiTile label="Employees" value={run.employee_count} tone="slate" />
         </div>
 
         {error && (
@@ -548,6 +589,14 @@ export default function RunDetail({ runId, onBack, canvasModeKey }) {
         />
       )}
 
+      {approvalAction && (
+        <PayrollApprovalDialog
+          action={approvalAction.label}
+          cycle={run.cycle_code}
+          onClose={() => setApprovalAction(null)}
+          onConfirm={handleTransition}
+        />
+      )}
       {bulkOpen && (
         <BulkDeductionModal
           run={run}
@@ -574,17 +623,35 @@ export default function RunDetail({ runId, onBack, canvasModeKey }) {
   )
 }
 
-function KpiTile({ label, value, tone = 'slate' }) {
-  const tones = {
-    blue: 'bg-blue-50 border-blue-200 text-blue-800',
-    amber: 'bg-amber-50 border-amber-200 text-amber-800',
-    emerald: 'bg-emerald-50 border-emerald-200 text-emerald-800',
-    slate: 'bg-slate-50 border-slate-200 text-slate-800',
-  }
+function IntegrationCard({ icon, title, children }) {
+  const Icon = HeroIcons[icon] || HeroIcons.Squares2X2Icon
+  const tone = {
+    ShieldCheckIcon: 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100',
+    CreditCardIcon: 'border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100',
+    BuildingLibraryIcon: 'border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100',
+    CalculatorIcon: 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100',
+  }[icon] || 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
   return (
-    <div className={`border rounded-lg p-3 ${tones[tone] || tones.slate}`}>
-      <div className="text-[10px] uppercase font-medium opacity-70">{label}</div>
-      <div className="text-lg font-semibold tabular-nums mt-1">{value}</div>
-    </div>
+    <details className="relative" onBlur={(event) => {
+      if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false
+    }} onKeyDown={(event) => {
+      if (event.key === 'Escape') {
+        event.currentTarget.open = false
+        event.currentTarget.querySelector('summary')?.focus()
+      }
+    }}>
+      <summary title={title} aria-label={title} className={`flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-md border transition-colors focus-visible:outline-indigo-500 [&::-webkit-details-marker]:hidden ${tone}`}>
+        <Icon className="h-4 w-4" aria-hidden="true" />
+      </summary>
+      <div className="absolute left-0 z-30 mt-2 w-60 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+        <h3 className="mb-2 text-sm font-semibold text-slate-900">{title}</h3>
+        {children}
+      </div>
+    </details>
   )
+}
+
+function ResultBadge({ tone, children }) {
+  const tones = { red: 'bg-rose-50 text-rose-700', amber: 'bg-amber-50 text-amber-700', green: 'bg-emerald-50 text-emerald-700' }
+  return <div className={`rounded-lg px-3 py-2 text-xs font-medium ${tones[tone] || tones.green}`}>{children}</div>
 }

@@ -51,15 +51,15 @@ export const PEOPLE_NAV_TABS = [
     id: 'ess',
     label: 'My Workspace',
     description: 'Leave, attendance, timesheet & payroll',
-    to: '/hr/leave',
+    to: '/hr/Employeprofile',
     icon: 'SparklesIcon',
     visibility: 'always',
     accent: 'from-blue-500 to-cyan-500',
   },
   {
     id: 'payroll',
-    label: 'Payroll & Salary',
-    description: 'Attendance, leave management, payroll engine & salary structures',
+    label: 'Payroll Management',
+    description: 'Payroll dashboard, salary structures and payroll runs',
     to: '/hr/payroll',
     icon: 'BanknotesIcon',
     // SOFT-CODED: hidden from My Profile nav — change to 'always' to re-enable

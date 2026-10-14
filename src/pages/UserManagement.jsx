@@ -1,3 +1,5 @@
+import UserDirectoryWorkspace from '../components/UserManagement/UserDirectoryWorkspace';
+import { radaiConfirm } from '../services/radaiDialog'
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
@@ -5,22 +7,17 @@ import { fetchUsers, fetchCurrentUser, fetchRoles } from '../store/slices/rbacSl
 import rbacService from '../services/rbac.service';
 import { STORAGE_KEYS } from '../config/app.config';
 import { isUserAdmin } from '../utils/rbac.utils';
-import { getRoleName, formatRoleForDropdown } from '../utils/roleDisplay.utils';
 import { withDashboardControls } from '@/hoc/withPageControls';
-import { PageControlButtons } from '@/components/PageControlButtons';
 import { 
   validateUserForm, 
   parseBackendError, 
   prepareUserPayload,
   USER_MANAGEMENT_CONFIG,
   canPerformEnhancedActions,
-  isOperationalAdmin,
-  hasActionPermission,
 } from '../config/userManagement.config';
 import {
   ROLE_LEVEL_COLORS,
   DEFAULT_LEVEL_COLOR,
-  ROLE_LEVEL_LABELS,
   CUSTOM_ROLE_PREFIX,
   HIDDEN_ROLE_CODES,
 } from '../config/rbacAccess.config';
@@ -28,8 +25,6 @@ import MULTI_ROLE_CONFIG from '../config/multiRoleConfig';
 import MultiRoleModal from '../components/MultiRoleModal';
 import SimpleCreateUserForm from '../components/UserCreation/SimpleCreateUserForm';
 import EditUserModal from '../components/UserManagement/EditUserModal';
-import PendingActivationAlert from '../components/UserManagement/PendingActivationAlert';
-import PeopleNav from '../components/PeopleNav/PeopleNav';
 
 // ── Soft-coded copy for the Reset Password confirmation modal ──────────────
 // All visible strings and the default password come from one place — easy to change.
@@ -49,12 +44,12 @@ const RESET_MODAL_COPY = {
  * CRUD operations for users with role assignment
  * Soft-coded with proper state management
  */
-const UserManagement = ({ pageControls }) => {
+const UserManagement = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   
   // Redux state
-  const { users, roles, modules, currentUser, loading, usersCount } = useSelector((state) => state.rbac);
+  const { users, roles, modules, currentUser, usersCount } = useSelector((state) => state.rbac);
   const { user: authUser } = useSelector((state) => state.auth);
 
   // Local state - Authentication
@@ -62,24 +57,10 @@ const UserManagement = ({ pageControls }) => {
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [loadError, setLoadError] = useState(null);
 
-  // Company-wide user total (all orgs) — super admin only. Stays null for
-  // everyone else, so the Total Users card falls back to the org-scoped count.
-  const [allOrgsUserCount, setAllOrgsUserCount] = useState(null);
-  const [activeUsersCount, setActiveUsersCount] = useState(0);
-  const [inactiveUsersCount, setInactiveUsersCount] = useState(0);
-  const [hiddenUsersCount, setHiddenUsersCount] = useState(0);
-
   // Local state - UI
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [organizationFilter, setOrganizationFilter] = useState('all');
-  const [roleFilter, setRoleFilter] = useState('all');
-  const [showHiddenUsers, setShowHiddenUsers] = useState(false);
   const [notification, setNotification] = useState({ show: false, type: '', message: '' });
   
   // Local state - Pagination
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(10);
   
   // Local state - User Details
   const [showUserDetailsModal, setShowUserDetailsModal] = useState(false);
@@ -462,6 +443,10 @@ const UserManagement = ({ pageControls }) => {
           users: usersResult.status
         });
         
+        if (usersResult.status === 'rejected') {
+          throw new Error(usersResult.reason?.message || 'Failed to load the user directory. Please try again.');
+        }
+
         // Debug: Check first user data structure
         if (usersResult.status === 'fulfilled' && usersResult.value?.length > 0) {
           console.log('[UserManagement] First user sample:', usersResult.value[0]);
@@ -573,84 +558,10 @@ const UserManagement = ({ pageControls }) => {
     };
   }, [dispatch, navigate]);
 
-  // ========== REFRESH ALL COUNTS: Dynamic stat cards ==========
-  // Centralized function to refresh all count cards after any user operation
+  // User counts now follow the same directory data as the table.
   const refreshAllCounts = useCallback(() => {
-    if (!isAuthenticated) return;
-    
-    // Total Users (company-wide for super admins)
-    rbacService.getTotalUserCount()
-      .then(res => setAllOrgsUserCount(res?.data?.count ?? null))
-      .catch(() => setAllOrgsUserCount(null));
-    
-    // Active Users count
-    rbacService.getUsers({ page_size: 1, status: 'active' })
-      .then(res => setActiveUsersCount(res?.data?.count ?? 0))
-      .catch(() => setActiveUsersCount(0));
-    
-    // Inactive Users count
-    rbacService.getUsers({ page_size: 1, status: 'inactive' })
-      .then(res => setInactiveUsersCount(res?.data?.count ?? 0))
-      .catch(() => setInactiveUsersCount(0));
-    
-    // Hidden Users count
-    rbacService.getUsers({ page_size: 1, show_hidden: 'only' })
-      .then(res => setHiddenUsersCount(res?.data?.count ?? 0))
-      .catch(() => setHiddenUsersCount(0));
-    
-    // Roles Available count
-    dispatch(fetchRoles());
-    
-    console.log('[UserManagement] 🔄 All stat counts refreshed');
+    if (isAuthenticated) return dispatch(fetchRoles());
   }, [isAuthenticated, dispatch]);
-
-  // ========== TOTAL USERS: company-wide count for super admins ==========
-  // Regular admins get a 403 here (by design, org scoping) and just keep
-  // seeing their org-scoped usersCount instead.
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    rbacService.getTotalUserCount()
-      .then(res => setAllOrgsUserCount(res?.data?.count ?? null))
-      .catch(() => setAllOrgsUserCount(null));
-  }, [isAuthenticated]);
-
-  // ========== ACTIVE USERS: lightweight count, independent of table page ==========
-  // page_size=1 keeps this cheap — we only need the "count" field, not rows.
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    rbacService.getUsers({ page_size: 1, status: 'active' })
-      .then(res => setActiveUsersCount(res?.data?.count ?? 0))
-      .catch(() => setActiveUsersCount(0));
-  }, [isAuthenticated]);
-
-  // ========== INACTIVE USERS: lightweight count, independent of table page ==========
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    rbacService.getUsers({ page_size: 1, status: 'inactive' })
-      .then(res => setInactiveUsersCount(res?.data?.count ?? 0))
-      .catch(() => setInactiveUsersCount(0));
-  }, [isAuthenticated]);
-
-  // ========== HIDDEN USERS: lightweight count, independent of table page ==========
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    rbacService.getUsers({ page_size: 1, show_hidden: 'only' })
-      .then(res => setHiddenUsersCount(res?.data?.count ?? 0))
-      .catch(() => setHiddenUsersCount(0));
-  }, [isAuthenticated]);
-
-  // ========== RELOAD USERS: when toggling hidden users filter ==========
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    
-    const params = {};
-    if (showHiddenUsers) {
-      params.show_hidden = 'only'; // Show ONLY hidden users
-    }
-    // If showHiddenUsers is false, default behavior excludes hidden users
-    
-    dispatch(fetchUsers(params));
-  }, [showHiddenUsers, isAuthenticated, dispatch]);
 
   // ========== ROLES: fire-and-forget background fetch ==========
   // Dispatched independently (not awaited by page-load) since this endpoint
@@ -699,62 +610,6 @@ const UserManagement = ({ pageControls }) => {
     return canPerformEnhancedActions(userEmail, isSuperAdmin);
   }, [currentUser, authUser, isSuperAdmin]);
   
-  // ========== COMPUTED: FILTERED USERS ==========
-  const filteredUsers = useMemo(() => {
-    const safeUsers = Array.isArray(users) ? users : [];
-    
-    return safeUsers.filter(user => {
-      const email = getUserEmail(user) || '';
-      const firstName = getUserFirstName(user) || '';
-      const lastName = getUserLastName(user) || '';
-      const department = user.department || '';
-      const jobTitle = user.job_title || '';
-      
-      const matchesSearch = !searchTerm ||
-        email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        department.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        jobTitle.toLowerCase().includes(searchTerm.toLowerCase());
-      
-      const matchesStatus = statusFilter === 'all' || user.status === statusFilter;
-      
-      const matchesOrganization = organizationFilter === 'all' || 
-        user.organization === organizationFilter;
-      
-      const matchesRole = roleFilter === 'all' || (
-        Array.isArray(user.roles) && user.roles.some(r => 
-          (r?.code ?? r) === roleFilter || String(r?.id ?? '') === String(roleFilter)
-        )
-      );
-      
-      return matchesSearch && matchesStatus && matchesOrganization && matchesRole;
-    });
-  }, [users, searchTerm, statusFilter, organizationFilter, roleFilter]);
-  
-  // ========== COMPUTED: PAGINATED USERS ==========
-  const paginatedUsers = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    const endIndex = startIndex + itemsPerPage;
-    const paginated = filteredUsers.slice(startIndex, endIndex);
-    
-    console.log('?? [paginatedUsers] Recalculated:', {
-      totalUsers: filteredUsers.length,
-      currentPage,
-      itemsPerPage,
-      startIndex,
-      endIndex,
-      paginatedCount: paginated.length
-    });
-    
-    return paginated;
-  }, [filteredUsers, currentPage, itemsPerPage]);
-  
-  // ========== COMPUTED: PAGINATION INFO ==========
-  const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
-  const showingFrom = filteredUsers.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
-  const showingTo = Math.min(currentPage * itemsPerPage, filteredUsers.length);
-
   // ========== COMPUTED: ASSIGNABLE ROLES ==========
   // Roles the admin can pick from the filter dropdown and role-column display.
   // Excludes per-user `custom_*` roles (internal artefacts) and soft-coded
@@ -792,12 +647,6 @@ const UserManagement = ({ pageControls }) => {
       totalRoles 
     };
   };
-  
-  // ========== MONITOR: ITEMS PER PAGE CHANGES ==========
-  useEffect(() => {
-    console.log('?? [useEffect] ItemsPerPage changed to:', itemsPerPage);
-    console.log('?? [useEffect] Pagination info:', { showingFrom, showingTo, totalPages, currentPage });
-  }, [itemsPerPage, showingFrom, showingTo, totalPages, currentPage]);
   
   // ========== EMAIL VALIDATION - CLIENT SIDE ONLY ==========
   // Backend endpoint /users/validate-email/ doesn't exist, so we do client-side validation only
@@ -1003,7 +852,7 @@ const UserManagement = ({ pageControls }) => {
       ? 'Are you sure you want to deactivate this user?'
       : 'Are you sure you want to activate this user?';
     
-    if (!window.confirm(confirmMessage)) return;
+    if (!(await radaiConfirm(confirmMessage))) return;
     
     try {
       setActionLoading({ [`status_${userId}`]: true });
@@ -1036,7 +885,7 @@ const UserManagement = ({ pageControls }) => {
   };
   
   const handleDeleteUser = async (userId) => {
-    if (!window.confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
+    if (!(await radaiConfirm('Are you sure you want to delete this user? This action cannot be undone.'))) {
       return;
     }
     
@@ -1264,51 +1113,6 @@ const UserManagement = ({ pageControls }) => {
   const openUserDetails = (user) => {
     setDetailedUser(user);
     setShowUserDetailsModal(true);
-  };
-  
-  const handlePageChange = (newPage) => {
-    console.log('?? [handlePageChange] Called with:', newPage);
-    console.log('?? [handlePageChange] Current page:', currentPage);
-    console.log('?? [handlePageChange] Total pages:', totalPages);
-    console.log('?? [handlePageChange] Validation:', newPage >= 1, newPage <= totalPages);
-    
-    if (newPage >= 1 && newPage <= totalPages) {
-      console.log('? [handlePageChange] Valid - Setting page to:', newPage);
-      setCurrentPage(newPage);
-    } else {
-      console.warn('? [handlePageChange] Invalid page number:', newPage);
-    }
-  };
-  
-  const handleItemsPerPageChange = (newItemsPerPage) => {
-    console.log('?? [handleItemsPerPageChange] Called with:', newItemsPerPage);
-    console.log('?? [handleItemsPerPageChange] Type:', typeof newItemsPerPage);
-    console.log('?? [handleItemsPerPageChange] Current itemsPerPage:', itemsPerPage);
-    console.log('?? [handleItemsPerPageChange] Current page:', currentPage);
-    console.log('?? [handleItemsPerPageChange] Total users:', filteredUsers.length);
-    
-    // Validate input
-    const validValue = Number(newItemsPerPage);
-    if (isNaN(validValue) || validValue <= 0) {
-      console.error('? [handleItemsPerPageChange] Invalid value:', newItemsPerPage);
-      return;
-    }
-    
-    // Update states
-    console.log('?? [handleItemsPerPageChange] Updating itemsPerPage to:', validValue);
-    setItemsPerPage(validValue);
-    
-    console.log('?? [handleItemsPerPageChange] Resetting currentPage to 1');
-    setCurrentPage(1);
-    
-    console.log('? [handleItemsPerPageChange] State update triggered');
-    
-    // Force a small delay to ensure state is updated
-    setTimeout(() => {
-      console.log('?? [handleItemsPerPageChange] Post-update check:');
-      console.log('   - itemsPerPage should be:', validValue);
-      console.log('   - currentPage should be: 1');
-    }, 100);
   };
   
   const handleBulkUpload = async (e) => {
@@ -1688,7 +1492,7 @@ const UserManagement = ({ pageControls }) => {
             </svg>
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h2>
-          <p className="text-gray-600 mb-6">You don't have permission to access User Management</p>
+          <p className="text-gray-600 mb-6">You do not have permission to access User Management</p>
           <button
             onClick={() => navigate('/dashboard')}
             className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -1702,44 +1506,8 @@ const UserManagement = ({ pageControls }) => {
   
   // ========== RENDER: MAIN COMPONENT ==========
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 p-6">
-      {/* Cross-link nav (Profile / HR Directory / User Management) */}
-      <div className="mb-6">
-        <PeopleNav activeId="admin" />
-      </div>
-
-      {/* Smart “Pending Activation” alert — surfaces accounts where
-          is_active=False so admins can one-click activate. The login gate
-          (`apps/users/serializers_jwt.py`) is intentionally untouched; this
-          banner just makes the existing fix discoverable. */}
-      <PendingActivationAlert
-        users={users}
-        actionLoading={actionLoading}
-        onActivate={async (userId, currentStatus) => {
-          // Reuse the exact same flow as the row toggle, minus the confirm() prompt.
-          // Core logic (deactivate/activate endpoint + refresh) is unchanged.
-          try {
-            setActionLoading({ [`status_${userId}`]: true });
-            await rbacService.activateUser(userId);
-            await dispatch(fetchUsers()).unwrap();
-            setNotification({
-              show: true,
-              type: 'success',
-              message: 'User activated successfully',
-            });
-          } catch (error) {
-            console.error('[UserManagement] activate error:', error);
-            setNotification({
-              show: true,
-              type: 'error',
-              message: error.response?.data?.message || 'Failed to activate user',
-            });
-          } finally {
-            setActionLoading({});
-          }
-        }}
-      />
-
+    <div className="w-full min-w-0">
+      <div className="w-full min-w-0">
       {/* Notification */}
       {notification.show && (
         <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg ${
@@ -1759,739 +1527,20 @@ const UserManagement = ({ pageControls }) => {
         </div>
       )}
       
-      {/* Header */}
-      <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">User Management</h1>
-            <p className="text-gray-600 mt-1">Manage users, roles, and permissions</p>
-          </div>
-          <div className="flex gap-3">
-            <PageControlButtons {...pageControls} />
-            <button
-              onClick={() => {
-                console.log('Bulk Upload button clicked');
-                setShowBulkUploadModal(true);
-              }}
-              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors flex items-center gap-2"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-              </svg>
-              Bulk Upload
-            </button>
+      <UserDirectoryWorkspace
+        users={users} roles={assignableRoles} organizations={organizations}
+        totalCount={usersCount} currentUser={currentUser || authUser}
+        canManage={hasAdminAccess} canAssignRoles={isSuperAdmin} canDisable={canPerformEnhancedUserActions}
+        onCreate={() => setShowCreateModal(true)} onImport={() => setShowBulkUploadModal(true)}
+        onExport={handleExportUsers} exporting={isExporting}
+        onEdit={openEditModal} onOpen={user => navigate(`/admin/users/${user.id}`)}
+        onRoles={handleOpenMultiRoleModal}
+        onReset={user => handleResetPassword(user.id, user.email || user.user?.email)}
+        onActivate={user => handleStatusToggle(user.id, 'inactive')}
+        onDelete={user => handleDeleteUser(user.id)}
+        onRefresh={async () => { await dispatch(fetchUsers()).unwrap(); await refreshAllCounts(); }}
+      />
 
-            {/* Export Users Dropdown */}
-            <div className="relative" data-export-dropdown>
-              <button
-                onClick={() => setShowExportDropdown(prev => !prev)}
-                disabled={isExporting}
-                className={`group relative flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white overflow-hidden shadow-md transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed
-                  ${isExporting
-                    ? 'bg-emerald-500'
-                    : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-emerald-400/30 hover:shadow-emerald-400/50 hover:-translate-y-0.5'}`}
-              >
-                {/* animated shine */}
-                <span className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-500 bg-gradient-to-r from-transparent via-white/15 to-transparent skew-x-12 pointer-events-none" />
-                {isExporting ? (
-                  <svg className="w-4 h-4 animate-spin shrink-0" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                  </svg>
-                ) : (
-                  <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                  </svg>
-                )}
-                <span>{isExporting ? 'Exporting…' : 'Export Users'}</span>
-                <svg
-                  className={`w-3.5 h-3.5 transition-transform duration-200 ${showExportDropdown ? 'rotate-180' : ''}`}
-                  fill="none" stroke="currentColor" viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-
-              {showExportDropdown && (
-                <div className="absolute right-0 mt-2 w-52 bg-white rounded-2xl shadow-xl border border-gray-100 z-50 overflow-hidden animate-[fadeDown_0.15s_ease-out]">
-                  <div className="px-4 py-2.5 bg-gradient-to-r from-emerald-50 to-teal-50 border-b border-emerald-100">
-                    <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">Choose Format</p>
-                  </div>
-                  {EXPORT_CONFIG.formats.map(({ label, value, ext }) => (
-                    <button
-                      key={value}
-                      onClick={() => handleExportUsers(value)}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-emerald-50 transition-colors group"
-                    >
-                      <span className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 transition-transform duration-150 group-hover:scale-110
-                        ${ext === 'csv' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
-                        {ext?.toUpperCase()}
-                      </span>
-                      <div className="text-left">
-                        <p className="font-medium text-gray-800 group-hover:text-emerald-700 transition-colors">{label}</p>
-                        <p className="text-xs text-gray-400">{ext === 'csv' ? 'Comma-separated values' : 'Excel workbook (.xlsx)'}</p>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <button
-              onClick={handleBulkDeactivateClick}
-              disabled={!isSuperAdmin}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              title={isSuperAdmin ? 'Bulk deactivate users by roles' : 'Super Admin only'}
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-              </svg>
-              Bulk Deactivate
-            </button>
-
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Add User
-            </button>
-          </div>
-        </div>
-
-        {/* Search and Advanced Filters */}
-        <div className="space-y-4">
-          <div className="flex gap-4">
-            <div className="flex-1 relative">
-              <input
-                type="text"
-                placeholder="Search by name, email, department, or job title..."
-                value={searchTerm}
-                onChange={(e) => {
-                  console.log('?? Search term changed:', e.target.value);
-                  setSearchTerm(e.target.value);
-                }}
-                className="w-full pl-10 pr-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-              />
-              <svg className="w-5 h-5 text-gray-400 absolute left-3 top-2.5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              {searchTerm && (
-                <button
-                  onClick={() => {
-                    console.log('??? Clearing search');
-                    setSearchTerm('');
-                  }}
-                  className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600 transition-colors"
-                  title="Clear search"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              )}
-            </div>
-          </div>
-          
-          <div className="flex flex-wrap gap-3">
-            <select
-              value={statusFilter}
-              onChange={(e) => {
-                console.log('?? Status filter changed:', e.target.value);
-                setStatusFilter(e.target.value);
-              }}
-              className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white hover:border-blue-400 transition-all cursor-pointer font-medium"
-            >
-              <option value="all">All Status</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
-            
-            <select
-              value={organizationFilter}
-              onChange={(e) => {
-                console.log('?? Organization filter changed:', e.target.value);
-                setOrganizationFilter(e.target.value);
-              }}
-              className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white hover:border-blue-400 transition-all cursor-pointer font-medium"
-            >
-              <option value="all">All Organizations</option>
-              {organizations.map(org => (
-                <option key={org.id} value={org.id}>{org.name}</option>
-              ))}
-            </select>
-
-            <select
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value)}
-              className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white hover:border-blue-400 transition-all cursor-pointer font-medium"
-              title="Filter users by role — role list managed at /admin/roles"
-            >
-              <option value="all">All Roles</option>
-              {assignableRoles.map(r => (
-                <option key={r.id} value={r.code}>
-                  {formatRoleForDropdown(r, true)}
-                </option>
-              ))}
-            </select>
-            
-            <button
-              onClick={() => {
-                console.log('?? Resetting all filters');
-                setSearchTerm('');
-                setStatusFilter('all');
-                setOrganizationFilter('all');
-                setRoleFilter('all');
-                setCurrentPage(1);
-                // Visual feedback
-                const btn = event.currentTarget;
-                btn.classList.add('scale-95');
-                setTimeout(() => btn.classList.remove('scale-95'), 100);
-              }}
-              className="px-4 py-2 border-2 border-blue-300 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 hover:border-blue-400 active:scale-95 transition-all flex items-center gap-2 font-medium shadow-sm"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              Reset Filters
-            </button>
-            
-            <div className="ml-auto flex items-center gap-2 bg-gradient-to-r from-blue-50 to-purple-50 px-4 py-2 rounded-lg border-2 border-blue-200">
-              <span className="text-sm font-semibold text-gray-700">
-                Showing <span className="text-blue-600">{showingFrom}</span>-<span className="text-blue-600">{showingTo}</span> of <span className="text-purple-600 font-bold">{usersCount}</span> results
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-6">
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-600 text-sm">Total Users</p>
-              <p className="text-3xl font-bold text-gray-900 mt-1">{allOrgsUserCount ?? usersCount}</p>
-            </div>
-            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-              </svg>
-            </div>
-          </div>
-        </div>
-        
-        <button
-          onClick={() => {
-            setShowHiddenUsers(false);
-            setStatusFilter('active');
-            setCurrentPage(1);
-          }}
-          className={`bg-white rounded-xl shadow-lg p-6 text-left hover:shadow-xl hover:border-green-300 border transition-all ${
-            statusFilter === 'active' && !showHiddenUsers ? 'border-green-500 ring-2 ring-green-200' : 'border-transparent'
-          }`}
-          title="Click to view active users"
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-600 text-sm">Active Users</p>
-              <p className="text-3xl font-bold text-green-600 mt-1">
-                {activeUsersCount}
-              </p>
-              {statusFilter === 'active' && !showHiddenUsers && (
-                <p className="text-xs text-green-600 mt-1 font-medium">Viewing active users</p>
-              )}
-            </div>
-            <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-              <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-          </div>
-        </button>
-
-        <button
-          onClick={() => {
-            setShowHiddenUsers(false);
-            setStatusFilter('inactive');
-            setCurrentPage(1);
-          }}
-          className={`bg-white rounded-xl shadow-lg p-6 text-left hover:shadow-xl hover:border-red-300 border transition-all ${
-            statusFilter === 'inactive' && !showHiddenUsers ? 'border-red-500 ring-2 ring-red-200' : 'border-transparent'
-          }`}
-          title="Click to view inactive users"
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-600 text-sm">Inactive Users</p>
-              <p className="text-3xl font-bold text-red-600 mt-1">
-                {inactiveUsersCount}
-              </p>
-              {statusFilter === 'inactive' && !showHiddenUsers && (
-                <p className="text-xs text-red-600 mt-1 font-medium">Viewing inactive users</p>
-              )}
-            </div>
-            <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
-              <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-              </svg>
-            </div>
-          </div>
-        </button>
-
-        <button
-          onClick={() => {
-            setShowHiddenUsers(true);
-            setStatusFilter('all');
-            setCurrentPage(1);
-          }}
-          className={`bg-white rounded-xl shadow-lg p-6 text-left hover:shadow-xl hover:border-orange-300 border transition-all ${
-            showHiddenUsers ? 'border-orange-500 ring-2 ring-orange-200' : 'border-transparent'
-          }`}
-          title="Click to view hidden users (test accounts, system users, etc.)"
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-600 text-sm">Hidden Users</p>
-              <p className="text-3xl font-bold text-orange-600 mt-1">
-                {hiddenUsersCount}
-              </p>
-              {showHiddenUsers && (
-                <p className="text-xs text-orange-600 mt-1 font-medium">Viewing hidden users</p>
-              )}
-            </div>
-            <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-              <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-              </svg>
-            </div>
-          </div>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => navigate('/admin/roles')}
-          className="bg-white rounded-xl shadow-lg p-6 text-left hover:shadow-xl hover:border-purple-300 border border-transparent transition-all"
-          title="Open Roles & Access Management to define or edit roles"
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-600 text-sm">Roles Available</p>
-              <p className="text-3xl font-bold text-purple-600 mt-1">{roles.length}</p>
-              <p className="text-xs text-gray-500 mt-1">Manage at /admin/roles →</p>
-            </div>
-            <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-              <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-              </svg>
-            </div>
-          </div>
-        </button>
-      </div>
-      
-      {/* Users Table */}
-      <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email Address</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Organization</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Department</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {paginatedUsers.length === 0 ? (
-                <tr>
-                  <td colSpan="7" className="px-6 py-12 text-center">
-                    <div className="flex flex-col items-center justify-center">
-                      <svg className="w-16 h-16 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-                      </svg>
-                      <p className="text-gray-600 text-lg font-medium">No users found</p>
-                      <p className="text-gray-500 text-sm mt-1">Try adjusting your search or filter criteria</p>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                paginatedUsers.map((user) => (
-                  <tr key={user.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <div className="flex-shrink-0 h-10 w-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-                          <span className="text-white font-bold text-sm">
-                            {getUserInitial(user)}
-                          </span>
-                        </div>
-                        <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">
-                            {getUserDisplayName(user)}
-                          </div>
-                          <div className="text-xs text-gray-500">{user.job_title || 'No job title'}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{getUserEmail(user) || 'N/A'}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{user.organization_name || 'N/A'}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{user.department || 'N/A'}</div>
-                      <div className="text-sm text-gray-500">{user.job_title || 'N/A'}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {editingRoleUserId === user.id && showRoleDropdown ? (
-                        // Edit mode - Show dropdown
-                        <div className="relative inline-block min-w-[200px]">
-                          <select
-                            value={selectedRoleId || ''}
-                            onChange={(e) => {
-                              const newRoleId = e.target.value; // Keep as string (UUID)
-                              console.log('[Dropdown onChange] Selected value:', newRoleId, typeof newRoleId);
-                              if (newRoleId && window.confirm(ROLE_EDIT_CONFIG.confirmMessage)) {
-                                handleRoleChange(user.id, newRoleId);
-                              }
-                            }}
-                            onBlur={() => {
-                              // Delay to allow select option click to register
-                              setTimeout(handleCancelRoleEdit, 200);
-                            }}
-                            autoFocus
-                            disabled={actionLoading[`role_${user.id}`]}
-                            className="w-full px-3 py-2 text-sm border border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            <option value="">Select Role</option>
-                            {assignableRoles.map((role) => {
-                              const isRecommended = role.code === ROLE_EDIT_CONFIG.defaultRoleCode;
-                              return (
-                                <option key={role.id} value={role.id}>
-                                  {getRoleName(role)} {isRecommended ? `⭐ ${ROLE_EDIT_CONFIG.recommendedBadgeText}` : ''}
-                                </option>
-                              );
-                            })}
-                          </select>
-                          {actionLoading[`role_${user.id}`] && (
-                            <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-75">
-                              <svg className="animate-spin h-5 w-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                              </svg>
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        // View mode - Show badge with multi-role management button
-                        (() => {
-                          const badge = getUserRoleBadge(user);
-                          const userRolesCount = user.roles?.length || 0;
-                          
-                          if (!badge) {
-                            return (
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs text-gray-400 italic">No role</span>
-                                {MULTI_ROLE_CONFIG.features.enableMultiRole ? (
-                                  <button
-                                    onClick={() => handleOpenMultiRoleModal(user)}
-                                    className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-all"
-                                    title="Assign Roles"
-                                  >
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                                    </svg>
-                                  </button>
-                                ) : (
-                                  <button
-                                    onClick={() => handleStartRoleEdit(user)}
-                                    className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-all"
-                                    title="Assign Role"
-                                  >
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                                    </svg>
-                                  </button>
-                                )}
-                              </div>
-                            );
-                          }
-                          return (
-                            <div className="flex items-center gap-2">
-                              <div className="flex items-center gap-1.5">
-                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${badge.color.bg} ${badge.color.text}`}>
-                                  <span className={`w-1.5 h-1.5 rounded-full ${badge.color.dot}`} />
-                                  {badge.name}
-                                  {badge.isPrimary && (
-                                    <span className="text-[10px] font-bold ml-0.5">★</span>
-                                  )}
-                                </span>
-                                {badge.extra > 0 && (
-                                  <span 
-                                    className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 cursor-help" 
-                                    title={`User has ${userRolesCount} role${userRolesCount > 1 ? 's' : ''} total. Click 'Manage Roles' to view all.`}
-                                  >
-                                    +{badge.extra}
-                                  </span>
-                                )}
-                              </div>
-                              {MULTI_ROLE_CONFIG.features.enableMultiRole ? (
-                                <button
-                                  onClick={() => handleOpenMultiRoleModal(user)}
-                                  disabled={actionLoading[`role_${user.id}`]}
-                                  className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                  title="Manage Roles"
-                                >
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-                                  </svg>
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={() => handleStartRoleEdit(user)}
-                                  disabled={actionLoading[`role_${user.id}`]}
-                                  className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                  title="Edit Role"
-                                >
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                  </svg>
-                                </button>
-                              )}
-                            </div>
-                          );
-                        })()
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                        user.status === 'active'
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {user.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => navigate(`/admin/users/${user.id}`)}
-                          className="p-2 text-purple-600 hover:text-purple-900 hover:bg-purple-50 rounded-lg transition-all"
-                          title="View Details"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                          </svg>
-                        </button>
-                        <button
-                          onClick={() => openEditModal(user)}
-                          disabled={actionLoading[`edit_${user.id}`]}
-                          className="p-2 text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                          title="Edit User"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                        </button>
-                        {/* Activate / Deactivate — Super Admin or Operational Admin */}
-                        {canPerformEnhancedUserActions && (
-                          <button
-                            onClick={() => handleStatusToggle(user.id, user.status)}
-                            disabled={actionLoading[`status_${user.id}`]}
-                            className={`p-2 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
-                              user.status === 'active'
-                                ? 'text-red-600 hover:text-red-900 hover:bg-red-50'
-                                : 'text-green-600 hover:text-green-900 hover:bg-green-50'
-                            }`}
-                            title={user.status === 'active' ? 'Deactivate' : 'Activate'}
-                          >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={
-                                user.status === 'active'
-                                  ? "M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
-                                  : "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                              } />
-                            </svg>
-                          </button>
-                        )}
-                        {/* Reset Password — Super Admin or Operational Admin */}
-                        {canPerformEnhancedUserActions && (
-                          <button
-                            onClick={() => handleResetPassword(user.id, user.user?.email)}
-                            disabled={actionLoading[`reset_${user.id}`]}
-                            className="p-2 text-orange-600 hover:text-orange-900 hover:bg-orange-50 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                            title="Reset Password to Default"
-                          >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-                            </svg>
-                          </button>
-                        )}
-                        {/* Delete — Super Admin or Operational Admin */}
-                        {canPerformEnhancedUserActions && (
-                          <button
-                            onClick={() => handleDeleteUser(user.id)}
-                            disabled={actionLoading[`delete_${user.id}`]}
-                            className="p-2 text-red-600 hover:text-red-900 hover:bg-red-50 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                            title="Delete User"
-                          >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-        
-        {/* Pagination Controls */}
-        {filteredUsers.length > 0 && (
-          <div className="bg-gray-50 px-6 py-4 border-t border-gray-200">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <span className="text-sm text-gray-700 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
-                  Showing <span className="font-bold text-blue-600">{showingFrom}</span> to <span className="font-bold text-blue-600">{showingTo}</span> of{' '}
-                  <span className="font-bold text-purple-600">{usersCount}</span> results
-                </span>
-                <div className="relative">
-                  <select
-                    id="itemsPerPageSelect"
-                    name="itemsPerPage"
-                    value={itemsPerPage}
-                    onChange={(e) => {
-                      const newValue = Number(e.target.value);
-                      console.log('?? [Select onChange] ==================');
-                      console.log('?? [Select onChange] Event fired!');
-                      console.log('?? [Select onChange] Raw value:', e.target.value);
-                      console.log('?? [Select onChange] Parsed value:', newValue);
-                      console.log('?? [Select onChange] Current state:', itemsPerPage);
-                      console.log('?? [Select onChange] Available options:', CONFIG.ITEMS_PER_PAGE_OPTIONS);
-                      console.log('?? [Select onChange] Calling handler...');
-                      handleItemsPerPageChange(newValue);
-                      console.log('?? [Select onChange] Handler called!');
-                      console.log('?? [Select onChange] ==================');
-                    }}
-                    className="px-4 py-2 pr-10 border-2 border-blue-400 bg-gradient-to-r from-blue-50 to-white rounded-lg text-sm font-bold focus:ring-2 focus:ring-blue-500 focus:border-blue-600 hover:border-blue-500 cursor-pointer transition-all shadow-md appearance-none"
-                  >
-                    {CONFIG.ITEMS_PER_PAGE_OPTIONS.map(option => (
-                      <option key={option} value={option} className="font-medium">
-                        {option} per page
-                      </option>
-                    ))}
-                  </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-blue-600">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    console.log('?? First page button clicked');
-                    handlePageChange(1);
-                  }}
-                  disabled={currentPage === 1}
-                  className="px-3 py-2 border-2 border-gray-400 bg-white rounded-lg hover:bg-blue-50 hover:border-blue-500 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95"
-                  title="First page"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-                  </svg>
-                </button>
-                
-                <button
-                  onClick={() => {
-                    console.log('? Previous page button clicked. Current:', currentPage);
-                    handlePageChange(currentPage - 1);
-                  }}
-                  disabled={currentPage === 1}
-                  className="px-3 py-2 border-2 border-gray-400 bg-white rounded-lg hover:bg-blue-50 hover:border-blue-500 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95"
-                  title="Previous page"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                  </svg>
-                </button>
-                
-                <div className="flex items-center gap-1">
-                  {[...Array(Math.min(5, totalPages))].map((_, idx) => {
-                    let pageNum;
-                    if (totalPages <= 5) {
-                      pageNum = idx + 1;
-                    } else if (currentPage <= 3) {
-                      pageNum = idx + 1;
-                    } else if (currentPage >= totalPages - 2) {
-                      pageNum = totalPages - 4 + idx;
-                    } else {
-                      pageNum = currentPage - 2 + idx;
-                    }
-                    
-                    return (
-                      <button
-                        key={pageNum}
-                        onClick={() => {
-                          console.log('?? Page number button clicked:', pageNum);
-                          handlePageChange(pageNum);
-                        }}
-                        className={`px-4 py-2 border-2 rounded-lg font-bold transition-all active:scale-95 ${
-                          currentPage === pageNum
-                            ? 'bg-blue-600 text-white border-blue-600 shadow-lg'
-                            : 'border-gray-400 bg-white hover:bg-blue-50 hover:border-blue-500'
-                        }`}
-                      >
-                        {pageNum}
-                      </button>
-                    );
-                  })}
-                </div>
-                
-                <button
-                  onClick={() => {
-                    console.log('? Next page button clicked. Current:', currentPage, 'Total:', totalPages);
-                    handlePageChange(currentPage + 1);
-                  }}
-                  disabled={currentPage === totalPages}
-                  className="px-3 py-2 border-2 border-gray-400 bg-white rounded-lg hover:bg-blue-50 hover:border-blue-500 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95"
-                  title="Next page"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
-                
-                <button
-                  onClick={() => {
-                    console.log('?? Last page button clicked. Total pages:', totalPages);
-                    handlePageChange(totalPages);
-                  }}
-                  disabled={currentPage === totalPages}
-                  className="px-3 py-2 border-2 border-gray-400 bg-white rounded-lg hover:bg-blue-50 hover:border-blue-500 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95"
-                  title="Last page"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-      
       {/* Create User Modal - Simple & User Friendly */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -3361,6 +2410,7 @@ const UserManagement = ({ pageControls }) => {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 };

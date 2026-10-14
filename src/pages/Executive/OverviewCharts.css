@@ -1,0 +1,39 @@
+.cc-overview-page .eov-chart { position: relative; min-width: 0; color: var(--cc-muted, #1b326b); --eov-chart-budget: #98a3b8; --eov-chart-collection: #00a76f; --eov-chart-margin: #8b5cf6; --eov-chart-forecast: #103bff; }
+.cc-overview-page .eov-chart > svg { display: block; width: 100%; overflow: visible; }
+.cc-overview-page .eov-chart-company > svg { height: 160px; }
+.cc-overview-page .eov-chart-forecast > svg { height: 118px; }
+.cc-overview-page .eov-chart-grid line,
+.cc-overview-page .eov-chart-grid-line { stroke: var(--cc-border, #e3eaf5); stroke-width: 1; }
+.cc-overview-page .eov-chart-grid text,
+.cc-overview-page .eov-chart-axis,
+.cc-overview-page .eov-chart-month,
+.cc-overview-page .eov-chart-axis-title { fill: var(--cc-muted, #3d5383); font-family: inherit; font-size: 9px; font-weight: 400; }
+.cc-overview-page .eov-chart-axis-title { font-size: 8.5px; }
+.cc-overview-page .eov-chart-legend { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 7px 17px; min-height: 18px; margin-top: -7px; color: var(--cc-muted, #2c4272); font-size: 10px; line-height: 1.2; }
+.cc-overview-page .eov-chart-legend > span { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.cc-overview-page .eov-chart-legend i { display: inline-block; flex: 0 0 16px; width: 16px; height: 12px; border-radius: 1px; }
+.cc-overview-page .eov-chart-legend .eov-chart-key-budget { flex-basis: 28px; width: 28px; height: 0; border-top: 2px dashed var(--eov-chart-budget); }
+.cc-overview-page .eov-chart-legend .eov-chart-key-collection,
+.cc-overview-page .eov-chart-legend .eov-chart-key-margin,
+.cc-overview-page .eov-chart-legend .eov-chart-key-line { position: relative; flex-basis: 28px; width: 28px; height: 0; border-top: 2px solid var(--eov-chart-margin); }
+.cc-overview-page .eov-chart-key-collection::after,
+.cc-overview-page .eov-chart-key-margin::after,
+.cc-overview-page .eov-chart-key-line::after { position: absolute; top: -4px; left: 11px; width: 6px; height: 6px; border-radius: 50%; background: var(--eov-chart-margin); content: ''; }
+.cc-overview-page .eov-chart-legend .eov-chart-key-collection { border-color: var(--eov-chart-collection); }
+.cc-overview-page .eov-chart-key-collection::after { background: var(--eov-chart-collection); }
+.cc-overview-page .eov-chart-legend .eov-chart-key-line { flex-basis: 21px; width: 21px; border-color: var(--eov-chart-forecast); }
+.cc-overview-page .eov-chart-legend .eov-chart-key-estimated { border-top-style: dashed; }
+.cc-overview-page .eov-chart-key-line::after { left: 8px; background: var(--eov-chart-forecast); }
+.cc-overview-page .eov-chart-forecast .eov-chart-legend { margin-top: 1px; }
+.cc-overview-page .eov-chart-empty { position: absolute; inset: 0 16px 35px; display: flex; align-items: center; justify-content: center; pointer-events: none; color: var(--cc-muted, #73839f); font-size: 11px; text-align: center; text-shadow: 0 0 6px #fff, 0 0 8px #fff, 0 0 12px #fff; }
+.cc-overview-page .eov-chart-forecast .eov-chart-empty { bottom: 27px; }
+.cc-overview-page .eov-chart-donut { flex-shrink: 0; width: 150px; max-width: 100%; aspect-ratio: 1; margin: auto; }
+.cc-overview-page .eov-chart-donut > svg { display: block; width: 100%; height: 100%; }
+.cc-overview-page .eov-chart-donut-total { fill: var(--cc-text, #06164b); font-family: inherit; font-size: 23px; font-weight: 700; }
+.cc-overview-page .eov-chart-donut-caption { fill: var(--cc-text, #192d62); font-family: inherit; font-size: 12px; }
+.dark .cc-overview-page .eov-chart { --eov-chart-budget: #b4c6e5; --eov-chart-collection: #39d7a0; --eov-chart-margin: #c4a7ff; --eov-chart-forecast: #82b3ff; }
+.dark .cc-overview-page .eov-chart-empty { text-shadow: none; }
+@media (max-width: 640px) {
+  .cc-overview-page .eov-chart-legend { gap: 7px 12px; font-size: 9px; }
+  .cc-overview-page .eov-chart-donut { width: 136px; }
+}

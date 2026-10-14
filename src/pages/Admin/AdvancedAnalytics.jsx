@@ -1,3 +1,4 @@
+import { radaiAlert } from '../../services/radaiDialog'
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { KEY_METRICS, CHART_CONFIGS } from '../../config/reportGenerator.config';
@@ -613,7 +614,7 @@ const AdvancedAnalytics = () => {
               🔄 Refresh Data
             </button>
             <button
-              onClick={() => alert('Exporting analytics report...')}
+              onClick={async () => (await radaiAlert('Exporting analytics report...'))}
               className="px-6 py-3 bg-blue-500 text-white rounded-lg font-semibold transition-all hover:shadow-lg"
             >
               📥 Export Report

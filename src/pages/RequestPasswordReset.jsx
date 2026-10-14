@@ -19,7 +19,7 @@ import { useNavigate } from 'react-router-dom';
 const PASSWORD_RESET_REDIRECT = {
   enabled: true,
   delay: 0, // milliseconds (0 = immediate)
-  path: '/enquiry?service=password-reset&subject=Password Reset Request',
+  path: '/enquiry?service=it_request&subject=Password Reset Request',
   showLoadingMessage: true,
 };
 

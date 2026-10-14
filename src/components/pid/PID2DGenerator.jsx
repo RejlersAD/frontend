@@ -1,3 +1,4 @@
+import { radaiAlert } from '../../services/radaiDialog'
 import React, { useState, useEffect, useRef } from 'react'
 import { DOMAIN_EXPERT_CONFIG } from '../../config/domainExpert.config'
 import { EquipmentPlacementEngine } from './EquipmentPlacementEngine'
@@ -1243,9 +1244,9 @@ const PID2DGenerator = ({ pidData, pfdData }) => {
     link.click()
   }
 
-  const exportToSVG = () => {
+  const exportToSVG = async () => {
     // SVG export would be implemented here
-    alert('SVG export feature coming soon!')
+    await radaiAlert('SVG export feature coming soon!')
   }
   
   // Initialize Integration Engine
@@ -1259,7 +1260,7 @@ const PID2DGenerator = ({ pidData, pfdData }) => {
   }, [])
   
   // Export to third-party software
-  const exportToIntegration = (format) => {
+  const exportToIntegration = async (format) => {
     if (!integrationEngineRef.current) return
     
     setExportProgress({ format, status: 'preparing' })
@@ -1282,7 +1283,7 @@ const PID2DGenerator = ({ pidData, pfdData }) => {
       // Validate before export
       const validation = integrationEngineRef.current.validateExportData(exportData, format)
       if (!validation.valid) {
-        alert(`Export validation failed:\n${validation.errors.join('\n')}`)
+        await radaiAlert(`Export validation failed:\n${validation.errors.join('\n')}`)
         setExportProgress(null)
         return
       }
@@ -1305,14 +1306,14 @@ const PID2DGenerator = ({ pidData, pfdData }) => {
       
       // Show instructions if available
       if (result.instructions) {
-        setTimeout(() => {
-          alert(`Export Complete!\n\n${result.instructions.join('\n')}`)
+        setTimeout(async () => {
+          await radaiAlert(`Export Complete!\n\n${result.instructions.join('\n')}`)
         }, 500)
       }
       
     } catch (error) {
       console.error('Export error:', error)
-      alert(`Export failed: ${error.message}`)
+      await radaiAlert(`Export failed: ${error.message}`)
       setExportProgress(null)
     }
   }

@@ -2,6 +2,8 @@
 import { useSelector } from 'react-redux'
 import { isUserAdmin } from '../utils/rbac.utils'
 import wrenchService from '../services/wrench.service'
+import { useWrenchRead } from '../hooks/useWrenchRead'
+import { syncOutcome, jobOutcome } from '../utils/wrenchSyncState'
 import {
   WrenchScrewdriverIcon,
   LinkIcon,
@@ -38,9 +40,9 @@ const SYNC_DIRECTIONS = [
     value:       'wrench_to_radai',
     label:       'Wrench → RADAI',
     shortLabel:  'Pull',
-    description: 'Pull projects and documents from Wrench into RADAI.',
+    description: 'Retrieve document or transmittal metadata. No canonical records are imported.',
     icon:        '⬇️',
-    badge:       'Import',
+    badge:       'Metadata',
     // Visual tokens — change here to restyle, never hardcode below
     gradient:    'from-blue-500 to-indigo-600',
     ring:        'ring-blue-400/50',
@@ -54,9 +56,9 @@ const SYNC_DIRECTIONS = [
     value:       'radai_to_wrench',
     label:       'RADAI → Wrench',
     shortLabel:  'Push',
-    description: 'Push RADAI analysis results back to Wrench.',
+    description: 'Unavailable: outbound synchronization is not implemented.',
     icon:        '⬆️',
-    badge:       'Export',
+    badge:       'Unavailable',
     gradient:    'from-emerald-500 to-teal-600',
     ring:        'ring-emerald-400/50',
     activeBg:    'bg-emerald-50 border-emerald-400',
@@ -118,6 +120,21 @@ const StatusBadge = ({ status }) => {
   )
 }
 
+const SyncLogBadge = ({ log }) => {
+  const outcome = syncOutcome(log)
+  if (log.status === 'success' && outcome.type !== 'success') {
+    return <span className="text-xs rounded-full px-2.5 py-1 bg-slate-100 text-slate-700">Unconfirmed (recorded: success)</span>
+  }
+  return <StatusBadge status={log.status || 'unconfirmed'} />
+}
+
+const JobStatusBadge = ({ job }) => {
+  const unconfirmed = job.status === 'success' && jobOutcome(job).type !== 'success'
+  return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+    unconfirmed ? 'bg-slate-100 text-slate-700' : S3_STATUS_STYLES[job.status] || 'bg-slate-100 text-slate-700'
+  }`}>{unconfirmed ? 'Unconfirmed (recorded: success)' : job.status.replace('_', ' ')}</span>
+}
+
 const Alert = ({ type = 'info', message }) => {
   const styles = {
     success: 'bg-green-50 border-green-200 text-green-800',
@@ -128,9 +145,52 @@ const Alert = ({ type = 'info', message }) => {
   const Icon = type === 'success' ? CheckCircleIcon : type === 'error' ? XCircleIcon :
     type === 'warning' ? ExclamationTriangleIcon : InformationCircleIcon
   return (
-    <div className={`flex items-start gap-3 p-4 rounded-lg border ${styles[type]}`}>
+    <div role="status" className={`flex items-start gap-3 p-4 rounded-lg border ${styles[type]}`}>
       <Icon className="w-5 h-5 shrink-0 mt-0.5" />
       <p className="text-sm">{message}</p>
+    </div>
+  )
+}
+
+const parseConfig = data => {
+  if (!data || typeof data.configured !== 'boolean' ||
+      (data.configured && (!data.config || typeof data.config !== 'object' || Array.isArray(data.config) || !data.config.id)) ||
+      (!data.configured && data.config != null) ||
+      (data.sync_capabilities !== undefined && (!Array.isArray(data.sync_capabilities) || data.sync_capabilities.some(item =>
+        !item || typeof item.direction !== 'string' || typeof item.entity_type !== 'string')))) {
+    throw new Error('Configuration response is invalid.')
+  }
+  return data
+}
+const parseHistory = data => {
+  if (!Array.isArray(data) || data.some(row => !row || typeof row !== 'object' || !row.id ||
+      typeof row.status !== 'string' || !row.status ||
+      (row.duration_seconds != null && !Number.isFinite(row.duration_seconds)))) throw new Error('History response is invalid.')
+  return data
+}
+const parseSyncHistory = data => {
+  parseHistory(data)
+  if (data.some(row => typeof row.direction !== 'string' || typeof row.entity_type !== 'string')) throw new Error('Sync history response is invalid.')
+  return data
+}
+const hasActiveJobs = rows => rows?.some(row => ['pending', 'in_progress'].includes(row.status))
+
+const ReadRecovery = ({ resource, read }) => {
+  if (read.status === 'ready') return null
+  const message = read.status === 'denied'
+    ? `${resource}: access denied. Automatic retries stopped. Restore access before retrying.`
+    : read.status === 'unavailable'
+      ? `${resource} could not be loaded. Automatic attempts stopped; retry when the service is available. Previously loaded data may be stale.`
+      : read.status === 'retrying'
+        ? `${resource} is unavailable. Retrying once; your selections are preserved.`
+        : `Loading ${resource.toLowerCase()}…`
+  return (
+    <div className="flex flex-wrap items-start gap-3 mb-4">
+      <div className="flex-1"><Alert type={read.status === 'denied' ? 'error' : 'warning'} message={message} /></div>
+      {!read.busy && <button type="button" onClick={read.refresh}
+        className="px-4 py-2 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-50">
+        Retry {resource.toLowerCase()}
+      </button>}
     </div>
   )
 }
@@ -640,7 +700,7 @@ const ConfigPanel = ({ config, onSaved, onVerify }) => {
                   className={inputClass}
                 />
                 <p className="text-xs text-gray-400 mt-1">
-                  Client identifier sent to Wrench on login. Defaults to "RADAI".
+                  Client identifier sent to Wrench on login. Defaults to &quot;RADAI&quot;.
                 </p>
               </div>
 
@@ -693,14 +753,15 @@ const ConfigPanel = ({ config, onSaved, onVerify }) => {
 // rename here is the only change needed if the value ever changes.
 const _S3_SYNC_DIRECTION = 'wrench_to_s3'
 
-const SyncPanel = ({ logs, onTrigger, onGoToS3Tab }) => {
+const SyncPanel = ({ logs, onTrigger, onGoToS3Tab, capabilities = [], available, history }) => {
   const [direction, setDirection] = useState('wrench_to_radai')
-  const [entityType, setEntityType] = useState('all')
+  const [entityType, setEntityType] = useState('document')
   const [syncing, setSyncing] = useState(false)
   const [alert, setAlert] = useState(null)
   const [showDetails, setShowDetails] = useState(null)
 
   const isS3Direction = direction === _S3_SYNC_DIRECTION
+  const supported = capabilities.some(item => item.direction === direction && item.entity_type === entityType)
 
   const handleSync = async () => {
     // S3 export is handled by the dedicated S3 Export tab, not this sync endpoint
@@ -708,13 +769,16 @@ const SyncPanel = ({ logs, onTrigger, onGoToS3Tab }) => {
       onGoToS3Tab?.()
       return
     }
+    if (!available || !supported) return
     setSyncing(true)
     setAlert(null)
     try {
-      await onTrigger(direction, entityType)
-      setAlert({ type: 'success', message: 'Sync completed. Logs updated below.' })
+      const result = await onTrigger(direction, entityType)
+      setAlert(syncOutcome(result))
     } catch (err) {
-      const msg = err.response?.data?.detail || 'Sync failed. Check the log below.'
+      const msg = [401, 403].includes(err.response?.status)
+        ? 'Sync access denied. No automatic retry was made. Restore access before trying again.'
+        : err.response?.data?.detail || 'The sync outcome could not be confirmed. Check history before retrying; your selections are preserved.'
       setAlert({ type: 'error', message: msg })
     } finally {
       setSyncing(false)
@@ -732,7 +796,7 @@ const SyncPanel = ({ logs, onTrigger, onGoToS3Tab }) => {
             </div>
             <div>
               <h3 className="font-semibold text-white">Data Synchronisation</h3>
-              <p className="text-xs text-blue-100/80">Pull or push data between RADAI and Wrench</p>
+              <p className="text-xs text-blue-100/80">Retrieve supported Wrench metadata and inspect the recorded outcome</p>
             </div>
           </div>
         </div>
@@ -753,6 +817,8 @@ const SyncPanel = ({ logs, onTrigger, onGoToS3Tab }) => {
                   <button
                     key={d.value}
                     type="button"
+                    aria-pressed={isActive}
+                    disabled={syncing}
                     onClick={() => setDirection(d.value)}
                     className={`relative group p-5 rounded-2xl border-2 text-left transition-all duration-200 overflow-hidden focus:outline-none focus-visible:ring-4 ${
                       isActive
@@ -812,6 +878,8 @@ const SyncPanel = ({ logs, onTrigger, onGoToS3Tab }) => {
                 <button
                   key={e.value}
                   type="button"
+                  aria-pressed={entityType === e.value}
+                  disabled={syncing}
                   onClick={() => setEntityType(e.value)}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm border transition ${
                     entityType === e.value
@@ -827,6 +895,11 @@ const SyncPanel = ({ logs, onTrigger, onGoToS3Tab }) => {
           </div>
 
           {/* S3 direction info banner */}
+          {!isS3Direction && (!available || !supported) && (
+            <Alert type="warning" message={!available
+              ? 'Synchronization unavailable while configuration cannot be verified. Recover configuration above; your selection is preserved.'
+              : 'Unavailable: this operation is not implemented. Select Wrench → RADAI with Documents or Transmittals for metadata retrieval. No projects, users or outbound records will be synchronized.'} />
+          )}
           {isS3Direction && (
             <div className="flex items-start gap-3 p-4 rounded-lg bg-orange-50 border border-orange-200 text-sm">
               <CloudArrowUpIcon className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
@@ -840,7 +913,7 @@ const SyncPanel = ({ logs, onTrigger, onGoToS3Tab }) => {
           <button
             type="button"
             onClick={handleSync}
-            disabled={syncing}
+            disabled={syncing || (!isS3Direction && (!available || !supported))}
             className={`flex items-center gap-2 px-6 py-2.5 disabled:opacity-50 text-white text-sm font-semibold rounded-xl shadow-md transition-all duration-200 ${
               isS3Direction
                 ? 'bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-orange-400/25'
@@ -860,6 +933,8 @@ const SyncPanel = ({ logs, onTrigger, onGoToS3Tab }) => {
       </div>
 
       {/* Sync log table */}
+      <button type="button" onClick={history.refresh} disabled={history.busy}
+        className="px-4 py-2 text-sm border border-gray-300 rounded-lg bg-white disabled:opacity-50">Refresh sync history</button>
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-slate-50 to-white flex items-center justify-between">
           <h3 className="font-semibold text-gray-800 flex items-center gap-2">
@@ -869,7 +944,9 @@ const SyncPanel = ({ logs, onTrigger, onGoToS3Tab }) => {
           <span className="text-xs font-medium text-gray-400 bg-gray-100/80 px-2.5 py-0.5 rounded-full">{logs.length} logs</span>
         </div>
 
-        {logs.length === 0 ? (
+        {history.status !== 'ready' && logs.length === 0 ? (
+          <div className="p-10 text-sm text-gray-500">Sync history unavailable. No empty or successful history is inferred.</div>
+        ) : logs.length === 0 ? (
           <div className="p-10 text-center text-sm text-gray-400">
             No sync logs yet. Run your first sync above.
           </div>
@@ -879,7 +956,7 @@ const SyncPanel = ({ logs, onTrigger, onGoToS3Tab }) => {
               <div key={log.id} className="px-6 py-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <StatusBadge status={log.status} />
+                    <SyncLogBadge log={log} />
                     <span className="text-sm text-gray-700">
                       {log.direction.replace('_', ' → ')} · {log.entity_type}
                     </span>
@@ -2570,19 +2647,19 @@ const DocumentSearchPanel = ({ config, configured, onGoToConfig }) => {
 
 // ─── Overview Stats ───────────────────────────────────────────────────────────
 
-const OverviewStats = ({ config, logs }) => {
-  const total = logs.length
-  const success = logs.filter((l) => l.status === 'success').length
-  const failed = logs.filter((l) => l.status === 'failed').length
-  const isVerified = config?.connection_verified
+const OverviewStats = ({ config, logs, configStatus, logsStatus }) => {
+  const total = logsStatus === 'ready' ? logs.length : 'Unavailable'
+  const success = logsStatus === 'ready' ? logs.filter((l) => syncOutcome(l).type === 'success').length : 'Unavailable'
+  const failed = logsStatus === 'ready' ? logs.filter((l) => l.status === 'failed').length : 'Unavailable'
+  const isVerified = configStatus === 'ready' && config?.connection_verified
 
   const stats = [
-    { label: 'Total Syncs',  value: total,   color: 'text-slate-800', icon: ArrowsRightLeftIcon, bg: 'bg-blue-50',   iconColor: 'text-blue-500',   bar: 'from-blue-400 to-blue-600' },
-    { label: 'Successful',   value: success, color: 'text-green-700', icon: CheckCircleIcon,      bg: 'bg-green-50',  iconColor: 'text-green-500',  bar: 'from-green-400 to-emerald-500' },
+      { label: 'Recorded runs', value: total, color: 'text-slate-800', icon: ArrowsRightLeftIcon, bg: 'bg-blue-50', iconColor: 'text-blue-500', bar: 'from-blue-400 to-blue-600' },
+      { label: 'Verified retrievals', value: success, color: 'text-green-700', icon: CheckCircleIcon, bg: 'bg-green-50', iconColor: 'text-green-500', bar: 'from-green-400 to-emerald-500' },
     { label: 'Failed',       value: failed,  color: 'text-red-600',   icon: XCircleIcon,          bg: 'bg-red-50',    iconColor: 'text-red-400',    bar: 'from-red-400 to-red-600' },
     {
       label: 'Status',
-      value: isVerified ? 'Active' : config ? 'Unverified' : 'Not Set',
+        value: configStatus !== 'ready' ? 'Unavailable' : isVerified ? 'Verified' : config ? 'Unverified' : 'Not Set',
       color: isVerified ? 'text-green-700' : 'text-orange-600',
       icon: isVerified ? ShieldCheckIcon : Cog6ToothIcon,
       bg: isVerified ? 'bg-green-50' : 'bg-orange-50',
@@ -2603,7 +2680,7 @@ const OverviewStats = ({ config, logs }) => {
               <s.icon className={`w-5 h-5 ${s.iconColor}`} />
             </div>
           </div>
-          <p className={`text-3xl font-extrabold ${s.color} relative z-10`}>{s.value}</p>
+            <p className={`${s.value === 'Unavailable' ? 'text-xl break-words' : 'text-3xl'} font-extrabold ${s.color} relative z-10`}>{s.value}</p>
           <div className={`mt-3 h-1.5 w-10 rounded-full bg-gradient-to-r ${s.bar} group-hover:w-full transition-all duration-700 ease-out`} />
         </div>
       ))}
@@ -2648,12 +2725,10 @@ const S3_POLL_INTERVAL_MS  = 5000            // auto-refresh when a job is in_pr
 
 // Library Mirror Watcher — soft-coded labels / defaults
 const _LIB_WATCHER_TITLE      = 'Library Mirror Watcher'
-const _LIB_WATCHER_SUBTITLE   = 'Realtime Wrench ↔ S3 — same folder hierarchy as Wrench'
+const _LIB_WATCHER_SUBTITLE   = 'Wrench to S3 library monitoring'
 const _LIB_WATCHER_HELP       = 'Continuously detects added / changed documents in Wrench and syncs them to S3 under library/{order_no}/{discipline}/{doc_type}/{doc_no}/rev_{revision}/'
 
-const S3SyncPanel = ({ configured, onGoToConfig }) => {
-  const [jobs, setJobs]                   = useState([])
-  const [loadingJobs, setLoadingJobs]     = useState(false)
+const S3SyncPanel = ({ configured, available, onGoToConfig }) => {
   const [starting, setStarting]           = useState(false)
   const [alert, setAlert]                 = useState(null)
   const [mode, setMode]                   = useState('batch')
@@ -2665,38 +2740,28 @@ const S3SyncPanel = ({ configured, onGoToConfig }) => {
   const [libOrderNo,   setLibOrderNo]   = useState('')
   const [libStarting,  setLibStarting]  = useState(false)
   const [libAlert,     setLibAlert]     = useState(null)
-  const [libWatchers,  setLibWatchers]  = useState([])
 
-  const loadJobs = useCallback(async () => {
-    try {
-      const res = await wrenchService.getS3Jobs()
-      setJobs(res.data || [])
-    } catch {
-      // silent — don't overwrite user-facing alerts during background polls
-    }
-  }, [])
+  const jobsRead = useWrenchRead(wrenchService.getS3Jobs, {
+    enabled: configured && available, parse: parseHistory, pollWhen: hasActiveJobs, pollInterval: S3_POLL_INTERVAL_MS,
+  })
+  const jobs = jobsRead.data || []
+  const loadingJobs = jobsRead.busy
+  const loadJobs = jobsRead.refresh
 
   useEffect(() => {
-    if (!configured) return
-    setLoadingJobs(true)
-    loadJobs().finally(() => setLoadingJobs(false))
-  }, [configured, loadJobs])
-
-  // Auto-refresh while any job is pending / in_progress
-  useEffect(() => {
-    if (!configured) return
-    const hasActive = jobs.some((j) => j.status === 'in_progress' || j.status === 'pending')
-    if (!hasActive) return
-    const timer = setInterval(loadJobs, S3_POLL_INTERVAL_MS)
-    return () => clearInterval(timer)
-  }, [jobs, configured, loadJobs])
+    if (jobsRead.status !== 'ready') return
+    setAlert(current => {
+      const latest = jobsRead.data?.find(job => current?.jobId != null && job.id === current.jobId)
+      return latest ? { ...jobOutcome(latest, 'Export'), jobId: latest.id } : current
+    })
+  }, [jobsRead.data, jobsRead.status])
 
   const handleStart = async () => {
     setStarting(true)
     setAlert(null)
     try {
-      await wrenchService.startS3Sync({ mode, entity_type: entityType, s3_prefix: s3Prefix })
-      setAlert({ type: 'success', message: `${mode === 'batch' ? 'Batch' : 'Real-time'} export job started successfully.` })
+      const res = await wrenchService.startS3Sync({ mode, entity_type: entityType, s3_prefix: s3Prefix })
+      setAlert({ ...jobOutcome(res.data, 'Export'), jobId: res.data?.id })
       await loadJobs()
     } catch (err) {
       setAlert({ type: 'error', message: err.response?.data?.detail || 'Failed to start the export job.' })
@@ -2708,8 +2773,8 @@ const S3SyncPanel = ({ configured, onGoToConfig }) => {
   const handleStop = async (jobId) => {
     setAlert(null)
     try {
-      await wrenchService.stopS3Job(jobId)
-      setAlert({ type: 'info', message: `Job #${jobId} stop signal sent.` })
+      const res = await wrenchService.stopS3Job(jobId)
+      setAlert({ ...jobOutcome(res.data, 'Export'), jobId: res.data?.id })
       await loadJobs()
     } catch (err) {
       setAlert({ type: 'error', message: err.response?.data?.detail || 'Failed to stop the job.' })
@@ -2721,19 +2786,19 @@ const S3SyncPanel = ({ configured, onGoToConfig }) => {
   )
 
   // Library Mirror Watcher handlers — additive
-  const loadLibWatchers = useCallback(async () => {
-    try {
-      const res = await wrenchService.getLibraryWatchers()
-      setLibWatchers(res.data || [])
-    } catch { /* silent */ }
-  }, [])
+  const libraryRead = useWrenchRead(wrenchService.getLibraryWatchers, {
+    enabled: configured && available, parse: parseHistory, pollWhen: hasActiveJobs, pollInterval: S3_POLL_INTERVAL_MS,
+  })
+  const libWatchers = libraryRead.data || []
+  const loadLibWatchers = libraryRead.refresh
 
   useEffect(() => {
-    if (!configured) return
-    loadLibWatchers()
-    const t = setInterval(loadLibWatchers, S3_POLL_INTERVAL_MS)
-    return () => clearInterval(t)
-  }, [configured, loadLibWatchers])
+    if (libraryRead.status !== 'ready') return
+    setLibAlert(current => {
+      const latest = libraryRead.data?.find(job => current?.jobId != null && job.id === current.jobId)
+      return latest ? { ...jobOutcome(latest, 'Library mirror'), jobId: latest.id } : current
+    })
+  }, [libraryRead.data, libraryRead.status])
 
   const handleStartLibWatcher = async () => {
     setLibAlert(null)
@@ -2744,9 +2809,8 @@ const S3SyncPanel = ({ configured, onGoToConfig }) => {
     }
     setLibStarting(true)
     try {
-      await wrenchService.startLibraryWatcher({ order_no: orderNo, s3_prefix: s3Prefix })
-      setLibAlert({ type: 'success',
-        message: `Library mirror started for project ${orderNo}. S3 will stay in sync with Wrench changes.` })
+      const res = await wrenchService.startLibraryWatcher({ order_no: orderNo, s3_prefix: s3Prefix })
+      setLibAlert({ ...jobOutcome(res.data, 'Library mirror'), jobId: res.data?.id })
       await loadLibWatchers()
     } catch (err) {
       setLibAlert({ type: 'error',
@@ -2758,12 +2822,17 @@ const S3SyncPanel = ({ configured, onGoToConfig }) => {
 
   const handleStopLibWatcher = async (jobId) => {
     try {
-      await wrenchService.stopS3Job(jobId)
+      const res = await wrenchService.stopS3Job(jobId)
+      setLibAlert({ ...jobOutcome(res.data, 'Library mirror'), jobId: res.data?.id })
       await loadLibWatchers()
     } catch (err) {
       setLibAlert({ type: 'error',
         message: err.response?.data?.detail || 'Failed to stop the watcher.' })
     }
+  }
+
+  if (!configured && !available) {
+    return <Alert type="warning" message="Export unavailable while configuration cannot be loaded. Use configuration recovery above." />
   }
 
   if (!configured) {
@@ -2790,6 +2859,12 @@ const S3SyncPanel = ({ configured, onGoToConfig }) => {
 
   return (
     <div className="space-y-5">
+      <ReadRecovery resource="Export history" read={jobsRead} />
+      <ReadRecovery resource="Library history" read={libraryRead} />
+      <div className="flex flex-wrap gap-3">
+        <button type="button" onClick={loadJobs} disabled={jobsRead.busy} className="px-4 py-2 border rounded-lg text-sm">Refresh export history</button>
+        <button type="button" onClick={loadLibWatchers} disabled={libraryRead.busy} className="px-4 py-2 border rounded-lg text-sm">Refresh library history</button>
+      </div>
       {/* Control card */}
       <div className="bg-white rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-200/80 overflow-hidden">
         <div className="px-6 py-5 bg-gradient-to-r from-orange-600 via-amber-500 to-yellow-500">
@@ -2821,6 +2896,7 @@ const S3SyncPanel = ({ configured, onGoToConfig }) => {
                   key={m.value}
                   type="button"
                   onClick={() => setMode(m.value)}
+                  aria-pressed={mode === m.value}
                   className={`p-4 rounded-lg border-2 text-left transition ${
                     mode === m.value
                       ? 'border-orange-500 bg-orange-50'
@@ -2844,6 +2920,7 @@ const S3SyncPanel = ({ configured, onGoToConfig }) => {
                   key={e.value}
                   type="button"
                   onClick={() => setEntityType(e.value)}
+                  aria-pressed={entityType === e.value}
                   className={`px-4 py-1.5 rounded-full text-sm border transition ${
                     entityType === e.value
                       ? 'bg-slate-800 text-white border-slate-800'
@@ -2963,6 +3040,7 @@ const S3SyncPanel = ({ configured, onGoToConfig }) => {
             </button>
           </div>
 
+          {libraryRead.status !== 'ready' && libWatchers.length === 0 && <p className="text-sm text-gray-500">Library history unavailable; watcher outcomes are not known.</p>}
           {libWatchers.length > 0 && (
             <div className="mt-2 border border-gray-200 rounded-xl overflow-hidden">
               <table className="min-w-full text-xs">
@@ -2981,12 +3059,9 @@ const S3SyncPanel = ({ configured, onGoToConfig }) => {
                         <td className="px-3 py-2 font-mono text-gray-500">#{w.id}</td>
                         <td className="px-3 py-2 font-mono">{lw.order_no || w.job_details?.order_no || '—'}</td>
                         <td className="px-3 py-2">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${S3_STATUS_STYLES[w.status] || ''}`}>
-                            {w.status === 'in_progress' && <ArrowPathIcon className="w-3 h-3 mr-1 animate-spin" />}
-                            {w.status.replace('_', ' ')}
-                          </span>
+                          <JobStatusBadge job={w} />
                         </td>
-                        <td className="px-3 py-2 font-mono">{lw.uploaded_total ?? w.records_exported ?? 0}</td>
+                        <td className="px-3 py-2 font-mono">{lw.uploaded_total ?? w.records_exported ?? '—'}</td>
                         <td className="px-3 py-2 text-gray-500">{lw.last_tick || '—'}</td>
                         <td className="px-3 py-2">
                           {(w.status === 'in_progress' || w.status === 'pending') && (
@@ -3030,7 +3105,9 @@ const S3SyncPanel = ({ configured, onGoToConfig }) => {
           </div>
         </div>
 
-        {jobs.length === 0 ? (
+        {jobsRead.status !== 'ready' && jobs.length === 0 ? (
+          <div className="p-6 text-sm text-gray-500">Export history unavailable; job outcomes are not known.</div>
+        ) : jobs.length === 0 ? (
           <div className="p-10 text-center text-sm text-gray-400">
             No export jobs yet. Configure the mode above and click Start.
           </div>
@@ -3055,10 +3132,7 @@ const S3SyncPanel = ({ configured, onGoToConfig }) => {
                     </td>
                     <td className="px-4 py-2.5 text-gray-600 capitalize">{job.entity_type}</td>
                     <td className="px-4 py-2.5">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${S3_STATUS_STYLES[job.status] || ''}`}>
-                        {job.status === 'in_progress' && <ArrowPathIcon className="w-3 h-3 mr-1 animate-spin" />}
-                        {job.status.replace('_', ' ')}
-                      </span>
+                      <JobStatusBadge job={job} />
                     </td>
                     <td className="px-4 py-2.5 text-gray-700 font-mono">
                       {job.records_exported != null ? job.records_exported.toLocaleString() : '—'}
@@ -3108,56 +3182,20 @@ const WrenchIntegration = () => {
   const admin = isUserAdmin(user)
 
   const [activeTab, setActiveTab] = useState('overview')
-  const [config, setConfig] = useState(null)
-  const [configured, setConfigured] = useState(false)
-  const [syncLogs, setSyncLogs] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [pageAlert, setPageAlert] = useState(null)
-  const [retrying, setRetrying] = useState(false)
+  const configRead = useWrenchRead(wrenchService.getConfig, { enabled: admin, parse: parseConfig })
+  const historyRead = useWrenchRead(wrenchService.getSyncLogs, { enabled: admin, parse: parseSyncHistory })
+  const config = configRead.data?.config || null
+  const configured = configRead.data?.configured ?? null
+  const syncLogs = historyRead.data || []
+  const capabilities = Array.isArray(configRead.data?.sync_capabilities) ? configRead.data.sync_capabilities : []
+  const configAvailable = configRead.status === 'ready'
+  const loading = configRead.data === undefined && configRead.busy
+  const configLabel = configAvailable
+    ? configured ? config?.connection_verified ? `Connection verified: ${config.organization_name || config.base_url}` : 'Configured - not verified' : 'Not configured'
+    : configRead.status === 'denied' ? 'Configuration access denied'
+      : configRead.busy ? 'Configuration loading' : 'Configuration unavailable'
 
-  const loadData = useCallback(async ({ silent = false } = {}) => {
-    if (!silent) setLoading(true)
-    setPageAlert(null)
-    try {
-      const [cfgRes, logsRes] = await Promise.all([
-        wrenchService.getConfig(),
-        wrenchService.getSyncLogs(),
-      ])
-      setConfigured(cfgRes.data?.configured || false)
-      setConfig(cfgRes.data?.config || null)
-      setSyncLogs(logsRes.data || [])
-      setRetrying(false)
-    } catch (err) {
-      const status = err.response?.status
-      const errCode = err.response?.data?.error
-
-      if (status === 503 || errCode === 'backend_unavailable') {
-        // Backend is still starting – auto-retry once after 4 seconds
-        setPageAlert({
-          type: 'warning',
-          message: 'Backend is starting up. Retrying in a few seconds…',
-        })
-        setRetrying(true)
-        setTimeout(() => loadData({ silent: true }), 4000)
-      } else if (status === 401 || status === 403) {
-        setPageAlert({
-          type: 'error',
-          message: 'Access denied. Admin permissions are required to view Wrench Integration.',
-        })
-      } else {
-        setPageAlert({
-          type: 'error',
-          message: 'Failed to load Wrench integration data. Check your permissions.',
-        })
-      }
-    } finally {
-      if (!silent) setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    loadData()
-  }, [loadData])
+  const loadData = () => Promise.all([configRead.refresh(), historyRead.refresh()])
 
   const handleVerify = async () => {
     try {
@@ -3165,17 +3203,18 @@ const WrenchIntegration = () => {
       await loadData()
       return res.data
     } catch (err) {
-      return {
-        success: false,
-        message: err.response?.data?.message || 'Connection test failed.',
-      }
+      return { success: false, message: err.response?.data?.message || 'Connection test failed.' }
     }
   }
 
   const handleSyncTrigger = async (direction, entityType) => {
-    const res = await wrenchService.triggerSync(direction, entityType)
-    await loadData()
-    return res.data
+    try {
+      const res = await wrenchService.triggerSync(direction, entityType)
+      return res.data
+    } finally {
+      // Preserve the command outcome and mounted selections if history refresh fails.
+      historyRead.refresh()
+    }
   }
 
   if (!admin) {
@@ -3258,50 +3297,25 @@ const WrenchIntegration = () => {
         <div className="mt-4 flex items-center gap-2">
           <span
             className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${
-              config?.connection_verified
+              configAvailable && config?.connection_verified
                 ? 'bg-green-50 text-green-700 border-green-200'
-                : configured
+                : configAvailable && configured
                 ? 'bg-yellow-50 text-yellow-700 border-yellow-200'
                 : 'bg-gray-100 text-gray-600 border-gray-200'
             }`}
           >
             <span
               className={`w-2.5 h-2.5 rounded-full transition-colors ${
-                config?.connection_verified ? 'bg-green-500 animate-pulse' : configured ? 'bg-yellow-400' : 'bg-gray-400'
+                configAvailable && config?.connection_verified ? 'bg-green-500' : configAvailable && configured ? 'bg-yellow-400' : 'bg-gray-400'
               }`}
             />
-            {config?.connection_verified
-              ? `Connected · ${config.organization_name || config.base_url}`
-              : configured
-              ? 'Configured – not verified'
-              : 'Not configured'}
+            {configLabel}
           </span>
         </div>
       </div>
 
-      {pageAlert && (
-        <div className="mb-6 flex items-start gap-3">
-          <div className="flex-1">
-            <Alert type={pageAlert.type} message={pageAlert.message} />
-          </div>
-          {!retrying && (
-            <button
-              type="button"
-              onClick={() => loadData()}
-              className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium border border-gray-300 rounded-lg bg-white hover:bg-gray-50 transition shrink-0 mt-0.5"
-            >
-              <ArrowPathIcon className="w-4 h-4" />
-              Retry
-            </button>
-          )}
-          {retrying && (
-            <div className="flex items-center gap-1.5 px-4 py-2 text-sm text-gray-500 shrink-0 mt-0.5">
-              <ArrowPathIcon className="w-4 h-4 animate-spin" />
-              Retrying…
-            </div>
-          )}
-        </div>
-      )}
+      <ReadRecovery resource="Configuration" read={configRead} />
+      <ReadRecovery resource="Sync history" read={historyRead} />
 
       {/* Tabs */}
       <div className="mb-8">
@@ -3335,7 +3349,7 @@ const WrenchIntegration = () => {
         <div>
           {activeTab === 'overview' && (
             <div className="space-y-6">
-              <OverviewStats config={config} logs={syncLogs} />
+              <OverviewStats config={config} logs={syncLogs} configStatus={configRead.status} logsStatus={historyRead.status} />
 
               {/* Two-col grid: guide + activity */}
               <div className="grid lg:grid-cols-2 gap-6 items-start">
@@ -3356,7 +3370,7 @@ const WrenchIntegration = () => {
                     'Go to the Configuration tab and enter the Wrench WebAPI Server URL, Server ID, login name, and password.',
                     'Optionally enter the DocumentSearch Service URL if it runs on a different host than the WebAPI.',
                     'Click “Test Connection” to verify RADAI can authenticate with Wrench (a real login is performed).',
-                    'Use the Sync tab to pull documents from Wrench or push RADAI analysis results back.',
+                    'Use the Sync tab for supported document or transmittal metadata retrieval. Outbound synchronization is unavailable.',
                     'Use the Documents tab to search and browse the Wrench document repository directly.',
                     'All activity is recorded in the Sync History and in the RBAC Audit Log.',
                   ].map((step, i) => (
@@ -3393,7 +3407,7 @@ const WrenchIntegration = () => {
                     {syncLogs.slice(0, 5).map((log, idx) => (
                       <div key={log.id} className="wrench-fade-up px-6 py-3.5 flex items-center justify-between hover:bg-gradient-to-r hover:from-blue-50/40 hover:to-transparent transition-all duration-200 group" style={{ animationDelay: `${360 + idx * 55}ms` }}>
                         <div className="flex items-center gap-3">
-                          <StatusBadge status={log.status} />
+                          <SyncLogBadge log={log} />
                           <div>
                             <span className="text-sm text-gray-700 font-medium group-hover:text-gray-900 transition-colors duration-150">
                               {log.direction.replace(/_/g, ' → ')}
@@ -3413,14 +3427,14 @@ const WrenchIntegration = () => {
                 <div className="wrench-fade-up hidden lg:flex items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-gray-50/50 p-8 min-h-[200px]" style={{ animationDelay: '260ms' }}>
                   <div className="text-center">
                     <ArrowsRightLeftIcon className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                    <p className="text-sm text-gray-400">No sync activity yet</p>
+                    <p className="text-sm text-gray-400">{historyRead.status === 'ready' ? 'No sync activity yet' : 'Sync history unavailable'}</p>
                   </div>
                 </div>
               )}
 
               </div>{/* /two-col grid */}
 
-              {!configured && (
+              {configured === false && configAvailable && (
                 <Alert
                   type="warning"
                   message="Wrench integration is not configured yet. Go to the Configuration tab to get started."
@@ -3429,35 +3443,33 @@ const WrenchIntegration = () => {
             </div>
           )}
 
-          {activeTab === 'config' && (
-            <ConfigPanel
-              config={config}
-              onSaved={loadData}
-              onVerify={handleVerify}
-            />
+          {activeTab === 'config' && configRead.data !== undefined && (
+            <fieldset disabled={!configAvailable}>
+              <ConfigPanel config={config} onSaved={loadData} onVerify={handleVerify} />
+            </fieldset>
           )}
 
           {activeTab === 'sync' && (
             configured ? (
-              <SyncPanel logs={syncLogs} onTrigger={handleSyncTrigger} onGoToS3Tab={() => setActiveTab('s3_export')} />
+              <SyncPanel logs={syncLogs} onTrigger={handleSyncTrigger} onGoToS3Tab={() => setActiveTab('s3_export')} capabilities={capabilities} available={configAvailable} history={historyRead} />
             ) : (
               <Alert
                 type="warning"
-                message="Please configure and verify the Wrench connection in the Configuration tab before running a sync."
+                message={configured === false && configAvailable ? "Please configure and verify the Wrench connection in the Configuration tab before running a sync." : "Synchronization unavailable until configuration is loaded. Use the recovery control above."}
               />
             )
           )}
 
-          {activeTab === 's3_export' && (
-            <S3SyncPanel configured={configured} onGoToConfig={() => setActiveTab('config')} />
+          {activeTab === 's3_export' && configRead.data !== undefined && (
+            <fieldset disabled={!configAvailable}><S3SyncPanel configured={configured} available={configAvailable} onGoToConfig={() => setActiveTab('config')} /></fieldset>
           )}
 
-          {activeTab === 'documents' && (
-            <DocumentSearchPanel
+          {activeTab === 'documents' && configRead.data !== undefined && (configAvailable || configured) && (
+            <fieldset disabled={!configAvailable}><DocumentSearchPanel
               config={config}
               configured={configured}
               onGoToConfig={() => setActiveTab('config')}
-            />
+            /></fieldset>
           )}
         </div>
       )}

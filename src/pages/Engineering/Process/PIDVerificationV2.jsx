@@ -1,9 +1,18 @@
-﻿import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { PlatformAIStatusDialog } from '../../../components/ai/PlatformAIStatus';
+import useRadaiChatPage from '../../../hooks/useRadaiChatPage';
+import { radaiConfirm } from '../../../services/radaiDialog'
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { API_BASE_URL } from '../../../config/api.config';
 import { ROUTES } from '../../../config/routes.config';
 import CrossRecommendationPanel from '../../../components/recommendations/CrossRecommendationPanel';
+// Legend Sheets modal — shared with V1 and pid_checker_v2's own page (see
+// apps.pid_verification_v2.services.legend_bridge on the backend, which
+// connects V2's analysis pipeline to these same legend sheets + symbol images).
+import LegendSheetsModal from './components/LegendSheetsModal';
+import AddToLegendModal from './components/AddToLegendModal';
+import { LEGEND_SECTIONS } from '../../../services/pidCheckerV2API';
 import {
   Upload as UploadIcon, FileText, CheckCircle, AlertTriangle,
   Loader, X, Download, Activity, Shield, GitBranch, Cpu, Clock,
@@ -626,6 +635,7 @@ const CATEGORY_LABELS = {
   line_designation: 'Line Designation',
   equipment:        'Equipment',
   notes:            'Notes / HOLDs',
+  legend:           'Legend & Symbol Match',
 };
 
 // Soft-coded: categories excluded from the view, overlay, and PDF export.
@@ -1297,6 +1307,15 @@ const PIDVerificationV2 = () => {
   const [projects,         setProjects]         = useState([]);
   const [loadingProjects,  setLoadingProjects]  = useState(true);
   const [selectedProject,  setSelectedProject]  = useState(null);
+  // Monotone counter bumped on every project switch. Every per-project fetch
+  // below (history, legend knowledge/sheets, instrument symbols, API keys,
+  // reference data) captures this value when it starts and checks it again
+  // before writing state — if it's stale (the user has since switched to a
+  // different project), the response is discarded instead of applied. Without
+  // this, an in-flight request from the PREVIOUS project that resolves AFTER
+  // the switch would overwrite the freshly-cleared state with that project's
+  // real data — visually indistinguishable from a genuine cross-project leak.
+  const projectEpochRef = useRef(0);
   const [showCreateModal,  setShowCreateModal]  = useState(false);
   const [newProjectName,   setNewProjectName]   = useState('');
   const [newProjectDesc,   setNewProjectDesc]   = useState('');
@@ -1321,6 +1340,10 @@ const PIDVerificationV2 = () => {
   const [results,      setResults]      = useState(null);
   const [error,        setError]        = useState('');
   const [activeDrawing,setActiveDrawing]= useState(null);
+  // ── Legend Sheets modal (pid_checker_v2 bridge) ───────────────────────────
+  const LEGEND_SECTION = LEGEND_SECTIONS[0]?.id || 'line_list';
+  const [legendModalOpen, setLegendModalOpen] = useState(false);
+  const [addToLegend, setAddToLegend] = useState(null); // { code } — quick-add from an unrecognised legend/symbol finding
   const pollRef    = useRef(null);
   // ── Elapsed-time timer for the processing loader ──────────────────────────
   const [elapsedSec,   setElapsedSec]   = useState(0);
@@ -1674,6 +1697,23 @@ const PIDVerificationV2 = () => {
   // ── Bootstrap ─────────────────────────────────────────────────────────────
   useEffect(() => { fetchProjects(); }, []);
 
+  // "Go to V1"/"Go to V2" cross-navigation: when arriving via
+  // ?fromProject=<name> (see the "Go to V1" button above), auto-select the
+  // project with a matching name once the project list has loaded — V1
+  // and V2 are separate apps with their own PIDVProject rows (no shared
+  // ID), so name is the only practical link. fromProjectAppliedRef guards
+  // this to run only once per page load, so it doesn't fight a user's
+  // later manual project switch.
+  const fromProjectAppliedRef = useRef(false);
+  useEffect(() => {
+    if (fromProjectAppliedRef.current || projects.length === 0) return;
+    const fromProjectName = new URLSearchParams(window.location.search).get('fromProject');
+    if (!fromProjectName) { fromProjectAppliedRef.current = true; return; }
+    fromProjectAppliedRef.current = true;
+    const match = projects.find(p => p.project_name?.toLowerCase() === fromProjectName.toLowerCase());
+    if (match) handleSelectProject(match);
+  }, [projects]);
+
   // ── Drawing image loader — refetch whenever the active drawing changes ─────
   useEffect(() => {
     let objectUrl = null;
@@ -1844,15 +1884,16 @@ const PIDVerificationV2 = () => {
     }
   };
 
-  const fetchHistory = async (projectId) => {
+  const fetchHistory = async (projectId, epoch = projectEpochRef.current) => {
     setLoadingHistory(true);
     try {
       const res = await axios.get(`${API_PREFIX}/list/?project_id=${projectId}`, { headers: authHeader() });
+      if (epoch !== projectEpochRef.current) return; // stale — user switched project mid-request
       setHistory(res.data || []);
     } catch (e) {
       // non-fatal
     } finally {
-      setLoadingHistory(false);
+      if (epoch === projectEpochRef.current) setLoadingHistory(false);
     }
   };
 
@@ -1912,7 +1953,7 @@ const PIDVerificationV2 = () => {
   // ── History row: Delete — remove the document permanently (confirmed) ────
   const deleteHistoryDocument = async (d) => {
     if (deletingHistoryId) return;
-    if (!window.confirm(`Delete "${d.file_name}"? This permanently removes the document, its drawings and findings. This cannot be undone.`)) {
+    if (!(await radaiConfirm(`Delete "${d.file_name}"? This permanently removes the document, its drawings and findings. This cannot be undone.`))) {
       return;
     }
     setDeletingHistoryId(d.document_id);
@@ -1963,12 +2004,13 @@ const PIDVerificationV2 = () => {
     } catch {}
   };
 
-  const fetchLegendKnowledge = async (projectId) => {
+  const fetchLegendKnowledge = async (projectId, epoch = projectEpochRef.current) => {
     try {
       const url = projectId
         ? `${API_PREFIX}/projects/${projectId}/legend/`
         : `${API_PREFIX}/legend-knowledge/`;
       const res = await axios.get(url, { headers: authHeader() });
+      if (epoch !== projectEpochRef.current) return; // stale — user switched project mid-request
       setLegendKnowledge(res.data?.legend_knowledge || null);
       setLegendScope(res.data?.scope || (projectId ? 'project' : 'global'));
       setLegendBuiltAt(res.data?.legend_built_at || null);
@@ -1981,13 +2023,14 @@ const PIDVerificationV2 = () => {
   // LEGEND SHEETS FUNCTIONS
   // ═══════════════════════════════════════════════════════════════════════════
 
-  const fetchLegendSheets = async (projectId) => {
+  const fetchLegendSheets = async (projectId, epoch = projectEpochRef.current) => {
     if (!projectId) return;
     try {
       const res = await axios.get(
         `${API_PREFIX}/projects/${projectId}/legend-sheets/`,
         { headers: authHeader() },
       );
+      if (epoch !== projectEpochRef.current) return; // stale — user switched project mid-request
       setLegendSheets(res.data?.legend_sheets || []);
     } catch (_) { }
   };
@@ -2020,8 +2063,20 @@ const PIDVerificationV2 = () => {
     const POLL_INTERVAL_MS = 4000;
     const POLL_MAX_MS      = 120000;
     const start = Date.now();
+    // Capture the epoch ONCE, at poll start — not per-tick, or the guard
+    // inside fetchLegendSheets would always compare "current" against
+    // "current" and never detect a project switch mid-poll.
+    const pollEpoch = projectEpochRef.current;
     legendPollRef.current = setInterval(async () => {
-      await fetchLegendSheets(projectId);
+      if (pollEpoch !== projectEpochRef.current) {
+        // The user switched projects since this poll started — stop
+        // polling project A's legend sheets instead of letting the next
+        // tick overwrite project B's freshly-loaded state.
+        clearInterval(legendPollRef.current);
+        legendPollRef.current = null;
+        return;
+      }
+      await fetchLegendSheets(projectId, pollEpoch);
       if (Date.now() - start > POLL_MAX_MS) {
         clearInterval(legendPollRef.current);
         legendPollRef.current = null;
@@ -2073,7 +2128,7 @@ const PIDVerificationV2 = () => {
   useEffect(() => () => { if (legendPollRef.current) clearInterval(legendPollRef.current); }, []);
 
   // Instrument Symbol Registry — fetch all symbols for the active project
-  const fetchInstrumentSymbols = async (projectId) => {
+  const fetchInstrumentSymbols = async (projectId, epoch = projectEpochRef.current) => {
     if (!projectId) return;
     setLoadingInstrSymbols(true);
     try {
@@ -2081,9 +2136,10 @@ const PIDVerificationV2 = () => {
         `${API_PREFIX}/projects/${projectId}/instrument-symbols/`,
         { headers: authHeader() },
       );
+      if (epoch !== projectEpochRef.current) return; // stale — user switched project mid-request
       setInstrSymbols(res.data?.symbols || []);
     } catch (_) { /* non-fatal */ }
-    finally { setLoadingInstrSymbols(false); }
+    finally { if (epoch === projectEpochRef.current) setLoadingInstrSymbols(false); }
   };
 
   // ── Reference Data Functions (Line List, Equipment List, Instrument Index) ────
@@ -2143,15 +2199,21 @@ const PIDVerificationV2 = () => {
     },
   };
 
-  const fetchReferenceData = async (projectId) => {
+  const fetchReferenceData = async (projectId, epoch = projectEpochRef.current) => {
     if (!projectId) return;
+    console.log('fetchReferenceData called for projectId:', projectId, 'epoch:', epoch, 'currentEpoch:', projectEpochRef.current);
     try {
       const res = await axios.get(
         `${API_PREFIX}/projects/${projectId}/reference-data/`,
         { headers: authHeader() }
       );
+      console.log('fetchReferenceData RAW RESPONSE for projectId:', projectId, res.data);
+      if (epoch !== projectEpochRef.current) {
+        console.log('fetchReferenceData DISCARDED as stale — epoch', epoch, '!==', projectEpochRef.current);
+        return; // stale — user switched project mid-request
+      }
       const allData = res.data.reference_data || [];
-      
+
       // Soft-coded: split by data_type
       setLineListFiles(allData.filter(d => d.data_type === 'line_list'));
       setEquipmentListFiles(allData.filter(d => d.data_type === 'equipment_list'));
@@ -2208,17 +2270,19 @@ const PIDVerificationV2 = () => {
 
   // ── BYOK (Bring Your Own Key) Functions ────────────────────────────────────
   
-  const fetchApiKeys = async (projectId) => {
+  const fetchApiKeys = async (projectId, epoch = projectEpochRef.current) => {
     if (!projectId) return;
     try {
       const res = await axios.get(
-        `${API_PREFIX}/projects/${projectId}/api-keys/`,
+        `${API_BASE_URL}/rbac/ai-provider-status/`,
         { headers: authHeader() }
       );
-      const keys = res.data.api_keys || {};
+      if (epoch !== projectEpochRef.current) return; // stale — user switched project mid-request
+      const providers = res.data.providers || [];
+      const configured = provider => providers.some(item => item.provider === provider && (!item.managed || item.ready));
       setApiKeyStatus({
-        openai: keys.openai_key ? 'active' : 'not_set',
-        claude: keys.claude_key ? 'active' : 'not_set',
+        openai: configured('openai') ? 'active' : 'not_set',
+        claude: configured('anthropic') ? 'active' : 'not_set',
       });
       // Don't set actual keys in state for security - only show status
     } catch (err) {
@@ -2287,6 +2351,15 @@ const PIDVerificationV2 = () => {
       setShowCreateModal(false);
       setNewProjectName(''); setNewProjectDesc('');
       flash('success', `Project "${p.project_name}" created`);
+      console.log('NEW PROJECT CREATED:', p.project_id);
+      console.log('Calling handleSelectProject');
+      // Navigate straight into the new project instead of leaving
+      // selectedProject pointing at whatever was open before — otherwise
+      // the screen right after creating still shows the PREVIOUS project's
+      // real data, which reads exactly like the new project leaking
+      // another project's content (see handleSelectProject's comment for
+      // the matching state-reset half of this fix).
+      handleSelectProject(p);
     } catch (e) {
       flash('error', e.response?.data?.project_name?.[0] || 'Failed to create project');
     } finally {
@@ -2328,20 +2401,59 @@ const PIDVerificationV2 = () => {
   };
 
   const handleSelectProject = (p) => {
+    console.log('PROJECT SWITCHED - clearing lists', p.project_id);
     setSelectedProject(p);
     resetUpload();
     setResults(null);
-    fetchHistory(p.project_id);
-    fetchLegendKnowledge(p.project_id);
-    fetchInstrumentSymbols(p.project_id);
-    fetchReferenceData(p.project_id);
-    fetchApiKeys(p.project_id);
-    fetchLegendSheets(p.project_id);
+
+    // 2026-08-28 postmortem, part 1: none of these fetches cleared their
+    // OWN state before running — they only overwrote it once the (async)
+    // request resolved. Switching from a project with real data to a
+    // different one left the PREVIOUS project's Line List/Equipment
+    // List/Instrument Index/Legend/API-key/history state visible until that
+    // round-trip finished (or forever, if it silently failed — every one of
+    // these fetches has a catch block that swallows the error with no state
+    // reset). Clearing everything to its empty default HERE, synchronously,
+    // before any fetch starts, closes that window for the common case.
+    console.log('setLineListFiles([]) called');
+    setLineListFiles([]);
+    setEquipmentListFiles([]);
+    setInstrumentIndexFiles([]);
+    setLegendKnowledge(null);
+    setLegendScope(null);
+    setLegendBuiltAt(null);
+    setLegendSheets([]);
+    setInstrSymbols([]);
+    setApiKeyStatus({ openai: 'not_set', claude: 'not_set' });
+    setHistory([]);
+
+    // 2026-08-28 postmortem, part 2: clearing state up front does NOT close
+    // a second window — an in-flight request from the PREVIOUS project (or
+    // its still-running legend-extraction poll) that resolves AFTER this
+    // switch would happily overwrite the freshly-cleared state with that
+    // project's real data. From the user's side this looked exactly like a
+    // cross-project data leak ("new project shows 34 lines from another
+    // project") even though the backend was always correctly filtering by
+    // project. Bumping projectEpochRef here, and having every fetch below
+    // check it's still current before writing state, discards any such
+    // stale response instead of applying it. The legend poll is also
+    // stopped outright, since a live interval would otherwise keep firing
+    // fetchLegendSheets for the OLD project every few seconds.
+    if (legendPollRef.current) { clearInterval(legendPollRef.current); legendPollRef.current = null; }
+    const epoch = ++projectEpochRef.current;
+
+    fetchHistory(p.project_id, epoch);
+    fetchLegendKnowledge(p.project_id, epoch);
+    fetchInstrumentSymbols(p.project_id, epoch);
+    fetchReferenceData(p.project_id, epoch);
+    fetchApiKeys(p.project_id, epoch);
+    fetchLegendSheets(p.project_id, epoch);
   };
 
   const handleBackToProjects = () => {
     clearInterval(pollRef.current);
-    if (legendPollRef.current) clearInterval(legendPollRef.current);
+    if (legendPollRef.current) { clearInterval(legendPollRef.current); legendPollRef.current = null; }
+    projectEpochRef.current += 1; // invalidate any in-flight per-project fetch still in the air
     setSelectedProject(null);
     setHistory([]);
     resetUpload();
@@ -2667,9 +2779,13 @@ const PIDVerificationV2 = () => {
     if (selectedProject) fd.append('project_id', selectedProject.project_id);
 
     try {
+      // BUG FIX: 120000ms (2 min) was too short for a real analysis run —
+      // same fix and same reasoning as PIDVerification.jsx's handleUpload()
+      // (see its own BUG FIX comment). 40 minutes matches the backend
+      // Celery task's own hard time_limit plus headroom.
       const res = await axios.post(`${API_PREFIX}/upload-pid/`, fd, {
         headers: { ...authHeader(), 'Content-Type': 'multipart/form-data' },
-        timeout: 120000,
+        timeout: 2400000,
       });
       const { document_id, status: s } = res.data;
       setDocumentId(document_id);
@@ -2737,6 +2853,11 @@ const PIDVerificationV2 = () => {
         consecutiveErrors = 0;  // reset error streak on any successful response
         const s = res.data.status;
         setDocStatus(s);
+        // Keep the History row's badge/Re-check-button gating in sync on
+        // every tick, not just at the end — see recheckDocument's
+        // postmortem comment for why a stale row status is what let a
+        // still-processing document's Re-check get clicked again (409).
+        updateHistoryStatus(docId, s);
         if (s === 'completed') {
           stopAll();
           await fetchResults(docId);
@@ -2786,15 +2907,38 @@ const PIDVerificationV2 = () => {
   //
   // docId    : document_id (UUID string) of the document to re-check
   // fileName : display name used in flash messages only
+  // 2026-08-28 postmortem: recheckDocument only disabled its button for the
+  // ~1s round-trip of the POST /reprocess/ call itself (recheckingDocId
+  // resets in `finally`, right after that response lands) — NOT for the
+  // up-to-30-minute duration the actual re-check runs on the server. The
+  // History list's status badge for this row was also never updated after
+  // firing a re-check (no fetchHistory() call, and the poll loop below only
+  // ever updated the single currently-viewed document's docStatus, never
+  // the matching row in `history`). So for the entire real processing
+  // window, the row kept showing its OLD 'completed'/'failed' badge with a
+  // fully clickable Re-check button — an impatient click during that window
+  // hit reprocess_document while the document was still genuinely
+  // 'processing' server-side, and the backend correctly (by design) 409'd.
+  // Keeping the History row's status in sync — both right after firing and
+  // on every subsequent poll tick — closes that window.
+  const updateHistoryStatus = (docId, newStatus) => {
+    setHistory(prev => prev.map(h => h.document_id === docId ? { ...h, status: newStatus } : h));
+  };
+
   const recheckDocument = async (docId, fileName) => {
     if (recheckingDocId) return;          // prevent double-click
     setRecheckingDocId(docId);
     try {
-      // 1. Tell the backend to reset and re-queue
+      // 1. Tell the backend to reset and re-queue. Empty body is correct
+      //    here (unlike V1) — V2's reprocess_document() resolves the API
+      //    key from the project's saved BYOK key automatically (see
+      //    _get_stored_project_api_key in views.py) when none is sent.
+      // BUG FIX: 20000ms (20s) timeout — same fix and same reasoning as
+      // handleUpload()'s above.
       await axios.post(
         `${API_PREFIX}/reprocess/${docId}/`,
         {},
-        { headers: authHeader(), timeout: 20000 },
+        { headers: authHeader(), timeout: 2400000 },
       );
       flash('success', `Re-check queued for "${fileName}" — results will update automatically.`);
 
@@ -2806,12 +2950,24 @@ const PIDVerificationV2 = () => {
       setOverrides({});
       setOverridesSaved(false);
       setComparison(null);
+      // Reflect the new non-terminal status in the History row immediately —
+      // see postmortem above — so its Re-check button hides/disables right
+      // away instead of staying clickable for the whole processing window.
+      updateHistoryStatus(docId, 'uploaded');
 
       // 3. Start the same polling loop used after a fresh upload
       startPolling(docId);
     } catch (e) {
-      const msg = e?.response?.data?.error || 'Re-check failed — please try again.';
-      flash('error', msg);
+      if (e?.response?.status === 409) {
+        // Not a real failure — the document is already being (re)processed,
+        // most likely from an earlier click during this same run. Say so
+        // plainly instead of the generic "failed, try again" (which reads
+        // as an error and invites yet another click/409 loop).
+        flash('info', e?.response?.data?.error || 'Already processing — please wait for it to finish before re-checking again.');
+      } else {
+        const msg = e?.response?.data?.error || 'Re-check failed — please try again.';
+        flash('error', msg);
+      }
     } finally {
       setRecheckingDocId(null);
     }
@@ -2958,6 +3114,35 @@ const PIDVerificationV2 = () => {
   const totalIssues   = results?.total_issues ?? allIssues.length;
   const criticalCount = allIssues.filter(f => getVal(f, 'severity') === 'critical').length;
   const majorCount    = allIssues.filter(f => getVal(f, 'severity') === 'major').length;
+
+  // ── RADAI Chat context — publish QC findings so the floating assistant
+  // verifies/validates within THIS tool's data (profile: soft-coded in
+  // config/radaiChatPages.config.js → 'pid_qc'). Clears on unmount.
+  useRadaiChatPage('pid_qc', {
+    project: selectedProject
+      ? { id: selectedProject.project_id || selectedProject.id, name: selectedProject.name || '', code: selectedProject.code || '' }
+      : null,
+    document: results?.file_name
+      ? { name: results.file_name, type: 'P&ID PDF' }
+      : (file ? { name: file.name, type: 'P&ID PDF' } : null),
+    columns: [
+      { key: 'severity', label: 'Severity' },
+      { key: 'category', label: 'Check / Category' },
+      { key: 'issue_observed', label: 'Finding' },
+      { key: 'drawing_number', label: 'Drawing' },
+      { key: 'tag', label: 'Affected Tag' },
+    ],
+    rows: allIssues,
+    rowCount: totalIssues,
+    summary: results ? {
+      total_issues: totalIssues,
+      critical: criticalCount,
+      major: majorCount,
+      drawings: results.drawings?.length ?? 0,
+      comparison_findings: results.comparison_findings?.length ?? 0,
+      overridden: (results.drawings ?? []).reduce((s, d) => s + (d.overrides_applied ?? 0), 0),
+    } : null,
+  });
 
   // Soft-coded overlay helpers (frontend only): infer confidence and pseudo-position from evidence.
   const bandRank = { low: 1, medium: 2, high: 3 };
@@ -3419,6 +3604,33 @@ const PIDVerificationV2 = () => {
                         {V2_BETA_MODE ? 'Beta' : 'Version 2'}
                       </span>
                     )}
+                    {/* "Go to V1" — carries the currently selected project's
+                        name across via ?fromProject=<name> (V1/V2 are
+                        separate apps with their own project rows, no shared
+                        ID, so name is the only practical link) — see the
+                        mount effect near fetchProjects() in V1's
+                        PIDVerification.jsx that reads this back. */}
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/engineering/process/pid-verification-v1${selectedProject?.project_name ? `?fromProject=${encodeURIComponent(selectedProject.project_name)}` : ''}`)}
+                      title="Switch to the P&ID Verification V1 (Legacy) workflow"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '4px 12px',
+                        borderRadius: '20px',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        background: '#f1f5f9',
+                        color: '#475569',
+                        border: '1px solid #cbd5e1',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <GitBranch style={{ width: '14px', height: '14px' }} />
+                      Go to V1
+                    </button>
                   </div>
                   <p style={{ 
                     fontSize: HEADING_SUB_SIZE,
@@ -5852,7 +6064,7 @@ const PIDVerificationV2 = () => {
             {/* BYOK AI Deep Extraction */}
             <button onClick={() => setShowBYOKPanel(true)}
               className="flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white border border-purple-400 rounded-xl transition-all text-sm shadow-lg shadow-purple-200 flex-shrink-0 font-semibold">
-              <Sparkles className="w-4 h-4" />BYOK — AI Deep Extraction
+              <Sparkles className="w-4 h-4" />AI provider status
             </button>
             {/* History */}
             <button onClick={() => fetchHistory(selectedProject.project_id)}
@@ -6282,7 +6494,13 @@ const PIDVerificationV2 = () => {
                         )}
                       </div>
                       <h3 className="text-sm font-black text-slate-900 tracking-tight mb-1">{config.displayName}</h3>
-                      <p className="text-xs text-slate-600 leading-relaxed mb-3">{config.description}</p>
+                      {/* Description only shown once there's something to describe (files
+                          present or the upload zone is open) — an empty new project no
+                          longer shows this as if content were already loaded; see the
+                          "No … yet" placeholder below instead, same pattern as Legend Sheets. */}
+                      {(files.length > 0 || showUpload) && (
+                        <p className="text-xs text-slate-600 leading-relaxed mb-3">{config.description}</p>
+                      )}
                       <button
                         onClick={() => config.setShowUpload(v => !v)}
                         className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white transition-all hover:scale-[1.02] active:scale-95"
@@ -7040,11 +7258,36 @@ const PIDVerificationV2 = () => {
                   ))}
                   {/* Spacer + action buttons */}
                   <div className="ml-auto flex items-center gap-2 flex-wrap">
-                    {/* Re-check: re-run the quality check on the same file — no re-upload needed */}
+                    {/* Two explicit, separately-labeled Re-check actions — deliberately
+                        NOT one ambiguous "Re-check" button:
+                        - "Re-check (use cache)" → GET /results/ only, via the same
+                          viewHistoryDocument() the History list's Eye button uses. No
+                          pipeline run, no API key used, instant.
+                        - "Re-check (run fresh)" → POST /reprocess/, which clears the
+                          document's cache server-side (see reprocess_document()'s
+                          explicit cache clear in views.py) and always runs a brand-new
+                          analysis, using the configured API key. */}
+                    <button
+                      onClick={() => viewHistoryDocument({ document_id: documentId, status: docStatus })}
+                      disabled={!!viewingHistoryId || !!recheckingDocId || polling}
+                      title="Load the last completed results from cache — instant, no API calls"
+                      className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl border transition-all hover:-translate-y-px disabled:opacity-50"
+                      style={{
+                        background: '#ecfdf5',
+                        border: '1.5px solid #86efac',
+                        color: '#059669',
+                        boxShadow: '0 2px 8px rgba(16,185,129,0.12)',
+                      }}
+                    >
+                      {viewingHistoryId === documentId
+                        ? <><Loader className="w-3.5 h-3.5 animate-spin" /> Loading…</>
+                        : <><Eye className="w-3.5 h-3.5" /> Re-check (use cache)</>
+                      }
+                    </button>
                     <button
                       onClick={() => recheckDocument(documentId, results.file_name)}
-                      disabled={!!recheckingDocId || polling}
-                      title="Re-run quality check without re-uploading the file"
+                      disabled={!!recheckingDocId || !!viewingHistoryId || polling}
+                      title="Ignore cache completely and run a brand-new analysis — uses the API key"
                       className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl border transition-all hover:-translate-y-px disabled:opacity-50"
                       style={{
                         background: '#f5f3ff',
@@ -7055,7 +7298,7 @@ const PIDVerificationV2 = () => {
                     >
                       {recheckingDocId === documentId
                         ? <><Loader className="w-3.5 h-3.5 animate-spin" /> Queuing…</>
-                        : <><RefreshCw className="w-3.5 h-3.5" /> Re-check</>
+                        : <><RefreshCw className="w-3.5 h-3.5" /> Re-check (run fresh)</>
                       }
                     </button>
                     <button onClick={() => navigate(`${ROUTES.PID_VERIFICATION_REPORT}/${documentId}`)} // SOFT-CODED
@@ -7064,6 +7307,14 @@ const PIDVerificationV2 = () => {
                       style={{ background:'linear-gradient(135deg,#4f46e5,#6366f1)', boxShadow:'0 3px 10px rgba(79,70,229,0.25)' }}>
                       <BarChart2 className="w-3.5 h-3.5" />
                       Full Report
+                    </button>
+                    <button
+                      onClick={() => setLegendModalOpen(true)}
+                      title="Manage legend sheets used for text + symbol matching (pid_checker_v2)"
+                      className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl border transition-all hover:-translate-y-px"
+                      style={{ background: '#fdf4ff', border: '1.5px solid #e9d5ff', color: '#a21caf' }}>
+                      <BookOpen className="w-3.5 h-3.5" />
+                      Legend Sheets
                     </button>
                     <button onClick={downloadExcel} disabled={downloadingXlsx}
                       className="flex items-center gap-1.5 text-xs font-bold text-white px-3 py-2 rounded-xl transition-all hover:-translate-y-px disabled:opacity-60"
@@ -7092,6 +7343,231 @@ const PIDVerificationV2 = () => {
                   </div>
                 </div>
               </div>
+
+              {/* ── No-text-extracted warning (document-wide) ─────────────
+                  2026-08-28: a document can finish status='completed' with
+                  almost no findings when Tesseract isn't installed AND
+                  every page's AI Vision call failed (confirmed live on V1:
+                  an out-of-credits Anthropic key produced a 400 on every
+                  page, _run_vision_ocr() swallows that per-page and returns
+                  empty text rather than failing the document, so it
+                  "completes" with raw_text_length=0 on every page and no
+                  indication why — same underlying pipeline V2 shares).
+                  Wording doesn't list "low PDF quality" as a shrug-worthy
+                  excuse — the Vision low-yield retry (vision_extractor.py)
+                  already gives genuinely faint scans a second, stronger-
+                  preprocessed pass before this banner's condition can even
+                  be reached, so by the time every page truly has zero text,
+                  credits/key are the far more likely real cause. */}
+              {results.drawings?.length > 0 &&
+                results.drawings.every(d => d.metadata?.extraction_summary?.no_text_detected) && (
+                <div className="rounded-2xl p-4 border" style={{ background: '#fffbeb', borderColor: '#fde68a' }}>
+                  <p className="text-sm font-semibold text-amber-800">
+                    ⚠️ No text extracted. Check API key credits or try OCR mode.
+                  </p>
+                </div>
+              )}
+
+              {/* ── Legend & Symbol matches (pid_checker_v2 bridge) ──────
+                  Text tags matched against Legend Sheet lookup tables, and
+                  (when a Claude BYOK key was used) visually-identified
+                  symbols — cross-referenced where both agree. Populated by
+                  the backend's LegendSymbolBridgeStage into
+                  PIDVComparisonFinding, exposed via comparison_findings. */}
+              {results.comparison_findings?.length > 0 && (
+                <div className="rounded-2xl p-4" style={{ ...T.panel, animation:'fadeUp 0.45s ease-out 0.1s both' }}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <BookOpen className="w-4 h-4" style={{ color: '#a21caf' }} />
+                    <h3 className="text-sm font-bold text-slate-800">Legend & Symbol Matches</h3>
+                    <span className="text-xs text-slate-400">({results.comparison_findings.length})</span>
+                  </div>
+                  <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                    {results.comparison_findings.map(f => {
+                      const isLinked = f.title.startsWith('Confirmed:');
+                      const isSymbol = f.title.startsWith('Symbol identified:');
+                      // Only LGN-006 ("Symbol identified... no matching legend
+                      // text tag found") represents an unrecognised value —
+                      // LGN-004/005 are already confirmed/informational matches.
+                      const symbolMatch = isSymbol && f.title.match(/^Symbol identified: (.+?) \(/);
+                      return (
+                        <div key={f.finding_id} className="flex items-start gap-2 text-xs rounded-lg px-3 py-2"
+                          style={{
+                            background: isLinked ? 'rgba(34,197,94,0.06)' : isSymbol ? 'rgba(99,102,241,0.06)' : 'rgba(100,116,139,0.06)',
+                            border: `1px solid ${isLinked ? 'rgba(34,197,94,0.2)' : isSymbol ? 'rgba(99,102,241,0.2)' : 'rgba(100,116,139,0.15)'}`,
+                          }}>
+                          <span className="font-bold flex-shrink-0" style={{ color: isLinked ? '#16a34a' : isSymbol ? '#4f46e5' : '#64748b' }}>
+                            {isLinked ? 'HIGH' : isSymbol ? 'SYMBOL' : 'TEXT'}
+                          </span>
+                          <span className="text-slate-700 flex-1">{f.title}</span>
+                          {symbolMatch && (
+                            <button
+                              type="button"
+                              onClick={() => setAddToLegend({ code: symbolMatch[1] })}
+                              className="flex-shrink-0 flex items-center gap-1 text-[11px] font-semibold px-1.5 py-0.5 rounded-md hover:bg-indigo-100"
+                              style={{ color: '#4f46e5' }}
+                            >
+                              <Plus className="w-3 h-3" /> Add to Legend
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {addToLegend && (
+                <AddToLegendModal
+                  isOpen={!!addToLegend}
+                  onClose={() => setAddToLegend(null)}
+                  initialCode={addToLegend.code}
+                  lockCode
+                  onSaved={() => {}}
+                />
+              )}
+
+              {/* ── Cross-Reference (multi-page tags + continuation markers) ──
+                  2026-08-28: populated by the backend's run_cross_reference()
+                  (apps.pid_verification_v2.tasks, called once per document
+                  from every completion point, after every page's
+                  PIDVTagIndex/continuation_refs data exists) — persisted as
+                  regular PIDVFinding rows (category='cross_reference'), so
+                  it's already inside `allIssues` with no separate fetch.
+                  rule_id discriminates the two finding kinds:
+                    XREF-001            → same tag found on 2+ pages
+                    XREF-002/003/004    → continuation marker confirmed/
+                                           missing/unresolvable
+                  Text is parsed back out of issue_observed (already
+                  human-readable) rather than duplicating that formatting
+                  here — rule_id alone drives status/colour. */}
+              {(() => {
+                const xrefFindings = allIssues.filter(f => f.category === 'cross_reference');
+                if (xrefFindings.length === 0) return null;
+
+                const multiPageTags = xrefFindings
+                  .filter(f => f.rule_id === 'XREF-001')
+                  .map(f => {
+                    const m = f.issue_observed.match(/^Tag (.+) found on pages (.+)$/);
+                    const typeMatch = f.evidence.match(/type=(\w+)/);
+                    return {
+                      key: f.id,
+                      tag: m ? m[1] : f.issue_observed,
+                      pages: m ? m[2] : '—',
+                      type: typeMatch ? typeMatch[1] : '—',
+                    };
+                  });
+
+                const continuations = xrefFindings
+                  .filter(f => ['XREF-002', 'XREF-003', 'XREF-004'].includes(f.rule_id))
+                  .map(f => {
+                    const m = f.issue_observed.match(/on page (\d+) .+ sheet (.+)$/);
+                    const status = f.rule_id === 'XREF-002' ? 'confirmed' : f.rule_id === 'XREF-003' ? 'missing' : 'unresolvable';
+                    return {
+                      key: f.id,
+                      fromPage: m ? m[1] : '—',
+                      toPage: m ? m[2] : '—',
+                      status,
+                      text: f.issue_observed,
+                    };
+                  });
+
+                const confirmedCount = continuations.filter(c => c.status === 'confirmed').length;
+                const missingCount = continuations.filter(c => c.status === 'missing').length;
+
+                const STATUS_META = {
+                  confirmed:    { label: 'Confirmed ✅',    color: '#16a34a', bg: 'rgba(34,197,94,0.08)',  border: 'rgba(34,197,94,0.25)' },
+                  missing:      { label: 'Missing ❌',      color: '#dc2626', bg: 'rgba(239,68,68,0.08)',  border: 'rgba(239,68,68,0.25)' },
+                  unresolvable: { label: 'Unresolvable ⚠️', color: '#b45309', bg: 'rgba(217,119,6,0.08)',  border: 'rgba(217,119,6,0.25)' },
+                };
+
+                return (
+                  <div className="rounded-2xl p-4" style={{ ...T.panel, animation: 'fadeUp 0.45s ease-out 0.1s both' }}>
+                    <div className="flex items-center gap-2 mb-3">
+                      <Link className="w-4 h-4" style={{ color: '#0ea5e9' }} />
+                      <h3 className="text-sm font-bold text-slate-800">Cross-Reference (Multi-Page Analysis)</h3>
+                    </div>
+
+                    {/* Section 3 — Summary (shown first so it's the at-a-glance read) */}
+                    <div className="flex gap-2 flex-wrap mb-3">
+                      <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">
+                        Total cross-referenced tags: {multiPageTags.length}
+                      </span>
+                      <span className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{ background: 'rgba(34,197,94,0.1)', color: '#16a34a' }}>
+                        Confirmed continuations: {confirmedCount} ✅
+                      </span>
+                      <span className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{ background: 'rgba(239,68,68,0.1)', color: '#dc2626' }}>
+                        Missing continuations: {missingCount} ❌
+                      </span>
+                    </div>
+
+                    {/* Section 1 — Multi-page tags table */}
+                    {multiPageTags.length > 0 && (
+                      <div className="mb-3">
+                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Multi-Page Tags</p>
+                        <div className="overflow-x-auto rounded-lg border border-slate-200">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="bg-slate-50 text-slate-500">
+                                <th className="text-left px-3 py-1.5 font-semibold">Tag</th>
+                                <th className="text-left px-3 py-1.5 font-semibold">Pages</th>
+                                <th className="text-left px-3 py-1.5 font-semibold">Type</th>
+                                <th className="text-left px-3 py-1.5 font-semibold">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {multiPageTags.map(row => (
+                                <tr key={row.key} className="border-t border-slate-100">
+                                  <td className="px-3 py-1.5 font-medium text-slate-700">{row.tag}</td>
+                                  <td className="px-3 py-1.5 text-slate-600">{row.pages}</td>
+                                  <td className="px-3 py-1.5 text-slate-500 capitalize">{row.type}</td>
+                                  <td className="px-3 py-1.5">
+                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(14,165,233,0.1)', color: '#0ea5e9' }}>
+                                      Cross-Referenced
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Section 2 — Continuations table */}
+                    {continuations.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Continuations (Off-Page Connectors)</p>
+                        <div className="overflow-x-auto rounded-lg border border-slate-200">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="bg-slate-50 text-slate-500">
+                                <th className="text-left px-3 py-1.5 font-semibold">From Page</th>
+                                <th className="text-left px-3 py-1.5 font-semibold">To Page</th>
+                                <th className="text-left px-3 py-1.5 font-semibold">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {continuations.map(row => {
+                                const meta = STATUS_META[row.status];
+                                return (
+                                  <tr key={row.key} className="border-t border-slate-100" title={row.text}>
+                                    <td className="px-3 py-1.5 font-medium text-slate-700">{row.fromPage}</td>
+                                    <td className="px-3 py-1.5 text-slate-600">{row.toPage}</td>
+                                    <td className="px-3 py-1.5">
+                                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: meta.bg, color: meta.color, border: `1px solid ${meta.border}` }}>
+                                        {meta.label}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* ── Drawing tabs (always visible when multiple drawings) ── */}
               {results.drawings?.length > 1 && (
@@ -17777,12 +18253,33 @@ const PIDVerificationV2 = () => {
                       <a href={d.pdf_s3_url} target="_blank" rel="noopener noreferrer"
                         className="text-xs text-red-600 hover:underline flex-shrink-0">PDF</a>
                     )}
-                    {/* Re-check button — available for completed, failed and legend_pending docs */}
+                    {/* Re-check (use cache) — instant load of already-saved findings from
+                        the database/S3 cache, no re-analysis, no API calls. Companion to
+                        Re-check (run fresh) below, which always ignores the cache and
+                        re-runs the pipeline. */}
+                    {['completed', 'failed'].includes(d.status) && editingHistoryId !== d.document_id && (
+                      <button
+                        onClick={() => viewHistoryDocument(d)}
+                        disabled={viewingHistoryId === d.document_id}
+                        title="Load results from cache — instant, no API calls"
+                        className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg border transition-all hover:-translate-y-px disabled:opacity-50 flex-shrink-0"
+                        style={{ background: viewingHistoryId === d.document_id ? '#f1f5f9' : '#eff6ff', border:'1px solid #bfdbfe', color:'#2563eb' }}
+                      >
+                        {viewingHistoryId === d.document_id
+                          ? <><Loader className="w-3 h-3 animate-spin" /> Loading…</>
+                          : <><Eye className="w-3 h-3" /> Re-check (use cache)</>
+                        }
+                      </button>
+                    )}
+                    {/* Re-check (run fresh) — ignores cache completely, clears it
+                        server-side, and always runs a brand-new analysis with the
+                        configured API key. Available for completed, failed and
+                        legend_pending docs. */}
                     {['completed', 'failed', 'legend_pending'].includes(d.status) && (
                       <button
                         onClick={() => recheckDocument(d.document_id, d.file_name)}
-                        disabled={recheckingDocId === d.document_id}
-                        title="Re-run quality check without re-uploading"
+                        disabled={recheckingDocId === d.document_id || viewingHistoryId === d.document_id}
+                        title="Ignore cache completely and run a brand-new analysis — uses the API key"
                         className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg border transition-all hover:-translate-y-px disabled:opacity-50 flex-shrink-0"
                         style={{
                           background: recheckingDocId === d.document_id ? '#f1f5f9' : '#f5f3ff',
@@ -17792,20 +18289,8 @@ const PIDVerificationV2 = () => {
                       >
                         {recheckingDocId === d.document_id
                           ? <><Loader className="w-3 h-3 animate-spin" /> Queuing…</>
-                          : <><RefreshCw className="w-3 h-3" /> Re-check</>
+                          : <><RefreshCw className="w-3 h-3" /> Re-check (run fresh)</>
                         }
-                      </button>
-                    )}
-                    {/* View — load this document's results into the main viewer */}
-                    {['completed', 'failed'].includes(d.status) && editingHistoryId !== d.document_id && (
-                      <button
-                        onClick={() => viewHistoryDocument(d)}
-                        disabled={viewingHistoryId === d.document_id}
-                        title="View results"
-                        className="flex items-center justify-center gap-1 w-8 h-8 rounded-lg border transition-all hover:-translate-y-px disabled:opacity-50 flex-shrink-0"
-                        style={{ background:'#eff6ff', border:'1px solid #bfdbfe', color:'#2563eb' }}
-                      >
-                        {viewingHistoryId === d.document_id ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
                       </button>
                     )}
                     {/* Edit — inline rename of the display name */}
@@ -17855,245 +18340,7 @@ const PIDVerificationV2 = () => {
       ══════════════════════════════════════════════════════════════════════ */}
 
       {/* ── BYOK AI Deep Extraction Panel ──────────────────────────────────────── */}
-      {showBYOKPanel && (
-        <div 
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-          onClick={() => setShowBYOKPanel(false)}
-        >
-          <div 
-            className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 overflow-hidden"
-            style={{ animation: 'fadeUp 0.3s ease-out' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-6 text-white">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
-                    <Sparkles className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-black tracking-tight">BYOK — AI Deep Extraction</h2>
-                    <p className="text-purple-100 text-sm mt-1">Bring Your Own Key for Advanced AI Processing</p>
-                  </div>
-                </div>
-                <button 
-                  onClick={() => setShowBYOKPanel(false)}
-                  className="w-10 h-10 rounded-lg bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-center"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Content */}
-            <div className="p-6 max-h-[70vh] overflow-y-auto">
-              {/* Feature Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                <div className="bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-200 rounded-xl p-5">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
-                      <Brain className="w-5 h-5 text-purple-600" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-slate-900 mb-1">Multi-Model Support</h3>
-                      <p className="text-sm text-slate-600">GPT-4o, Claude 3.5 Sonnet, and Gemini Pro for maximum accuracy</p>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="bg-gradient-to-br from-blue-50 to-cyan-50 border border-blue-200 rounded-xl p-5">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
-                      <Shield className="w-5 h-5 text-blue-600" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-slate-900 mb-1">Secure & Private</h3>
-                      <p className="text-sm text-slate-600">Your API keys are encrypted and never stored permanently</p>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl p-5">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                      <Zap className="w-5 h-5 text-emerald-600" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-slate-900 mb-1">Deep Extraction</h3>
-                      <p className="text-sm text-slate-600">Advanced symbol recognition, tag extraction, and context analysis</p>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-5">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
-                      <Database className="w-5 h-5 text-amber-600" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-slate-900 mb-1">Project-Scoped</h3>
-                      <p className="text-sm text-slate-600">Keys are linked to your project for consistent processing</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Info Panel */}
-              <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-r-lg mb-6">
-                <div className="flex items-start gap-3">
-                  <Lightbulb className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <h4 className="font-bold text-blue-900 mb-1">How BYOK Works</h4>
-                    <ul className="text-sm text-blue-800 space-y-1">
-                      <li>• Configure your own API keys for OpenAI, Claude, or Gemini</li>
-                      <li>• Keys are encrypted using AES-256 and stored per-project</li>
-                      <li>• AI models process your P&IDs with enhanced accuracy</li>
-                      <li>• You maintain full control and can revoke access anytime</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-
-              {/* API Key Configuration Section */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                  <Settings className="w-5 h-5 text-purple-600" />
-                  Configure API Keys
-                </h3>
-                
-                {/* OpenAI */}
-                <div className="border border-slate-200 rounded-xl p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
-                        <Brain className="w-4 h-4 text-emerald-600" />
-                      </div>
-                      <div>
-                        <p className="font-bold text-slate-900">OpenAI (GPT-4o)</p>
-                        <p className="text-xs text-slate-500">Industry-leading vision and reasoning</p>
-                      </div>
-                    </div>
-                    {apiKeyStatus.openai === 'active' ? (
-                      <span className="px-3 py-1 bg-emerald-50 text-emerald-700 text-xs font-semibold rounded-full flex items-center gap-1">
-                        <CheckCircle className="w-3 h-3" />Active
-                      </span>
-                    ) : (
-                      <span className="px-3 py-1 bg-emerald-50 text-emerald-700 text-xs font-semibold rounded-full">
-                        Recommended
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input 
-                      type="password"
-                      value={apiKeys.openai}
-                      onChange={(e) => setApiKeys(prev => ({ ...prev, openai: e.target.value }))}
-                      placeholder={apiKeyStatus.openai === 'active' ? '•••••••••••••••••••• (key saved — enter a new key to replace)' : 'sk-proj-...'}
-                      className="flex-1 px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    />
-                    {apiKeyStatus.openai === 'active' && (
-                      <button
-                        onClick={() => deleteApiKey('openai')}
-                        className="px-3 py-2.5 border border-slate-300 text-slate-500 rounded-lg hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
-                        title="Remove key"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Claude */}
-                <div className="border border-slate-200 rounded-xl p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
-                        <Cpu className="w-4 h-4 text-blue-600" />
-                      </div>
-                      <div>
-                        <p className="font-bold text-slate-900">Anthropic Claude (3.5 Sonnet)</p>
-                        <p className="text-xs text-slate-500">Superior technical document understanding</p>
-                      </div>
-                    </div>
-                    {apiKeyStatus.claude === 'active' && (
-                      <span className="px-3 py-1 bg-blue-50 text-blue-700 text-xs font-semibold rounded-full flex items-center gap-1">
-                        <CheckCircle className="w-3 h-3" />Active
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input 
-                      type="password"
-                      value={apiKeys.claude}
-                      onChange={(e) => setApiKeys(prev => ({ ...prev, claude: e.target.value }))}
-                      placeholder={apiKeyStatus.claude === 'active' ? '•••••••••••••••••••• (key saved — enter a new key to replace)' : 'sk-ant-...'}
-                      className="flex-1 px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    />
-                    {apiKeyStatus.claude === 'active' && (
-                      <button
-                        onClick={() => deleteApiKey('claude')}
-                        className="px-3 py-2.5 border border-slate-300 text-slate-500 rounded-lg hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
-                        title="Remove key"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Gemini — not yet supported by the analysis backend */}
-                <div className="border border-slate-200 rounded-xl p-4 opacity-60">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center">
-                        <Sparkles className="w-4 h-4 text-purple-600" />
-                      </div>
-                      <div>
-                        <p className="font-bold text-slate-900">Google Gemini (Pro Vision)</p>
-                        <p className="text-xs text-slate-500">Advanced multimodal processing</p>
-                      </div>
-                    </div>
-                    <span className="px-3 py-1 bg-slate-100 text-slate-500 text-xs font-semibold rounded-full">
-                      Coming soon
-                    </span>
-                  </div>
-                  <input 
-                    type="password"
-                    placeholder="AIza..."
-                    disabled
-                    className="w-full px-4 py-2.5 border border-slate-200 bg-slate-50 rounded-lg text-sm cursor-not-allowed"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Footer Actions */}
-            <div className="bg-slate-50 px-6 py-4 border-t border-slate-200 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm text-slate-600">
-                <Shield className="w-4 h-4" />
-                <span>Keys are encrypted with AES-256</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <button 
-                  onClick={() => setShowBYOKPanel(false)}
-                  className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-white transition-colors font-medium"
-                >
-                  Cancel
-                </button>
-                <button 
-                  onClick={async () => { await saveApiKeys(); setShowBYOKPanel(false); }}
-                  disabled={savingApiKeys || (!apiKeys.openai && !apiKeys.claude)}
-                  className="px-6 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all shadow-lg shadow-purple-200 font-semibold flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {savingApiKeys ? <Loader className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                  {savingApiKeys ? 'Saving...' : 'Save Configuration'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {showBYOKPanel && <PlatformAIStatusDialog onClose={() => setShowBYOKPanel(false)} />}
 
       {/* ── Fullscreen Workflow Modal ──────────────────────────────────────── */}
       {workflowFullscreen && (
@@ -18245,6 +18492,16 @@ const PIDVerificationV2 = () => {
         </div>
       )}
       {/* ── End Fullscreen Workflow Modal ──────────────────────────────────── */}
+
+      {/* ── Legend Sheets Modal (pid_checker_v2 bridge) ─────────────────────── */}
+      <LegendSheetsModal
+        open={legendModalOpen}
+        onClose={() => setLegendModalOpen(false)}
+        section={LEGEND_SECTION}
+        onActiveChange={() => {}}
+        projectId={selectedProject?.project_id}
+        filterOutMTOLegends
+      />
 
     </DarkBg>
   );

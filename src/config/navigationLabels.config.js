@@ -17,8 +17,8 @@ export const NAVIGATION_LABELS = {
   
   // Section 2: COMMON (formerly CRS)
   crs: {
-    main: 'COMMON',
-    fullName: 'Common Features & Tools',
+    main: 'Shared tools',
+    fullName: 'Shared Tools & Employee Services',
     number: '2'
   },
   
@@ -31,14 +31,14 @@ export const NAVIGATION_LABELS = {
   
   // Section 4: Human Resource
   human_resource: {
-    main: 'Human Resource',
+    main: 'Human Resources',
     fullName: 'Human Resource Management',
     number: '4'
   },
 
   // Section 5: Dept of Sales
   sales: {
-    main: 'Dept of Sales',
+    main: 'Sales',
     fullName: 'Department of Sales',
     number: '5'
   },

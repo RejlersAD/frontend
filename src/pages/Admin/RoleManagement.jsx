@@ -1,4 +1,10 @@
-﻿/**
+import './RoleManagement.css';
+import UserPermissionEditor from './UserPermissionEditor';
+import RoleAccessEditor, { RoleHistory } from './RoleAccessEditor';
+import OrganizationStructurePanel from '../../components/HR/OrganizationStructurePanel';
+import { BUSINESS_SERVICES } from '../../config/serviceAccess.config';
+import { radaiConfirm } from '../../services/radaiDialog'
+/**
  * Role & Access Management — /admin/roles
  *
  * Unified control panel for the Super Administrator.
@@ -13,9 +19,11 @@
 
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useSelector } from 'react-redux';
+import { Link } from 'react-router-dom';
+import * as HeroIcons from '@heroicons/react/24/outline';
 import rbacService from '../../services/rbac.service';
 import { getEngineeringDisciplines } from '../../config/engineeringStructure.config.js';
-import { getRoleName, getRoleDescription, formatRoleForDropdown } from '../../utils/roleDisplay.utils';
+import { getRoleName } from '../../utils/roleDisplay.utils';
 import { HIDDEN_ROLE_CODES } from '../../config/rbacAccess.config';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -44,8 +52,6 @@ const SUPER_ADMIN_ROLE_CODE  = 'super_admin';
 // SOFT-CODED: keep in sync with rbac_config.DEFAULT_ROLE_CONFIG['code']
 const DEFAULT_ROLE_CODE      = 'default';
 const SENSITIVE_ROLE_CODES   = ['hr_admin'];
-// SOFT-CODED: Must match backend/apps/rbac/rbac_config.py SENSITIVE_MODULE_CODES
-const SENSITIVE_MODULE_CODES = ['hr_management', 'payroll', 'timesheet', 'hr_onboarding'];
 
 const CUSTOM_ROLE_LEVEL_OPTIONS_ADMIN = [2, 3, 4, 5, 6];
 const CUSTOM_ROLE_LEVEL_OPTIONS_SUPER = [1, 2, 3, 4, 5, 6];
@@ -80,6 +86,8 @@ const AR_STATUS_LABELS = {
 
 const MAIN_TAB_ROLES = 'roles';
 const MAIN_TAB_AR    = 'access-requests';
+// SOFT-CODED: Synchronise tab key (module catalogue ↔ DB sync panel)
+const MAIN_TAB_SYNC  = 'synchronise';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── Dynamic Module Catalog ───────────────────────────────────────────────
@@ -101,7 +109,7 @@ const NON_ENGINEERING_GROUPS = [
     label: 'Common & Integration',
     color: 'purple',
     description: 'Cross-discipline tools and document management',
-    moduleCodes: ['crs_documents', 'pfd_to_pid', 'designiq', 'data_mining', 'hr_self_service'],  // SOFT-CODED: hr_self_service moved from HR to COMMON section
+    moduleCodes: ['crs_documents', 'pfd_to_pid', 'designiq', 'data_mining', 'hr_self_service'],
   },
   {
     id: 'qhse',
@@ -115,21 +123,21 @@ const NON_ENGINEERING_GROUPS = [
     label: 'Finance',
     color: 'teal',
     description: 'Invoice tracking, billing and financial management',
-    moduleCodes: ['finance'],
+    moduleCodes: [...BUSINESS_SERVICES.filter(service => service.parent === 'finance').map(service => service.code)],
   },
   {
     id: 'sales',
     label: 'Sales',
     color: 'orange',
     description: 'Internal sales pipeline and business development',
-    moduleCodes: ['sales'],
+    moduleCodes: [...BUSINESS_SERVICES.filter(service => service.parent === 'sales').map(service => service.code)],
   },
   {
     id: 'project_control',
     label: 'Project Control',
     color: 'indigo',
     description: 'Project planning, tracking and schedule control',
-    moduleCodes: ['project_control'],
+    moduleCodes: ['project_control', 'planning_package'],
   },
   {
     id: 'procurement',
@@ -164,25 +172,14 @@ const NON_ENGINEERING_GROUPS = [
       'role_access_mgmt',      // 9.3 Role & Access Management
       'wrench_integration',    // 9.4 Wrench Integration
       'ai_champion',           // 9.5 AI Champion
-      'enquiry_management',    // 9.6 Enquiry
+      'org_settings', 'audit_logs', 'file_storage', 'reports', 'api_access',
+      'enquiry_management',    // 9.6 Enquiry Operations
     ],
   },
 ];
 
 // Tailwind colour map for group headers — extend as needed
-const GROUP_COLOR_MAP = {
-  blue:   { bg: 'bg-blue-50',   text: 'text-blue-700',   border: 'border-blue-200',   dot: 'bg-blue-500',   check: 'accent-blue-600'   },
-  orange: { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200', dot: 'bg-orange-500', check: 'accent-orange-600' },
-  purple: { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200', dot: 'bg-purple-500', check: 'accent-purple-600' },
-  yellow: { bg: 'bg-yellow-50', text: 'text-yellow-700', border: 'border-yellow-200', dot: 'bg-yellow-500', check: 'accent-yellow-600' },
-  gray:   { bg: 'bg-gray-50',   text: 'text-gray-600',   border: 'border-gray-200',   dot: 'bg-gray-400',   check: 'accent-gray-500'   },
-  indigo: { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200', dot: 'bg-indigo-500', check: 'accent-indigo-600' },
-  pink:   { bg: 'bg-pink-50',   text: 'text-pink-700',   border: 'border-pink-200',   dot: 'bg-pink-500',   check: 'accent-pink-600'   },
-  green:  { bg: 'bg-green-50',  text: 'text-green-700',  border: 'border-green-200',  dot: 'bg-green-500',  check: 'accent-green-600'  },
-  red:    { bg: 'bg-red-50',    text: 'text-red-700',    border: 'border-red-200',    dot: 'bg-red-500',    check: 'accent-red-600'    },
-  teal:   { bg: 'bg-teal-50',   text: 'text-teal-700',   border: 'border-teal-200',   dot: 'bg-teal-500',   check: 'accent-teal-600'   },
-};
-const DEFAULT_GROUP_COLOR = GROUP_COLOR_MAP.gray;
+
 
 /**
  * Build the ordered module catalog by merging:
@@ -202,7 +199,7 @@ function buildCatalog() {
 }
 
 const MODULE_CATALOG    = buildCatalog();
-const KNOWN_MODULE_CODES = new Set(MODULE_CATALOG.flatMap((g) => g.moduleCodes));
+
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 function getLevelColor(level) { return ROLE_LEVEL_COLORS[level] || DEFAULT_LEVEL_COLOR; }
@@ -226,199 +223,43 @@ function RoleBadge({ role, selected, onClick }) {
   
   return (
     <button
+      type="button"
       onClick={() => onClick(role)}
-      className={`w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${
+      aria-current={selected ? 'page' : undefined}
+      className={`group relative flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 ${
         selected
-          ? 'bg-blue-50 border-l-[3px] border-blue-500'
-          : 'border-l-[3px] border-transparent hover:bg-gray-50 hover:border-gray-200'
+          ? 'bg-blue-50 text-blue-900'
+          : 'text-slate-700 hover:bg-slate-100'
       }`}
     >
-      <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${c.dot}`} />
+      {selected && <span className="absolute inset-y-2 left-0 w-0.5 rounded-r-full bg-blue-600" />}
+      <span className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md ${selected ? 'bg-blue-100' : 'bg-white ring-1 ring-slate-200 group-hover:ring-slate-300'}`}>
+        {role.is_system_role ? (
+          <HeroIcons.ShieldCheckIcon className={`h-4 w-4 ${selected ? 'text-blue-700' : 'text-slate-500'}`} />
+        ) : (
+          <span className={`h-2.5 w-2.5 rounded-full ${c.dot}`} />
+        )}
+      </span>
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <p className={`text-sm font-medium truncate ${selected ? 'text-blue-900' : 'text-gray-800'}`}>
+        <div className="flex items-center gap-1.5">
+          <p className={`truncate text-sm ${selected ? 'font-semibold text-blue-900' : 'font-medium text-slate-800'}`}>
             {roleDisplayName}
           </p>
-          {hasNoModules && !role.is_system_role && (
-            <span className="text-xs px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded font-medium" title="No modules assigned - users cannot access features">
-              0 modules
-            </span>
-          )}
+          {role.is_system_role && <span className="rounded bg-slate-200/70 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">System</span>}
         </div>
-        <p className="text-xs text-gray-400 truncate">{getLevelLabel(role.level)} · {role.user_count ?? 0} users</p>
+        <p className={`mt-0.5 truncate text-xs ${selected ? 'text-blue-700' : 'text-slate-500'}`}>
+          {role.user_count ?? 0} users · {role.modules?.length ?? 0} modules
+        </p>
       </div>
       {isSensitive && (
-        <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" title="Sensitive role" />
+        <span className="h-2 w-2 flex-shrink-0 rounded-full bg-amber-400" title="Sensitive role" />
       )}
       {hasNoModules && !role.is_system_role && (
-        <svg className="w-4 h-4 text-amber-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" title="Warning: No modules assigned">
+        <svg className="h-4 w-4 flex-shrink-0 text-amber-500" fill="currentColor" viewBox="0 0 20 20" aria-label="No modules assigned">
           <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
         </svg>
       )}
     </button>
-  );
-}
-
-function ModuleToggle({ module, enabled, onChange, disabled, isSensitive }) {
-  return (
-    <label className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
-      enabled ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'
-    } ${disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:border-blue-300'}`}>
-      <input type="checkbox" checked={enabled} disabled={disabled}
-        onChange={(e) => onChange(module, e.target.checked)}
-        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed" />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
-          <span className="text-sm font-medium text-gray-800">{module.name}</span>
-          {isSensitive && (
-            <svg className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M10 1.944A11.954 11.954 0 012.166 5C2.056 5.649 2 6.319 2 7c0 5.225 3.34 9.67 8 11.317C14.66 16.67 18 12.225 18 7c0-.682-.057-1.35-.166-2.001A11.954 11.954 0 0110 1.944z" clipRule="evenodd" />
-            </svg>
-          )}
-        </div>
-        <p className="text-xs text-gray-500 truncate">{module.description || module.code}</p>
-      </div>
-    </label>
-  );
-}
-
-// ── IndeterminateCheckbox ─────────────────────────────────────────────────
-function IndeterminateCheckbox({ checked, indeterminate, onChange, disabled }) {
-  const ref = useRef(null);
-  useEffect(() => { if (ref.current) ref.current.indeterminate = !!indeterminate; }, [indeterminate]);
-  return (
-    <input ref={ref} type="checkbox" checked={checked} disabled={disabled}
-      onChange={onChange}
-      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer disabled:cursor-not-allowed" />
-  );
-}
-
-// ── GroupedModulePanel ────────────────────────────────────────────────────
-// Renders API modules grouped by feature area derived from the catalog.
-// New groups auto-appear when added to the catalog or engineering config.
-function GroupedModulePanel({ modules, assignedModuleIds, onToggle, disabled, saving }) {
-  // Default: all groups collapsed — user expands what they need
-  const [expanded, setExpanded] = useState(() => {
-    const init = { __other__: false };
-    MODULE_CATALOG.forEach((g) => { init[g.id] = false; });
-    return init;
-  });
-  const [modSearch, setModSearch] = useState('');
-
-  // Partition API modules into catalog groups + ungrouped
-  const { groups, other } = useMemo(() => {
-    const byCode = {};
-    modules.forEach((m) => { byCode[m.code] = m; });
-    const search = modSearch.toLowerCase();
-
-    const filterItem = (m) =>
-      !search ||
-      m.name.toLowerCase().includes(search) ||
-      m.code.toLowerCase().includes(search);
-
-    const built = MODULE_CATALOG.map((g) => ({
-      ...g,
-      items: g.moduleCodes.map((c) => byCode[c]).filter(Boolean).filter(filterItem),
-    })).filter((g) => g.items.length > 0);
-
-    const ungrouped = modules
-      .filter((m) => !KNOWN_MODULE_CODES.has(m.code))
-      .filter(filterItem);
-
-    return { groups: built, other: ungrouped };
-  }, [modules, modSearch]);
-
-  const toggleGroup = (id) => setExpanded((p) => ({ ...p, [id]: !p[id] }));
-
-  const groupState = (items) => {
-    const n = items.filter((m) => assignedModuleIds.has(m.id)).length;
-    if (n === 0)            return 'none';
-    if (n === items.length) return 'all';
-    return 'some';
-  };
-
-  const handleGroupCheck = async (items, state, e) => {
-    e.stopPropagation();
-    if (disabled || saving) return;
-    const enable = state !== 'all';
-    for (const m of items) {
-      const isOn = assignedModuleIds.has(m.id);
-      if (enable && !isOn)  await onToggle(m, true);
-      if (!enable && isOn)  await onToggle(m, false);
-    }
-  };
-
-  const renderGroup = (g, items) => {
-    const c      = GROUP_COLOR_MAP[g.color] || DEFAULT_GROUP_COLOR;
-    const state  = groupState(items);
-    const open   = expanded[g.id] !== false;
-    const nOn    = items.filter((m) => assignedModuleIds.has(m.id)).length;
-    return (
-      <div key={g.id} className="border border-gray-200 rounded-xl overflow-hidden mb-2">
-        {/* Header */}
-        <div
-          onClick={() => toggleGroup(g.id)}
-          className={`flex items-center gap-2 px-3 py-2.5 cursor-pointer select-none ${c.bg} ${open ? 'border-b border-gray-100' : ''}`}
-        >
-          {!disabled && (
-            <IndeterminateCheckbox
-              checked={state === 'all'}
-              indeterminate={state === 'some'}
-              disabled={saving}
-              onChange={(e) => handleGroupCheck(items, state, e)}
-            />
-          )}
-          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${c.dot}`} />
-          <span className={`flex-1 text-xs font-semibold ${c.text}`}>{g.label}</span>
-          {g.description && (
-            <span className="hidden sm:block text-xs text-gray-400 truncate max-w-[160px]">{g.description}</span>
-          )}
-          <span className={`text-xs px-1.5 py-0.5 rounded font-semibold ${
-            nOn > 0 ? `${c.bg} ${c.text} ring-1 ring-inset ${c.border}` : 'bg-white text-gray-400'
-          }`}>
-            {nOn}/{items.length}
-          </span>
-          <svg className={`w-3.5 h-3.5 ${c.text} flex-shrink-0 transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
-            fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </div>
-        {/* Module rows */}
-        {open && (
-          <div className="p-2 space-y-1.5 bg-white">
-            {items.map((mod) => (
-              <ModuleToggle key={mod.id} module={mod} enabled={assignedModuleIds.has(mod.id)}
-                onChange={onToggle} disabled={disabled || saving}
-                isSensitive={SENSITIVE_MODULE_CODES.includes(mod.code)} />
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  return (
-    <div>
-      {/* Module search */}
-      <div className="relative mb-3">
-        <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-        </svg>
-        <input type="text" placeholder="Filter modules…" value={modSearch}
-          onChange={(e) => setModSearch(e.target.value)}
-          className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300" />
-      </div>
-      {/* Groups */}
-      {groups.map((g) => renderGroup(g, g.items))}
-      {/* Ungrouped / new modules */}
-      {other.length > 0 && renderGroup(
-        { id: '__other__', label: 'Other Modules', color: 'gray', description: 'Modules not yet assigned to a feature group' },
-        other
-      )}
-      {groups.length === 0 && other.length === 0 && (
-        <p className="text-xs text-gray-400 text-center py-4">No modules match your filter.</p>
-      )}
-    </div>
   );
 }
 
@@ -478,6 +319,18 @@ function RoleManagement() {
   }, [isSuperAdmin, currentUser, authUser]);
 
   const [mainTab, setMainTab] = useState(MAIN_TAB_ROLES);
+  const [draftDirty, setDraftDirty] = useState(false);
+  const changeMainTab = async next => {
+    if (next === mainTab) return;
+    if (draftDirty && !(await radaiConfirm('Discard the unsaved access changes?'))) return;
+    setDraftDirty(false); setMainTab(next);
+  };
+  const exportReport = () => {
+    const cell = value => '"' + String(value ?? '').replace(/^[=+@-]/, "' $&").replaceAll('"', '""') + '"';
+    const rows = [['Role', 'Type', 'Assigned users', 'Applications', 'Direct permissions'], ...roles.filter(role => !role.code.startsWith(CUSTOM_ROLE_PREFIX) && !HIDDEN_ROLE_CODES.includes(role.code)).map(role => [getRoleName(role), role.is_system_role ? 'System' : 'Custom', role.user_count ?? 0, role.modules?.length ?? 0, role.permissions?.length ?? 0])];
+    const url = URL.createObjectURL(new Blob([rows.map(row => row.map(cell).join(',')).join('\r\n')], {type: 'text/csv;charset=utf-8'}));
+    const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'role-access-report.csv'; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
 
   const [notification, setNotification] = useState({ show: false, type: '', message: '' });
   const notify = useCallback((type, message) => {
@@ -488,14 +341,14 @@ function RoleManagement() {
 
   // ── Roles tab state ────────────────────────────────────────────────────
   const [roles,         setRoles]         = useState([]);
+  const [moduleCatalogue, setModuleCatalogue] = useState([]);
   const [modules,       setModules]       = useState([]);
   const [roleUsers,     setRoleUsers]     = useState([]);
   const [loadingRoles,  setLoadingRoles]  = useState(true);
-  const [loadingMods,   setLoadingMods]   = useState(true);
   const [loadingUsers,  setLoadingUsers]  = useState(false);
   const [selectedRole,  setSelectedRole]  = useState(null);
   const [roleSearch,    setRoleSearch]    = useState('');
-  const [savingModule,  setSavingModule]  = useState(false);
+  const [roleScope,     setRoleScope]     = useState('all');
   const [assignSearch,  setAssignSearch]  = useState('');
   const [assignResults, setAssignResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -513,7 +366,8 @@ function RoleManagement() {
   const [creating,      setCreating]      = useState(false);
   const [createForm,    setCreateForm]    = useState(EMPTY_FORM);
   const [createError,   setCreateError]   = useState(null);
-  const [detailTab,     setDetailTab]     = useState('modules'); // 'modules' | 'users'
+  const [permissionUser, setPermissionUser] = useState(null);
+  const [detailTab,     setDetailTab]     = useState('users'); // 'users' | 'modules' | 'history'
 
   const canManageRoleUsers = useMemo(() => {
     if (!isAdmin || !selectedRole) return false;
@@ -531,13 +385,15 @@ function RoleManagement() {
 
   useEffect(() => {
     (async () => {
-      try { setLoadingMods(true); setModules(toArray(await rbacService.getModules())); }
+      try { const catalogue = toArray(await rbacService.getModules()).filter(module => module.is_active); setModuleCatalogue(catalogue); setModules(catalogue.filter(module => !['finance', 'sales'].includes(module.code))); }
       catch { notify('error', 'Failed to load modules.'); }
-      finally { setLoadingMods(false); }
+
     })();
   }, []);
 
+  const roleUsersRequest = useRef(0);
   const loadRoleUsers = useCallback(async (code, page = 1, search = '') => {
+    const requestId = ++roleUsersRequest.current;
     try {
       setLoadingUsers(true);
       const res = await rbacService.getUsers({
@@ -546,6 +402,7 @@ function RoleManagement() {
         page_size: ROLE_USERS_PAGE_SIZE,
         ...(search.trim() ? { search: search.trim() } : {}),
       });
+      if (requestId !== roleUsersRequest.current) return;
       // Defensively handle both Axios (.data) and plain-data response shapes
       // Shape A: axios response  → res.data = { count, results, total_pages, ... }
       // Shape B: interceptor unwrapped → res = { count, results, total_pages, ... }
@@ -565,10 +422,11 @@ function RoleManagement() {
         setUserListMeta(null);
       }
     } catch {
+      if (requestId !== roleUsersRequest.current) return;
       setRoleUsers([]);
       setUserListMeta(null);
     } finally {
-      setLoadingUsers(false);
+      if (requestId === roleUsersRequest.current) setLoadingUsers(false);
     }
   }, []);
 
@@ -578,27 +436,15 @@ function RoleManagement() {
     return arr;
   }, []);
 
-  const handleSelectRole = useCallback((role) => {
-    setSelectedRole(role); setAssignSearch(''); setAssignResults([]);
+  const handleSelectRole = useCallback(async (role) => {
+    if (selectedRole?.id === role.id) return;
+    if (draftDirty && !(await radaiConfirm('Discard the unsaved access changes?'))) return;
+    setDraftDirty(false);
+    setRoleUsers([]); setSelectedRole(role); setAssignSearch(''); setAssignResults([]);
     setShowAddPanel(false); setEditingUser(null);
     setUserListSearch(''); setUserListPage(1); setUserListMeta(null);
-    loadRoleUsers(role.code, 1, ''); setDetailTab('modules');
-  }, [loadRoleUsers]);
-
-  const handleModuleToggle = useCallback(async (module, checked) => {
-    if (!isSuperAdmin || !selectedRole) return;
-    setSavingModule(true);
-    try {
-      if (checked) await rbacService.assignModuleToRole(selectedRole.id, module.id);
-      else         await rbacService.revokeModuleFromRole(selectedRole.id, module.id);
-      const arr = await refreshRoles();
-      const r   = arr.find((x) => x.id === selectedRole.id);
-      if (r) setSelectedRole(r);
-      // SOFT-CODED: Notify admin that users with this role need to refresh/re-login for changes to take effect
-      notify('success', `Module ${checked ? 'added to' : 'removed from'} ${selectedRole.name}. Users with this role must refresh browser or re-login.`);
-    } catch (err) { notify('error', err?.response?.data?.detail || 'Failed to update module.'); }
-    finally { setSavingModule(false); }
-  }, [isSuperAdmin, selectedRole, refreshRoles, notify]);
+    loadRoleUsers(role.code, 1, ''); setDetailTab('users');
+  }, [loadRoleUsers, draftDirty, selectedRole]);
 
   // Timer ref for debouncing the user-list search input.
   // SOFT-CODED: delay is ROLE_USERS_SEARCH_DEBOUNCE_MS.
@@ -716,7 +562,7 @@ function RoleManagement() {
       // SOFT-CODED: Auto-select the new role and show modules tab
       // This guides admins to assign modules immediately after creation
       setSelectedRole(role);
-      setDetailTab('modules');
+      setDetailTab('users');
       setAssignSearch(''); setAssignResults([]);
       setShowAddPanel(false); setEditingUser(null);
       setUserListSearch(''); setUserListPage(1); setUserListMeta(null);
@@ -730,7 +576,7 @@ function RoleManagement() {
   }, [createForm, notify]);
 
   const handleDeleteRole = useCallback(async (role) => {
-    if (role.is_system_role || !window.confirm(`Delete "${role.name}"? This revokes it from all users.`)) return;
+    if (role.is_system_role || !(await radaiConfirm(`Delete "${role.name}"? This revokes it from all users.`))) return;
     try {
       await rbacService.deleteRole(role.id);
       setRoles((prev) => prev.filter((r) => r.id !== role.id));
@@ -744,11 +590,30 @@ function RoleManagement() {
     const visible = roles.filter(
       (r) => !r.code.startsWith(CUSTOM_ROLE_PREFIX) && !HIDDEN_ROLE_CODES.includes(r.code)
     );
-    const t = roleSearch.toLowerCase();
-    return t ? visible.filter((r) => r.name.toLowerCase().includes(t) || r.code.toLowerCase().includes(t)) : visible;
-  }, [roles, roleSearch]);
+    const scoped = visible.filter((role) => (
+      roleScope === 'all' || (roleScope === 'system' ? role.is_system_role : !role.is_system_role)
+    ));
+    const t = roleSearch.trim().toLowerCase();
+    return t ? scoped.filter((r) => r.name.toLowerCase().includes(t) || r.code.toLowerCase().includes(t)) : scoped;
+  }, [roles, roleSearch, roleScope]);
 
-  const assignedModuleIds = useMemo(() => new Set((selectedRole?.modules || []).map((m) => m.id)), [selectedRole]);
+  const visibleRoleCounts = useMemo(() => {
+    const visible = roles.filter(
+      (role) => !role.code.startsWith(CUSTOM_ROLE_PREFIX) && !HIDDEN_ROLE_CODES.includes(role.code)
+    );
+    return {
+      all: visible.length,
+      system: visible.filter((role) => role.is_system_role).length,
+      custom: visible.filter((role) => !role.is_system_role).length,
+    };
+  }, [roles]);
+
+  useEffect(() => {
+    if (!selectedRole && !loadingRoles && filteredRoles.length) {
+      handleSelectRole(filteredRoles[0]);
+    }
+  }, [selectedRole, loadingRoles, filteredRoles, handleSelectRole]);
+
 
   // ── Access Requests tab state ─────────────────────────────────────────
   const [arStatusTab, setArStatusTab] = useState('pending');
@@ -773,12 +638,12 @@ function RoleManagement() {
     try {
       const res  = await rbacService.getAccessRequests({ status: 'pending' });
       const list = res?.data?.results ?? res?.data ?? [];
-      setPendingTotal(Array.isArray(list) ? list.length : 0);
+      setPendingTotal(res?.data?.count ?? (Array.isArray(list) ? list.length : 0));
     } catch { /* non-fatal */ }
   }, []);
 
-  useEffect(() => { refreshPending(); }, []);
-  useEffect(() => { if (mainTab === MAIN_TAB_AR) loadArRequests(arStatusTab); }, [mainTab, arStatusTab]);
+  useEffect(() => { refreshPending(); }, [refreshPending]);
+  useEffect(() => { if (mainTab === MAIN_TAB_AR) loadArRequests(arStatusTab); }, [mainTab, arStatusTab, loadArRequests]);
 
   const handleArAction = useCallback(async (id, note) => {
     setArError(''); setArSuccess('');
@@ -804,7 +669,8 @@ function RoleManagement() {
   // ═══════════════════════════════════════════════════════════════════════
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
+    <div className="roles-access">
+      <div className="ra-workspace">
 
       {/* ── Floating toast notification ── */}
       {notification.show && (
@@ -821,219 +687,82 @@ function RoleManagement() {
       )}
 
       {/* ── Page header ── */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex-shrink-0">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-              <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-              </svg>
-              Role & Access Management
-            </h1>
-            <p className="text-xs text-gray-400 mt-0.5">
-              {isSuperAdmin
-                ? 'Create roles, control module access, and review access requests.'
-                : 'Assign roles to users and review module access requests.'}
-            </p>
-          </div>
-          {mainTab === MAIN_TAB_ROLES && isSuperAdmin && (
-            <button
-              onClick={() => { setShowCreate(true); setCreateError(null); setCreateForm(EMPTY_FORM); }}
-              className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 shadow-sm transition-colors"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              New Role
-            </button>
-          )}
+      <header className="ra-page-header">
+             <div className="ra-page-title"><div><h2>Roles &amp; Access Management</h2></div>
+          <div className="ra-header-actions"><button onClick={exportReport}><HeroIcons.ArrowDownTrayIcon />Export access report</button><button onClick={() => changeMainTab(MAIN_TAB_AR)}><HeroIcons.UserGroupIcon />Review requests</button>{isSuperAdmin && mainTab === MAIN_TAB_ROLES && <button className="ra-primary" onClick={() => { setShowCreate(true); setCreateError(null); setCreateForm(EMPTY_FORM); }}><HeroIcons.PlusIcon />Create access role</button>}</div>
         </div>
-
-        {/* Pill-style main tabs */}
-        <div className="flex gap-1 mt-4 bg-gray-100 p-0.5 rounded-lg w-fit">
-          {[
-            { key: MAIN_TAB_ROLES, label: 'Roles & Permissions', icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z' },
-            { key: MAIN_TAB_AR,    label: 'Access Requests',     icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
-          ].map(({ key, label, icon }) => (
-            <button key={key} onClick={() => setMainTab(key)}
-              className={`relative flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
-                mainTab === key ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              }`}>
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={icon} />
-              </svg>
-              {label}
-              {key === MAIN_TAB_AR && pendingTotal > 0 && (
-                <span className="bg-amber-500 text-white text-xs rounded-full px-1.5 py-0.5 leading-none font-bold">
-                  {pendingTotal > 9 ? '9+' : pendingTotal}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-      </div>
+        {pendingTotal > 0 && <div className="ra-notice ra-pending"><HeroIcons.ClockIcon /><span>{pendingTotal} access request{pendingTotal === 1 ? '' : 's'} awaiting review</span><button className="ra-link" onClick={() => changeMainTab(MAIN_TAB_AR)}>Review requests <HeroIcons.ArrowRightIcon /></button></div>}
+        <div className="ra-tabs" role="tablist" aria-label="Roles and access">{[[MAIN_TAB_ROLES, 'Roles'], ['organization', 'Organization structure'], [MAIN_TAB_AR, 'Access requests'], ['reviews', 'Access reviews'], ['audit', 'Audit'], [MAIN_TAB_SYNC, 'Synchronise']].map(([key, label]) => <button key={key} role="tab" aria-selected={mainTab === key} onClick={() => changeMainTab(key)}>{label}</button>)}</div>
+      </header>
+      {mainTab === 'organization' && <OrganizationStructurePanel />}
 
       {/* ══════════════════════════════════════════════════════════
           TAB: Roles & Permissions
       ══════════════════════════════════════════════════════════ */}
       {mainTab === MAIN_TAB_ROLES && (
-        <div className="flex flex-1 min-h-0">
+        <div className="ra-layout">
 
           {/* ── Left panel: role list ── */}
-          <div className="w-64 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col">
-            <div className="p-3 border-b border-gray-100">
+          <aside className="ra-role-list ra-panel">
+            <div className="border-b border-slate-200 bg-white p-4">
+              <div className="mb-3 flex items-start justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">Roles</p>
+
+                </div>
+                <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">{visibleRoleCounts.all}</span>
+              </div>
               <div className="relative">
-                <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
                 <input type="text" placeholder="Search roles…" value={roleSearch}
                   onChange={(e) => setRoleSearch(e.target.value)}
-                  className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 bg-gray-50" />
+                  aria-label="Search roles"
+                  className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
               </div>
-              <p className="text-xs text-gray-400 mt-1.5 px-0.5">{filteredRoles.length} role{filteredRoles.length !== 1 ? 's' : ''}</p>
+              <div className="mt-3 grid grid-cols-3 gap-1 rounded-lg bg-slate-100 p-1" aria-label="Filter roles">
+                {[
+                  ['all', 'All'],
+                  ['system', 'System'],
+                  ['custom', 'Custom'],
+                ].map(([value, label]) => (
+                  <button key={value} type="button" onClick={() => setRoleScope(value)}
+                    aria-pressed={roleScope === value}
+                    className={`rounded-md px-2 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${roleScope === value ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>
+                    {label} <span className="ml-0.5 text-[10px] text-slate-400">{visibleRoleCounts[value]}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="flex-1 overflow-y-auto py-1 px-1">
+            <div className="flex-1 space-y-0.5 overflow-y-auto p-2" aria-label="Available roles">
               {loadingRoles ? (
                 <div className="py-10 text-center">
                   <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
                   <p className="text-xs text-gray-400">Loading…</p>
                 </div>
               ) : filteredRoles.length === 0 ? (
-                <p className="text-xs text-gray-400 text-center py-8">No roles found.</p>
+                <div className="px-4 py-10 text-center">
+                  <HeroIcons.MagnifyingGlassIcon className="mx-auto h-5 w-5 text-slate-300" />
+                  <p className="mt-2 text-xs font-medium text-slate-600">No roles found</p>
+                  <p className="mt-1 text-xs text-slate-400">Try another search or filter.</p>
+                </div>
               ) : filteredRoles.map((role) => (
                 <RoleBadge key={role.id} role={role} selected={selectedRole?.id === role.id} onClick={handleSelectRole} />
               ))}
             </div>
-          </div>
+          </aside>
 
           {/* ── Right panel: role detail ── */}
-          <div className="flex-1 min-h-0 overflow-hidden flex flex-col bg-gray-50">
-            {!selectedRole ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-gray-300 gap-4">
-                <svg className="w-20 h-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1}
-                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                <div className="text-center">
-                  <p className="text-base font-medium text-gray-400">Select a role to get started</p>
-                  <p className="text-sm text-gray-300 mt-1">Choose from the list on the left</p>
-                </div>
-              </div>
-            ) : (
-              <>
-                {/* Role header bar */}
-                <div className="bg-white border-b border-gray-200 px-6 py-4 flex-shrink-0">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {(() => { const c = getLevelColor(selectedRole.level); return <span className={`w-3 h-3 rounded-full flex-shrink-0 ${c.dot}`} />; })()}
-                        <h2 className="text-lg font-bold text-gray-900">{getRoleName(selectedRole)}</h2>
-                        {(() => { const c = getLevelColor(selectedRole.level); return (
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${c.bg} ${c.text}`}>{getLevelLabel(selectedRole.level)}</span>
-                        ); })()}
-                        {selectedRole.is_system_role && (
-                          <span className="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-500 border border-gray-200">System</span>
-                        )}
-                        {SENSITIVE_ROLE_CODES.includes(selectedRole.code) && (
-                          <span className="px-2 py-0.5 rounded text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">Sensitive</span>
-                        )}
-                      </div>
-                      <p className="text-sm text-gray-500 mt-1">{getRoleDescription(selectedRole) || selectedRole.description || '—'}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">
-                        Code: <code className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-600 text-xs">{selectedRole.code}</code>
-                      </p>
-                    </div>
-                    {isSuperAdmin && !selectedRole.is_system_role && (
-                      <button onClick={() => handleDeleteRole(selectedRole)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-500 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-lg transition-colors flex-shrink-0">
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                        Delete
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Detail sub-tabs */}
-                  <div className="flex gap-0 mt-4 -mb-4 border-b border-gray-100">
-                    {[
-                      { key: 'modules', label: 'Module Access', count: (selectedRole?.modules || []).length },
-                      { key: 'users',   label: 'Users',         count: loadingUsers ? null : roleUsers.length },
-                    ].map(({ key, label, count }) => (
-                      <button key={key} onClick={() => setDetailTab(key)}
-                        className={`flex items-center gap-2 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                          detailTab === key
-                            ? 'border-blue-600 text-blue-700'
-                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                        }`}>
-                        {label}
-                        {count != null && (
-                          <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${
-                            detailTab === key ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
-                          }`}>{count}</span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Detail tab content */}
-                <div className="flex-1 min-h-0 overflow-y-auto">
-
-                  {/* ── Module Access tab ── */}
-                  {detailTab === 'modules' && (
-                    <div className="p-6 max-w-3xl">
-                      {/* SOFT-CODED: Warning when role has no modules */}
-                      {selectedRole && (!selectedRole.modules || selectedRole.modules.length === 0) && (
-                        <div className="mb-4 flex items-start gap-3 px-4 py-3 bg-amber-50 rounded-lg border border-amber-200 text-sm text-amber-800">
-                          <svg className="w-5 h-5 flex-shrink-0 text-amber-500" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                          </svg>
-                          <div>
-                            <p className="font-semibold mb-1">⚠️ This role has no modules assigned</p>
-                            <p className="text-xs text-amber-700">
-                              Users assigned to "<strong>{selectedRole.name}</strong>" cannot access any features until you assign modules below. 
-                              Toggle ON the modules this role should have access to.
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                      {!isSuperAdmin && (
-                        <div className="mb-4 flex items-center gap-2 px-3 py-2.5 bg-blue-50 rounded-lg border border-blue-100 text-xs text-blue-600">
-                          <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          Read-only — only Super Admins can toggle module access.
-                        </div>
-                      )}
-                      {savingModule && (
-                        <div className="mb-4 flex items-center gap-2 text-xs text-blue-500">
-                          <div className="w-3 h-3 border border-blue-500 border-t-transparent rounded-full animate-spin" />
-                          Saving changes…
-                        </div>
-                      )}
-                      {loadingMods ? (
-                        <div className="py-16 text-center">
-                          <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-                          <p className="text-sm text-gray-400">Loading modules…</p>
-                        </div>
-                      ) : modules.length === 0 ? (
-                        <p className="text-sm text-gray-400 text-center py-10">No modules configured.</p>
-                      ) : (
-                        <GroupedModulePanel
-                          modules={modules}
-                          assignedModuleIds={assignedModuleIds}
-                          onToggle={handleModuleToggle}
-                          disabled={!isSuperAdmin}
-                          saving={savingModule}
-                        />
-                      )}
-                    </div>
-                  )}
-
-                  {/* ── Users tab ── */}
+          {selectedRole ? <RoleAccessEditor key={selectedRole.id} role={selectedRole} modules={modules} groups={MODULE_CATALOG}
+            users={roleUsers} usersLoading={loadingUsers} isSuperAdmin={isSuperAdmin}
+            ownRole={Boolean(currentUser?.roles?.some(role => role.id === selectedRole.id || role.code === selectedRole.code))}
+            onReload={async () => { const refreshed = await refreshRoles(); const latest = refreshed.find(item => item.id === selectedRole.id); if (!latest) throw new Error('Role unavailable'); setSelectedRole(latest); }}
+            tab={detailTab} setTab={setDetailTab} onDirtyChange={setDraftDirty} onDelete={handleDeleteRole}
+            onSaved={role => { setSelectedRole(role); setRoles(previous => previous.map(item => item.id === role.id ? role : item)); notify('success', 'Reviewed access changes saved.'); }}>
+                  {permissionUser && <UserPermissionEditor key={permissionUser.id} user={permissionUser} modules={moduleCatalogue} groups={MODULE_CATALOG} onClose={() => setPermissionUser(null)} />}
                   {detailTab === 'users' && (
-                    <div className="p-6 max-w-2xl space-y-5">
+                    <div className="ra-assigned-users">
 
                       {/* ── Super-admin-only guard notice ── */}
                       {isAdmin && !isSuperAdmin && selectedRole?.code === SUPER_ADMIN_ROLE_CODE && (
@@ -1046,8 +775,8 @@ function RoleManagement() {
                       )}
 
                       {/* ── Section header + Add User button ── */}
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                      <div className="ra-users-toolbar">
+                        <p className="ra-users-count">
                           {loadingUsers
                             ? 'Loading…'
                             : userListMeta
@@ -1056,6 +785,7 @@ function RoleManagement() {
                           }
                         </p>
                         <div className="flex items-center gap-2">
+
                           {/* Sync button — only visible on the Default role for super admins */}
                           {isSuperAdmin && selectedRole?.code === DEFAULT_ROLE_CODE && (
                             <button
@@ -1132,7 +862,7 @@ function RoleManagement() {
                       {/* ── Add User inline panel ── */}
                       {showAddPanel && canManageRoleUsers && (
                         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-3">
-                          <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Search &amp; Add User to "{selectedRole?.name}"</p>
+                          <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Search &amp; Add User to &ldquo;{selectedRole?.name}&rdquo;</p>
                           <div className="relative">
                             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -1192,7 +922,7 @@ function RoleManagement() {
                         </svg>
                         <input
                           type="text"
-                          placeholder="Filter users by name or email…"
+                          aria-label="Filter assigned users" placeholder="Search assigned users by name or email…"
                           value={userListSearch}
                           onChange={(e) => {
                             const v = e.target.value;
@@ -1226,7 +956,7 @@ function RoleManagement() {
                       </div>
 
                       {/* ── User list ── */}
-                      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                      <div className="ra-users-list">
                         {loadingUsers ? (
                           <div className="py-10 text-center">
                             <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
@@ -1248,50 +978,33 @@ function RoleManagement() {
                             )}
                           </div>
                         ) : (
-                          <ul className="divide-y divide-gray-100">
+                          <ul className="ra-assignment-list" aria-label="Assigned users">
+                            <li className="ra-users-columns" aria-hidden="true"><span>User</span><span>Department / title</span><span>Role assignments</span><span>Actions</span></li>
                             {roleUsers.map((u) => {
                               const email    = u.user?.email || u.email || '—';
                               const name     = [u.user?.first_name, u.user?.last_name].filter(Boolean).join(' ') || email;
-                              const meta     = [u.job_title, u.department].filter(Boolean).join(' · ');
                               const isPrimary = u.primary_role?.name === selectedRole?.name;
                               const isEditing = editingUser?.id === u.id;
                               return (
                                 <li key={u.id} className="transition-colors">
                                   {/* ── Row ── */}
-                                  <div className={`flex items-center gap-3 px-4 py-3 ${isEditing ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
-                                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0 shadow-sm">
-                                      <span className="text-white text-sm font-bold">{name.charAt(0).toUpperCase()}</span>
+                                  <div className={`ra-assignment-row ${isEditing ? 'is-editing' : ''}`} onClick={event => { if (isSuperAdmin && !event.target.closest('button, input, a')) setPermissionUser(u); }}>
+                                    <div className="ra-user-identity">
+                                      <span className="ra-avatar">{name.split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase()}</span>
+                                      <div><strong>{name}</strong><small>{email}</small></div>
                                     </div>
-                                    <div className="min-w-0 flex-1">
-                                      <div className="flex items-center gap-2 flex-wrap">
-                                        <p className="text-sm font-semibold text-gray-900 truncate">{name}</p>
-                                        {isPrimary && (
-                                          <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
-                                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                                            </svg>
-                                            Primary
-                                          </span>
-                                        )}
-                                      </div>
-                                      <p className="text-xs text-gray-400 truncate">{email}{meta ? ` · ${meta}` : ''}</p>
-                                      {/* Other roles the user holds — shown as small badges */}
-                                      {Array.isArray(u.roles) && u.roles.filter((r) => r.code !== selectedRole?.code).length > 0 && (
-                                        <div className="flex flex-wrap gap-1 mt-1">
-                                          {u.roles.filter((r) => r.code !== selectedRole?.code).map((r) => (
-                                            <span key={r.id} className="inline-block text-xs text-gray-500 bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded-full">
-                                              {r.name}
-                                            </span>
-                                          ))}
-                                        </div>
-                                      )}
+                                    <div className="ra-user-department"><span>{u.department || 'Not specified'}</span><small>{u.job_title || 'Title not specified'}</small></div>
+                                    <div className="ra-user-roles">
+                                      <span className={`ra-chip ${isPrimary ? 'ra-direct' : ''}`}>{isPrimary ? 'Primary role' : 'Additional role'}</span>
+                                      {(Array.isArray(u.roles) ? u.roles : []).filter(r => r.code !== selectedRole?.code).map(r => <span className="ra-chip" key={r.id || r.code} title={r.name}>{r.name}</span>)}
                                     </div>
                                     {canManageRoleUsers && (
-                                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                                      <div className="ra-user-actions">
                                         {/* Edit button */}
                                         <button
-                                          onClick={() => setEditingUser(isEditing ? null : u)}
-                                          title={isEditing ? 'Close' : 'Edit assignment'}
+                                          onClick={() => setPermissionUser(u)}
+                                          title="Edit user permissions" disabled={!isSuperAdmin}
+                                          aria-label={`Edit permissions for ${name}`}
                                           className={`flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-lg border transition-all ${
                                             isEditing
                                               ? 'bg-indigo-100 text-indigo-700 border-indigo-200'
@@ -1307,7 +1020,7 @@ function RoleManagement() {
                                         <button
                                           onClick={() => handleRemoveUser(u)}
                                           disabled={!!removingId}
-                                          title="Remove from role"
+                                          title="Remove from role" aria-label={`Remove ${name} from role`}
                                           className="flex items-center gap-1 text-xs font-medium text-red-400 border border-red-100 hover:text-red-600 hover:bg-red-50 hover:border-red-200 px-2 py-1 rounded-lg transition-all disabled:opacity-30"
                                         >
                                           {removingId === u.id ? (
@@ -1327,7 +1040,7 @@ function RoleManagement() {
 
                                   {/* ── Inline edit panel ── */}
                                   {isEditing && (
-                                    <div className="mx-4 mb-3 bg-white border border-indigo-200 rounded-xl p-4 shadow-sm space-y-3">
+                                    <div className="ra-assignment-edit">
                                       <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">Edit Assignment — {name}</p>
                                       <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-500">
                                         <span><span className="font-medium text-gray-700">Email:</span> {email}</span>
@@ -1378,7 +1091,7 @@ function RoleManagement() {
 
                       {/* ── Pagination controls ── */}
                       {userListMeta && userListMeta.total_pages > 1 && (
-                        <div className="flex items-center justify-between text-xs text-gray-500">
+                        <div className="ra-users-pagination">
                           <span>
                             Page {userListMeta.current_page} of {userListMeta.total_pages}
                             {' '}({userListMeta.count} user{userListMeta.count !== 1 ? 's' : ''})
@@ -1420,20 +1133,29 @@ function RoleManagement() {
                       )}
                     </div>
                   )}
+          </RoleAccessEditor> : <div className="ra-panel ra-empty"><HeroIcons.ShieldCheckIcon /><h2>{loadingRoles ? 'Loading roles?' : 'Select a role'}</h2><p>Choose a role to review its permissions and assigned users.</p></div>}
 
-
-                </div>
-              </>
-            )}
-          </div>
         </div>
       )}
 
       {/* ══════════════════════════════════════════════════════════
           TAB: Access Requests
       ══════════════════════════════════════════════════════════ */}
+      {['reviews', 'audit'].includes(mainTab) && <div className="ra-panel"><RoleHistory reviewsOnly={mainTab === 'reviews'} /></div>}
+      {mainTab === MAIN_TAB_SYNC && <ModuleSyncPanel />}
       {mainTab === MAIN_TAB_AR && (
-        <div className="flex-1 min-h-0 overflow-y-auto p-6">
+        <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-4 lg:p-6">
+          <div className="mx-auto max-w-5xl">
+          <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-blue-600">Approval queue</p>
+              <h2 className="text-xl font-bold text-slate-900">Access requests</h2>
+              <p className="text-sm text-slate-500">Review requested capabilities and keep access aligned with job responsibilities.</p>
+            </div>
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <span className="font-bold">{pendingTotal}</span> pending review{pendingTotal === 1 ? '' : 's'}
+            </div>
+          </div>
           {arSuccess && (
             <div className="mb-4 flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-xl text-green-700 text-sm">
               <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1452,10 +1174,10 @@ function RoleManagement() {
           )}
 
           {/* Status filter pills */}
-          <div className="flex items-center gap-2 mb-5 flex-wrap">
+          <div className="mb-5 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
             {AR_STATUS_FILTERS.map(({ key, label }) => (
               <button key={key} onClick={() => setArStatusTab(key)}
-                className={`flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium rounded-full transition-colors ${
+                className={`flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
                   arStatusTab === key
                     ? 'bg-blue-600 text-white shadow-sm'
                     : 'bg-white text-gray-500 border border-gray-200 hover:border-blue-300 hover:text-blue-600'
@@ -1482,12 +1204,12 @@ function RoleManagement() {
               <p className="text-sm text-gray-400">No {arStatusTab || ''} access requests.</p>
             </div>
           ) : (
-            <div className="space-y-3 max-w-3xl">
+            <div className="grid gap-3 xl:grid-cols-2">
               {arRequests.map((req) => (
-                <div key={req.id} className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
+                <article key={req.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-200 hover:shadow-md">
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                     <div className="flex gap-3">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <div className="mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 shadow-sm">
                         <span className="text-white text-sm font-bold">
                           {(req.user_name || req.user_email || '?').charAt(0).toUpperCase()}
                         </span>
@@ -1503,7 +1225,7 @@ function RoleManagement() {
                           <span className="font-semibold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">{req.module_name}</span>
                         </p>
                         {req.reason && (
-                          <p className="text-xs text-gray-500 mt-1.5 italic bg-gray-50 px-2 py-1.5 rounded-lg">"{req.reason}"</p>
+                          <p className="text-xs text-gray-500 mt-1.5 italic bg-gray-50 px-2 py-1.5 rounded-lg">&ldquo;{req.reason}&rdquo;</p>
                         )}
                         {req.admin_note && (
                           <p className="text-xs text-blue-600 mt-1.5 bg-blue-50 px-2 py-1.5 rounded-lg">Admin note: {req.admin_note}</p>
@@ -1534,10 +1256,11 @@ function RoleManagement() {
                       </div>
                     )}
                   </div>
-                </div>
+                </article>
               ))}
             </div>
           )}
+          </div>
         </div>
       )}
 
@@ -1615,9 +1338,111 @@ function RoleManagement() {
         <ActionModal request={arModal.request} action={arModal.action}
           onClose={() => setArModal(null)} onConfirm={handleArAction} />
       )}
+      </div>
     </div>
   );
 
 }
+
+// ─── Synchronise tab: module catalogue ↔ DB sync panel (soft-coded) ─────────
+// Shows the auto-sync status and offers a manual "Sync now" action so any new
+// feature added to ALL_MODULES_CATALOGUE lands under Role & Permission.
+const SYNC_PANEL_CFG = {
+  title: 'Module catalogue synchronisation',
+  autoOnText:  'Auto-sync is ON — new catalogue modules are written to the database automatically on every backend startup.',
+  autoOffText: 'Auto-sync is OFF (RBAC_AUTO_SYNC_MODULES=0). Use Sync now to apply new catalogue modules manually.',
+  syncNowLabel: 'Sync now',
+  inSyncText: 'Catalogue and database are in sync.',
+  missingHeading: 'Catalogue modules not yet in the database',
+};
+
+const ModuleSyncPanel = () => {
+  const [status, setStatus] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [running, setRunning] = useState(false);
+  const [error, setError]     = useState('');
+  const [lastResult, setLastResult] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true); setError('');
+    try {
+      const { data } = await rbacService.getModuleCatalogueSyncStatus();
+      setStatus(data);
+    } catch (e) {
+      setError(e?.response?.data?.error || e?.message || 'Could not load sync status.');
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const runSync = async () => {
+    setRunning(true); setError('');
+    try {
+      const { data } = await rbacService.runModuleCatalogueSync();
+      setLastResult(data);
+      setStatus(data);
+    } catch (e) {
+      setError(e?.response?.data?.error || e?.message || 'Sync failed.');
+    } finally { setRunning(false); }
+  };
+
+  return (
+    <div className="ra-panel" style={{ padding: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#0f172a' }}>{SYNC_PANEL_CFG.title}</h3>
+        <button
+          onClick={runSync}
+          disabled={running || loading}
+          className="ra-primary"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+        >
+          <HeroIcons.ArrowPathIcon style={{ width: 15 }} className={running ? 'animate-spin' : ''} />
+          {running ? 'Syncing…' : SYNC_PANEL_CFG.syncNowLabel}
+        </button>
+      </div>
+
+      {loading ? (
+        <p style={{ marginTop: 16, fontSize: 13, color: '#64748b' }}>Loading sync status…</p>
+      ) : error ? (
+        <div className="ra-notice" style={{ marginTop: 16, color: '#991b1b' }}>{error}</div>
+      ) : status && (
+        <div style={{ marginTop: 16, display: 'grid', gap: 12 }}>
+          <div style={{ fontSize: 13, color: '#334155' }}>
+            {status.auto_sync_enabled ? SYNC_PANEL_CFG.autoOnText : SYNC_PANEL_CFG.autoOffText}
+          </div>
+
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', fontSize: 13 }}>
+            <span><strong>{status.catalogue_count}</strong> modules in catalogue</span>
+            <span><strong>{status.db_count}</strong> modules in database</span>
+            <span style={{ color: status.in_sync ? '#166534' : '#b45309', fontWeight: 700 }}>
+              {status.in_sync ? `✓ ${SYNC_PANEL_CFG.inSyncText}` : `${status.missing.length} pending`}
+            </span>
+          </div>
+
+          {!status.in_sync && (status.missing || []).length > 0 && (
+            <div>
+              <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#94a3b8', margin: '4px 0 8px' }}>
+                {SYNC_PANEL_CFG.missingHeading}
+              </p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {status.missing.map((m) => (
+                  <span key={m.code} style={{ padding: '3px 10px', fontSize: 12, borderRadius: 999, background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a' }}>
+                    {m.name} <code style={{ opacity: 0.7 }}>({m.code})</code>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {lastResult && lastResult.created_count > 0 && (
+            <div style={{ fontSize: 13, color: '#166534', fontWeight: 600 }}>
+              ✓ Sync complete — {lastResult.created_count} module(s) created with their standard permissions.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export default RoleManagement;

@@ -54,6 +54,7 @@ export const SPEC_API_CONFIG = {
   jobDetailPath:    (id) => `/paper-spec/jobs/${id}/`,
   jobClassesPath:   (id) => `/paper-spec/jobs/${id}/classes/`,
   jobCancelPath:    (id) => `/paper-spec/jobs/${id}/cancel/`,
+  jobSavePath:      (id) => `/paper-spec/jobs/${id}/save/`,
   jobExportPath:    (id, fmt = 'xlsx') => `/paper-spec/jobs/${id}/export/?format=${fmt}`,
   // SmartPlant 3D bulk-load exports (two separate workbooks)
   jobExportSpecPath: (id) => `/paper-spec/jobs/${id}/export-spec/`,
@@ -61,10 +62,14 @@ export const SPEC_API_CONFIG = {
   // Workbook canvas — cross-check & edit SPEC/CAT data before download.
   jobWorkbookPath:     (id) => `/paper-spec/jobs/${id}/workbook/`,
   jobWorkbookCellPath: (id) => `/paper-spec/jobs/${id}/workbook/cell/`,
+  jobWorkbookChatbotPath: (id) => `/paper-spec/jobs/${id}/workbook/chatbot-edit/`,
+  jobWorkbookValidatePath: (id) => `/paper-spec/jobs/${id}/workbook/validate/`,
   jobWorkbookBatchSavePath: (id) => `/paper-spec/jobs/${id}/workbook/batch-save/`,
   jobWorkbookDeleteRowPath: (id) => `/paper-spec/jobs/${id}/workbook/delete-row/`,
   jobWorkbookBulkDeletePath: (id) => `/paper-spec/jobs/${id}/workbook/bulk-delete/`,
   classDetailPath:  (id) => `/paper-spec/classes/${id}/`,
+  // ASME B16.34 advisory validation of a class's PT table (valve_standards DB).
+  classAsmeValidationPath: (id) => `/paper-spec/classes/${id}/asme-validation/`,
   configPath:       '/config/',
 
   // Field name expected by the backend `upload_paper_spec` view
@@ -129,7 +134,7 @@ const specCustomizationAPI = {
    *      presign error, network blip) silently falls back to the legacy
    *      multipart upload below — UX stays identical.
    */
-  async upload({ file, projectId, title, documentNumber, engineerName, userApiKey, userAiProvider, userAiModel, onUploadProgress } = {}) {
+  async upload({ file, projectId, autoProject = false, title, documentNumber, engineerName, userApiKey, userAiProvider, userAiModel, onUploadProgress } = {}) {
     // ── Path A: direct-to-S3 (presigned) ─────────────────────────────
     const wantsPresign =
       SPEC_API_CONFIG.presignedUpload.enabled &&
@@ -138,7 +143,7 @@ const specCustomizationAPI = {
     if (wantsPresign) {
       try {
         const presigned = await this._tryPresignedUpload({
-          file, projectId, title, documentNumber, engineerName, userApiKey, userAiProvider, userAiModel, onUploadProgress,
+          file, projectId, autoProject, title, documentNumber, engineerName, userApiKey, userAiProvider, userAiModel, onUploadProgress,
         });
         if (presigned) return presigned;
         // presigned === null → backend signalled `enabled: false`; fall through.
@@ -153,6 +158,7 @@ const specCustomizationAPI = {
     const fd = new FormData();
     fd.append(SPEC_API_CONFIG.fileFieldName, file);
     if (projectId)         fd.append('project_id', projectId);
+    if (autoProject)       fd.append('auto_project', '1');
     if (title)             fd.append('title', title);
     if (documentNumber)    fd.append('document_number', documentNumber);
     if (engineerName)      fd.append('engineer_name', engineerName);         // BYOK attribution
@@ -178,7 +184,7 @@ const specCustomizationAPI = {
    * explicitly says the feature is unavailable (so the caller knows to fall
    * back rather than retry).
    */
-  async _tryPresignedUpload({ file, projectId, title, documentNumber, engineerName, userApiKey, userAiProvider, userAiModel, onUploadProgress }) {
+  async _tryPresignedUpload({ file, projectId, autoProject, title, documentNumber, engineerName, userApiKey, userAiProvider, userAiModel, onUploadProgress }) {
     // Step 1 — ask backend for a presigned PUT URL.
     const presignResp = await apiClient.post(
       path(SPEC_API_CONFIG.uploadPresignPath),
@@ -211,6 +217,7 @@ const specCustomizationAPI = {
         s3_key:               presign.s3_key,
         filename:             file.name,
         project_id:           projectId || null,
+        auto_project:         autoProject,
         title:                title || '',
         document_number:      documentNumber || '',
         engineer_name:        engineerName || '',             // BYOK attribution
@@ -243,8 +250,24 @@ const specCustomizationAPI = {
     return data;
   },
 
+  async saveJob(jobId) {
+    const { data } = await apiClient.post(path(SPEC_API_CONFIG.jobSavePath(jobId)));
+    return data;
+  },
+
+  async listProjects() {
+    const { data } = await apiClient.get('/spec-customization/projects/');
+    return data;
+  },
+
   async getClass(classId) {
     const { data } = await apiClient.get(path(SPEC_API_CONFIG.classDetailPath(classId)));
+    return data;
+  },
+
+  /** Read advisory ASME results; callers handle access and network failures. */
+  async getClassAsmeValidation(classId) {
+    const { data } = await apiClient.get(path(SPEC_API_CONFIG.classAsmeValidationPath(classId)));
     return data;
   },
 
@@ -298,6 +321,29 @@ const specCustomizationAPI = {
     const { data } = await apiClient.delete(
       path(SPEC_API_CONFIG.jobWorkbookCellPath(jobId)),
       { data: { workbook, sheet_name, row_key, column_name } },
+    );
+    return data;
+  },
+
+  /**
+   * Chatbot-assisted workbook editing.
+   *
+   * @param {string} jobId
+    * @param {object} payload - {instruction, workbook_scope, active_workbook, preview_only?}
+   */
+  async chatbotEditWorkbook(jobId, payload) {
+    const { data } = await apiClient.post(
+      path(SPEC_API_CONFIG.jobWorkbookChatbotPath(jobId)),
+      payload,
+    );
+    return data;
+  },
+
+  /** Validate already-extracted workbook rows using backend rule checks. */
+  async validateWorkbook(jobId, payload = {}) {
+    const { data } = await apiClient.post(
+      path(SPEC_API_CONFIG.jobWorkbookValidatePath(jobId)),
+      payload,
     );
     return data;
   },
@@ -359,6 +405,22 @@ const specCustomizationAPI = {
     const { data } = await apiClient.get(`/spec-customization/projects/${projectId}/jobs/`, {
       params,
     });
+    return data;
+  },
+
+  /** Project-level BYOK settings (encrypted key stored on backend). */
+  async getProjectAISettings(projectId) {
+    const { data } = await apiClient.get(`/spec-customization/projects/${projectId}/ai-settings/`);
+    return data;
+  },
+
+  async saveProjectAISettings(projectId, payload) {
+    const { data } = await apiClient.post(`/spec-customization/projects/${projectId}/ai-settings/`, payload);
+    return data;
+  },
+
+  async clearProjectAISettings(projectId) {
+    const { data } = await apiClient.delete(`/spec-customization/projects/${projectId}/ai-settings/`);
     return data;
   },
 

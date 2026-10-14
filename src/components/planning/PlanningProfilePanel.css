@@ -1,0 +1,49 @@
+.planning-profile-panel { color: #153464; }
+.planning-profile-panel p { margin: 0 0 12px; }
+.planning-profile-panel h3 { margin: 0; font-size: 15px; color: #0b2252; }
+.planning-profile-panel h4 { margin: 10px 0 5px; font-size: 13px; }
+.planning-profile-panel button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; padding: 6px 10px; border: 1px solid #bfcee4; border-radius: 4px; background: #fff; color: #174880; font: inherit; cursor: pointer; }
+.planning-profile-panel button.ppf-primary { background: #0751ff; border-color: #0751ff; color: white; }
+.planning-profile-panel label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: #375474; }
+.planning-profile-panel input:not([type=checkbox]), .planning-profile-panel select, .planning-profile-panel textarea { width: 100%; min-height: 35px; padding: 6px 8px; border: 1px solid #c6d6e9; border-radius: 4px; background: white; color: #153464; font: inherit; }
+.planning-profile-panel textarea { min-height: 75px; resize: vertical; }
+.ppf-current, .ppf-definition, .ppf-form { border: 1px solid #dce6f3; border-radius: 5px; padding: 13px; margin: 12px 0; }
+.ppf-current { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; background: #f6f9fe; }
+.ppf-tools, .ppf-actions, .ppf-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.ppf-tools label { flex: 1; min-width: 180px; }
+.ppf-tools button { align-self: end; }
+.ppf-heading { justify-content: space-between; margin-top: 0; }
+.ppf-status { border-radius: 4px; padding: 2px 6px; color: #59451e; background: #fff3d9; font-size: 11px; }
+.ppf-status.is-approved { background: #e7f8f0; color: #146747; }
+.ppf-definition dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 12px 0; }
+.ppf-definition dt { color: #526987; font-size: 11px; }
+.ppf-definition dd { margin: 3px 0 0; overflow-wrap: anywhere; }
+.ppf-definition details { margin-top: 10px; overflow-wrap: anywhere; }
+.ppf-definition summary { cursor: pointer; color: #0751d7; }
+.ppf-definition li { margin: 7px 0; }
+.ppf-note { margin-top: 12px !important; color: #526987; font-size: 12px; }
+.ppf-form fieldset { border: 0; padding: 0; margin: 12px 0; display: flex; flex-direction: column; gap: 12px; }
+.ppf-form .ppf-rules { padding: 10px; border: 1px solid #dce6f3; border-radius: 4px; }
+.ppf-rules label { flex-direction: row; align-items: start; }
+.ppf-rules input { margin-top: 3px; }
+.ppf-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.ppf-message { display: flex; align-items: start; flex-wrap: wrap; gap: 7px; padding: 10px; border: 1px solid #ccdaed; border-radius: 4px; background: #f6f9fe; }
+.ppf-message svg { flex-shrink: 0; margin-top: 2px; }
+.ppf-message.is-error { color: #902f29; background: #fff5f3; border-color: #e9c1bc; }
+.ppf-message.is-success { color: #146747; background: #edf9f3; border-color: #b9e3d0; }
+@media (max-width: 500px) { .ppf-fields, .ppf-definition dl { grid-template-columns: 1fr; } }
+
+.ppf-stage-table { overflow-x: auto; margin: 8px 0; }
+.ppf-stage-table table { width: 100%; min-width: 420px; border-collapse: collapse; font-size: 12px; }
+.ppf-stage-table caption { text-align: left; color: #0b2252; font-weight: 600; padding: 0 0 8px; }
+.ppf-stage-table th, .ppf-stage-table td { border: 1px solid #dce6f3; padding: 7px; text-align: left; vertical-align: top; }
+.ppf-stage-table thead th { background: #f5f8fd; }
+.ppf-stage-table tbody th { font-weight: 500; width: 29%; }
+.ppf-stage-table td:nth-child(2) { width: 17%; min-width: 74px; }
+.ppf-stage-table td:nth-child(3) { width: 28%; min-width: 124px; }
+.ppf-stage-table small { display: block; font-size: 10px; color: #526987; margin-top: 4px; }
+
+.ppf-calendar { border: 1px solid #dce6f3; padding: 10px; border-radius: 4px; }
+.ppf-calendar .ppf-working-times { display: flex; flex-direction: column; gap: 8px; }
+.ppf-calendar .ppf-working-times > .ppf-fields { border-bottom: 1px solid #dce6f3; padding-bottom: 7px; }
+.ppf-calendar .ppf-working-times > .ppf-fields button { grid-column: 1 / -1; justify-self: start; }

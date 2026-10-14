@@ -1,11 +1,26 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import PlanningExtractionCoverage from '../components/planning/PlanningExtractionCoverage'
+import { radaiConfirm } from '../services/radaiDialog'
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import PropTypes from 'prop-types';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { PROJECT_CONTROL_SUBFEATURES } from '../config/projectControl.config';
 import apiClient from '../services/api.service';
+import planningIntelligenceService from '../services/planningIntelligence.service';
+import usePlanningJob from '../hooks/usePlanningJob';
+import useModalAccessibility from '../hooks/useModalAccessibility';
+import GenerationWizard from '../components/planning/GenerationWizard';
+import WorkablePlanBuilder from '../components/planning/WorkablePlanBuilder';
+import WorkBreakdownPanel from '../components/planning/WorkBreakdownPanel';
+import PlannerWorkspacePage from './PlannerWorkspacePage';
+import PlanningInputsPanel from '../components/planning/PlanningInputsPanel';
+import { calculatePlanningDuration as calculateDateRangeDuration } from '../utils/planningProjectDates';
+import { editablePlanningPreview, mergePlanningPreview, planningPreviewError, planningPreviewKey } from '../utils/planningPreview';
+import { aiAnalysisOutcome, planningAnalysisOutcome } from '../utils/planningAnalysisOutcome';
+import { AlertTriangle, Calculator, Check, CheckCircle2, FileText, Lock, RefreshCw, Sparkles } from 'lucide-react';
 import {
   PLANNING_ENDPOINTS,
   PLANNING_FILE_CATEGORIES,
   PLANNING_WORKFLOW_STEPS,
+  PLANNING_WORKFLOW_STAGES,
   PARSE_STATUS_STYLES,
   VALIDATION_SEVERITY_STYLES,
   EXPORT_FORMATS,
@@ -13,10 +28,6 @@ import {
   PRESENTATION_SLIDE_OUTLINE,
   PLANNING_MAX_FILE_MB,
   PLANNING_UI,
-  CANVAS_MODES,
-  CANVAS_MODE_STORAGE_KEY,
-  CANVAS_MODE_OPTIONS,
-  CANVAS_MODE_STYLES,
   CLAUDE_MODEL_OPTIONS,
   DEFAULT_CLAUDE_MODEL,
   CLAUDE_API_KEY_PATTERN,
@@ -28,6 +39,107 @@ import {
   Tooltip, Legend, ResponsiveContainer, LineChart, Line, ScatterChart,
   Scatter, ZAxis, ComposedChart, Area
 } from 'recharts';
+
+const LIFECYCLE_LABELS = {
+  setup: 'Setup',
+  inputs: 'Inputs collected',
+  generated: 'Plan generated',
+  draft: 'Draft schedule',
+  calculated: 'Schedule calculated',
+  approved: 'Plan approved',
+  baselined: 'Baseline published',
+  superseded: 'Superseded',
+};
+
+const describeContractError = error => {
+  const status = error?.response?.status;
+  if (status === 404) {
+    return {
+      title: 'Planning connection is not active',
+      message: 'The planning workspace loaded, but the enterprise-contract API route was not found. The running backend is older than this frontend or has not been restarted since the route was added. Restart the backend service, then retry. No project data was lost.',
+    };
+  }
+  if (status === 401) {
+    return {
+      title: 'Your session has expired',
+      message: 'The server rejected the planning request because you are no longer authenticated. Sign in again, then reopen Plan & Baseline.',
+    };
+  }
+  if (status === 403) {
+    return {
+      title: 'Planning access is restricted',
+      message: 'Your account can view the enterprise project but does not have permission to read its linked planning workspace. Ask the project owner to update your project role.',
+    };
+  }
+  if (status >= 500) {
+    return {
+      title: 'Planning service failed',
+      message: `The backend reached the planning contract handler but returned server error ${status}. Check the backend log for the request, correct the server error, and retry.`,
+    };
+  }
+  if (!error?.response) {
+    return {
+      title: 'Planning service cannot be reached',
+      message: 'The browser could not connect to the backend. Confirm that the backend is running on the configured API address, then retry.',
+    };
+  }
+  return {
+    title: 'Planning connection failed',
+    message: error.response?.data?.error || error.response?.data?.detail || error.message || 'The enterprise planning contract could not be loaded.',
+  };
+};
+
+const planningProjectDraft = (enterpriseProject) => ({
+  name: enterpriseProject?.name || '',
+  client: enterpriseProject?.client_name || '',
+  location: enterpriseProject?.location || '',
+  phase: enterpriseProject?.custom_fields?.project_phase || 'FEED',
+  effective_date: enterpriseProject?.start_date || '',
+  planned_end_date: enterpriseProject?.end_date || '',
+});
+
+const AI_SETTINGS_REQUEST = { sensitiveRequest: true, suppressErrorToast: true };
+const planningAiSettingsForm = (settings) => ({
+  enabled: Boolean(settings?.enabled),
+  provider: settings?.provider || 'anthropic',
+  model: settings?.model || settings?.provider_choices?.find(provider => provider.value === settings?.provider)?.default_model || DEFAULT_CLAUDE_MODEL,
+  apiKey: '',
+});
+
+const aiSettingsErrorMessage = (error, fallback) => {
+  const data = error?.response?.data;
+  for (const field of ['message', 'error', 'detail', 'api_key', 'provider', 'model', 'enabled']) {
+    const value = Array.isArray(data?.[field]) ? data[field][0] : data?.[field];
+    if (typeof value === 'string' && value.trim()) return value;
+  }
+  return fallback;
+};
+
+const renderScheduleNarrative = narrative => {
+  const lines = String(narrative || '').split(/\r?\n/);
+  return lines.map((line, index) => {
+    const heading = line.match(/^\s*(#{1,6})\s+(.+?)\s*#*\s*$/);
+    if (heading) {
+      const level = heading[1].length;
+      const title = heading[2].replace(/^\*\*(.+)\*\*$/, '$1').trim();
+      const HeadingTag = level === 1 ? 'h3' : 'h4';
+      return (
+        <HeadingTag
+          key={`heading-${index}`}
+          className={`${level === 1 ? 'text-base' : 'text-sm'} font-bold text-slate-900 ${index > 0 ? 'mt-5' : ''} mb-1.5`}
+        >
+          {title}
+        </HeadingTag>
+      );
+    }
+    if (!line.trim()) return <div key={`space-${index}`} className="h-3" aria-hidden="true" />;
+    return (
+      <p key={`line-${index}`} className="text-sm leading-relaxed text-slate-700">
+        {line}
+      </p>
+    );
+  });
+};
 
 /**
  * Small reusable "type a value + press Add" row used by the Document
@@ -71,11 +183,10 @@ const AddDeliverableRow = ({ onAdd }) => {
  * Level-4 activity schedule, EDDR register, manhour estimate, validation
  * report and schedule narrative — backed by apps.planning_intelligence.
  *
- * Document intelligence and narrative text are produced by a deterministic,
- * rule-based engine (no external AI API key is configured in this
- * environment) — always reviewed by the user before export.
+ * Deterministic extraction is augmented by the project's mandatory AI
+ * BYOK configuration. All generated outputs remain subject to planner review.
  */
-const PlanningPackagePage = () => {
+const PlanningPackagePage = ({ embedded = false, documentWorkflow = false, enterpriseProject = null, recoveredJob = null, onBackToPortfolio, onOpenPlanner, onAnalysisStateChange, generationRequest = 0, scheduleWorkspaceRequest = 0, documentReviewRequest = null }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -83,13 +194,16 @@ const PlanningPackagePage = () => {
   const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [showNewProjectForm, setShowNewProjectForm] = useState(false);
-  const [newProject, setNewProject] = useState({
-    name: '', client: '', location: '', phase: 'FEED', effective_date: '', duration_months: 10,
-  });
+  const [creatingProject, setCreatingProject] = useState(false);
+  const [newProject, setNewProject] = useState(() => planningProjectDraft(enterpriseProject));
+  const [enterpriseContract, setEnterpriseContract] = useState(null);
+  const [contractError, setContractError] = useState(null);
+  const [loadingContract, setLoadingContract] = useState(false);
+  const [syncingContract, setSyncingContract] = useState(false);
 
   // Multi-project dashboard — 'dashboard' shows the all-projects grid,
   // 'workspace' shows the existing single-project workflow stepper.
-  const [viewMode, setViewMode] = useState('dashboard');
+  const [viewMode, setViewMode] = useState(embedded ? 'workspace' : 'dashboard');
   const [dashboardSearch, setDashboardSearch] = useState('');
   const [dashboardPhaseFilter, setDashboardPhaseFilter] = useState('');
 
@@ -99,7 +213,35 @@ const PlanningPackagePage = () => {
   const [uploading, setUploading] = useState(false);
 
   const [intelligencePreview, setIntelligencePreview] = useState(null);
-  const [analyzing, setAnalyzing] = useState(false);
+  const [intelligenceOutdated, setIntelligenceOutdated] = useState(false);
+  const [previewConfirmation, setPreviewConfirmation] = useState(null);
+  const [workBreakdownDirty, setWorkBreakdownDirty] = useState(false);
+  const [workBreakdownSaving, setWorkBreakdownSaving] = useState(false);
+  const [workBreakdownSchedule, setWorkBreakdownSchedule] = useState(null);
+  const [savingPreview, setSavingPreview] = useState(false);
+  const [previewSaveError, setPreviewSaveError] = useState('');
+  const [previewReviewState, setPreviewReviewState] = useState({ conflicts: 0, unavailable: true });
+  const [reviewRequest, setReviewRequest] = useState(0);
+  const [reviewAnalysisRunId, setReviewAnalysisRunId] = useState(null);
+  const reviewAnalysisRunRef = useRef(null);
+  const loadedPreviewRef = useRef(null);
+  const previewSaveInFlight = useRef(false);
+  const activePreviewProjectRef = useRef(selectedProjectId);
+  activePreviewProjectRef.current = selectedProjectId;
+  const intelligenceHeadingRef = useRef(null);
+  const [analysisStarting, setAnalysisStarting] = useState(false);
+  const analysisRequestRef = useRef(0);
+  const consumedAnalysisJobs = useRef(new Set());
+  const [analysisRevision, setAnalysisRevision] = useState(0);
+  const [pendingAnalysisWorkspace, setPendingAnalysisWorkspace] = useState(null);
+  const analysisHandlersRef = useRef(null);
+  const packageRequestRef = useRef(0);
+  const packageInFlight = useRef(false);
+  const packageApplyBlocked = useRef(false);
+  const appliedPackageJobs = useRef(new Set());
+  const packageSelections = useRef(new Map());
+  const [packageError, setPackageError] = useState(null);
+  const [inputsReady, setInputsReady] = useState(false);
   // Which discipline card ("Process", "Piping", ...) is expanded to show its
   // full deliverable checklist — accordion-style, one at a time.
   const [expandedDiscipline, setExpandedDiscipline] = useState(null);
@@ -109,7 +251,20 @@ const PlanningPackagePage = () => {
   const [lastClickedIndex, setLastClickedIndex] = useState({});
 
   const [generation, setGeneration] = useState(null);
+  const [loadingGeneration, setLoadingGeneration] = useState(false);
+  const [generationLoadError, setGenerationLoadError] = useState('');
+  const [generationSelectionId, setGenerationSelectionId] = useState(null);
+  const generationLoadRequest = useRef(0);
+  const handledDocumentReview = useRef(null);
   const [generating, setGenerating] = useState(false);
+  const [showGenerationWizard, setShowGenerationWizard] = useState(false);
+  const handledGenerationRequest = useRef(0);
+  const handledWorkspaceRequest = useRef(0);
+  const [showPlannerWorkspace, setShowPlannerWorkspace] = useState(false);
+  const [workspaceInitialTab, setWorkspaceInitialTab] = useState('activities');
+  const [workspaceGenerationId, setWorkspaceGenerationId] = useState(null);
+  const [workspaceAnalysisRunId, setWorkspaceAnalysisRunId] = useState(null);
+  const [localDocumentReviewRequest, setLocalDocumentReviewRequest] = useState(null);
   const [downloadingPresentation, setDownloadingPresentation] = useState(false);
   const [exportingFormat, setExportingFormat] = useState(null);
   const [exportedFormat, setExportedFormat] = useState(null);
@@ -128,105 +283,410 @@ const PlanningPackagePage = () => {
   const [savingEdit, setSavingEdit] = useState(false);
 
   const [banner, setBanner] = useState(null); // { type: 'error'|'success', message }
+  const { activeJob, monitoringError, checkingStatus, retryMonitoring, runJob: runPlanningJob, clearJob: clearPlanningJob } = usePlanningJob({ projectId: selectedProjectId, recoverActiveAnalysis: documentWorkflow, initialJob: recoveredJob });
+  const activeJobMessage = activeJob?.message?.replace(
+    /^(?:Anthropic|Google Gemini|AI provider) is reviewing document chunk /,
+    'RADAI is reviewing document chunk ',
+  );
+  const analysisMonitoringError = monitoringError && (!monitoringError.job?.job_type || monitoringError.job.job_type === 'analyze')
+    && (monitoringError.job?.project == null || String(monitoringError.job.project) === String(selectedProjectId));
+  const unknownSavedJob = analysisMonitoringError && monitoringError.job?.project == null;
+  const analyzing = analysisStarting || (activeJob?.job_type === 'analyze' && String(activeJob.project) === String(selectedProjectId)
+    && ['queued', 'running'].includes(activeJob.status)) || Boolean(analysisMonitoringError && !monitoringError.jobUnavailable);
+  const packageMonitoringError = monitoringError?.job?.job_type === 'generate' && String(monitoringError.job.project) === String(selectedProjectId) ? monitoringError : null;
+  const packageBusy = generating || (activeJob?.job_type === 'generate' && String(activeJob.project) === String(selectedProjectId)
+    && ['queued', 'running'].includes(activeJob.status) && !packageMonitoringError?.jobUnavailable);
 
-  // BYOK — per-project Claude/Anthropic settings (see ai-settings endpoint).
+  useEffect(() => {
+    onAnalysisStateChange?.({ projectId: selectedProjectId, pending: analyzing,
+      savedRunId: intelligencePreview?.document_intelligence_run_id,
+      packageVersionId: generation?.generation_mode === 'planning_package'
+        && String(generation.intelligence_run_id) === String(intelligencePreview?.document_intelligence_run_id) ? generation.schedule_version_id : null,
+      message: analysisMonitoringError ? 'Current analysis status is unavailable. Return to Document Intelligence to check its status.'
+        : activeJob?.job_type === 'analyze' ? activeJobMessage : 'Document Intelligence is starting.' });
+  }, [onAnalysisStateChange, selectedProjectId, analyzing, analysisMonitoringError, activeJob?.job_type, activeJobMessage, intelligencePreview?.document_intelligence_run_id, generation]);
+
+  useEffect(() => {
+    if (!scheduleWorkspaceRequest || handledWorkspaceRequest.current === scheduleWorkspaceRequest || !intelligencePreview?.document_intelligence_run_id) return;
+    handledWorkspaceRequest.current = scheduleWorkspaceRequest;
+    analysisHandlersRef.current?.requestPackage(intelligencePreview.document_intelligence_run_id);
+  }, [scheduleWorkspaceRequest, intelligencePreview?.document_intelligence_run_id]);
+
+  useEffect(() => {
+    if (!analysisMonitoringError && activeJob && String(activeJob.project) === String(selectedProjectId) && (activeJob.status === 'queued' || activeJob.status === 'running')) {
+      setBanner({
+        type: 'info',
+        message: `${activeJobMessage || 'Planning job in progress'} (${activeJob.progress || 0}%)`,
+      });
+    }
+  }, [activeJob, activeJobMessage, analysisMonitoringError, selectedProjectId]);
+
+  // BYOK — per-project AI provider settings (see ai-settings endpoint).
   const [aiSettings, setAiSettings] = useState(null);
+  const [loadingAiSettings, setLoadingAiSettings] = useState(false);
+  const [aiSettingsLoadError, setAiSettingsLoadError] = useState('');
+  const [aiSettingsProjectId, setAiSettingsProjectId] = useState(null);
+  const aiSettingsLoadRequest = useRef(0);
   const [showAiSettingsModal, setShowAiSettingsModal] = useState(false);
-  const [aiSettingsForm, setAiSettingsForm] = useState({ enabled: false, model: DEFAULT_CLAUDE_MODEL, apiKey: '' });
+  const [aiSettingsForm, setAiSettingsForm] = useState(() => planningAiSettingsForm(null));
   const [savingAiSettings, setSavingAiSettings] = useState(false);
   const [testingConnection, setTestingConnection] = useState(false);
   const [testResult, setTestResult] = useState(null); // { success, message }
-
-  const [canvasMode, setCanvasMode] = useState(() => {
-    try {
-      return localStorage.getItem(CANVAS_MODE_STORAGE_KEY) || CANVAS_MODES.ORIGINAL;
-    } catch {
-      return CANVAS_MODES.ORIGINAL;
-    }
-  });
-  const canvasStyle = CANVAS_MODE_STYLES[canvasMode] || CANVAS_MODE_STYLES[CANVAS_MODES.ORIGINAL];
+  const aiProviderChoices = aiSettings?.provider_choices || [{
+    value: 'anthropic', label: 'Anthropic (Claude)', default_model: DEFAULT_CLAUDE_MODEL,
+    model_choices: aiSettings?.model_choices || CLAUDE_MODEL_OPTIONS,
+  }];
+  const selectedAiProvider = aiProviderChoices.find(provider => provider.value === aiSettingsForm.provider);
+  const aiCentrallyManaged = Boolean(selectedAiProvider?.centrally_managed);
+  const savedAiProvider = aiProviderChoices.find(provider => provider.value === (aiSettings?.provider || 'anthropic'));
+  const savedAiForm = planningAiSettingsForm(aiSettings);
+  const aiProviderChanged = aiSettingsForm.provider !== savedAiForm.provider;
+  const aiSettingsDirty = aiProviderChanged || aiSettingsForm.enabled !== savedAiForm.enabled
+    || aiSettingsForm.model !== savedAiForm.model || Boolean(aiSettingsForm.apiKey.trim());
+  const aiReplacementKeyRequired = aiProviderChanged && aiSettings?.key_configured && !aiSettingsForm.apiKey.trim() && !aiCentrallyManaged;
+  const aiSettingsUnavailable = loadingAiSettings || Boolean(aiSettingsLoadError) || aiSettingsProjectId !== selectedProjectId;
+  const canTestAiConnection = Boolean(!aiSettingsUnavailable && aiSettings?.enabled && aiSettings?.key_configured && !aiSettingsDirty);
 
   // ── Visualization Modal ──────────────────────────────────────────────────
   const [showVisualization, setShowVisualization] = useState(false);
+  const aiSettingsDialogRef = useModalAccessibility(
+    showAiSettingsModal,
+    () => setShowAiSettingsModal(false),
+    savingAiSettings || testingConnection,
+  );
+  const visualizationDialogRef = useModalAccessibility(
+    showVisualization,
+    () => setShowVisualization(false),
+  );
   const [visualizationSection, setVisualizationSection] = useState(null); // 'intelligence' | 'schedule' | 'eddr' | 'manhours'
   const [visualizationTab, setVisualizationTab] = useState('timeline'); // 'timeline' | 'disciplines' | 'statistics' | 'status' | 'workflow' | 'breakdown'
 
-  useEffect(() => {
-    try { localStorage.setItem(CANVAS_MODE_STORAGE_KEY, canvasMode); } catch { /* ignore storage errors */ }
-  }, [canvasMode]);
-
   const selectedProject = projects.find(p => p.id === selectedProjectId) || null;
+
+  const currentPreview = editingSection === 'intelligence' ? draftIntelligence : intelligencePreview;
+  const canConfirmPreview = Boolean(currentPreview?.document_intelligence_run_id) && inputsReady
+    && !intelligenceOutdated && !previewReviewState.unavailable && !previewReviewState.conflicts
+    && (!reviewAnalysisRunId || String(previewReviewState.runId) === String(currentPreview.document_intelligence_run_id));
+  const previewConfirmed = Boolean(previewConfirmation?.is_current) && canConfirmPreview
+    && planningPreviewKey(currentPreview) === planningPreviewKey(previewConfirmation.preview);
+  const unsavedPreviewEdits = Boolean(intelligencePreview && loadedPreviewRef.current
+    && planningPreviewKey(intelligencePreview) !== planningPreviewKey(loadedPreviewRef.current));
+  packageApplyBlocked.current = Boolean(editingSection || savingEdit || unsavedPreviewEdits || workBreakdownDirty
+    || workBreakdownSaving || savingPreview || showAiSettingsModal || savingAiSettings || testingConnection);
+  const manualPlanning = selectedProject?.planning_mode === 'manual';
+  useEffect(() => {
+    if (!generationRequest || handledGenerationRequest.current === generationRequest || loadingProjects || loadingContract || !selectedProject) return;
+    handledGenerationRequest.current = generationRequest;
+    if (unsavedPreviewEdits || editingSection) {
+      setCurrentStep('intelligence');
+      setBanner({ type: 'info', message: 'Save or discard your preview edits before opening the generation wizard.' });
+      return;
+    }
+    setCurrentStep('schedule');
+    if (intelligencePreview?.document_intelligence_run_id) setShowGenerationWizard(true);
+  }, [generationRequest, loadingProjects, loadingContract, selectedProject, intelligencePreview?.document_intelligence_run_id, unsavedPreviewEdits, editingSection]);
+  const planningSchedule = workBreakdownSchedule?.schedule_version_id ? workBreakdownSchedule : enterpriseContract?.latest_schedule_version ? {
+    schedule_id: enterpriseContract.latest_schedule_version.schedule_id,
+    schedule_version_id: enterpriseContract.latest_schedule_version.id,
+  } : null;
+  const acceptWorkBreakdown = useCallback(data => {
+    if (data?.schedule_version_id) setWorkBreakdownSchedule(data);
+  }, []);
+  const openWorkBreakdown = () => setCurrentStep(manualPlanning ? inputsReady ? 'wbs' : 'upload' : previewConfirmed ? 'wbs' : 'intelligence');
+  const acceptLoadedIntelligence = useCallback((data, confirmation) => {
+    if (reviewAnalysisRunRef.current && String(data?.document_intelligence_run_id) !== String(reviewAnalysisRunRef.current)) return;
+    const prior = loadedPreviewRef.current;
+    loadedPreviewRef.current = data;
+    setPreviewConfirmation(confirmation);
+    setIntelligencePreview(previous => {
+      const sameRun = data && previous?.document_intelligence_run_id === data.document_intelligence_run_id;
+      return sameRun && prior && planningPreviewKey(previous) !== planningPreviewKey(prior)
+        ? mergePlanningPreview(data, previous) : data;
+    });
+  }, []);
+
+  const confirmPreview = async () => {
+    if (previewSaveInFlight.current || !canConfirmPreview) return;
+    if (previewConfirmed) { setCurrentStep(documentWorkflow ? 'schedule' : 'wbs'); return; }
+    const projectId = selectedProjectId;
+    previewSaveInFlight.current = true;
+    setSavingPreview(true);
+    setPreviewSaveError('');
+    try {
+      const run = await planningIntelligenceService.confirmIntelligencePreview(
+        currentPreview.document_intelligence_run_id, editablePlanningPreview(currentPreview),
+      );
+      if (activePreviewProjectRef.current !== projectId) return;
+      if (!run.preview_confirmation?.is_current) throw new Error('The preview could not be confirmed. Refresh the analysis and try again.');
+      loadedPreviewRef.current = run.intelligence;
+      setIntelligencePreview(run.intelligence);
+      setPreviewConfirmation(run.preview_confirmation);
+      setEditingSection(null);
+      setDraftIntelligence(null);
+      setAnalysisRevision(value => value + 1);
+      setBanner({ type: 'success', message: 'Document Intelligence preview confirmed and saved.' });
+      setCurrentStep(documentWorkflow ? 'schedule' : 'wbs');
+    } catch (error) {
+      if (activePreviewProjectRef.current === projectId) {
+        setPreviewSaveError(planningPreviewError(error));
+      }
+    } finally {
+      previewSaveInFlight.current = false;
+      if (activePreviewProjectRef.current === projectId) setSavingPreview(false);
+    }
+  };
+
 
   // ── Data loading ─────────────────────────────────────────────────────────
   const loadProjects = useCallback(async () => {
     setLoadingProjects(true);
     try {
-      const res = await apiClient.get(PLANNING_ENDPOINTS.projects);
+      const res = await apiClient.get(PLANNING_ENDPOINTS.projects, {
+        params: enterpriseProject?.id ? { enterprise_project: enterpriseProject.id } : undefined,
+      });
       const list = res.data?.results ?? res.data ?? [];
       setProjects(list);
-      if (list.length) {
-        setSelectedProjectId(prev => prev || list[0].id);
-      }
+      setSelectedProjectId(prev => (
+        list.some(item => item.id === prev) ? prev : (list.find(item => String(item.id) === String(recoveredJob?.project?.id ?? recoveredJob?.project))?.id || list[0]?.id || null)
+      ));
+      if (embedded) setViewMode('workspace');
     } catch (err) {
       setBanner({ type: 'error', message: 'Failed to load planning projects.' });
     } finally {
       setLoadingProjects(false);
     }
-  }, []);
+  }, [embedded, enterpriseProject?.id, recoveredJob]);
 
   const loadFiles = useCallback(async (projectId) => {
     if (!projectId) return;
     try {
-      const res = await apiClient.get(PLANNING_ENDPOINTS.files, { params: { project: projectId } });
-      setFiles(res.data?.results ?? res.data ?? []);
+      const allFiles = [];
+      let page = 1;
+      while (page <= 1000) {
+        const res = await apiClient.get(PLANNING_ENDPOINTS.files, { params: { project: projectId, page } });
+        allFiles.push(...(res.data?.results ?? res.data ?? []));
+        if (!res.data?.next) break;
+        if (page >= 1000) throw new Error('The complete reference document list could not be loaded.');
+        page += 1;
+      }
+      setFiles(allFiles);
     } catch (err) {
       setBanner({ type: 'error', message: 'Failed to load uploaded files.' });
     }
   }, []);
 
-  const loadLatestGeneration = useCallback(async (projectId) => {
+  const loadLatestGeneration = useCallback(async (projectId, requestedGenerationId = null) => {
     if (!projectId) return;
+    const request = ++generationLoadRequest.current;
+    const current = () => request === generationLoadRequest.current && String(activePreviewProjectRef.current) === String(projectId);
+    setLoadingGeneration(true); setGenerationLoadError(''); setGeneration(null); setGenerationSelectionId(requestedGenerationId);
     try {
-      const res = await apiClient.get(PLANNING_ENDPOINTS.generations, { params: { project: projectId } });
-      const list = res.data?.results ?? res.data ?? [];
-      if (list.length) {
-        const detail = await apiClient.get(PLANNING_ENDPOINTS.generation(list[0].id));
-        setGeneration(detail.data);
-      } else {
-        setGeneration(null);
+      let generationId = requestedGenerationId;
+      if (!generationId) {
+        const res = await apiClient.get(PLANNING_ENDPOINTS.generations, { params: { project: projectId } });
+        if (!current()) return false;
+        const list = res.data?.results ?? res.data ?? [];
+        generationId = list[0]?.id;
       }
+      if (generationId) {
+        const detail = await apiClient.get(PLANNING_ENDPOINTS.generation(generationId));
+        if (!current()) return false;
+        if (String(detail.data?.id) !== String(generationId) || String(detail.data?.project?.id ?? detail.data?.project) !== String(projectId)) throw new Error('The saved generation does not belong to this planning project.');
+        setGeneration(detail.data);
+      }
+      return true;
     } catch (err) {
-      // non-fatal — user simply hasn't generated a schedule yet
-      setGeneration(null);
-    }
+      if (current()) setGenerationLoadError(err.response?.data?.detail || err.message || 'Unable to load the saved generation.');
+      return false;
+    } finally { if (current()) setLoadingGeneration(false); }
   }, []);
 
   const loadAiSettings = useCallback(async (projectId) => {
     if (!projectId) return;
+    const requestId = ++aiSettingsLoadRequest.current;
+    const isCurrent = () => requestId === aiSettingsLoadRequest.current && activePreviewProjectRef.current === projectId;
+    setLoadingAiSettings(true);
+    setAiSettingsLoadError('');
+    setAiSettingsProjectId(null);
+    setAiSettings(null);
+    setAiSettingsForm(planningAiSettingsForm(null));
+    setTestResult(null);
     try {
-      const res = await apiClient.get(PLANNING_ENDPOINTS.aiSettings(projectId));
+      const res = await apiClient.get(PLANNING_ENDPOINTS.aiSettings(projectId), AI_SETTINGS_REQUEST);
+      if (!isCurrent()) return;
       setAiSettings(res.data);
-      setAiSettingsForm({
-        enabled: res.data.enabled,
-        model: res.data.model || DEFAULT_CLAUDE_MODEL,
-        apiKey: '',
-      });
+      setAiSettingsForm(planningAiSettingsForm(res.data));
+      setAiSettingsProjectId(projectId);
     } catch (err) {
-      setAiSettings(null);
+      if (isCurrent()) setAiSettingsLoadError(aiSettingsErrorMessage(err, 'AI settings could not be loaded. Retry before editing your configuration.'));
+    } finally {
+      if (isCurrent()) setLoadingAiSettings(false);
+    }
+  }, []);
+
+  const loadEnterpriseContract = useCallback(async (projectId) => {
+    if (!projectId) {
+      setEnterpriseContract(null);
+      return;
+    }
+    setLoadingContract(true);
+    setEnterpriseContract(null);
+    try {
+      const result = await planningIntelligenceService.getEnterpriseContract(projectId);
+      if (activePreviewProjectRef.current !== projectId) return;
+      setEnterpriseContract(result);
+      setContractError(null);
+    } catch (err) {
+      if (activePreviewProjectRef.current !== projectId) return;
+      setEnterpriseContract(null);
+      setContractError(describeContractError(err));
+    } finally {
+      if (activePreviewProjectRef.current === projectId) setLoadingContract(false);
     }
   }, []);
 
   useEffect(() => { loadProjects(); }, [loadProjects]);
 
   useEffect(() => {
+    if (!embedded) return;
+    setNewProject(planningProjectDraft(enterpriseProject));
+    setShowNewProjectForm(false);
+    setShowPlannerWorkspace(false);
+    setViewMode('workspace');
+  }, [embedded, enterpriseProject]);
+
+  useEffect(() => {
+    if (embedded) return;
+    const requestedProjectId = Number(location.state?.openGenerationWizardFor);
+    if (!requestedProjectId || !projects.some(item => item.id === requestedProjectId)) return;
+    setSelectedProjectId(requestedProjectId);
+    setViewMode('workspace');
+    setShowGenerationWizard(true);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [embedded, location.pathname, location.state, navigate, projects]);
+
+  useEffect(() => {
     if (selectedProjectId) {
+      setAnalysisStarting(false);
+      setBanner(null);
+      setWorkBreakdownSchedule(null);
       loadFiles(selectedProjectId);
       loadLatestGeneration(selectedProjectId);
       loadAiSettings(selectedProjectId);
+      if (embedded) loadEnterpriseContract(selectedProjectId);
       setIntelligencePreview(null);
+      setPreviewConfirmation(null);
+      setReviewRequest(0);
+      setReviewAnalysisRunId(null);
+      reviewAnalysisRunRef.current = null;
+      loadedPreviewRef.current = null;
+      setPreviewSaveError('');
+      setEditingSection(null);
+      setSavingEdit(false);
+      setWorkspaceGenerationId(null);
+      setWorkspaceAnalysisRunId(null);
+      setDraftIntelligence(null);
       setTestResult(null);
     }
-  }, [selectedProjectId, loadFiles, loadLatestGeneration, loadAiSettings]);
+  }, [embedded, selectedProjectId, loadFiles, loadLatestGeneration, loadAiSettings, loadEnterpriseContract]);
+
+  useEffect(() => () => { generationLoadRequest.current += 1; }, [selectedProjectId]);
+
+  useEffect(() => {
+    const request = documentReviewRequest || localDocumentReviewRequest || location.state?.documentReview;
+    if (!request || handledDocumentReview.current === request || !selectedProject || loadingProjects || loadingContract) return;
+    if (!['intelligence', 'schedule', 'wbs'].includes(request.step)) return;
+    if (savingEdit || workBreakdownSaving || savingPreview) return;
+    handledDocumentReview.current = request;
+    const requestedProject = projects.find(item => String(item.id) === String(request.planningProjectId));
+    if (!requestedProject) { setBanner({ type: 'error', message: 'The requested generation workspace is not available in this project.' }); return; }
+    const reviewProjectId = selectedProjectId;
+    const reviewRevision = analysisRequestRef.current;
+    const reviewCurrent = () => handledDocumentReview.current === request
+      && activePreviewProjectRef.current === reviewProjectId && analysisRequestRef.current === reviewRevision;
+    const openReview = async () => {
+      if ((editingSection || workBreakdownDirty) && !(await radaiConfirm('Discard unsaved planning edits and open this saved generation?'))) return;
+      if (!reviewCurrent()) return;
+      if (String(requestedProject.id) !== String(selectedProjectId)) {
+        handledDocumentReview.current = null;
+        setSelectedProjectId(requestedProject.id);
+        return;
+      }
+      reviewAnalysisRunRef.current = request.analysisRunId || null;
+      setReviewAnalysisRunId(request.analysisRunId || null);
+      setEditingSection(null); setShowPlannerWorkspace(false); setShowGenerationWizard(false); setCurrentStep(request.step);
+      if (request.generationId) await loadLatestGeneration(selectedProjectId, request.generationId);
+      if (request.analysisRunId) {
+        try {
+          const run = await planningIntelligenceService.getIntelligenceRun(request.analysisRunId);
+          if (!reviewCurrent()) return;
+          if (String(run?.id) !== String(request.analysisRunId) || String(run.project?.id ?? run.project) !== String(selectedProjectId)) throw new Error('The document analysis does not belong to this project.');
+          if (!run.intelligence) throw new Error('The document analysis is unavailable. Retry loading its source findings.');
+          acceptLoadedIntelligence(run.intelligence, run.preview_confirmation || null);
+          setBanner({ ...planningAnalysisOutcome(run.intelligence), analysisResult: true });
+          if (request.analysisAction === 'settings') { setTestResult(null); setShowAiSettingsModal(true); }
+          if (request.analysisAction === 'retry') analysisHandlersRef.current?.analyze({ projectId: selectedProjectId,
+            resumeRunId: run.intelligence.ai_processing_coverage?.resume_available ? run.id : undefined });
+        } catch (error) {
+          if (reviewCurrent()) setBanner({ type: 'error', message: error.response?.data?.error || error.message || 'Unable to load this document analysis.' });
+        }
+      }
+    };
+    openReview();
+  }, [documentReviewRequest, localDocumentReviewRequest, location.state, selectedProject, selectedProjectId, projects, loadingProjects, loadingContract, savingEdit, workBreakdownSaving, savingPreview, editingSection, workBreakdownDirty, loadLatestGeneration, acceptLoadedIntelligence]);
+
+  useEffect(() => () => { analysisRequestRef.current += 1; }, [selectedProjectId]);
+  useEffect(() => {
+    packageRequestRef.current += 1;
+    packageInFlight.current = false;
+    setGenerating(false); setPackageError(null); setPendingAnalysisWorkspace(null);
+    return () => { packageRequestRef.current += 1; };
+  }, [selectedProjectId]);
+
+  useEffect(() => {
+    if (analysisMonitoringError) {
+      setBanner({ type: 'error', monitoring: true, message: monitoringError.jobUnavailable
+        ? 'This saved job is unavailable or you no longer have access. Its local progress link was cleared.'
+        : unknownSavedJob
+          ? 'Connection to the saved job was interrupted. The server may still be processing. Check saved job status to reconnect.'
+          : 'Connection to the analysis job was interrupted. The server may still be processing. Check analysis status to reconnect.' });
+      return;
+    }
+    if (!activeJob) setBanner(previous => previous?.monitoring ? null : previous);
+    if (!selectedProjectId || activeJob?.job_type !== 'analyze' || String(activeJob.project) !== String(selectedProjectId)) return;
+    if (activeJob.status === 'queued' || activeJob.status === 'running') {
+      return;
+    }
+    if (!['succeeded', 'failed', 'cancelled'].includes(activeJob.status)) return;
+    const jobKey = `${selectedProjectId}:${activeJob.id}`;
+    if (consumedAnalysisJobs.current.has(jobKey)) return;
+    consumedAnalysisJobs.current.add(jobKey);
+    if (activeJob.status === 'succeeded' && activeJob.result_data?.intelligence) {
+      if (documentWorkflow) {
+        reviewAnalysisRunRef.current = activeJob.result_data.intelligence.document_intelligence_run_id || null;
+        setReviewAnalysisRunId(reviewAnalysisRunRef.current);
+      }
+      loadedPreviewRef.current = activeJob.result_data.intelligence;
+      setIntelligencePreview(activeJob.result_data.intelligence);
+      setAnalysisRevision(value => value + 1);
+      setPreviewConfirmation(null);
+      setCurrentStep('intelligence');
+      setBanner({ ...planningAnalysisOutcome(activeJob.result_data.intelligence), analysisResult: true });
+      if (documentWorkflow && activeJob.result_data.intelligence.document_intelligence_run_id) {
+        setPendingAnalysisWorkspace({ projectId: selectedProjectId, analysisRunId: activeJob.result_data.intelligence.document_intelligence_run_id });
+      }
+    } else {
+      setBanner({ type: 'error', message: activeJob.error_message || activeJob.message || 'Document analysis did not return saved findings. Please retry.' });
+    }
+    clearPlanningJob();
+  }, [activeJob, analysisMonitoringError, clearPlanningJob, monitoringError, selectedProjectId, unknownSavedJob, documentWorkflow]);
+
+  useEffect(() => {
+    if (embedded && currentStep === 'intelligence' && !showPlannerWorkspace) {
+      intelligenceHeadingRef.current?.focus({ preventScroll: true });
+      intelligenceHeadingRef.current?.scrollIntoView({ block: 'start' });
+    }
+  }, [embedded, currentStep, showPlannerWorkspace]);
 
   // Poll while any file is still pending/processing so status badges update
   // without requiring a manual refresh (Celery parses files asynchronously).
@@ -241,21 +701,34 @@ const PlanningPackagePage = () => {
   // ── Actions ──────────────────────────────────────────────────────────────
   const handleCreateProject = async (e) => {
     e.preventDefault();
+    if (creatingProject) return;
     if (!newProject.name.trim()) {
       setBanner({ type: 'error', message: 'Project name is required.' });
       return;
     }
+    const rangeDuration = calculateDateRangeDuration(newProject.effective_date, newProject.planned_end_date);
+    if (!rangeDuration) {
+      setBanner({ type: 'error', message: 'Select a project end date after the project start date.' });
+      return;
+    }
+    setCreatingProject(true);
     try {
-      const payload = { ...newProject, effective_date: newProject.effective_date || null };
+      const payload = {
+        ...newProject,
+        duration_months: rangeDuration.months,
+        ...(enterpriseProject?.id ? { enterprise_project: enterpriseProject.id } : {}),
+      };
       const res = await apiClient.post(PLANNING_ENDPOINTS.projects, payload);
       setProjects(prev => [res.data, ...prev]);
       setSelectedProjectId(res.data.id);
       setViewMode('workspace');
       setShowNewProjectForm(false);
-      setNewProject({ name: '', client: '', location: '', phase: 'FEED', effective_date: '', duration_months: 10 });
+      setNewProject(planningProjectDraft(enterpriseProject));
       setBanner({ type: 'success', message: `Planning project "${res.data.name}" created.` });
     } catch (err) {
       setBanner({ type: 'error', message: 'Failed to create planning project.' });
+    } finally {
+      setCreatingProject(false);
     }
   };
 
@@ -264,8 +737,52 @@ const PlanningPackagePage = () => {
     setViewMode('workspace');
   };
 
+  const openPlannerWorkspace = useCallback((projectId = selectedProjectId, selection = {}) => {
+    if (!projectId) return;
+    if (!selection.versionId && !selection.generationId && !selection.analysisRunId && generation?.generation_mode === 'planning_package' && generation.schedule_version_id) selection = { ...selection, scheduleId: generation.schedule_id, versionId: generation.schedule_version_id };
+    if (!selection.versionId && !selection.generationId && !selection.analysisRunId && generationSelectionId && generation) selection = { ...selection, generationId: generation.id };
+    if (onOpenPlanner) {
+      setShowGenerationWizard(false);
+      onOpenPlanner({ ...selection, planningProjectId: projectId });
+      return;
+    }
+    if (embedded) {
+      setSelectedProjectId(projectId);
+      setWorkspaceGenerationId(selection.generationId || null);
+      setWorkspaceAnalysisRunId(selection.analysisRunId || null);
+      if (selection.versionId) setWorkBreakdownSchedule({ schedule_id: selection.scheduleId, schedule_version_id: selection.versionId });
+      setWorkspaceInitialTab('activities');
+      setShowPlannerWorkspace(true);
+      return;
+    }
+    const query = selection.analysisRunId ? `?analysisRunId=${encodeURIComponent(selection.analysisRunId)}` : selection.generationId ? `?generationId=${encodeURIComponent(selection.generationId)}` : '';
+    navigate(`/planning-workspace/${projectId}${query}`);
+  }, [embedded, generation, generationSelectionId, navigate, onOpenPlanner, selectedProjectId]);
+
+  useEffect(() => {
+    if (!pendingAnalysisWorkspace) return;
+    if (String(pendingAnalysisWorkspace.projectId) !== String(selectedProjectId)) { setPendingAnalysisWorkspace(null); return; }
+    if (analyzing || generating || showAiSettingsModal || savingAiSettings || testingConnection || editingSection || unsavedPreviewEdits || workBreakdownDirty || workBreakdownSaving || savingPreview || savingEdit) return;
+    setPendingAnalysisWorkspace(null);
+    if (pendingAnalysisWorkspace.completedPackageJob) analysisHandlersRef.current?.restorePackage(pendingAnalysisWorkspace.completedPackageJob, pendingAnalysisWorkspace.analysisRunId);
+    else if (pendingAnalysisWorkspace.selection) openPlannerWorkspace(selectedProjectId, pendingAnalysisWorkspace.selection);
+    else analysisHandlersRef.current?.openPackage(pendingAnalysisWorkspace.analysisRunId);
+  }, [pendingAnalysisWorkspace, selectedProjectId, analyzing, generating, showAiSettingsModal, savingAiSettings, testingConnection, editingSection, unsavedPreviewEdits, workBreakdownDirty, workBreakdownSaving, savingPreview, savingEdit, openPlannerWorkspace]);
+
+  useEffect(() => {
+    const options = activeJob?.request_data?.generation_options || {};
+    const result = activeJob?.result_data || {};
+    if (!documentWorkflow || packageInFlight.current || activeJob?.job_type !== 'generate'
+      || String(activeJob.project) !== String(selectedProjectId)
+      || (options.mode !== 'planning_package' && result.generation_mode !== 'planning_package')
+      || !['succeeded', 'failed', 'cancelled'].includes(activeJob.status)
+      || appliedPackageJobs.current.has(`${selectedProjectId}:${activeJob.id}`)) return;
+    appliedPackageJobs.current.add(`${selectedProjectId}:${activeJob.id}`);
+    setPendingAnalysisWorkspace({ projectId: selectedProjectId, analysisRunId: options.intelligence_run_id || result.intelligence_run_id, completedPackageJob: activeJob });
+  }, [activeJob, documentWorkflow, selectedProjectId, generating]);
+
   const handleDeleteProject = async (project) => {
-    if (!window.confirm(`Delete planning project "${project.name}"? It will be removed from the dashboard immediately.`)) {
+    if (!(await radaiConfirm(`Delete planning project "${project.name}"? It will be removed from the dashboard immediately.`))) {
       return;
     }
     try {
@@ -277,25 +794,65 @@ const PlanningPackagePage = () => {
       }
       setBanner({ type: 'success', message: `Planning project "${project.name}" deleted.` });
     } catch (err) {
-      setBanner({ type: 'error', message: 'Failed to delete planning project.' });
+      const detail = err?.response?.data?.detail || err?.response?.data?.error;
+      setBanner({ type: 'error', message: typeof detail === 'string' ? detail : 'Failed to delete planning project.' });
     }
   };
 
-  const handleUpload = async (fileList) => {
-    if (!selectedProjectId || !fileList?.length) return;
+  const handleSyncEnterpriseContract = async () => {
+    if (!selectedProjectId || syncingContract) return;
+    setSyncingContract(true);
+    try {
+      const result = await planningIntelligenceService.syncFromEnterprise(selectedProjectId, {
+        expected_enterprise_updated_at: enterpriseContract?.enterprise_updated_at,
+      });
+      setEnterpriseContract(result.contract);
+      setContractError(null);
+      setProjects(current => current.map(project => (
+        project.id === selectedProjectId ? { ...project, ...result.planning_project } : project
+      )));
+      const lockedNote = result.skipped_fields?.length
+        ? ` Baseline-controlled dates were preserved: ${result.skipped_fields.join(', ')}.`
+        : '';
+      setBanner({
+        type: 'success',
+        message: result.synced_fields?.length
+          ? `Master data synchronized: ${result.synced_fields.join(', ')}.${lockedNote}`
+          : `Planning master data is already current.${lockedNote}`,
+      });
+    } catch (err) {
+      if (err.response?.data?.contract) setEnterpriseContract(err.response.data.contract);
+      const diagnostic = describeContractError(err);
+      setContractError(diagnostic);
+      setBanner({
+        type: 'error',
+        message: `${diagnostic.title}: ${diagnostic.message}`,
+      });
+    } finally {
+      setSyncingContract(false);
+    }
+  };
+
+  const handleUpload = async (fileList, options = {}) => {
+    const projectId = options.projectId || selectedProjectId;
+    if (!projectId || !fileList?.length) return;
     setUploading(true);
     try {
       for (const file of Array.from(fileList)) {
         const form = new FormData();
-        form.append('project', selectedProjectId);
+        form.append('project', projectId);
         form.append('category', uploadCategory);
         form.append('file', file);
         await apiClient.post(PLANNING_ENDPOINTS.files, form);
       }
-      setBanner({ type: 'success', message: 'File(s) uploaded — parsing in the background.' });
-      await loadFiles(selectedProjectId);
+      setBanner({ type: 'success', message: 'Upload complete. Document parsing is queued; watch each file status for completion.' });
+      await loadFiles(projectId);
+      await loadEnterpriseContract(projectId);
     } catch (err) {
-      setBanner({ type: 'error', message: 'Upload failed for one or more files.' });
+      const detail = err.response?.data;
+      const message = typeof detail === 'string' ? detail : Object.values(detail || {}).flat().filter(value => typeof value === 'string').join(' ');
+      setBanner({ type: 'error', message: message || 'Upload failed for one or more files. Please retry.' });
+      await loadFiles(projectId);
     } finally {
       setUploading(false);
     }
@@ -305,66 +862,184 @@ const PlanningPackagePage = () => {
     try {
       await apiClient.delete(PLANNING_ENDPOINTS.file(fileId));
       setFiles(prev => prev.filter(f => f.id !== fileId));
+      await loadEnterpriseContract(selectedProjectId);
     } catch (err) {
       setBanner({ type: 'error', message: 'Failed to remove file.' });
     }
   };
 
-  const handleAnalyze = async () => {
-    if (!selectedProjectId) return;
-    setAnalyzing(true);
+  const handleAnalyze = async (options = {}) => {
+    const projectId = options.projectId || selectedProjectId;
+    if (!projectId || analyzing || packageBusy) return null;
+    const requestId = ++analysisRequestRef.current;
+    const isCurrent = () => requestId === analysisRequestRef.current && activePreviewProjectRef.current === projectId;
+    setAnalysisStarting(true);
     setBanner(null);
     try {
-      const res = await apiClient.post(PLANNING_ENDPOINTS.analyze(selectedProjectId));
-      setIntelligencePreview(res.data.intelligence);
-      setCurrentStep('intelligence');
+      const job = await runPlanningJob(async () => {
+        if (options.resumeRunId) {
+          try {
+            return await planningIntelligenceService.startResumeAnalysis(options.resumeRunId);
+          } catch (err) {
+            if (err.response?.status !== 409 || err.response?.data?.code !== 'intelligence_resume_sources_changed' || !isCurrent()) throw err;
+          }
+        }
+        return planningIntelligenceService.startAnalysis(projectId);
+      });
+      if (!job || !isCurrent()) return null;
+      return job;
     } catch (err) {
+      if (!isCurrent()) return null;
       setBanner({
         type: 'error',
-        message: err.response?.data?.error || 'Document intelligence requires at least one parsed file.',
+        message: err.response?.data?.error || err.job?.error_message || err.message || 'Document intelligence requires at least one parsed file.',
       });
+      return null;
     } finally {
-      setAnalyzing(false);
+      if (isCurrent()) setAnalysisStarting(false);
     }
   };
 
-  const handleGenerate = async () => {
+  const buildIntelligenceOverrides = () => {
+    const source = intelligencePreview || generation?.intelligence;
+    return source ? {
+      detected_project_name: source.detected_project_name,
+      detected_effective_date_text: source.detected_effective_date_text,
+      detected_duration_months: source.detected_duration_months,
+      disciplines: Object.fromEntries(
+        Object.entries(source.disciplines || {}).map(([code, info]) => {
+          const excludedSet = new Set(info.excluded_deliverables || []);
+          return [code, {
+            deliverables: (info.deliverables || []).filter(item => !excludedSet.has(item)),
+            in_scope: info.in_scope !== false,
+          }];
+        })
+      ),
+      hse_studies: source.hse_studies,
+    } : undefined;
+  };
+
+  const applyPlanningPackage = async (job, runId, requestId, { open = false } = {}) => {
+    const projectId = selectedProjectId;
+    const current = () => requestId === packageRequestRef.current && activePreviewProjectRef.current === projectId;
+    if (!current()) return null;
+    appliedPackageJobs.current.add(`${projectId}:${job.id}`);
+    if (job.status !== 'succeeded') throw new Error(job.error_message || job.message || 'The planning package could not be generated.');
+    const result = job.result_data || {};
+    if (String(job.project?.id ?? job.project) !== String(projectId) || result.generation_mode !== 'planning_package'
+      || String(result.intelligence_run_id) !== String(runId) || !result.schedule_id || !result.schedule_version_id || !result.generation_id) {
+      throw new Error('The generated planning package could not be verified for this analysis. Review its status before retrying.');
+    }
+    const [generated, version, schedules] = await Promise.all([
+      planningIntelligenceService.getGeneration(result.generation_id),
+      planningIntelligenceService.getScheduleVersion(result.schedule_version_id),
+      planningIntelligenceService.listSchedules(projectId),
+    ]);
+    if (!current()) return null;
+    const schedule = schedules.find(row => String(row.id) === String(result.schedule_id) && String(row.project?.id ?? row.project) === String(projectId));
+    if (!schedule || String(version?.id) !== String(result.schedule_version_id) || String(version.schedule?.id ?? version.schedule) !== String(schedule.id)
+      || String(version.source_generation?.id ?? version.source_generation) !== String(generated?.id)
+      || String(generated?.schedule_version_id) !== String(result.schedule_version_id) || String(generated?.schedule_id) !== String(result.schedule_id)
+      || String(generated?.id) !== String(result.generation_id) || String(generated.project?.id ?? generated.project) !== String(projectId)
+      || String(generated.intelligence_run_id ?? generated.intelligence?.schedule_engine?.source_analysis_run_id ?? generated.intelligence?.schedule_engine?.intelligence_run_id) !== String(runId)) {
+      throw new Error('The generated version does not match this project and analysis. The current workspace has been preserved.');
+    }
+    if (packageApplyBlocked.current) {
+      setPendingAnalysisWorkspace({ projectId, analysisRunId: runId, completedPackageJob: job });
+      return null;
+    }
+    generationLoadRequest.current += 1;
+    setLoadingGeneration(false); setGenerationLoadError('');
+    setGeneration(generated); setGenerationSelectionId(generated.id);
+    const selection = { scheduleId: schedule.id, versionId: version.id };
+    packageSelections.current.set(`${projectId}:${runId}`, selection);
+    setPackageError(null);
+    setCurrentStep('schedule');
+    setBanner({ type: 'success', message: `Planning package v${generated.version} is ready as an editable draft. Review workflow assumptions and scheduling checks before approval.` });
+    if (open) setPendingAnalysisWorkspace({ projectId, analysisRunId: runId, selection });
+    return { generation: generated, job };
+  };
+
+  const generatePlanningPackage = async (runId, generationOptions = {}, { open = false } = {}) => {
+    const projectId = selectedProjectId;
+    if (!projectId || !runId || packageInFlight.current || packageBusy || analyzing || unsavedPreviewEdits || editingSection) return null;
+    const requestId = ++packageRequestRef.current;
+    const current = () => requestId === packageRequestRef.current && activePreviewProjectRef.current === projectId;
+    packageInFlight.current = true;
+    setGenerating(true); setPackageError(null); setBanner(null);
+    let keepMonitoring = false;
+    try {
+      const job = await runPlanningJob(() => planningIntelligenceService.startGeneration(projectId, {
+        generation_options: { ...generationOptions, mode: 'planning_package', intelligence_run_id: runId },
+      }));
+      if (!job || !current()) return null;
+      return await applyPlanningPackage(job, runId, requestId, { open });
+    } catch (error) {
+      keepMonitoring = Boolean(error.job && ['queued', 'running'].includes(error.job.status) && ![403, 404].includes(error.response?.status));
+      if (current()) {
+        setPackageError({ runId, message: error.response?.data?.error || error.response?.data?.detail || error.job?.error_message || error.message || 'Planning package generation failed. Your saved analysis is retained.' });
+        setCurrentStep('intelligence');
+      }
+      if (!open && current()) throw error;
+      return null;
+    } finally {
+      if (current()) { packageInFlight.current = false; setGenerating(false); if (!keepMonitoring) clearPlanningJob(); }
+    }
+  };
+
+  const restorePlanningPackage = async (job, runId) => {
+    const projectId = selectedProjectId, requestId = ++packageRequestRef.current;
+    packageInFlight.current = true; setGenerating(true);
+    try { await applyPlanningPackage(job, runId, requestId, { open: true }); }
+    catch (error) {
+      if (requestId === packageRequestRef.current && activePreviewProjectRef.current === projectId) setPackageError({ runId, message: error.message });
+    } finally {
+      if (requestId === packageRequestRef.current && activePreviewProjectRef.current === projectId) {
+        packageInFlight.current = false; setGenerating(false); clearPlanningJob();
+      }
+    }
+  };
+
+  const requestPlanningWorkspace = runId => {
+    if (!runId || packageBusy || analyzing) return;
+    const matchingGeneration = generation?.generation_mode === 'planning_package'
+      && String(generation.intelligence_run_id) === String(runId) && generation.schedule_version_id;
+    const selection = !intelligenceOutdated && (packageSelections.current.get(`${selectedProjectId}:${runId}`)
+      || (matchingGeneration ? { scheduleId: generation.schedule_id, versionId: generation.schedule_version_id } : null));
+    setPendingAnalysisWorkspace({ projectId: selectedProjectId, analysisRunId: runId, ...(selection ? { selection } : {}) });
+  };
+
+  const handleGenerate = async (generationOptions = {}) => {
     if (!selectedProjectId) return;
+    if (documentWorkflow) return generatePlanningPackage(intelligencePreview?.document_intelligence_run_id, generationOptions);
     setGenerating(true);
     setBanner(null);
     try {
       // Carry any Document Intelligence edits the Project Scheduler made
       // (project name/date/duration, discipline deliverable checklists,
       // HSE studies) through to WBS/Schedule/EDDR/Manhour generation.
-      const overrides = intelligencePreview ? {
-        detected_project_name: intelligencePreview.detected_project_name,
-        detected_effective_date_text: intelligencePreview.detected_effective_date_text,
-        detected_duration_months: intelligencePreview.detected_duration_months,
-        disciplines: Object.fromEntries(
-          Object.entries(intelligencePreview.disciplines || {}).map(([code, info]) => {
-            // Filter out excluded deliverables before sending to backend
-            const excludedSet = new Set(info.excluded_deliverables || []);
-            const includedDeliverables = (info.deliverables || []).filter(d => !excludedSet.has(d));
-            return [code, { 
-              deliverables: includedDeliverables, 
-              in_scope: info.in_scope !== false 
-            }];
-          })
-        ),
-        hse_studies: intelligencePreview.hse_studies,
-      } : undefined;
-      const res = await apiClient.post(
-        PLANNING_ENDPOINTS.generate(selectedProjectId),
-        overrides ? { intelligence_overrides: overrides } : {},
-      );
-      setGeneration(res.data);
-      setBanner({ type: 'success', message: `Schedule generated (version ${res.data.version}).` });
-      setCurrentStep('schedule');
+      const overrides = buildIntelligenceOverrides();
+      const job = await runPlanningJob(() => planningIntelligenceService.startGeneration(
+        selectedProjectId,
+        {
+          ...(overrides ? { intelligence_overrides: overrides } : {}),
+          generation_options: generationOptions,
+        },
+      ));
+      const generationId = job.result_generation || job.result_data?.generation_id;
+      const generatedSchedule = await planningIntelligenceService.getGeneration(generationId);
+      setGeneration(generatedSchedule);
+      await loadEnterpriseContract(selectedProjectId);
+      const needsEvidenceReview = job.result_data?.state === 'needs_evidence_review' || !job.result_data?.schedule_version_id;
+      setBanner({ type: 'success', message: needsEvidenceReview ? 'Document evidence ready for review. Resolve Not Specified values using the source documents.' : `Schedule generated (version ${generatedSchedule.version}).` });
+      setCurrentStep(needsEvidenceReview ? 'intelligence' : 'schedule');
+      return { generation: generatedSchedule, job };
     } catch (err) {
       setBanner({
         type: 'error',
-        message: err.response?.data?.error || 'Schedule generation failed. Check the backend logs.',
+        message: err.response?.data?.error || err.job?.error_message || err.message || 'Schedule generation failed. Check the backend logs.',
       });
+      return null;
     } finally {
       setGenerating(false);
     }
@@ -391,22 +1066,28 @@ const PlanningPackagePage = () => {
 
   const handleSaveIntelligenceEdit = () => {
     setIntelligencePreview(draftIntelligence);
-    setBanner({ type: 'success', message: 'Document Intelligence edits saved — they will be used the next time you generate the schedule.' });
+    setBanner({ type: 'info', message: embedded ? `Preview edits applied. Confirm and save below to continue to ${documentWorkflow ? 'Schedule Generator' : 'Work breakdown'}.` : 'Document Intelligence edits applied for the next schedule generation.' });
     cancelEdit();
   };
 
   const handleSaveGenerationEdit = async (field, value) => {
-    if (!generation) return;
+    if (!generation || savingEdit) return;
+    const projectId = selectedProjectId, request = ++generationLoadRequest.current;
+    const current = () => generationLoadRequest.current === request && String(activePreviewProjectRef.current) === String(projectId);
     setSavingEdit(true);
     try {
       const res = await apiClient.patch(PLANNING_ENDPOINTS.editGeneration(generation.id), { [field]: value });
+      if (!current()) return;
+      if (!res.data?.id || String(res.data?.project?.id ?? res.data?.project) !== String(projectId)) throw new Error('The saved revision could not be verified for this planning project.');
       setGeneration(res.data);
-      setBanner({ type: 'success', message: 'Changes saved.' });
+      setGenerationSelectionId(res.data.id);
+      const needsReview = res.data.intelligence?.schedule_engine?.policy === 'document_driven' && !res.data.schedule_version_id;
+      setBanner({ type: needsReview ? 'info' : 'success', message: needsReview ? `Changes saved as generation v${res.data.version}. Review source evidence and missing scheduling inputs before calculation.` : `Changes saved as generation v${res.data.version}.` });
       cancelEdit();
     } catch (err) {
-      setBanner({ type: 'error', message: err.response?.data?.error || 'Failed to save changes.' });
+      if (current()) setBanner({ type: 'error', message: err.response?.data?.error || err.message || 'Failed to save changes.' });
     } finally {
-      setSavingEdit(false);
+      if (current()) setSavingEdit(false);
     }
   };
 
@@ -503,12 +1184,12 @@ const PlanningPackagePage = () => {
         deliverable: null,
         start_date: '',
         finish_date: '',
-        is_critical: false,
+        is_critical: generation?.intelligence?.schedule_engine?.policy === 'document_driven' ? null : false,
         is_milestone: false,
         predecessors: [],
         responsible_role: '',
-        total_float_days: 0,
-        original_duration_days: 1,
+        total_float_days: generation?.intelligence?.schedule_engine?.policy === 'document_driven' ? null : 0,
+        original_duration_days: generation?.intelligence?.schedule_engine?.policy === 'document_driven' ? null : 1,
       };
       return [...prev, newActivity];
     });
@@ -592,8 +1273,10 @@ const PlanningPackagePage = () => {
       window.URL.revokeObjectURL(url);
       setExportedFormat(format);
       setTimeout(() => setExportedFormat(f => (f === format ? null : f)), 2200);
+      return true;
     } catch (err) {
       setBanner({ type: 'error', message: 'Export failed.' });
+      return false;
     } finally {
       setExportingFormat(f => (f === format ? null : f));
     }
@@ -604,87 +1287,241 @@ const PlanningPackagePage = () => {
     setDownloadingPresentation(true);
     setBanner(null);
     try {
-      await handleExport('pptx');
-      setBanner({ type: 'success', message: 'PowerPoint presentation downloaded.' });
-    } catch (err) {
-      setBanner({ type: 'error', message: 'Failed to generate the PowerPoint presentation.' });
+      const downloaded = await handleExport('pptx');
+      setBanner(downloaded
+        ? { type: 'success', message: 'PowerPoint presentation downloaded.' }
+        : { type: 'error', message: 'Failed to generate the PowerPoint presentation.' });
     } finally {
       setDownloadingPresentation(false);
     }
   };
 
+  const testSavedAiConnection = async () => {
+    setTestingConnection(true);
+    setTestResult(null);
+    try {
+      const res = await apiClient.post(PLANNING_ENDPOINTS.aiSettingsTest(selectedProjectId), {}, AI_SETTINGS_REQUEST);
+      const success = res.data?.success === true;
+      setTestResult({ success, message: success
+        ? 'Settings saved. Connection established. AI is ready for analysis.'
+        : res.data?.success === false ? res.data?.message || 'Settings are saved, but the connection test failed. Check the provider configuration and test again.'
+          : 'Connection test did not confirm success. Retry the test or ask your administrator to check the provider.' });
+    } catch (err) {
+      setTestResult({ success: false, message: aiSettingsErrorMessage(err,
+        'Settings are saved, but the connection test failed. Check the provider configuration and test again.') });
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+  analysisHandlersRef.current = { analyze: handleAnalyze, requestPackage: requestPlanningWorkspace, openPackage: runId => generatePlanningPackage(runId, {}, { open: true }), restorePackage: restorePlanningPackage };
+
+  const handleRetryAnalysis = () => handleAnalyze({
+    resumeRunId: intelligencePreview?.ai_processing_coverage?.resume_available || intelligencePreview?.extraction_summary?.resume_available
+      ? intelligencePreview?.document_intelligence_run_id : undefined,
+  });
+
   const handleSaveAiSettings = async () => {
-    if (!selectedProjectId) return;
-    if (aiSettingsForm.apiKey && !CLAUDE_API_KEY_PATTERN.test(aiSettingsForm.apiKey.trim())) {
-      setBanner({ type: 'error', message: 'API key does not look like a valid Anthropic key (expected format: sk-ant-...).' });
+    if (!selectedProjectId || savingAiSettings || testingConnection || aiSettingsUnavailable) return;
+    if (aiReplacementKeyRequired) {
+      setTestResult({ success: false, message: 'Enter an API key for the selected provider before saving.' });
+      return;
+    }
+    if (aiSettingsForm.provider === 'anthropic' && aiSettingsForm.apiKey && !CLAUDE_API_KEY_PATTERN.test(aiSettingsForm.apiKey.trim())) {
+      setTestResult({ success: false, message: 'API key does not look like a valid Anthropic key (expected format: sk-ant-...).' });
       return;
     }
     setSavingAiSettings(true);
     setTestResult(null);
     try {
-      const payload = { enabled: aiSettingsForm.enabled, model: aiSettingsForm.model };
+      const payload = { enabled: aiSettingsForm.enabled, provider: aiSettingsForm.provider, model: aiSettingsForm.model };
       if (aiSettingsForm.apiKey.trim()) payload.api_key = aiSettingsForm.apiKey.trim();
-      const res = await apiClient.post(PLANNING_ENDPOINTS.aiSettings(selectedProjectId), payload);
+      const res = await apiClient.post(PLANNING_ENDPOINTS.aiSettings(selectedProjectId), payload, AI_SETTINGS_REQUEST);
       setAiSettings(res.data);
-      setAiSettingsForm(prev => ({ ...prev, apiKey: '' }));
-      setBanner({ type: 'success', message: 'AI (BYOK) settings saved.' });
+      setAiSettingsForm(planningAiSettingsForm(res.data));
       setProjects(prev => prev.map(p => (p.id === selectedProjectId
-        ? { ...p, ai_enabled: res.data.enabled, ai_model: res.data.model, ai_key_configured: res.data.key_configured }
+        ? { ...p, ai_enabled: res.data.enabled, ai_provider: res.data.provider, ai_model: res.data.model, ai_key_configured: res.data.key_configured }
         : p)));
+      if (res.data.enabled && res.data.key_configured) {
+        setSavingAiSettings(false);
+        await testSavedAiConnection();
+      } else {
+        setTestResult({ success: false, type: 'info', message: res.data.credential_source === 'administrator' && !res.data.key_configured
+          ? 'Settings saved. The administrator-managed connection is unavailable. Ask your administrator to check the provider.'
+          : res.data.enabled ? 'Settings saved. Configure a provider connection and test it before analysis.'
+          : 'Settings saved. AI is disabled for this project.' });
+      }
     } catch (err) {
-      setBanner({ type: 'error', message: err.response?.data?.error || 'Failed to save AI settings.' });
+      setTestResult({ success: false, message: aiSettingsErrorMessage(err, 'Failed to save AI settings. Your changes are still here; please retry.') });
     } finally {
       setSavingAiSettings(false);
     }
   };
 
   const handleRemoveAiKey = async () => {
-    if (!selectedProjectId) return;
+    if (!selectedProjectId || savingAiSettings || testingConnection || aiSettingsUnavailable) return;
     setSavingAiSettings(true);
     setTestResult(null);
     try {
-      const res = await apiClient.delete(PLANNING_ENDPOINTS.aiSettings(selectedProjectId));
+      const res = await apiClient.delete(PLANNING_ENDPOINTS.aiSettings(selectedProjectId), AI_SETTINGS_REQUEST);
       setAiSettings(res.data);
-      setAiSettingsForm({ enabled: false, model: DEFAULT_CLAUDE_MODEL, apiKey: '' });
-      setBanner({ type: 'success', message: 'AI (BYOK) key removed.' });
+      setAiSettingsForm(planningAiSettingsForm(res.data));
+      setTestResult({ success: false, type: 'info', message: 'API key removed. Configure and test a key to use AI analysis.' });
     } catch (err) {
-      setBanner({ type: 'error', message: 'Failed to remove AI key.' });
+      setTestResult({ success: false, message: aiSettingsErrorMessage(err, 'Failed to remove AI key.') });
     } finally {
       setSavingAiSettings(false);
     }
   };
 
   const handleTestAiConnection = async () => {
-    if (!selectedProjectId) return;
-    setTestingConnection(true);
-    setTestResult(null);
-    try {
-      const res = await apiClient.post(PLANNING_ENDPOINTS.aiSettingsTest(selectedProjectId));
-      setTestResult(res.data);
-    } catch (err) {
-      setTestResult(err.response?.data || { success: false, message: 'Connection test failed.' });
-    } finally {
-      setTestingConnection(false);
-    }
+    if (!selectedProjectId || savingAiSettings || testingConnection || !canTestAiConnection) return;
+    await testSavedAiConnection();
   };
 
   // ── Render helpers ───────────────────────────────────────────────────────
   const renderBanner = () => {
     if (!banner) return null;
-    const styles = banner.type === 'error'
+    const previousResult = analyzing && banner.analysisResult;
+    const type = previousResult ? 'info' : banner.type;
+    const styles = type === 'error'
       ? 'bg-rose-50 text-rose-700 border-rose-200'
-      : 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      : type === 'warning'
+        ? 'bg-amber-50 text-amber-900 border-amber-200'
+      : type === 'info'
+        ? 'bg-sky-50 text-sky-700 border-sky-200'
+        : 'bg-emerald-50 text-emerald-700 border-emerald-200';
     return (
-      <div className={`mb-4 px-4 py-2 rounded-lg border text-sm flex items-center justify-between ${styles}`}>
-        <span>{banner.message}</span>
-        <button onClick={() => setBanner(null)} className="ml-4 opacity-60 hover:opacity-100">✕</button>
+      <div role={type === 'error' ? 'alert' : 'status'} aria-live={type === 'error' ? 'assertive' : 'polite'} className={`mb-4 rounded-lg border px-4 py-3 text-sm ${styles}`}>
+        <div className="flex items-center justify-between gap-3"><span>{previousResult ? 'A new analysis is being monitored. The previous saved result and its coverage remain below until the new findings are saved.' : banner.message}</span>
+        {(!analysisMonitoringError || monitoringError.jobUnavailable) && <button type="button" aria-label="Dismiss notification" onClick={() => setBanner(null)} className="ml-4 opacity-60 hover:opacity-100">✕</button>}
+        </div>
+        {analysisMonitoringError && !monitoringError.jobUnavailable && <button type="button" className="pln-button mt-2" disabled={checkingStatus} onClick={retryMonitoring}>{checkingStatus ? 'Checking status…' : unknownSavedJob ? 'Check saved job status' : 'Check analysis status'}</button>}
+        {type === 'info' && activeJob && <div className="mt-2 h-2 overflow-hidden rounded-full bg-sky-100" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={activeJob.progress || 0}><div className="h-full rounded-full bg-sky-600 transition-all duration-500" style={{ width: `${activeJob.progress || 0}%` }} /></div>}
       </div>
     );
   };
 
-  const renderProjectPicker = () => (
+  const renderPreviousAnalysisNotice = () => analyzing && intelligencePreview ? (
+    <p role="status" className="mb-4 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-700">
+      {analysisMonitoringError ? `${unknownSavedJob ? 'Saved job' : 'Analysis'} status is unavailable. The findings below are from the previous saved analysis.` : 'A new analysis is running. The findings below are from the previous saved analysis.'}
+      {documentWorkflow && !analysisMonitoringError && ' The Schedule Planner will open when the current analysis finishes and saves its findings.'}
+    </p>
+  ) : null;
+
+  const renderPendingPlannerNotice = () => pendingAnalysisWorkspace && !analyzing && String(pendingAnalysisWorkspace.projectId) === String(selectedProjectId)
+    && (showAiSettingsModal || editingSection || unsavedPreviewEdits || workBreakdownDirty || savingPreview || savingEdit || savingAiSettings || testingConnection) ? (
+    <p role="status" className="mb-4 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-700">
+      {showAiSettingsModal ? 'Analysis findings are saved. Close AI Settings to open the Schedule Planner.'
+        : editingSection ? 'Analysis findings are saved. Save or cancel your current edits to open the Schedule Planner.'
+          : unsavedPreviewEdits ? 'Save or discard your preview edits before building the planning package from this analysis.'
+          : workBreakdownDirty ? 'Analysis findings are saved. Save or discard work breakdown changes to open the Schedule Planner.'
+            : 'Analysis findings are saved. Finishing the current save before opening the Schedule Planner.'}
+      {unsavedPreviewEdits && !editingSection && <button type="button" className="pln-button ml-3" disabled={savingPreview} onClick={() => setIntelligencePreview(loadedPreviewRef.current)}>Discard preview edits</button>}
+    </p>
+  ) : null;
+
+  const renderPlanningPackageState = () => packageMonitoringError ? (
+    <div role="alert" className="pln-error">{packageMonitoringError.jobUnavailable ? 'This planning job is unavailable or access has changed. Your saved analysis remains available.' : 'Connection to planning package generation was interrupted. The server may still be building the draft.'}
+      {!packageMonitoringError.jobUnavailable && <button type="button" className="pln-button" disabled={checkingStatus} onClick={retryMonitoring}>{checkingStatus ? 'Checking status…' : 'Check planning status'}</button>}
+    </div>
+  ) : packageError ? (
+    <div role="alert" className="pln-error"><p>{packageError.message}</p><p>Your saved analysis is retained; no existing schedule has been replaced.</p>
+      <button type="button" className="pln-button" disabled={packageBusy || analyzing || Boolean(editingSection)} onClick={() => requestPlanningWorkspace(packageError.runId)}>Retry planning package</button>
+    </div>
+  ) : packageBusy ? <p role="status" className="pln-note">Building the planning package from saved analysis. Activities, WBS and logic will open in the editable planner when the draft is saved.</p> : null;
+
+  const renderProjectPicker = () => {
+    if (embedded) {
+      const differences = enterpriseContract?.differences || [];
+      const syncableDifferences = differences.filter(item => !item.locked_by_baseline);
+      const protectedDifferences = differences.filter(item => item.locked_by_baseline);
+      return selectedProject ? (
+        <section aria-label="Linked planning workspace" className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Linked planning workspace</p>
+            <p className="mt-1 truncate text-sm font-semibold text-slate-900 dark:text-white">{selectedProject.name}</p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Planning workflow for <span className="font-semibold text-slate-700 dark:text-slate-200">{enterpriseProject?.code || enterpriseProject?.name}</span></p>
+          </div>
+          {loadingContract ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              <RefreshCw aria-hidden="true" size={13} className="animate-spin" /> Checking link
+            </span>
+          ) : enterpriseContract && (
+            <>
+              <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+                {LIFECYCLE_LABELS[enterpriseContract.lifecycle] || enterpriseContract.lifecycle}
+              </span>
+              {!enterpriseContract.linked ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 dark:bg-rose-950 dark:text-rose-300">
+                  <AlertTriangle aria-hidden="true" size={13} /> Workspace not linked
+                </span>
+              ) : enterpriseContract.in_sync ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                  <CheckCircle2 aria-hidden="true" size={13} /> Master data synchronized
+                </span>
+              ) : (
+                <span
+                  className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                  title={differences.map(item => item.label).join(', ')}
+                >
+                  <AlertTriangle aria-hidden="true" size={13} /> {differences.length} master-data {differences.length === 1 ? 'change' : 'changes'}
+                </span>
+              )}
+              {enterpriseContract.baseline_locked && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                  <Lock aria-hidden="true" size={13} /> Baseline dates locked{protectedDifferences.length ? ` (${protectedDifferences.length} variance)` : ''}
+                </span>
+              )}
+            </>
+          )}
+          <span className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700 dark:bg-sky-950 dark:text-sky-300">{selectedProject.file_count || 0} files</span>
+          {selectedProject.latest_generation_version && <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">Version {selectedProject.latest_generation_version}</span>}
+          {syncableDifferences.length > 0 && (
+            <button
+              type="button"
+              onClick={handleSyncEnterpriseContract}
+              disabled={syncingContract}
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 text-sm font-semibold text-amber-900 hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-600 disabled:cursor-wait disabled:opacity-60 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200"
+            >
+              <RefreshCw aria-hidden="true" size={15} className={syncingContract ? 'animate-spin' : ''} />
+              {syncingContract ? 'Synchronizing...' : 'Sync master data'}
+            </button>
+          )}
+          <button type="button" onClick={() => openPlannerWorkspace(selectedProject.id)} className="min-h-10 rounded-lg bg-indigo-700 px-3 text-sm font-semibold text-white hover:bg-indigo-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2">Open Planner Workspace</button>
+          <button type="button" onClick={() => { setShowAiSettingsModal(true); setTestResult(null); }} className="min-h-10 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800">AI settings</button>
+          {contractError && (
+            <div role="alert" className="flex w-full flex-col gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100 sm:flex-row sm:items-start">
+              <AlertTriangle aria-hidden="true" className="mt-0.5 shrink-0" size={19} />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold">{contractError.title}</p>
+                <p className="mt-1 text-xs leading-5 text-amber-900 dark:text-amber-200">{contractError.message}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => loadEnterpriseContract(selectedProject.id)}
+                disabled={loadingContract}
+                className="inline-flex min-h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-amber-400 bg-white px-3 text-xs font-semibold text-amber-950 hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-700 disabled:opacity-60 dark:bg-amber-900 dark:text-amber-50"
+              >
+                <RefreshCw aria-hidden="true" size={14} className={loadingContract ? 'animate-spin' : ''} /> Retry connection
+              </button>
+            </div>
+          )}
+          {enterpriseContract && !enterpriseContract.linked && (
+            <div role="status" className="flex w-full items-start gap-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-rose-900 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-100">
+              <AlertTriangle aria-hidden="true" className="mt-0.5 shrink-0" size={19} />
+              <div>
+                <p className="text-sm font-semibold">This planning workspace is not linked to an enterprise project</p>
+                <p className="mt-1 text-xs leading-5 text-rose-800 dark:text-rose-200">Its enterprise_project field is empty, so project master data cannot be synchronized. Open the required enterprise project in Project Control and create its linked workspace from the Plan &amp; Baseline tab.</p>
+              </div>
+            </div>
+          )}
+        </section>
+      ) : null;
+    }
+    return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-4 sm:p-5 mb-6 flex flex-wrap items-center gap-3">
       <button
+        type="button"
         onClick={() => setViewMode('dashboard')}
         className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold rounded-xl border-2 border-slate-200 text-slate-600 hover:border-violet-300 hover:bg-violet-50/50 transition-colors"
       >
@@ -733,14 +1570,15 @@ const PlanningPackagePage = () => {
           {aiSettings && (
             <span className={`px-2.5 py-1 rounded-full text-sm font-semibold ${aiSettings.enabled && aiSettings.key_configured ? 'bg-violet-50 text-violet-700 border border-violet-200' : 'bg-slate-50 text-slate-500 border border-slate-200'}`}>
               {aiSettings.enabled && aiSettings.key_configured
-                ? `🤖 ${CLAUDE_MODEL_OPTIONS.find(m => m.value === aiSettings.model)?.label.split(' (')[0] || 'Claude'} BYOK Active`
+                ? `🤖 ${savedAiProvider?.model_choices?.find(m => m.value === aiSettings.model)?.label.split(' (')[0] || savedAiProvider?.label || 'AI'} configured`
                 : '🧮 Deterministic mode'}
             </span>
           )}
         </div>
       )}
     </div>
-  );
+    );
+  };
 
   // ── Multi-project dashboard ──────────────────────────────────────────────
   const dashboardPhases = Array.from(new Set(projects.map(p => p.phase).filter(Boolean))).sort();
@@ -789,14 +1627,18 @@ const PlanningPackagePage = () => {
 
       {/* Search / filter / new project */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-4 sm:p-5 flex flex-wrap items-center gap-3">
+        <label htmlFor="planning-project-search" className="sr-only">Search planning projects</label>
         <input
+          id="planning-project-search"
           type="text"
           placeholder="Search by name or client…"
           value={dashboardSearch}
           onChange={e => setDashboardSearch(e.target.value)}
           className="flex-1 min-w-[200px] border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-violet-400 focus:outline-none transition-colors"
         />
+        <label htmlFor="planning-phase-filter" className="sr-only">Filter by project phase</label>
         <select
+          id="planning-phase-filter"
           value={dashboardPhaseFilter}
           onChange={e => setDashboardPhaseFilter(e.target.value)}
           className="border-2 border-slate-200 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 bg-slate-50/60 focus:bg-white focus:border-violet-400 focus:outline-none transition-colors"
@@ -853,17 +1695,20 @@ const PlanningPackagePage = () => {
               </div>
               <div className="flex items-center gap-2 mt-auto pt-2">
                 <button
-                  onClick={() => handleOpenProject(project.id)}
-                  className="flex-1 px-3 py-2 text-sm font-semibold rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-sm hover:shadow-md hover:from-violet-700 hover:to-indigo-700 transition-all"
+                  type="button"
+                  onClick={() => project.latest_generation_version ? openPlannerWorkspace(project.id) : handleOpenProject(project.id)}
+                  className="min-h-11 flex-1 rounded-lg bg-indigo-700 px-3 text-sm font-semibold text-white hover:bg-indigo-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2"
                 >
-                  Open →
+                  {project.latest_generation_version ? 'Open planning workspace' : 'Prepare plan'}
                 </button>
                 <button
+                  type="button"
                   onClick={() => handleDeleteProject(project)}
-                  title="Delete project"
+                  aria-label={`Archive ${project.name}`}
+                  title="Archive planning record"
                   className="px-3 py-2 text-sm font-semibold rounded-xl border-2 border-slate-200 text-slate-500 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600 transition-colors"
                 >
-                  🗑️
+                  Archive
                 </button>
               </div>
             </div>
@@ -873,14 +1718,20 @@ const PlanningPackagePage = () => {
     </div>
   );
 
-  const renderNewProjectForm = () => (
-    <form onSubmit={handleCreateProject} className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 sm:p-6 mb-6">
+  const renderNewProjectForm = () => {
+    const rangeDuration = calculateDateRangeDuration(newProject.effective_date, newProject.planned_end_date);
+    return (
+    <form
+      onSubmit={handleCreateProject}
+      className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 sm:p-6 mb-6"
+      aria-busy={creatingProject}
+    >
       <div className="flex items-center gap-2 mb-4">
         <span className="text-xl">✨</span>
 
         <h2 className="font-semibold text-slate-800">New Planning Project</h2>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <fieldset disabled={creatingProject} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <label className="text-sm">
           <span className="block text-sm font-semibold text-slate-600 mb-1">Project Name *</span>
           <input required className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-violet-400 focus:outline-none transition-colors"
@@ -902,37 +1753,91 @@ const PlanningPackagePage = () => {
             value={newProject.phase} onChange={e => setNewProject({ ...newProject, phase: e.target.value })} />
         </label>
         <label className="text-sm">
-          <span className="block text-sm font-semibold text-slate-600 mb-1">Effective Date</span>
-          <input type="date" className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-violet-400 focus:outline-none transition-colors"
+          <span className="block text-sm font-semibold text-slate-600 mb-1">Project Start Date *</span>
+          <input required type="date" max={newProject.planned_end_date || undefined} className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-violet-400 focus:outline-none transition-colors"
             value={newProject.effective_date} onChange={e => setNewProject({ ...newProject, effective_date: e.target.value })} />
         </label>
         <label className="text-sm">
-          <span className="block text-sm font-semibold text-slate-600 mb-1">Duration (months)</span>
-          <input type="number" min="1" className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-violet-400 focus:outline-none transition-colors"
-            value={newProject.duration_months} onChange={e => setNewProject({ ...newProject, duration_months: e.target.value })} />
+          <span className="block text-sm font-semibold text-slate-600 mb-1">Project End Date *</span>
+          <input required type="date" min={newProject.effective_date || undefined} className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-violet-400 focus:outline-none transition-colors"
+            value={newProject.planned_end_date} onChange={e => setNewProject({ ...newProject, planned_end_date: e.target.value })} />
         </label>
-      </div>
+        <div className={`sm:col-span-2 lg:col-span-3 rounded-xl border px-4 py-3 ${rangeDuration ? 'border-violet-200 bg-violet-50' : 'border-slate-200 bg-slate-50'}`}>
+          <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Calculated project duration</div>
+          <div className="mt-1 text-sm text-slate-700">
+            {rangeDuration
+              ? <><span className="font-bold text-violet-700">{rangeDuration.months.toFixed(1)} {rangeDuration.months.toFixed(1) === '1.0' ? 'month' : 'months'}</span><span className="mx-2 text-slate-300">·</span>{rangeDuration.days} calendar days</>
+              : 'Select a start date and a later end date.'}
+          </div>
+          <p className="mt-1 text-xs text-slate-500">Calculated as complete calendar months plus the exact fraction of the remaining calendar month.</p>
+        </div>
+      </fieldset>
+      {creatingProject && (
+        <div className="mt-5" role="status" aria-live="polite">
+          <div className="mb-1.5 flex items-center justify-between text-xs font-semibold text-violet-700">
+            <span>Creating planning project…</span>
+            <span>Please wait</span>
+          </div>
+          <div
+            className="h-2 w-full overflow-hidden rounded-full bg-violet-100"
+            role="progressbar"
+            aria-label="Creating planning project"
+          >
+            <div className="h-full w-full animate-pulse rounded-full bg-gradient-to-r from-violet-500 via-indigo-500 to-violet-500" />
+          </div>
+        </div>
+      )}
       <div className="flex gap-2 justify-end mt-5">
-        <button type="button" onClick={() => setShowNewProjectForm(false)} className="px-4 py-2 text-sm font-medium rounded-xl border-2 border-slate-200 text-slate-600 hover:bg-slate-50">Cancel</button>
-        <button type="submit" className="px-4 py-2 text-sm font-semibold rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-sm hover:shadow-md hover:from-violet-700 hover:to-indigo-700 transition-all">Create Project</button>
+        <button
+          type="button"
+          onClick={() => setShowNewProjectForm(false)}
+          disabled={creatingProject}
+          className="px-4 py-2 text-sm font-medium rounded-xl border-2 border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={creatingProject}
+          className="px-4 py-2 text-sm font-semibold rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-sm hover:shadow-md hover:from-violet-700 hover:to-indigo-700 transition-all disabled:opacity-40"
+        >
+          {creatingProject ? 'Creating…' : 'Create Project'}
+        </button>
       </div>
     </form>
-  );
+    );
+  };
 
   const renderAiSettingsModal = () => {
     if (!showAiSettingsModal || !selectedProject) return null;
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4" onClick={() => setShowAiSettingsModal(false)}>
-        <div className="bg-white rounded-2xl shadow-xl border border-slate-200/80 w-full max-w-lg p-5 sm:p-6" onClick={e => e.stopPropagation()}>
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4"
+        onClick={() => { if (!savingAiSettings && !testingConnection) setShowAiSettingsModal(false); }}
+      >
+        <div
+          ref={aiSettingsDialogRef}
+          tabIndex="-1"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="planning-ai-settings-title"
+          className="bg-white rounded-2xl shadow-xl border border-slate-200/80 w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto p-5 sm:p-6"
+          onClick={e => e.stopPropagation()}
+          aria-busy={loadingAiSettings || savingAiSettings || testingConnection}
+        >
           <div className="flex items-center gap-2 mb-1">
             <span className="text-xl">🤖</span>
-            <h2 className="font-semibold text-slate-800">AI Settings (BYOK) — {selectedProject.name}</h2>
+            <h2 id="planning-ai-settings-title" className="font-semibold text-slate-800">AI Settings — {selectedProject.name}</h2>
           </div>
           <p className="text-sm text-slate-600 mb-4">
-            Bring your own Anthropic API key to augment document intelligence and narrative
-            generation with Claude for this project. Your key is encrypted at rest and never
-            shown again after saving. Leave the key field blank to keep the currently stored key.
+            Choose the provider for document intelligence and planning suggestions.
+            Administrator-managed connections do not require a personal API key.
+            Existing project connections remain available when the provider is not centrally managed.
           </p>
+          <p className="text-sm text-slate-600 mb-4">Save Settings saves your configuration and tests the connection. This dialog stays open to show whether AI is ready for analysis.</p>
+
+          {aiSettingsUnavailable && !aiSettingsLoadError && <p role="status" className="mb-4 text-sm text-slate-600">Loading AI settings…</p>}
+          {aiSettingsLoadError && <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700"><p role="alert">{aiSettingsLoadError}</p><button type="button" className="pln-button mt-2" onClick={() => loadAiSettings(selectedProjectId)} disabled={loadingAiSettings}>Retry loading AI settings</button></div>}
 
           <div className="space-y-4">
             <label className="flex items-center gap-2.5 text-sm font-medium text-slate-700">
@@ -940,73 +1845,122 @@ const PlanningPackagePage = () => {
                 type="checkbox"
                 className="w-4 h-4 accent-violet-600"
                 checked={aiSettingsForm.enabled}
-                onChange={e => setAiSettingsForm(prev => ({ ...prev, enabled: e.target.checked }))}
+                disabled={aiSettingsUnavailable || savingAiSettings || testingConnection}
+                onChange={e => { setTestResult(null); setAiSettingsForm(prev => ({ ...prev, enabled: e.target.checked })); }}
               />
-              Enable Claude BYOK for this project
+              Enable AI for this project
             </label>
 
             <label className="block text-sm">
-              <span className="block text-sm font-semibold text-slate-600 mb-1">Claude Model</span>
+              <span className="block text-sm font-semibold text-slate-600 mb-1">AI provider</span>
+              <select
+                className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-violet-400 focus:outline-none transition-colors"
+                value={aiSettingsForm.provider}
+                disabled={aiSettingsUnavailable || savingAiSettings || testingConnection}
+                onChange={e => {
+                  const provider = aiProviderChoices.find(choice => choice.value === e.target.value);
+                  setTestResult(null);
+                  setAiSettingsForm(prev => ({ ...prev, provider: provider.value, model: provider.default_model, apiKey: '' }));
+                }}
+              >
+                {aiProviderChoices.map(provider => <option key={provider.value} value={provider.value}>{provider.label}</option>)}
+              </select>
+            </label>
+
+            <label className="block text-sm">
+              <span className="block text-sm font-semibold text-slate-600 mb-1">AI model</span>
               <select
                 className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-violet-400 focus:outline-none transition-colors"
                 value={aiSettingsForm.model}
-                onChange={e => setAiSettingsForm(prev => ({ ...prev, model: e.target.value }))}
+                disabled={aiSettingsUnavailable || savingAiSettings || testingConnection}
+                onChange={e => { setTestResult(null); setAiSettingsForm(prev => ({ ...prev, model: e.target.value })); }}
               >
-                {(aiSettings?.model_choices || CLAUDE_MODEL_OPTIONS).map(m => (
+                {(selectedAiProvider?.model_choices || []).map(m => (
                   <option key={m.value} value={m.value}>{m.label}{m.recommended ? ' ★' : ''}</option>
                 ))}
               </select>
             </label>
 
-            <label className="block text-sm">
+            {aiCentrallyManaged ? <p role="status" className="text-sm text-slate-600">{selectedAiProvider.central_ready ? 'Connection managed by your administrator.' : 'The administrator-managed connection is unavailable.'}</p> : <label className="block text-sm">
               <span className="block text-sm font-semibold text-slate-600 mb-1">
-                Anthropic API Key {aiSettings?.key_configured && <span className="text-emerald-600 font-normal">(key configured ✓ — leave blank to keep it)</span>}
+                {selectedAiProvider?.label || 'AI'} API Key {aiSettings?.key_configured && !aiProviderChanged && <span className="text-emerald-600 font-normal">(key configured ✓ — leave blank to keep it)</span>}
               </span>
               <input
                 type="password"
-                placeholder="sk-ant-..."
+                placeholder={aiSettingsForm.provider === 'gemini' ? 'Google AI Studio API key' : 'sk-ant-...'}
                 autoComplete="off"
                 className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-violet-400 focus:outline-none transition-colors"
                 value={aiSettingsForm.apiKey}
-                onChange={e => setAiSettingsForm(prev => ({ ...prev, apiKey: e.target.value }))}
+                disabled={aiSettingsUnavailable || savingAiSettings || testingConnection}
+                onChange={e => { setTestResult(null); setAiSettingsForm(prev => ({ ...prev, apiKey: e.target.value })); }}
               />
-            </label>
+              {aiProviderChanged && aiSettings?.key_configured && <span className="mt-1 block text-xs text-amber-700">Enter a new API key for {selectedAiProvider?.label || 'the selected provider'}. Your saved key belongs to {savedAiProvider?.label || 'the previous provider'}.</span>}
+            </label>}
 
+            {aiSettingsDirty && <p className="text-xs text-slate-600">Save settings to test the selected provider, model and key. Unsaved changes have not been tested.</p>}
             {testResult && (
-              <div className={`text-sm rounded-xl px-3 py-2 border ${testResult.success ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
+              <div role={testResult.success || testResult.type === 'info' ? 'status' : 'alert'} className={`text-sm rounded-xl px-3 py-2 border ${testResult.success ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : testResult.type === 'info' ? 'bg-sky-50 text-sky-700 border-sky-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
                 {testResult.message}
               </div>
             )}
+            {testResult?.success && ['failed', 'partial'].includes(aiAnalysisOutcome(intelligencePreview?.ai_processing_coverage).status) && <div className="mt-3 text-sm text-slate-700">
+              <p>The connection test passed. The previous document analysis is still incomplete; retry it with these saved settings.</p>
+              <button type="button" className="pln-button mt-2" disabled={analyzing || savingAiSettings || testingConnection || aiSettingsDirty} onClick={() => { setShowAiSettingsModal(false); handleRetryAnalysis(); }}>Retry document analysis</button>
+            </div>}
+            {pendingAnalysisWorkspace && !analyzing && <p role="status" className="mt-3 text-sm text-sky-700">Analysis findings are saved. Close AI Settings to open the Schedule Planner.</p>}
           </div>
+
+          {(savingAiSettings || testingConnection) && (
+            <div className="mt-5" role="status" aria-live="polite">
+              <div className="mb-1.5 flex items-center justify-between text-xs font-semibold text-violet-700">
+                <span>{testingConnection ? 'Testing AI connection…' : 'Saving AI settings…'}</span>
+                <span>Please wait</span>
+              </div>
+              <div
+                className="h-2 w-full overflow-hidden rounded-full bg-violet-100"
+                role="progressbar"
+                aria-label={testingConnection ? 'Testing AI connection' : 'Saving AI settings'}
+              >
+                <div className="h-full w-full animate-pulse rounded-full bg-gradient-to-r from-violet-500 via-indigo-500 to-violet-500" />
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-wrap gap-2 justify-between mt-6">
             <div className="flex gap-2">
-              <button
+              {aiSettings?.credential_source !== 'administrator' && <button
                 type="button"
                 onClick={handleRemoveAiKey}
-                disabled={savingAiSettings || !aiSettings?.key_configured}
+                disabled={aiSettingsUnavailable || savingAiSettings || testingConnection || !aiSettings?.key_configured}
                 className="px-3.5 py-2 text-sm font-medium rounded-xl border-2 border-rose-200 text-rose-600 hover:bg-rose-50 disabled:opacity-40 transition-colors"
               >
                 Remove Key
-              </button>
+              </button>}
               <button
                 type="button"
                 onClick={handleTestAiConnection}
-                disabled={testingConnection || !aiSettings?.key_configured}
+                disabled={savingAiSettings || testingConnection || !canTestAiConnection}
                 className="px-3.5 py-2 text-sm font-medium rounded-xl border-2 border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition-colors"
               >
                 {testingConnection ? 'Testing…' : 'Test Connection'}
               </button>
             </div>
             <div className="flex gap-2">
-              <button type="button" onClick={() => setShowAiSettingsModal(false)} className="px-4 py-2 text-sm font-medium rounded-xl border-2 border-slate-200 text-slate-600 hover:bg-slate-50">Close</button>
+              <button
+                type="button"
+                onClick={() => setShowAiSettingsModal(false)}
+                disabled={savingAiSettings || testingConnection}
+                className="px-4 py-2 text-sm font-medium rounded-xl border-2 border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+              >
+                Close
+              </button>
               <button
                 type="button"
                 onClick={handleSaveAiSettings}
-                disabled={savingAiSettings}
+                disabled={aiSettingsUnavailable || savingAiSettings || testingConnection || aiReplacementKeyRequired}
                 className="px-4 py-2 text-sm font-semibold rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-sm hover:shadow-md hover:from-violet-700 hover:to-indigo-700 transition-all disabled:opacity-40"
               >
-                {savingAiSettings ? 'Saving…' : 'Save Settings'}
+                {testingConnection ? 'Testing…' : savingAiSettings ? 'Saving…' : 'Save Settings'}
               </button>
             </div>
           </div>
@@ -1017,13 +1971,18 @@ const PlanningPackagePage = () => {
 
   const renderStepNav = () => (
     <div className="flex lg:flex-col gap-1.5 lg:w-64 shrink-0 overflow-x-auto lg:overflow-visible lg:sticky lg:top-6 lg:self-start bg-white lg:bg-transparent rounded-2xl lg:rounded-none border lg:border-0 border-slate-200/80 p-2 lg:p-0">
-      {PLANNING_WORKFLOW_STEPS.map((step, idx) => {
-        const isActive = currentStep === step.id;
-        const locked = step.requiresGeneration && !generation;
+      {PLANNING_WORKFLOW_STAGES.map((stage, idx) => {
+        const firstStep = PLANNING_WORKFLOW_STEPS.find(step => step.id === stage.stepIds[0]);
+        const isActive = stage.stepIds.includes(currentStep);
+        const locked = stage.stepIds.every(stepId => PLANNING_WORKFLOW_STEPS.find(step => step.id === stepId)?.requiresGeneration) && !generation;
         return (
           <button
-            key={step.id}
-            onClick={() => setCurrentStep(step.id)}
+            type="button"
+            key={stage.id}
+            disabled={locked}
+            aria-current={isActive ? 'step' : undefined}
+            aria-disabled={locked}
+            onClick={() => !locked && setCurrentStep(stage.stepIds[0])}
             className={[
               'group flex items-start lg:items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap lg:whitespace-normal text-left transition-all shrink-0 lg:w-full',
               isActive
@@ -1035,17 +1994,17 @@ const PlanningPackagePage = () => {
               className={[
                 'flex items-center justify-center w-8 h-8 rounded-lg text-sm shrink-0 transition-all',
                 isActive
-                  ? `bg-gradient-to-br ${step.accent} text-white shadow-sm`
+                  ? `bg-gradient-to-br ${firstStep?.accent || 'from-indigo-600 to-violet-600'} text-white shadow-sm`
                   : locked ? 'bg-slate-100 text-slate-400' : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200',
               ].join(' ')}
             >
-              {step.icon}
+              {idx + 1}
             </span>
             <span className="flex flex-col leading-tight min-w-0 flex-1">
               <span className={['break-words', isActive ? 'text-slate-800 font-semibold' : 'text-slate-600'].join(' ')}>
-                {idx + 1}. {step.label}
+                {stage.label}
               </span>
-              <span className="hidden lg:block text-xs text-slate-500 font-normal break-words whitespace-normal mt-0.5">{step.description}</span>
+              <span className="hidden lg:block text-xs text-slate-500 font-normal break-words whitespace-normal mt-0.5">{stage.description}</span>
             </span>
             {locked && <span className="text-slate-300 text-xs hidden lg:inline shrink-0 self-start mt-1">🔒</span>}
           </button>
@@ -1053,6 +2012,28 @@ const PlanningPackagePage = () => {
       })}
     </div>
   );
+
+  const renderTaskNav = () => {
+    const stage = PLANNING_WORKFLOW_STAGES.find(item => item.stepIds.includes(currentStep));
+    if (!stage || stage.stepIds.length < 2) return null;
+    return (
+      <nav aria-label={`${stage.label} tools`} className="mb-3 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1">
+        <ul className="flex min-w-max gap-1">
+          {stage.stepIds.map(stepId => {
+            const step = PLANNING_WORKFLOW_STEPS.find(item => item.id === stepId);
+            const active = currentStep === stepId;
+            return (
+              <li key={stepId}>
+                <button type="button" aria-current={active ? 'page' : undefined} onClick={() => setCurrentStep(stepId)} className={`min-h-10 rounded-lg px-3 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-600 ${active ? 'bg-violet-100 text-violet-800' : 'text-slate-600 hover:bg-slate-100'}`}>
+                  {step?.label}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+    );
+  };
 
   const renderUploadStep = () => (
     <div className="space-y-4">
@@ -1063,7 +2044,8 @@ const PlanningPackagePage = () => {
         </div>
 
         <div className="rounded-2xl border-2 border-dashed border-violet-200 bg-violet-50/40 p-5 sm:p-6 flex flex-wrap items-center gap-4">
-          <select className="border-2 border-slate-200 rounded-xl px-3 py-2 text-sm bg-white focus:border-violet-400 focus:outline-none min-w-[220px]"
+          <label htmlFor="planning-file-category" className="sr-only">Document category</label>
+          <select id="planning-file-category" className="border-2 border-slate-200 rounded-xl px-3 py-2 text-sm bg-white focus:border-violet-400 focus:outline-none min-w-[220px]"
             value={uploadCategory} onChange={e => setUploadCategory(e.target.value)}>
             {PLANNING_FILE_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.icon} {c.label}</option>)}
           </select>
@@ -1089,6 +2071,11 @@ const PlanningPackagePage = () => {
                   <div className="min-w-0">
                     <div className="font-medium text-slate-700 truncate">{f.original_filename}</div>
                     <div className="text-sm text-slate-500">{cat?.label || f.category}</div>
+                    {f.parse_status === 'failed' && f.parse_error && (
+                      <div className="mt-1 max-w-2xl text-xs text-rose-600 break-words" title={f.parse_error}>
+                        Parser error: {f.parse_error}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -1120,14 +2107,20 @@ const PlanningPackagePage = () => {
   const renderIntelligenceStep = () => {
     const isEditing = editingSection === 'intelligence';
     const data = isEditing ? draftIntelligence : intelligencePreview;
+    const aiOutcome = aiAnalysisOutcome(intelligencePreview?.ai_processing_coverage);
+    const registerBased = data?.deliverable_source === 'register';
+    const disciplineMeta = (code) => {
+      const meta = PLANNING_DISCIPLINE_META[code] || { ...DEFAULT_DISCIPLINE_META, label: code.replaceAll('_', ' ') };
+      return { ...meta, label: data?.disciplines?.[code]?.name || meta.label };
+    };
     return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 sm:p-6 space-y-5">
-      <div className="flex items-center gap-2">
+    <div className="pln-intelligence-preview bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 sm:p-6 space-y-5">
+      <div className="flex flex-wrap items-center gap-2">
         <span className="text-xl">🧠</span>
-        <h2 className="font-semibold text-slate-800">Document Intelligence Preview</h2>
+        <h2 ref={intelligenceHeadingRef} tabIndex={-1} className="font-semibold text-slate-800">Document Intelligence Preview</h2>
         {intelligencePreview && (
           <span className={`px-2.5 py-1 rounded-full text-sm font-semibold ${intelligencePreview.ai_augmented ? 'bg-violet-50 text-violet-700 border border-violet-200' : 'bg-slate-50 text-slate-500 border border-slate-200'}`}>
-            {intelligencePreview.ai_augmented ? '✨ Enhanced by Claude' : '🧮 Deterministic analysis'}
+            {analyzing ? `Previous saved analysis · ${aiOutcome.status === 'failed' ? 'AI failed' : aiOutcome.status === 'partial' ? 'AI incomplete' : 'findings retained'}` : aiOutcome.status === 'failed' ? 'AI analysis failed · source extraction retained' : aiOutcome.status === 'partial' ? 'AI analysis incomplete' : intelligencePreview.ai_augmented ? '✨ Enhanced by AI' : '🧮 Deterministic analysis'}
           </span>
         )}
         {intelligencePreview && !isEditing && (
@@ -1141,7 +2134,7 @@ const PlanningPackagePage = () => {
             >
               📊 Visualize
             </button>
-            <button onClick={() => startEdit('intelligence')}
+            <button disabled={savingPreview || packageBusy} onClick={() => startEdit('intelligence')}
               className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors inline-flex items-center gap-1.5">
               ✏️ Edit
             </button>
@@ -1149,11 +2142,16 @@ const PlanningPackagePage = () => {
         )}
         {isEditing && (
           <div className="ml-auto flex items-center gap-2">
-            <button onClick={cancelEdit} className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors">Cancel</button>
-            <button onClick={handleSaveIntelligenceEdit} className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-violet-600 text-white hover:bg-violet-700 transition-colors">Save Changes</button>
+            <button disabled={savingPreview} onClick={cancelEdit} className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors">Cancel</button>
+            <button disabled={savingPreview} onClick={handleSaveIntelligenceEdit} className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-violet-600 text-white hover:bg-violet-700 transition-colors">{embedded ? 'Apply edits' : 'Save Changes'}</button>
           </div>
         )}
+        {embedded && intelligencePreview && <button type="button" className="pln-button" disabled={savingPreview} onClick={() => setReviewRequest(value => value + 1)}>{previewReviewState.conflicts ? 'Review clarification' : 'Review source findings'}</button>}
       </div>
+      {intelligencePreview && <PlanningExtractionCoverage coverage={intelligencePreview.processing_coverage} aiCoverage={intelligencePreview.ai_processing_coverage} previousResult={analyzing} onAiSettings={() => { setShowAiSettingsModal(true); setTestResult(null); }} onRetryAnalysis={handleRetryAnalysis} busy={analyzing || savingPreview || isEditing} />}
+      {previewSaveError && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">{previewSaveError}</p>}
+      {embedded && previewReviewState.conflicts > 0 && <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">Resolve the source clarification before confirming this preview.</p>}
+      {embedded && intelligenceOutdated && <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="status">Project inputs or source documents have changed. Return to Scope &amp; inputs and run Document Intelligence to refresh this preview.</p>}
       {!intelligencePreview && (
         <div className="flex items-center gap-3 bg-slate-50 rounded-xl p-4">
           <p className="text-sm text-slate-400 flex-1">Run document intelligence from the Upload step first.</p>
@@ -1163,7 +2161,7 @@ const PlanningPackagePage = () => {
         </div>
       )}
       {data && (
-        <>
+        <fieldset disabled={savingPreview || packageBusy} className="min-w-0 space-y-5 border-0 p-0">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
             <div className="rounded-xl p-4 bg-gradient-to-br from-sky-50 to-white border border-sky-100">
               <div className="text-sky-600 text-sm font-semibold uppercase tracking-wide">Detected Project Name</div>
@@ -1197,17 +2195,58 @@ const PlanningPackagePage = () => {
             </div>
           </div>
 
-          {data.ai_review && (
+          {data.evidence_summary && (
+            <div className={`rounded-xl border p-4 ${data.evidence_summary.conflict_count ? 'bg-amber-50/70 border-amber-200' : 'bg-emerald-50/60 border-emerald-200'}`}>
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-sm font-semibold text-slate-700">Source Evidence</h3>
+                <span className="px-2 py-0.5 rounded-full bg-white border border-slate-200 text-sm text-slate-600">
+                  {data.evidence_summary.fact_count || 0} facts
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-white border border-emerald-200 text-sm text-emerald-700">
+                  {data.evidence_summary.confirmed_count || 0} confirmed
+                </span>
+                <span className={`px-2 py-0.5 rounded-full bg-white border text-sm ${data.evidence_summary.conflict_count ? 'border-amber-300 text-amber-700' : 'border-slate-200 text-slate-500'}`}>
+                  {data.evidence_summary.conflict_count || 0} open conflicts
+                </span>
+                {data.document_intelligence_run_id && (
+                  <span className="ml-auto text-sm font-mono text-slate-400">Run #{data.document_intelligence_run_id}</span>
+                )}
+              </div>
+              <p className="mt-2 text-sm text-slate-600">Facts can include requirements and project details. The fact count is not an activity or deliverable count.</p>
+              {(data.open_conflicts || []).length > 0 && (
+                <div className="mt-3 space-y-1.5">
+                  {(data.open_conflicts || []).map(conflict => (
+                    <div key={conflict.id} className="rounded-lg bg-white border border-amber-200 px-3 py-2 text-sm text-amber-800">
+                      <span className="font-semibold">Needs review:</span> {conflict.description}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {!embedded && <WorkablePlanBuilder
+            projectId={selectedProjectId}
+            intelligenceRunId={data.document_intelligence_run_id}
+            onOpenPlanner={() => openPlannerWorkspace(selectedProjectId)}
+          />}
+
+          {(data.ai_review?.review_summary || data.ai_review?.additional_notes) && (
             <div className="rounded-xl p-4 bg-gradient-to-br from-violet-50 via-indigo-50 to-white border border-violet-100">
               <div className="flex items-center gap-2 text-violet-700 text-sm font-semibold uppercase tracking-wide mb-1.5">
-                <span>✨</span> Claude AI Review
+                <span>✨</span> RADAI Review
               </div>
-              {data.ai_review.review_summary && (
-                <p className="text-sm text-slate-700 mb-2">{data.ai_review.review_summary}</p>
-              )}
-              {data.ai_review.additional_notes && (
-                <p className="text-sm text-slate-500 italic">{data.ai_review.additional_notes}</p>
-              )}
+              <p className="text-sm text-slate-700">{Number.isInteger(data.ai_processing_coverage?.chunks_processed) && Number.isInteger(data.ai_processing_coverage?.chunks_total)
+                ? `${data.ai_processing_coverage.chunks_processed} of ${data.ai_processing_coverage.chunks_total} AI sections processed. ` : ''}
+                {Number.isInteger(data.evidence_summary?.fact_count) ? `${data.evidence_summary.fact_count.toLocaleString()} source facts retained. ` : ''}
+                {Number.isInteger(data.evidence_summary?.conflict_count) ? `${data.evidence_summary.conflict_count} open conflicts. ` : ''}
+                Review the saved findings and planning assumptions.</p>
+              <details className="mt-3"><summary className="cursor-pointer text-sm font-semibold text-violet-800">Read analysis notes</summary>
+                <div className="mt-2 max-h-64 overflow-y-auto whitespace-pre-line text-sm text-slate-700" tabIndex={0} role="region" aria-label="Saved analysis notes">
+                  {data.ai_review.review_summary && <p>{data.ai_review.review_summary}</p>}
+                  {data.ai_review.additional_notes && <p className="mt-2">{data.ai_review.additional_notes}</p>}
+                </div>
+              </details>
             </div>
           )}
 
@@ -1217,10 +2256,9 @@ const PlanningPackagePage = () => {
                 <span>⚡</span> SOW-only mode
               </div>
               <p className="text-sm text-slate-700">
-                Only the Scope of Work has been uploaded — no MDR / EDDR / WBS to cross-reference.
-                {data.ai_augmented
-                  ? ' Claude will decide which disciplines and HSE studies are actually in scope; review the AI Scope summary below and tick / untick disciplines as needed before generating.'
-                  : ' Enable BYOK / Claude on this project to let the AI decide which disciplines and HSE studies are actually in scope, or curate the discipline list manually below.'}
+                {registerBased ? 'A deliverable register was extracted from the Scope of Work. Review its source rows and any extraction gaps.' : 'Only the Scope of Work has been uploaded. Review its explicit requirements and deliverable references before planning.'}
+                {' Disciplines and deliverables must come from the document or reviewed planning inputs.'}
+                {['failed', 'partial'].includes(aiOutcome.status) ? ` ${aiOutcome.recoveryMessage}` : data.ai_augmented ? ' Review AI-proposed scope against the source before confirming it.' : ' Configure project AI settings if AI-assisted source analysis is needed.'}
               </p>
             </div>
           )}
@@ -1231,7 +2269,7 @@ const PlanningPackagePage = () => {
                 <span>🎯</span> AI Scope Assessment
                 {data.ai_scope.sow_only_authoritative_applied && (
                   <span className="ml-2 text-sm font-semibold bg-violet-100 text-violet-700 border border-violet-200 rounded-full px-2 py-0.5 normal-case tracking-normal">
-                    ✨ SOW is source of truth
+                    ✨ Document is source of truth
                   </span>
                 )}
               </div>
@@ -1280,8 +2318,6 @@ const PlanningPackagePage = () => {
                   .filter(([_, info]) => info.in_scope !== false)
                   .map(([disc, _]) => disc)
               );
-              const allDisciplines = Object.keys(PLANNING_DISCIPLINE_META);
-              
               const toggleDiscipline = (disc) => {
                 if (isEditing) {
                   setDraftIntelligence(prev => {
@@ -1337,7 +2373,7 @@ const PlanningPackagePage = () => {
                 <>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {availableDisciplines.map(disc => {
-                      const meta = PLANNING_DISCIPLINE_META[disc] || { ...DEFAULT_DISCIPLINE_META, label: disc.replace('_', ' ') };
+                      const meta = disciplineMeta(disc);
                       const info = data.disciplines[disc];
                       const isChecked = info.in_scope !== false;
                       return (
@@ -1387,7 +2423,9 @@ const PlanningPackagePage = () => {
             <div className="flex items-center gap-2 mb-2">
               <h3 className="text-sm font-semibold text-slate-600">Deliverables</h3>
               <span className="text-sm text-slate-400">
-                Tick every deliverable to include in the schedule
+                {registerBased
+                  ? `${data.register_summary?.row_count ?? Object.values(data.disciplines || {}).reduce((count, item) => count + (item.deliverables || []).length, 0)} register deliverables`
+                  : 'Tick every deliverable to include in the schedule'}
               </span>
             </div>
             {(() => {
@@ -1400,7 +2438,7 @@ const PlanningPackagePage = () => {
                     const aiDiscovered = (info.ai_discovered || []).includes(d);
                     const excluded = info.excluded_deliverables || [];
                     const isChecked = !excluded.includes(d);
-                    const meta = PLANNING_DISCIPLINE_META[disc] || { ...DEFAULT_DISCIPLINE_META, label: disc.replace('_', ' ') };
+                    const meta = disciplineMeta(disc);
                     
                     allDeliverables.push({
                       disc,
@@ -1522,7 +2560,7 @@ const PlanningPackagePage = () => {
                                 <span className="text-xs font-semibold text-violet-600 bg-violet-50 border border-violet-100 rounded-full px-1.5 py-0.5">AI</span>
                               )}
                             </div>
-                            <span className={`block truncate ${item.isChecked ? 'text-slate-700' : 'text-slate-400'}`}>{item.name}</span>
+                            <span className={`block whitespace-normal break-words ${item.isChecked ? 'text-slate-700' : 'text-slate-400'}`}>{item.name}</span>
                           </div>
                         </label>
                       );
@@ -1552,7 +2590,7 @@ const PlanningPackagePage = () => {
           <div className="border-t border-slate-200 pt-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5">
               {Object.entries(data.disciplines || {}).map(([disc, info]) => {
-                const meta = PLANNING_DISCIPLINE_META[disc] || { ...DEFAULT_DISCIPLINE_META, label: disc.replace('_', ' ') };
+                const meta = disciplineMeta(disc);
                 const total = info.deliverables.length;
                 const mentioned = info.mentioned_in_source.length;
                 const pct = total ? Math.round((mentioned / total) * 100) : 0;
@@ -1614,7 +2652,9 @@ const PlanningPackagePage = () => {
                             )
                             : isEditing
                             ? <span className="flex items-center gap-2"><span className="text-blue-600">☑️</span><strong>Check/uncheck deliverables to include or exclude them from the schedule.</strong></span>
-                            : `Full deliverable checklist for ${meta.label} — items flagged as source-mentioned were detected in your uploaded documents; the rest fall back to the standard catalogue.`}
+                            : registerBased
+                              ? `Deliverables from the uploaded register for ${meta.label}. Titles and order match the source rows.`
+                              : `Full deliverable checklist for ${meta.label} — items flagged as source-mentioned were detected in your uploaded documents; the rest fall back to the standard catalogue.`}
                         </p>
                         {info.deliverables.length === 0 && isEditing && disciplineSelectionMode === 'manual' ? (
                           <div className="mb-3 p-4 bg-violet-50 border border-violet-200 rounded-lg text-center">
@@ -1881,7 +2921,7 @@ const PlanningPackagePage = () => {
             </div>
           </div>
 
-          <div>
+          {!registerBased && <div>
             <div className="flex items-center gap-2 mb-2">
               <h3 className="text-sm font-semibold text-slate-600">HSE Studies</h3>
               <span className="text-sm text-slate-400">
@@ -1966,22 +3006,13 @@ const PlanningPackagePage = () => {
                 </>
               );
             })()}
-          </div>
+          </div>}
 
           {(data.notes || []).map((n, i) => (
             <p key={i} className="text-sm text-amber-700 italic bg-amber-50 rounded-lg px-3 py-2">⚠ {n}</p>
           ))}
 
-          {!isEditing && (
-            <button
-              onClick={handleGenerate}
-              disabled={generating}
-              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white text-sm font-semibold shadow-sm hover:shadow-md hover:from-violet-700 hover:to-indigo-700 transition-all disabled:opacity-40 disabled:shadow-none"
-            >
-              {generating ? 'Generating Schedule…' : 'Generate Full Schedule →'}
-            </button>
-          )}
-        </>
+        </fieldset>
       )}
     </div>
     );
@@ -1992,7 +3023,7 @@ const PlanningPackagePage = () => {
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-10 text-center">
       <div className="text-4xl mb-3 opacity-60">🗓️</div>
       <p className="text-sm text-slate-400">
-        No {label} yet — run <span className="font-semibold text-slate-600">Generate Full Schedule</span> from the Document Intelligence step.
+        No {label} yet — open the <span className="font-semibold text-slate-600">Generation Wizard</span> from Document Intelligence.
       </p>
     </div>
   );
@@ -2066,10 +3097,16 @@ const PlanningPackagePage = () => {
   };
 
   const renderScheduleStep = () => {
-    if (!generation) return renderEmptyGenerationNotice('schedule');
+    if (!generation) return documentWorkflow ? <section className="rounded-xl border border-slate-200 bg-white p-6">
+      <h2 className="text-lg font-semibold text-slate-900">Schedule Generator</h2>
+      <p className="my-3 text-sm text-slate-600">Build an editable planning package from the saved analysis. Review its workflow assumptions, WBS and logic before approval.</p>
+      <button type="button" className="pln-button pln-primary" disabled={!intelligencePreview?.document_intelligence_run_id || analyzing || packageBusy || savingPreview || Boolean(editingSection) || unsavedPreviewEdits || intelligenceOutdated} onClick={() => setShowGenerationWizard(true)}>Open Generation Wizard</button>
+      {unsavedPreviewEdits && <p className="text-sm text-amber-800">Save or discard your preview edits before opening the generation wizard.</p>}
+    </section> : renderEmptyGenerationNotice('schedule');
     const isEditing = editingSection === 'schedule';
     const rows = isEditing ? draftActivities : generation.activities;
-    const criticalCount = generation.activities.filter(a => a.is_critical).length;
+    const hasCalculatedCriticality = generation.activities.some(a => typeof a.is_critical === 'boolean' && a.total_float_days != null);
+    const criticalCount = hasCalculatedCriticality ? generation.activities.filter(a => a.is_critical).length : null;
     return (
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 sm:p-6">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
@@ -2078,8 +3115,16 @@ const PlanningPackagePage = () => {
             <h2 className="font-semibold text-slate-800">Activities <span className="text-slate-400 font-normal">(v{generation.version} · {generation.activities.length} total)</span></h2>
           </div>
           <div className="flex items-center gap-2">
-            <span className="px-2.5 py-1 rounded-full bg-rose-50 text-rose-600 text-sm font-semibold">🔴 {criticalCount} on critical path</span>
+            {!isEditing && <button type="button" className="pln-button" onClick={() => generation.schedule_version_id ? openPlannerWorkspace(selectedProjectId, { scheduleId: generation.schedule_id, versionId: generation.schedule_version_id }) : openPlannerWorkspace(selectedProjectId, { generationId: generation.id })}>Open draft workspace</button>}
+            {!isEditing && (
+              <button disabled={packageBusy || analyzing || !intelligencePreview?.document_intelligence_run_id || Boolean(editingSection) || unsavedPreviewEdits} onClick={() => setShowGenerationWizard(true)}
+                className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-violet-600 text-white hover:bg-violet-700 transition-colors">
+                ✦ New generation
+              </button>
+            )}
+            <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 text-sm font-semibold">{criticalCount === null ? 'Critical path: Not calculated' : `${criticalCount} on critical path`}</span>
             <button
+              disabled={!hasCalculatedCriticality}
               onClick={() => {
                 setVisualizationSection('schedule');
                 setVisualizationTab('timeline');
@@ -2097,7 +3142,7 @@ const PlanningPackagePage = () => {
             )}
             {isEditing && (
               <>
-                <button onClick={cancelEdit} className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors">Cancel</button>
+                <button onClick={cancelEdit} disabled={savingEdit} className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors">Cancel</button>
                 <button onClick={() => handleSaveGenerationEdit('activities', draftActivities)} disabled={savingEdit}
                   className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-violet-600 text-white hover:bg-violet-700 transition-colors disabled:opacity-40">
                   {savingEdit ? 'Saving…' : 'Save Changes'}
@@ -2127,7 +3172,7 @@ const PlanningPackagePage = () => {
                   <td className="py-1.5 px-2.5 font-mono text-violet-600">{a.id}</td>
                   <td className="py-1.5 px-2.5 text-slate-700">
                     {isEditing ? (
-                      <input type="text" value={a.name}
+                      <input type="text" aria-label={`Activity ${a.id} name`} value={a.name} disabled={savingEdit}
                         onChange={e => updateDraftActivity(a.id, 'name', e.target.value)}
                         className="w-full border border-slate-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:border-violet-400" />
                     ) : (<>{a.name}{a.is_milestone ? ' 🔷' : ''}</>)}
@@ -2135,30 +3180,30 @@ const PlanningPackagePage = () => {
                   <td className="py-1.5 px-2.5 capitalize text-slate-500">{a.discipline}</td>
                   <td className="py-1.5 px-2.5">
                     {isEditing ? (
-                      <input type="number" min="0" value={a.original_duration_days}
-                        onChange={e => updateDraftActivity(a.id, 'original_duration_days', Number(e.target.value))}
+                      <input type="number" aria-label={`Activity ${a.id} duration`} min="0" value={a.original_duration_days ?? ''} disabled={savingEdit}
+                        onChange={e => updateDraftActivity(a.id, 'original_duration_days', e.target.value === '' ? null : Number(e.target.value))}
                         className="w-16 border border-slate-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:border-violet-400" />
-                    ) : `${a.original_duration_days}d`}
+                    ) : a.original_duration_days == null ? 'Not Specified' : `${a.original_duration_days}d`}
                   </td>
                   <td className="py-1.5 px-2.5">
                     {isEditing ? (
-                      <input type="date" value={a.start_date || ''}
+                      <input type="date" aria-label={`Activity ${a.id} start`} value={a.start_date || ''} disabled={savingEdit}
                         onChange={e => updateDraftActivity(a.id, 'start_date', e.target.value)}
                         className="border border-slate-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:border-violet-400" />
-                    ) : a.start_date}
+                    ) : a.start_date || 'Not Specified'}
                   </td>
                   <td className="py-1.5 px-2.5">
                     {isEditing ? (
-                      <input type="date" value={a.finish_date || ''}
+                      <input type="date" aria-label={`Activity ${a.id} finish`} value={a.finish_date || ''} disabled={savingEdit}
                         onChange={e => updateDraftActivity(a.id, 'finish_date', e.target.value)}
                         className="border border-slate-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:border-violet-400" />
-                    ) : a.finish_date}
+                    ) : a.finish_date || 'Not Specified'}
                   </td>
-                  <td className="py-1.5 px-2.5">{a.total_float_days}d</td>
-                  <td className="py-1.5 px-2.5">{a.is_critical && <span className="px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-600 text-xs font-semibold">CRITICAL</span>}</td>
+                  <td className="py-1.5 px-2.5">{a.total_float_days == null ? 'Not calculated' : `${a.total_float_days}d`}</td>
+                  <td className="py-1.5 px-2.5">{a.is_critical == null || a.total_float_days == null ? 'Not calculated' : a.is_critical ? 'CRITICAL' : 'No'}</td>
                   {isEditing && (
                     <td className="py-1.5 px-2.5 text-right whitespace-nowrap">
-                      <button onClick={() => deleteDraftActivity(a.id)} title="Delete activity"
+                      <button onClick={() => deleteDraftActivity(a.id)} title="Delete activity" disabled={savingEdit}
                         className="px-1.5 py-1 text-slate-400 hover:text-rose-600 transition-colors">🗑️</button>
                     </td>
                   )}
@@ -2168,7 +3213,7 @@ const PlanningPackagePage = () => {
           </table>
         </div>
         {isEditing && (
-          <button onClick={addDraftActivity}
+          <button onClick={addDraftActivity} disabled={savingEdit}
             className="mt-3 px-3 py-1.5 text-sm font-semibold rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors inline-flex items-center gap-1.5">
             ➕ Add Activity
           </button>
@@ -2398,14 +3443,16 @@ const PlanningPackagePage = () => {
     return (
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 sm:p-6">
         <div className="flex items-center gap-2 mb-4">
-          <span className="text-xl">📝</span>
+          <FileText className="h-5 w-5 text-violet-600" aria-hidden="true" />
           <h2 className="font-semibold text-slate-800">Schedule Narrative</h2>
-          <span className={`ml-auto px-2.5 py-1 rounded-full text-sm font-semibold ${aiAugmented ? 'bg-violet-50 text-violet-700 border border-violet-200' : 'bg-slate-50 text-slate-500 border border-slate-200'}`}>
-            {aiAugmented ? '✨ Executive Summary refined by Claude' : '🧮 Deterministic narrative'}
+          <span className={`ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm font-semibold ${aiAugmented ? 'bg-violet-50 text-violet-700 border border-violet-200' : 'bg-slate-50 text-slate-500 border border-slate-200'}`}>
+            {aiAugmented
+              ? <><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> Executive Summary refined by AI</>
+              : <><Calculator className="h-3.5 w-3.5" aria-hidden="true" /> Deterministic narrative</>}
           </span>
         </div>
         <div className="rounded-xl bg-slate-50/70 border border-slate-100 p-5">
-          <pre className="whitespace-pre-wrap text-sm text-slate-700 font-sans leading-relaxed">{generation.narrative}</pre>
+          <div>{renderScheduleNarrative(generation.narrative)}</div>
         </div>
       </div>
     );
@@ -2560,9 +3607,9 @@ const PlanningPackagePage = () => {
     
     if (visualizationSection === 'intelligence' && intelligencePreview) {
       // Discipline distribution
-      const disciplineData = Object.entries(intelligencePreview.detected_disciplines || {})
+      const disciplineData = Object.entries(intelligencePreview.disciplines || {})
         .map(([key, disc]) => ({
-          name: disc.display_name || key,
+          name: PLANNING_DISCIPLINE_META[key]?.label || key,
           count: (disc.deliverables || []).length,
           icon: PLANNING_DISCIPLINE_META[key]?.icon || '📋',
           color: PLANNING_DISCIPLINE_META[key]?.color || '#94a3b8'
@@ -2588,25 +3635,25 @@ const PlanningPackagePage = () => {
           name: act.name,
           start: new Date(act.start_date).getTime(),
           finish: new Date(act.finish_date).getTime(),
-          duration: act.duration_days || 0,
+          duration: act.original_duration_days || 0,
           isCritical: act.is_critical,
-          float: act.total_float || 0
+          float: act.total_float_days || 0
         });
       });
-      
+
       // Discipline distribution for schedule
       const disciplineStats = Object.entries(timelineData).map(([disc, acts]) => {
         const meta = PLANNING_DISCIPLINE_META[disc] || DEFAULT_DISCIPLINE_META;
         const criticalCount = acts.filter(a => a.isCritical).length;
         return {
-          name: meta.displayName || disc,
+          name: meta.label || disc,
           total: acts.length,
           critical: criticalCount,
           icon: meta.icon,
-          color: meta.color
+          color: meta.chartColor
         };
       });
-      
+
       // Activity duration distribution
       const durationBuckets = [
         { range: '1-5 days', min: 1, max: 5, count: 0 },
@@ -2615,23 +3662,23 @@ const PlanningPackagePage = () => {
         { range: '21-30 days', min: 21, max: 30, count: 0 },
         { range: '30+ days', min: 31, max: 999, count: 0 }
       ];
-      
+
       activities.forEach(act => {
-        const dur = act.duration_days || 0;
+        const dur = act.original_duration_days || 0;
         const bucket = durationBuckets.find(b => dur >= b.min && dur <= b.max);
         if (bucket) bucket.count++;
       });
-      
+
       // Timeline scatter data (for Gantt-style view)
       const timelineScatter = activities.map(act => {
         const meta = PLANNING_DISCIPLINE_META[act.discipline] || DEFAULT_DISCIPLINE_META;
         return {
           name: act.name.substring(0, 30) + (act.name.length > 30 ? '...' : ''),
           start: new Date(act.start_date).getTime(),
-          duration: act.duration_days || 0,
-          discipline: meta.displayName,
+          duration: act.original_duration_days || 0,
+          discipline: meta.label,
           isCritical: act.is_critical,
-          color: act.is_critical ? '#dc2626' : meta.color
+          color: act.is_critical ? '#dc2626' : meta.chartColor
         };
       }).slice(0, 50); // Limit to 50 activities for performance
       
@@ -2683,9 +3730,9 @@ const PlanningPackagePage = () => {
         if (!disciplineBreakdown[disc]) {
           const meta = PLANNING_DISCIPLINE_META[disc] || DEFAULT_DISCIPLINE_META;
           disciplineBreakdown[disc] = {
-            name: meta.displayName || disc,
+            name: meta.label || disc,
             icon: meta.icon,
-            color: meta.color,
+            color: meta.chartColor,
             total: 0,
             notStarted: 0,
             inProgress: 0,
@@ -2714,12 +3761,12 @@ const PlanningPackagePage = () => {
           
           return {
             name: doc.deliverable_name.substring(0, 35) + (doc.deliverable_name.length > 35 ? '...' : ''),
-            discipline: meta.displayName,
+            discipline: meta.label,
             start: startDate,
             end: endDate,
             duration: Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)),
             status: status,
-            color: meta.color,
+            color: meta.chartColor,
             icon: meta.icon
           };
         })
@@ -2757,13 +3804,13 @@ const PlanningPackagePage = () => {
 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setShowVisualization(false)}>
-        <div className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+        <div ref={visualizationDialogRef} tabIndex="-1" role="dialog" aria-modal="true" aria-labelledby="planning-visualization-title" className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
           {/* Header */}
           <div className="flex items-center justify-between p-6 border-b border-slate-200 bg-gradient-to-r from-violet-50 to-indigo-50">
             <div className="flex items-center gap-3">
               <span className="text-2xl">📊</span>
               <div>
-                <h2 className="text-xl font-bold text-slate-800">Data Visualization</h2>
+                <h2 id="planning-visualization-title" className="text-xl font-bold text-slate-800">Data Visualization</h2>
                 <p className="text-sm text-slate-500">
                   {visualizationSection === 'intelligence' && 'Document Intelligence Insights'}
                   {visualizationSection === 'schedule' && 'Schedule Analysis & Timeline'}
@@ -2771,7 +3818,7 @@ const PlanningPackagePage = () => {
                 </p>
               </div>
             </div>
-            <button onClick={() => setShowVisualization(false)} className="p-2 rounded-lg hover:bg-white/80 transition-colors">
+            <button type="button" aria-label="Close data visualization" onClick={() => setShowVisualization(false)} className="min-h-11 min-w-11 p-2 rounded-lg hover:bg-white/80 transition-colors">
               <span className="text-2xl text-slate-400 hover:text-slate-600">×</span>
             </button>
           </div>
@@ -2887,21 +3934,48 @@ const PlanningPackagePage = () => {
               </div>
             )}
 
-            {visualizationSection === 'schedule' && visualizationTab === 'timeline' && chartData.timelineScatter && (
+            {visualizationSection === 'schedule' && visualizationTab === 'timeline' && chartData.timelineScatter && chartData.timelineScatter.length > 0 && (
               <div className="space-y-6">
                 <div className="bg-gradient-to-br from-slate-50 to-white rounded-xl p-4 border border-slate-200">
-                  <h3 className="font-semibold text-slate-700 mb-4">Project Timeline (First 50 Activities)</h3>
+                  <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
+                    <h3 className="font-semibold text-slate-700">Project Timeline (First 50 Activities)</h3>
+                    {/* Manual legend — Scatter cells are colored per-point (by discipline, or red
+                        if critical), so a standard Recharts <Legend/> can't reflect that; this key
+                        keeps color from being the only signal (accessibility: color-not-only). */}
+                    <div className="flex items-center gap-3 flex-wrap text-xs text-slate-500">
+                      {[...new Map(chartData.timelineScatter.map(a => [a.discipline, a])).values()]
+                        .filter(a => !a.isCritical)
+                        .map(a => (
+                          <span key={a.discipline} className="inline-flex items-center gap-1.5">
+                            <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: a.color }} />
+                            {a.discipline}
+                          </span>
+                        ))}
+                      <span className="inline-flex items-center gap-1.5 font-medium text-rose-600">
+                        <span className="w-2.5 h-2.5 rounded-full inline-block bg-rose-600" />
+                        🔴 Critical path
+                      </span>
+                    </div>
+                  </div>
                   <ResponsiveContainer width="100%" height={400}>
-                    <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                      <CartesianGrid />
+                    <ScatterChart margin={{ top: 20, right: 20, bottom: 30, left: 30 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                       <XAxis
                         type="number"
                         dataKey="start"
                         name="Start Date"
                         domain={[chartData.projectStart, chartData.projectFinish]}
                         tickFormatter={(tick) => new Date(tick).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        tick={{ fontSize: 12, fill: '#64748b' }}
+                        label={{ value: 'Start Date', position: 'insideBottom', offset: -10, style: { fontSize: 12, fill: '#64748b' } }}
                       />
-                      <YAxis type="number" dataKey="duration" name="Duration (days)" />
+                      <YAxis
+                        type="number"
+                        dataKey="duration"
+                        name="Duration (days)"
+                        tick={{ fontSize: 12, fill: '#64748b' }}
+                        label={{ value: 'Duration (days)', angle: -90, position: 'insideLeft', style: { fontSize: 12, fill: '#64748b', textAnchor: 'middle' } }}
+                      />
                       <ZAxis type="number" dataKey="duration" range={[50, 400]} />
                       <Tooltip
                         cursor={{ strokeDasharray: '3 3' }}
@@ -2937,7 +4011,15 @@ const PlanningPackagePage = () => {
               </div>
             )}
 
-            {visualizationSection === 'schedule' && visualizationTab === 'disciplines' && chartData.disciplineStats && (
+            {visualizationSection === 'schedule' && visualizationTab === 'timeline' && (!chartData.timelineScatter || chartData.timelineScatter.length === 0) && (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <span className="text-4xl mb-3">📅</span>
+                <p className="text-sm font-semibold text-slate-600">No schedule activities yet</p>
+                <p className="text-sm text-slate-400 mt-1">Generate a schedule from the Document Intelligence step to see the timeline here.</p>
+              </div>
+            )}
+
+            {visualizationSection === 'schedule' && visualizationTab === 'disciplines' && chartData.disciplineStats && chartData.disciplineStats.length > 0 && (
               <div className="space-y-6">
                 {/* Summary Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -2963,9 +4045,10 @@ const PlanningPackagePage = () => {
                     <ResponsiveContainer width="100%" height={300}>
                       <BarChart data={chartData.disciplineStats}>
                         <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
-                        <YAxis />
+                        <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} tick={{ fontSize: 12, fill: '#64748b' }} />
+                        <YAxis tick={{ fontSize: 12, fill: '#64748b' }} />
                         <Tooltip />
+                        <Legend wrapperStyle={{ fontSize: 12 }} />
                         <Bar dataKey="total" fill="#8b5cf6" name="Total Activities" radius={[8, 8, 0, 0]} />
                         <Bar dataKey="critical" fill="#dc2626" name="Critical" radius={[8, 8, 0, 0]} />
                       </BarChart>
@@ -2997,7 +4080,15 @@ const PlanningPackagePage = () => {
               </div>
             )}
 
-            {visualizationSection === 'schedule' && visualizationTab === 'statistics' && chartData.durationBuckets && (
+            {visualizationSection === 'schedule' && visualizationTab === 'disciplines' && (!chartData.disciplineStats || chartData.disciplineStats.length === 0) && (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <span className="text-4xl mb-3">🎨</span>
+                <p className="text-sm font-semibold text-slate-600">No discipline data yet</p>
+                <p className="text-sm text-slate-400 mt-1">Generate a schedule from the Document Intelligence step to see this breakdown.</p>
+              </div>
+            )}
+
+            {visualizationSection === 'schedule' && visualizationTab === 'statistics' && chartData.durationBuckets && chartData.durationBuckets.length > 0 && (
               <div className="space-y-6">
                 {/* Duration Distribution */}
                 <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
@@ -3038,6 +4129,14 @@ const PlanningPackagePage = () => {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {visualizationSection === 'schedule' && visualizationTab === 'statistics' && (!chartData.durationBuckets || chartData.durationBuckets.length === 0) && (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <span className="text-4xl mb-3">📈</span>
+                <p className="text-sm font-semibold text-slate-600">No statistics yet</p>
+                <p className="text-sm text-slate-400 mt-1">Generate a schedule from the Document Intelligence step to see activity statistics.</p>
               </div>
             )}
 
@@ -3380,10 +4479,27 @@ const PlanningPackagePage = () => {
   };
 
   const renderStepContent = () => {
+    if (['wbs', 'schedule', 'eddr', 'manhours', 'validation', 'narrative', 'presentation', 'export'].includes(currentStep) && (!embedded || documentWorkflow) && !manualPlanning) {
+      if (loadingGeneration) return <p role="status">Loading saved generation…</p>;
+      if (generationLoadError) return <section role="alert"><p>{generationLoadError}</p><button type="button" className="pln-button" onClick={() => loadLatestGeneration(selectedProjectId, generationSelectionId)}>Retry saved generation</button></section>;
+    }
     switch (currentStep) {
       case 'upload': return renderUploadStep();
       case 'intelligence': return renderIntelligenceStep();
-      case 'wbs': return renderWbsStep();
+      case 'wbs': return embedded && (manualPlanning || !documentWorkflow) ? manualPlanning || previewConfirmed ? <WorkBreakdownPanel
+        key={manualPlanning ? `manual:${selectedProjectId}` : `${intelligencePreview.document_intelligence_run_id}:${previewConfirmation.confirmed_at}`}
+        projectId={selectedProjectId} intelligenceRunId={intelligencePreview?.document_intelligence_run_id}
+        planningMode={manualPlanning ? 'manual' : 'document'}
+        previewConfirmedAt={previewConfirmation?.confirmed_at} baselinePublished={Boolean(enterpriseContract?.baseline_locked)}
+        onDirtyChanged={setWorkBreakdownDirty} onSavingChanged={setWorkBreakdownSaving}
+        onLoaded={acceptWorkBreakdown}
+        onBack={() => setCurrentStep('upload')}
+        onContinue={result => {
+          setWorkBreakdownSchedule(result); setWorkspaceInitialTab('activities'); setCurrentStep('schedule');
+          if (onOpenPlanner) onOpenPlanner({ planningProjectId: selectedProjectId, scheduleId: result.schedule_id, versionId: result.schedule_version_id });
+          else setShowPlannerWorkspace(true);
+        }}
+      /> : <p>Confirm and save the Document Intelligence Preview before building the work breakdown.</p> : renderWbsStep();
       case 'schedule': return renderScheduleStep();
       case 'eddr': return renderEddrStep();
       case 'manhours': return renderManhoursStep();
@@ -3391,114 +4507,187 @@ const PlanningPackagePage = () => {
       case 'narrative': return renderNarrativeStep();
       case 'presentation': return renderPresentationStep();
       case 'export': return renderExportStep();
+      case 'proposal': return (
+        <div className="rounded-2xl border border-blue-200 bg-gradient-to-br from-white to-blue-50 px-8 py-16 text-center shadow-sm">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-700 text-3xl text-white">📑</div>
+          <h2 className="mt-5 text-2xl font-bold text-slate-900">Enterprise Technical Proposal Studio</h2>
+          <p className="mx-auto mt-2 max-w-2xl text-slate-600">Open the dedicated bid workspace for the complete proposal outline, compliance matrix, resources, method statement, schedule exhibits, corporate evidence, live A4 preview and controlled exports.</p>
+          <button type="button" onClick={() => navigate(`/proposal-workspace/${selectedProjectId}`)} className="mt-7 rounded-xl bg-blue-700 px-6 py-3 font-bold text-white shadow hover:bg-blue-800">Open Enterprise Proposal Studio →</button>
+        </div>
+      );
       default: return null;
     }
   };
 
   // ── Main render ──────────────────────────────────────────────────────────
+  if (embedded) {
+    const stages = [
+      { label: 'Scope & inputs', steps: ['upload', 'intelligence'] },
+      { label: 'Work breakdown', steps: ['wbs'] },
+      { label: 'Schedule & resources', steps: ['schedule', 'eddr', 'manhours'] },
+      { label: 'Review & approve', steps: ['validation'] },
+      { label: 'Publish baseline', steps: ['export', 'narrative', 'presentation', 'proposal'] },
+    ];
+    const selectedStage = stages.findIndex(stage => stage.steps.includes(currentStep));
+    const goToStage = async index => {
+      if (workBreakdownDirty && index !== 1 && !(await radaiConfirm('Leave Work breakdown and discard unsaved task changes?'))) return;
+      if (index === 1) openWorkBreakdown();
+      else if (manualPlanning && index >= 2) {
+        const initialTab = index === 3 ? 'assurance' : index === 4 ? 'governance' : 'activities';
+        setWorkspaceInitialTab(initialTab); setCurrentStep(stages[index].steps[0]);
+        if (onOpenPlanner) onOpenPlanner({ planningProjectId: selectedProjectId, scheduleId: planningSchedule?.schedule_id, versionId: planningSchedule?.schedule_version_id, initialTab });
+        else setShowPlannerWorkspace(true);
+      }
+      else setCurrentStep(stages[index].steps[0]);
+    };
+    const backToPortfolio = () => onBackToPortfolio ? onBackToPortfolio() : navigate(`/projects?project=${enterpriseProject?.id || ''}`);
+    const savedProject = saved => {
+      setProjects(current => current.some(item => item.id === saved.id)
+        ? current.map(item => item.id === saved.id ? saved : item) : [saved, ...current]);
+      setSelectedProjectId(saved.id);
+      loadEnterpriseContract(saved.id);
+    };
+    return <div className="planning-design" aria-label="Project planning">
+      {renderBanner()}
+      {renderPreviousAnalysisNotice()}
+      {renderPendingPlannerNotice()}
+      {renderPlanningPackageState()}
+      {renderAiSettingsModal()}
+      <GenerationWizard open={showGenerationWizard} project={selectedProject} files={files}
+        generationMode={documentWorkflow ? 'planning_package' : 'document'}
+        intelligence={intelligencePreview || generation?.intelligence} intelligenceOverrides={buildIntelligenceOverrides()}
+        onClose={() => setShowGenerationWizard(false)} onGenerate={handleGenerate}
+        onReviewEvidence={() => { setShowGenerationWizard(false); setShowPlannerWorkspace(false); setCurrentStep('intelligence'); }}
+        onOpenPlanner={selection => openPlannerWorkspace(selectedProjectId, selection)} />
+      {showPlannerWorkspace && selectedProjectId && <PlannerWorkspacePage embedded planningProjectId={selectedProjectId}
+        initialScheduleId={planningSchedule?.schedule_id} initialVersionId={planningSchedule?.schedule_version_id} initialGenerationId={workspaceGenerationId} initialAnalysisRunId={workspaceAnalysisRunId} initialTab={workspaceInitialTab}
+        onOpenDocumentStep={request => setLocalDocumentReviewRequest({ ...request, requestId: Date.now() })}
+        onBack={() => { setShowPlannerWorkspace(false); if (planningSchedule) setCurrentStep('wbs'); }} onOpenGenerationWizard={() => { setShowPlannerWorkspace(false); if (documentWorkflow && !intelligencePreview?.document_intelligence_run_id) setCurrentStep('intelligence'); else setShowGenerationWizard(true); }} />}
+      <nav aria-label="Planning stages" hidden={showPlannerWorkspace || documentWorkflow}><ol className="pln-steps">{stages.map((stage, index) => {
+        const active = index === selectedStage;
+        const available = !analyzing && !savingPreview && !workBreakdownSaving && (index === 0 || (Boolean(selectedProjectId) && (manualPlanning ? index === 1 ? inputsReady : !loadingContract && Boolean(planningSchedule) : Boolean(generation) || (index === 1 && Boolean(intelligencePreview)))));
+        const complete = index === 0 && (manualPlanning ? inputsReady : previewConfirmed) && selectedStage > 0;
+        return <li key={stage.label} className={complete ? 'pln-step-complete' : undefined}><button type="button" aria-current={active ? 'step' : undefined} disabled={!available}
+          onClick={() => goToStage(index)}>
+          <span className="pln-step-number">{complete ? <Check size={21} /> : index + 1}</span><span><strong>{stage.label}</strong><small>{complete ? 'Complete' : active ? 'In progress' : index === 4 && enterpriseContract?.baseline_locked ? 'Baseline published' : generation || manualPlanning && available ? 'Available' : 'Not started'}</small></span>
+        </button></li>;
+      })}</ol></nav>
+      {loadingProjects ? <div className="pln-workspace-tools" role="status"><RefreshCw size={17} className="animate-spin" />Loading project planning…</div> : <>
+        {contractError && <div className="pln-error" role="alert">{contractError.title}. <button type="button" className="pln-button" onClick={() => loadEnterpriseContract(selectedProjectId)}>Retry connection</button></div>}
+        <div className={documentWorkflow ? 'pln-document-workflow' : undefined}>
+        {documentWorkflow && !showPlannerWorkspace && <nav className="pln-document-steps" aria-label="Document Intelligence workflow">
+          {PLANNING_WORKFLOW_STEPS.map((step, index) => {
+            const locked = !selectedProjectId || analyzing || packageBusy || savingPreview || savingEdit || workBreakdownSaving || (step.requiresGeneration && step.id !== 'schedule' && !generation && !(step.id === 'wbs' && manualPlanning && inputsReady));
+            return <button type="button" key={step.id} disabled={locked} aria-current={currentStep === step.id ? 'step' : undefined}
+              title={locked && step.requiresGeneration && !generation ? 'Generate a draft to view this output.' : undefined}
+              onClick={async () => { if (workBreakdownDirty && step.id !== 'wbs' && !(await radaiConfirm('Leave Work breakdown and discard unsaved task changes?'))) return; setCurrentStep(step.id); }}>
+              <span className="pln-document-step-icon" aria-hidden="true">{step.icon}</span>
+              <span><strong>{index + 1}. {step.label}</strong><small>{step.description}</small></span>
+            </button>;
+          })}
+        </nav>}
+        <div className="pln-document-content">
+        <PlanningInputsPanel project={selectedProject} enterpriseProject={enterpriseProject} contract={enterpriseContract} idPrefix={documentWorkflow ? 'document-planning' : 'planning'}
+          loadingContract={loadingContract} files={files} uploading={uploading} analyzing={analyzing} busy={packageBusy} analysisRevision={analysisRevision} analysisRunId={reviewAnalysisRunId}
+          uploadCategory={uploadCategory} onUploadCategory={setUploadCategory} onUpload={handleUpload} onDeleteFile={handleDeleteFile}
+          onAnalyze={handleAnalyze} onSaved={savedProject} onBack={backToPortfolio}
+          onOpenWorkBreakdown={() => setCurrentStep('wbs')}
+          onOpenIntelligencePreview={() => setCurrentStep('intelligence')}
+          onPreviewStaleChanged={setIntelligenceOutdated}
+          onReadinessChanged={setInputsReady}
+          onIntelligenceLoaded={acceptLoadedIntelligence}
+          onReviewStateChanged={setPreviewReviewState} reviewRequest={reviewRequest}
+          onAiSettings={() => { setShowAiSettingsModal(true); setTestResult(null); }} hidden={showPlannerWorkspace || currentStep !== 'upload'}
+          onRevealInputs={() => { setShowPlannerWorkspace(false); setCurrentStep('upload'); }} />
+        {!showPlannerWorkspace && currentStep !== 'upload' && <div className="pln-advanced-panel">
+          <nav className="pln-task-tabs" aria-label="Planning tasks" hidden={documentWorkflow || currentStep === 'wbs'}>{(stages[selectedStage]?.steps || []).map(id => <button type="button" key={id} aria-pressed={currentStep === id} onClick={() => setCurrentStep(id)}>{PLANNING_WORKFLOW_STEPS.find(step => step.id === id)?.label}</button>)}</nav>
+          {renderStepContent()}
+          <div className="pln-workspace-tools" hidden={!documentWorkflow && currentStep === 'wbs'}><button type="button" className="pln-button" onClick={() => setCurrentStep('upload')}>Back to scope &amp; inputs</button><span>{currentStep === 'intelligence' && previewConfirmed ? 'Preview confirmed and saved.' : `${enterpriseProject?.code} · ${enterpriseProject?.name}`}</span>
+            {currentStep === 'intelligence' && intelligencePreview?.document_intelligence_run_id && <><button type="button" className="pln-button" disabled={analyzing || packageBusy || savingPreview || savingEdit || Boolean(editingSection) || intelligenceOutdated} onClick={() => requestPlanningWorkspace(intelligencePreview.document_intelligence_run_id)}>Open schedule workspace</button><button type="button" className="pln-button" disabled={analyzing || packageBusy || savingPreview || savingEdit || Boolean(editingSection)} onClick={() => openPlannerWorkspace(selectedProjectId, { analysisRunId: intelligencePreview.document_intelligence_run_id })}>Review extracted source</button></>}
+            <button type="button" className="pln-button pln-primary" disabled={currentStep === 'intelligence' && (!canConfirmPreview || savingPreview)} onClick={currentStep === 'intelligence' ? confirmPreview : () => openPlannerWorkspace(selectedProjectId)}>{currentStep === 'intelligence' ? savingPreview ? 'Saving confirmation…' : documentWorkflow ? previewConfirmed ? 'Continue to Schedule Generator' : 'Confirm & save preview' : previewConfirmed ? 'Continue to Work breakdown' : 'Confirm & save → Work breakdown' : 'Open schedule workspace'}</button></div>
+        </div>}
+        {selectedProject && !showPlannerWorkspace && currentStep !== 'wbs' && <details className="pln-workspace-details"><summary>Planning tools &amp; workspace details</summary><div className="pln-workspace-tools">{!manualPlanning && <button type="button" className="pln-button" onClick={() => setCurrentStep('intelligence')}>Document Intelligence Preview</button>}<span>{manualPlanning ? 'Manage the project calendar, tasks and schedule.' : 'Review the schedule basis, discipline inputs and generation plan.'}</span></div>{renderProjectPicker()}</details>}
+        </div></div>
+      </>}
+      {renderVisualizationModal()}
+    </div>;
+  }
+
   return (
-    <div className={`min-h-screen bg-gradient-to-br from-slate-50 via-white to-violet-50/30 py-6 sm:py-8 ${canvasStyle.pagePadding} transition-[padding] duration-200`}>
-      <div className={`${canvasStyle.container} mx-auto transition-[max-width] duration-200`}>
-        {/* SOFT-CODED: Sub-features navigation */}
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            {PROJECT_CONTROL_SUBFEATURES.filter(sf => sf.isActive).map((subFeature) => {
-              const isCurrentPage = location.pathname === subFeature.route;
-              return (
-                <button
-                  key={subFeature.id}
-                  onClick={() => !isCurrentPage && navigate(subFeature.route)}
-                  className={[
-                    'group relative inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all',
-                    isCurrentPage
-                      ? `${subFeature.bgColor} ${subFeature.textColor} ${subFeature.borderColor} border-2 shadow-sm`
-                      : `bg-white text-slate-600 border border-slate-200 ${subFeature.hoverBg} hover:border-slate-300 hover:shadow`,
-                  ].join(' ')}
-                  disabled={isCurrentPage}
-                >
-                  <span className="text-base">{subFeature.icon}</span>
-                  <span className="font-mono text-[11px] opacity-70">{subFeature.number}</span>
-                  <span>{subFeature.name}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Canvas width toggle — Original (reading width) vs Full Screen (near edge-to-edge) */}
-          <div className="inline-flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => navigate('/planning-packages/docs')}
-              title="Open the workflow guide and documentation"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-white border border-slate-200/80 text-violet-700 hover:bg-violet-50 hover:border-violet-200 shadow-sm transition-all"
-            >
-              <span>📘</span>
-              <span className="hidden sm:inline">Workflow &amp; Docs</span>
-            </button>
-
-            <div className="inline-flex items-center gap-1 bg-white rounded-xl border border-slate-200/80 p-1 shadow-sm">
-              {CANVAS_MODE_OPTIONS.map(opt => (
-                <button
-                  key={opt.value}
-                  onClick={() => setCanvasMode(opt.value)}
-                  title={opt.label}
-                  className={[
-                    'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all',
-                    canvasMode === opt.value
-                      ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-sm'
-                      : 'text-slate-500 hover:bg-slate-100',
-                  ].join(' ')}
-                >
-                  <span>{opt.icon}</span>
-                  <span className="hidden sm:inline">{opt.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
+    <div className={`project-control-workspace bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 ${embedded ? 'w-full' : 'min-h-screen px-4 py-6 sm:px-6 sm:py-8'}`}>
+      <div className={embedded ? 'w-full' : 'mx-auto w-full max-w-[1800px]'}>
+        {!embedded && <div className="mb-4 flex flex-wrap items-center justify-between gap-2"><button type="button" onClick={() => navigate('/projects')} className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600">← Back to Project Control</button><button type="button" onClick={() => navigate('/planning-packages/docs')} className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50">Workflow &amp; Docs</button></div>}
 
         {/* Hero header */}
-        <div className={`relative overflow-hidden rounded-3xl bg-gradient-to-r ${PLANNING_UI.heroGradient} p-6 sm:p-8 mb-6 shadow-lg`}>
-          <div className="absolute -right-10 -top-10 w-56 h-56 rounded-full bg-white/10 blur-2xl" />
-          <div className="absolute -right-24 bottom-0 w-72 h-72 rounded-full bg-white/5 blur-3xl" />
+        {!embedded && <header className="relative mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900 sm:p-6">
+          <div className="hidden" aria-hidden="true" />
+          <div className="hidden" aria-hidden="true" />
           <div className="relative flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-5">
-            <div className="w-14 h-14 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center text-3xl shrink-0 shadow-inner">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-2xl text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
               {PLANNING_UI.heroIcon}
             </div>
             <div className="flex-1 min-w-0">
-              <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">RADAI Project Planning Application</h1>
-              <p className="text-sm text-violet-100/90 mt-1">
-                AI-assisted FEED/DEFINE schedule generation from your project reference documents.
+              <nav aria-label="Breadcrumb" className="mb-1 text-sm text-slate-500 dark:text-slate-400">Project Control / Plan &amp; Baseline</nav>
+              <h1 className="text-2xl font-semibold tracking-tight text-slate-950 dark:text-white">Plan &amp; Baseline</h1>
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+                Prepare, validate, approve, and publish a controlled project plan.
               </p>
             </div>
             {viewMode === 'workspace' && selectedProject && (
               <div className="flex gap-2 flex-wrap sm:justify-end shrink-0">
-                <div className="rounded-xl bg-white/15 backdrop-blur px-3.5 py-2 text-center min-w-[84px]">
-                  <div className="text-xl font-bold text-white">{files.length}</div>
-                  <div className="text-xs font-semibold uppercase tracking-wide text-violet-50">Files</div>
+                <button
+                  type="button"
+                  onClick={() => openPlannerWorkspace(selectedProject.id)}
+                  className="min-h-11 rounded-lg bg-indigo-700 px-4 text-sm font-semibold text-white hover:bg-indigo-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2"
+                >
+                  Open Planning Workspace
+                </button>
+                <div className="min-w-[84px] rounded-lg bg-slate-100 px-3.5 py-2 text-center dark:bg-slate-800">
+                  <div className="text-xl font-bold text-slate-900 dark:text-white">{files.length}</div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Files</div>
                 </div>
-                <div className="rounded-xl bg-white/15 backdrop-blur px-3.5 py-2 text-center min-w-[84px]">
-                  <div className="text-xl font-bold text-white">{generation ? generation.activities.length : '—'}</div>
-                  <div className="text-xs font-semibold uppercase tracking-wide text-violet-50">Activities</div>
+                <div className="min-w-[84px] rounded-lg bg-slate-100 px-3.5 py-2 text-center dark:bg-slate-800">
+                  <div className="text-xl font-bold text-slate-900 dark:text-white">{generation ? generation.activities.length : '—'}</div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Activities</div>
                 </div>
-                <div className="rounded-xl bg-white/15 backdrop-blur px-3.5 py-2 text-center min-w-[84px]">
-                  <div className="text-xl font-bold text-white">{generation ? `v${generation.version}` : '—'}</div>
-                  <div className="text-xs font-semibold uppercase tracking-wide text-violet-50">Version</div>
+                <div className="min-w-[84px] rounded-lg bg-slate-100 px-3.5 py-2 text-center dark:bg-slate-800">
+                  <div className="text-xl font-bold text-slate-900 dark:text-white">{generation ? `v${generation.version}` : '—'}</div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Version</div>
                 </div>
               </div>
             )}
           </div>
-        </div>
+        </header>}
 
         {renderBanner()}
+        {renderPreviousAnalysisNotice()}
+        {renderPendingPlannerNotice()}
         {renderAiSettingsModal()}
+        <GenerationWizard
+          open={showGenerationWizard}
+          project={selectedProject}
+          files={files}
+          intelligence={intelligencePreview || generation?.intelligence}
+          intelligenceOverrides={buildIntelligenceOverrides()}
+          onClose={() => setShowGenerationWizard(false)}
+          onGenerate={handleGenerate}
+          onReviewEvidence={() => { setShowGenerationWizard(false); setShowPlannerWorkspace(false); setCurrentStep('intelligence'); }}
+        onOpenPlanner={selection => openPlannerWorkspace(selectedProjectId, selection)}
+        />
 
         {loadingProjects ? (
           <div className="bg-white rounded-2xl shadow-lg p-14 text-center text-slate-400">
             <div className="animate-pulse text-4xl mb-3">⏳</div>
             Loading planning projects…
           </div>
-        ) : projects.length === 0 && !showNewProjectForm ? (
+        ) : embedded && !selectedProjectId && !showNewProjectForm ? (
+          <section className="rounded-xl border border-indigo-200 bg-white px-6 py-12 text-center shadow-sm dark:border-indigo-900 dark:bg-slate-900">
+            <div className="mx-auto grid h-12 w-12 place-items-center rounded-xl bg-indigo-100 text-2xl dark:bg-indigo-950">📅</div>
+            <h2 className="mt-4 text-lg font-semibold text-slate-950 dark:text-white">Set up Plan &amp; Baseline</h2>
+            <p className="mx-auto mt-2 max-w-xl text-sm text-slate-600 dark:text-slate-400">Create the planning workspace linked to <span className="font-semibold">{enterpriseProject?.name}</span>. Project name, client, location and schedule dates will be carried across for review.</p>
+            <button type="button" onClick={() => { setNewProject(planningProjectDraft(enterpriseProject)); setShowNewProjectForm(true); }} className="mt-5 min-h-11 rounded-lg bg-indigo-700 px-4 text-sm font-semibold text-white hover:bg-indigo-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2">Create linked planning workspace</button>
+          </section>
+        ) : !embedded && projects.length === 0 && !showNewProjectForm ? (
           <div className="bg-white rounded-2xl shadow-lg border border-slate-200/80 p-14 text-center">
             <div className="text-6xl mb-4">📦</div>
             <h2 className="text-xl font-bold text-gray-900 mb-2">No Planning Projects Yet</h2>
@@ -3507,16 +4696,16 @@ const PlanningPackagePage = () => {
               + New Planning Project
             </button>
           </div>
-        ) : viewMode === 'dashboard' ? (
+        ) : !embedded && viewMode === 'dashboard' ? (
           renderProjectsDashboard()
         ) : (
           <>
             {showNewProjectForm && renderNewProjectForm()}
-            {projects.length > 0 && renderProjectPicker()}
+            {selectedProjectId && renderProjectPicker()}
             {selectedProjectId && (
               <div className="flex flex-col lg:flex-row gap-5 bg-slate-50/60 rounded-3xl border border-slate-200/60 p-3 sm:p-4">
                 {renderStepNav()}
-                <div className="flex-1 min-w-0">{renderStepContent()}</div>
+                <div className="flex-1 min-w-0">{renderTaskNav()}{renderStepContent()}</div>
               </div>
             )}
           </>
@@ -3529,5 +4718,25 @@ const PlanningPackagePage = () => {
   );
 };
 
-export default PlanningPackagePage;
+PlanningPackagePage.propTypes = {
+  embedded: PropTypes.bool,
+  documentWorkflow: PropTypes.bool,
+  recoveredJob: PropTypes.object,
+  onBackToPortfolio: PropTypes.func,
+  onOpenPlanner: PropTypes.func,
+  onAnalysisStateChange: PropTypes.func,
+  generationRequest: PropTypes.number,
+  scheduleWorkspaceRequest: PropTypes.number,
+  documentReviewRequest: PropTypes.shape({ step: PropTypes.string, generationId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]), analysisRunId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]), analysisAction: PropTypes.oneOf(['settings', 'retry']), planningProjectId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]), requestId: PropTypes.number }),
+  enterpriseProject: PropTypes.shape({
+    id: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+    name: PropTypes.string,
+    client_name: PropTypes.string,
+    location: PropTypes.string,
+    start_date: PropTypes.string,
+    end_date: PropTypes.string,
+    custom_fields: PropTypes.object,
+  }),
+};
 
+export default PlanningPackagePage;

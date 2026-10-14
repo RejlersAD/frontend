@@ -6,7 +6,7 @@
 
 import * as XLSX from 'xlsx'
 
-export const IMPORT_ACCEPT = '.json,.csv,.xls,.xlsx,application/json,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+export const IMPORT_ACCEPT = '.json,.csv,.xls,.xlsx,.xlsm,application/json,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
 const DEFAULT_SEPARATOR = '-'
 

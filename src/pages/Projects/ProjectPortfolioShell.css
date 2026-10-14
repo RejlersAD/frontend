@@ -1,0 +1,30 @@
+/* Only the portfolio content shell changes. The sibling sidebar is untouched. */
+.project-performance-workspace.pp-portfolio-workspace {
+  height: 100%;
+  min-height: 0;
+}
+
+#application-content:has(.pp-portfolio-workspace) > header {
+  height: 48px;
+  box-shadow: 0 1px 3px rgb(18 49 99 / 4%);
+}
+
+#application-content:has(.pp-portfolio-workspace) > main.main-content {
+  padding-top: 0;
+  background: #f3f8ff;
+}
+
+#application-content:has(.pp-portfolio-workspace) > footer {
+  display: none;
+}
+
+.dark #application-content:has(.pp-portfolio-workspace) > main.main-content {
+  background: #101d30;
+}
+
+@media (max-width: 900px) {
+  .project-performance-workspace.pp-portfolio-workspace {
+    height: auto;
+    min-height: 100%;
+  }
+}

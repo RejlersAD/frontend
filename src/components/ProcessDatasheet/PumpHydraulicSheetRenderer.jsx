@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../../services/radaiDialog'
 /**
  * PumpHydraulicSheetRenderer
  * ==========================
@@ -259,8 +260,8 @@ export default function PumpHydraulicSheetRenderer({ tab }) {
   }, []);
 
   const handleManualSave = () => { saveState(state); setSavedAt(new Date()); };
-  const handleReset = () => {
-    if (window.confirm('Reset all fields on this datasheet? This cannot be undone.')) {
+  const handleReset = async () => {
+    if ((await radaiConfirm('Reset all fields on this datasheet? This cannot be undone.'))) {
       setState({}); saveState({}); setSavedAt(new Date());
     }
   };

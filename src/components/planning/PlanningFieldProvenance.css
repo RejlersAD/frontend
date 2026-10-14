@@ -1,0 +1,14 @@
+.planning-provenance-badge { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 2px; padding: 2px 5px; border: 1px solid #cdd9e8; border-radius: 4px; background: #f4f7fb; color: #455d79; font: 10px/1.5 "Segoe UI", Arial, sans-serif; }
+.planning-provenance-badge small { font: inherit; }
+.planning-provenance-badge.is-document { color: #174ea0; background: #eef5ff; border-color: #c5d9f7; }
+.planning-provenance-badge.is-approved_rule { color: #246343; background: #ecf8f1; border-color: #c3e2ce; }
+.planning-provenance-badge.is-proposal { color: #81550e; background: #fff5df; border-color: #edd39e; }
+.planning-provenance-badge.is-calculated { color: #59408d; background: #f4efff; border-color: #d9cdef; }
+.planning-provenance-badge.is-derived { color: #455c86; background: #f0f4fc; border-color: #cbd6ed; }
+.planning-provenance-badge.is-planner { color: #255b66; background: #edf7f9; border-color: #c5dfe5; }
+.planning-field-provenance { display: flex; align-items: start; flex-direction: column; gap: 4px; margin-top: 5px; font-size: 11px; overflow-wrap: anywhere; }
+.planning-field-provenance > small { color: #526987; }
+.planning-field-provenance details { width: 100%; }
+.planning-field-provenance details > small { display: block; }
+.planning-field-provenance summary { color: #0751d7; cursor: pointer; }
+.planning-field-provenance blockquote { margin: 5px 0; padding-left: 8px; border-left: 2px solid #c5d9f7; white-space: pre-wrap; }

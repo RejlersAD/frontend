@@ -1,3 +1,4 @@
+import { radaiAlert, radaiConfirm } from '../../../services/radaiDialog'
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -136,7 +137,7 @@ const CLL_COLORS = {
 
 // Workflow Diagram Configuration
 const CLL_WORKFLOW_CONFIG = {
-  ENABLED:                true,      // Master toggle for workflow section
+  ENABLED:                false,     // Master toggle for workflow section — DISABLED: workflow + Smart Documentation moved to the global Help drawer (helpContextRegistry → critical-line-list)
   COLLAPSIBLE:            true,      // Allow collapse/expand
   DEFAULT_COLLAPSED:      false,     // Start expanded
   SHOW_CONTROLS:          true,      // Show zoom/fullscreen controls
@@ -829,7 +830,7 @@ const CriticalLineList = () => {
 
       const response = await fetch(
 
-        `${API_BASE_URL}/designiq/lists/previous_outputs/?list_type=line_list`,
+        `${API_BASE_URL}/designiq/critical-lists/previous_outputs/?list_type=line_list`,
 
         {
 
@@ -881,7 +882,7 @@ const CriticalLineList = () => {
 
       // Fetch items
 
-      let itemsUrl = `${API_BASE_URL}/designiq/lists/?list_type=line_list`;
+      let itemsUrl = `${API_BASE_URL}/designiq/critical-lists/?list_type=line_list`;
 
       if (statusFilter !== 'all') {
 
@@ -931,7 +932,7 @@ const CriticalLineList = () => {
 
       const statsResponse = await fetch(
 
-        `${API_BASE_URL}/designiq/lists/stats/?list_type=line_list`,
+        `${API_BASE_URL}/designiq/critical-lists/stats/?list_type=line_list`,
 
         {
 
@@ -1026,7 +1027,7 @@ const CriticalLineList = () => {
 
       const response = await fetch(
 
-        `${API_BASE_URL}/designiq/lists/download_output/${outputId}/`,
+        `${API_BASE_URL}/designiq/critical-lists/download_output/${outputId}/`,
 
         {
 
@@ -1064,7 +1065,7 @@ const CriticalLineList = () => {
 
       console.error('Error downloading output:', error);
 
-      alert('Failed to download file');
+      await radaiAlert('Failed to download file');
 
     }
 
@@ -1158,7 +1159,7 @@ const CriticalLineList = () => {
 
     if (!editForm.pid_number || !String(editForm.pid_number).trim()) {
 
-      alert('P&ID Number is required');
+      await radaiAlert('P&ID Number is required');
 
       return;
 
@@ -1172,7 +1173,7 @@ const CriticalLineList = () => {
 
       const res = await fetch(
 
-        `${API_BASE_URL}/designiq/lists/update_output/${editingOutput.id}/`,
+        `${API_BASE_URL}/designiq/critical-lists/update_output/${editingOutput.id}/`,
 
         {
 
@@ -1214,7 +1215,7 @@ const CriticalLineList = () => {
 
       console.error('Error updating output:', err);
 
-      alert(`Failed to modify: ${err.message || err}`);
+      await radaiAlert(`Failed to modify: ${err.message || err}`);
 
     } finally {
 
@@ -1230,7 +1231,7 @@ const CriticalLineList = () => {
 
     const confirmText = `Delete "${output.excel_filename || output.pid_number}"? This cannot be undone.`;
 
-    if (!window.confirm(confirmText)) return;
+    if (!(await radaiConfirm(confirmText))) return;
 
     setRowActionId(output.id);
 
@@ -1242,7 +1243,7 @@ const CriticalLineList = () => {
 
       const res = await fetch(
 
-        `${API_BASE_URL}/designiq/lists/delete_output/${output.id}/`,
+        `${API_BASE_URL}/designiq/critical-lists/delete_output/${output.id}/`,
 
         {
 
@@ -1272,7 +1273,7 @@ const CriticalLineList = () => {
 
       console.error('Error deleting output:', err);
 
-      alert(`Failed to delete: ${err.message || err}`);
+      await radaiAlert(`Failed to delete: ${err.message || err}`);
 
     } finally {
 
@@ -1298,7 +1299,7 @@ const CriticalLineList = () => {
 
       const res = await fetch(
 
-        `${API_BASE_URL}/designiq/lists/recheck_output/${output.id}/`,
+        `${API_BASE_URL}/designiq/critical-lists/recheck_output/${output.id}/`,
 
         {
 
@@ -1395,7 +1396,7 @@ const CriticalLineList = () => {
 
       try {
 
-        const response = await fetch(`${API_BASE_URL}/designiq/lists/upload_pid_status/${taskId}/`, {
+        const response = await fetch(`${API_BASE_URL}/designiq/critical-lists/upload_pid_status/${taskId}/`, {
 
           headers: { 'Authorization': `Bearer ${token}` }
 
@@ -1705,7 +1706,7 @@ const CriticalLineList = () => {
 
 
 
-      const response = await fetch(`${API_BASE_URL}/designiq/lists/upload_pid/`, {
+      const response = await fetch(`${API_BASE_URL}/designiq/critical-lists/upload_pid/`, {
 
         method: 'POST',
 
@@ -2015,7 +2016,7 @@ const CriticalLineList = () => {
 
       const response = await apiClientLongTimeout.post(
 
-        '/designiq/lists/upload_pid/',
+        '/designiq/critical-lists/upload_pid/',
 
         formData,
 
@@ -2604,10 +2605,11 @@ const CriticalLineList = () => {
             }}>
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: CLL_WORKFLOW_CONFIG.SPLIT_SCREEN 
+                gridTemplateColumns: CLL_WORKFLOW_CONFIG.SPLIT_SCREEN
                   ? `${CLL_WORKFLOW_CONFIG.WORKFLOW_WIDTH_PERCENT}% ${CLL_WORKFLOW_CONFIG.DOC_WIDTH_PERCENT}%`
                   : '1fr',
                 gap: CLL_WORKFLOW_CONFIG.SPLIT_GAP,
+                alignItems: 'stretch',
                 '@media (max-width: 1024px)': {
                   gridTemplateColumns: '1fr',
                 },
@@ -2622,7 +2624,7 @@ const CriticalLineList = () => {
                   overflow: 'hidden',
                   display: 'flex',
                   flexDirection: 'column',
-                  height: workflowCollapsed ? CLL_WORKFLOW_CONFIG.COLLAPSED_HEIGHT : 'auto',
+                  height: workflowCollapsed ? CLL_WORKFLOW_CONFIG.COLLAPSED_HEIGHT : '100%',
                   transition: `all ${CLL_WORKFLOW_CONFIG.TRANSITION_DURATION} ${CLL_WORKFLOW_CONFIG.TRANSITION_EASING}`,
                 }}>
                   {/* Workflow Header */}
@@ -2891,7 +2893,8 @@ const CriticalLineList = () => {
                     overflow: 'hidden',
                     display: 'flex',
                     flexDirection: 'column',
-                    maxHeight: '600px',
+                    height: '100%',
+                    maxHeight: 'none',
                   }}>
                     {/* Documentation Header */}
                     <div style={{
@@ -3806,10 +3809,11 @@ const CriticalLineList = () => {
         >
           <div style={{
             display: 'grid',
-            gridTemplateColumns: CLL_WORKFLOW_CONFIG.SPLIT_SCREEN 
+            gridTemplateColumns: CLL_WORKFLOW_CONFIG.SPLIT_SCREEN
               ? `${CLL_WORKFLOW_CONFIG.WORKFLOW_WIDTH_PERCENT}% ${CLL_WORKFLOW_CONFIG.DOC_WIDTH_PERCENT}%`
               : '1fr',
             gap: CLL_WORKFLOW_CONFIG.SPLIT_GAP,
+            alignItems: 'stretch',
           }}>
             
             {/* ─── LEFT COLUMN: Workflow Diagram ─── */}
@@ -3821,7 +3825,7 @@ const CriticalLineList = () => {
               overflow: 'hidden',
               display: 'flex',
               flexDirection: 'column',
-              height: workflowCollapsed ? CLL_WORKFLOW_CONFIG.COLLAPSED_HEIGHT : 'auto',
+              height: workflowCollapsed ? CLL_WORKFLOW_CONFIG.COLLAPSED_HEIGHT : '100%',
               transition: `all ${CLL_WORKFLOW_CONFIG.TRANSITION_DURATION} ${CLL_WORKFLOW_CONFIG.TRANSITION_EASING}`,
             }}>
               {/* Workflow Header */}
@@ -4090,7 +4094,8 @@ const CriticalLineList = () => {
                 overflow: 'hidden',
                 display: 'flex',
                 flexDirection: 'column',
-                maxHeight: '600px',
+                height: '100%',
+                maxHeight: 'none',
               }}>
                 {/* Documentation Header */}
                 <div style={{
@@ -5302,7 +5307,7 @@ const CriticalLineList = () => {
                     <div>
                       <strong style={{ color: fmt.accent }}>Auto-detection enabled.</strong>{' '}
                       RAD AI will run every known pattern ({fmt.coversFormats.map(s => s.toUpperCase()).join(' · ')})
-                      against each line and merge unique matches — no need to guess your project's format.
+                      against each line and merge unique matches — no need to guess your project&apos;s format.
                     </div>
                   </div>
                 );
@@ -5434,7 +5439,7 @@ const CriticalLineList = () => {
 
                   accept=".pdf"
 
-                  onChange={(e) => {
+                  onChange={async (e) => {
 
                     const file = e.target.files?.[0];
 
@@ -5446,7 +5451,7 @@ const CriticalLineList = () => {
 
                     } else {
 
-                      alert('Please select a valid PDF file.');
+                      await radaiAlert('Please select a valid PDF file.');
 
                     }
 
@@ -6000,7 +6005,7 @@ const CriticalLineList = () => {
 
                   </svg>
 
-                  Ready! Click "Process All 5 Documents" to extract 35 columns (8 base from P&ID + 27 enriched via AI)
+                  Ready! Click &quot;Process All 5 Documents&quot; to extract 35 columns (8 base from P&ID + 27 enriched via AI)
 
                 </div>
 
@@ -6443,7 +6448,7 @@ const CriticalLineList = () => {
                 </div>
 
                 <p style={{ marginTop:14, fontSize:'0.7rem', color:'#64748b', textAlign:'center' }}>
-                  Typically completes in 1–3 minutes · you can switch tabs, we'll keep processing
+                  Typically completes in 1–3 minutes · you can switch tabs, we&apos;ll keep processing
                 </p>
               </div>
             </div>
@@ -7780,7 +7785,7 @@ const CriticalLineList = () => {
 
               <button
 
-                onClick={() => {
+                onClick={async () => {
 
                   // Validate at least one component is enabled
 
@@ -7788,7 +7793,7 @@ const CriticalLineList = () => {
 
                   if (!hasEnabled) {
 
-                    alert('Please enable at least one component');
+                    await radaiAlert('Please enable at least one component');
 
                     return;
 

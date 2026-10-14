@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../../../../services/radaiDialog'
 /**
  * ComparisonPanel — orchestrator for the Payroll Comparison feature.
  *
@@ -222,7 +223,7 @@ export default function ComparisonPanel({
 
   // ── Per-comparison actions ────────────────────────────────────────
   const handleDelete = async (id) => {
-    if (!confirm('Delete this comparison report?')) return
+    if (!(await radaiConfirm('Delete this comparison report?'))) return
     try {
       await payrollEngineService.deleteComparison(id)
       await refreshHistoryAndDetails()

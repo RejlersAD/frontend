@@ -1,3 +1,4 @@
+import { hasAssignedModule } from '../config/serviceAccess.config'
 /**
  * Smart RBAC Utility Functions
  * Handles nested user object structure and multiple admin detection sources
@@ -87,10 +88,10 @@ export const hasModuleAccess = (user, moduleCode, userModules = []) => {
   if (!user || !moduleCode) return false
 
   // Admins have access to all modules
-  if (isUserAdmin(user)) return true
+  if (isUserSuperuser(user)) return true
 
   // Check if module code is in user's accessible modules
-  return userModules.includes(moduleCode)
+  return hasAssignedModule(userModules, moduleCode)
 }
 
 /**

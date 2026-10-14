@@ -1,3 +1,4 @@
+import { radaiAlert } from '../../services/radaiDialog'
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowUpTrayIcon, ArrowLeftIcon } from '@heroicons/react/24/outline';
@@ -17,7 +18,7 @@ const StressCriticalLineList = () => {
 
   const handleUpload = async () => {
     if (!selectedFile) {
-      alert('Please select a P&ID file first');
+      await radaiAlert('Please select a P&ID file first');
       return;
     }
 
@@ -27,9 +28,9 @@ const StressCriticalLineList = () => {
     console.log('Uploading stress critical P&ID:', selectedFile.name);
     
     // Simulate upload delay
-    setTimeout(() => {
+    setTimeout(async () => {
       setUploading(false);
-      alert('Stress Critical Line List upload functionality coming soon!');
+      await radaiAlert('Stress Critical Line List upload functionality coming soon!');
       setSelectedFile(null);
     }, 1500);
   };

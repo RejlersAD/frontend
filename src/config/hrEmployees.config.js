@@ -114,100 +114,106 @@ export const HR_KPIS = [
     id: 'headcount',
     label: 'Total Employees',
     accent: 'from-blue-500 to-indigo-600',
-    calmTone: 'bg-blue-50 text-blue-700 border-blue-100',
+    calmTone: 'border-blue-200 bg-gradient-to-br from-white to-blue-50/70 text-blue-800 dark:border-blue-900 dark:from-slate-900 dark:to-blue-950/20 dark:text-blue-300',
     icon: 'UsersIcon',
-    compute: (list) => list.length,
+    match: () => true,
     sub: 'All registered employees',
   },
   {
     id: 'active',
     label: 'Active Employees',
     accent: 'from-emerald-500 to-teal-600',
-    calmTone: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+    calmTone: 'border-emerald-200 bg-gradient-to-br from-white to-emerald-50/70 text-emerald-800 dark:border-emerald-900 dark:from-slate-900 dark:to-emerald-950/20 dark:text-emerald-300',
     icon: 'CheckBadgeIcon',
-    compute: (list) => list.filter(e => e.status === 'active').length,
+    match: e => e.status === 'active',
     sub: 'Currently working',
   },
   {
     id: 'new_joiners_month',
     label: 'New Joiners This Month',
     accent: 'from-violet-500 to-purple-600',
-    calmTone: 'bg-violet-50 text-violet-700 border-violet-100',
+    calmTone: 'border-violet-200 bg-gradient-to-br from-white to-violet-50/70 text-violet-800 dark:border-violet-900 dark:from-slate-900 dark:to-violet-950/20 dark:text-violet-300',
     icon: 'UserPlusIcon',
-    compute: (list) => list.filter(e => isThisMonth(lifecycleValue(e, 'join_date', 'joining_date', 'start_date', 'date_joined', 'created_at'))).length,
+    match: e => isThisMonth(lifecycleValue(e, 'join_date', 'joining_date', 'start_date', 'date_joined', 'created_at')),
     sub: 'Joined this month',
   },
   {
     id: 'notice_period',
     label: 'Employees on Notice Period',
     accent: 'from-amber-500 to-orange-600',
-    calmTone: 'bg-amber-50 text-amber-800 border-amber-200',
+    calmTone: 'border-amber-200 bg-gradient-to-br from-white to-amber-50/70 text-amber-800 dark:border-amber-900 dark:from-slate-900 dark:to-amber-950/20 dark:text-amber-300',
     icon: 'ExclamationTriangleIcon',
-    compute: (list) => list.filter(e => {
+    match: e => {
       const state = String(lifecycleValue(e, 'employment_status', 'lifecycle_status', 'status') || '').toLowerCase()
       return ['notice', 'on_notice', 'notice_period'].includes(state) || Boolean(lifecycleValue(e, 'notice_date', 'notice_period_start'))
-    }).length,
+    },
     sub: 'Employees serving notice',
   },
   {
     id: 'resigned_month',
     label: 'Resigned This Month',
     accent: 'from-rose-500 to-red-600',
-    calmTone: 'bg-rose-50 text-rose-700 border-rose-200',
+    calmTone: 'border-rose-200 bg-gradient-to-br from-white to-rose-50/70 text-rose-800 dark:border-rose-900 dark:from-slate-900 dark:to-rose-950/20 dark:text-rose-300',
     icon: 'ArrowRightOnRectangleIcon',
-    compute: (list) => list.filter(e => isThisMonth(lifecycleValue(e, 'resignation_date', 'termination_date', 'last_working_date'))).length,
+    match: e => isThisMonth(lifecycleValue(e, 'resignation_date', 'termination_date', 'last_working_date')),
     sub: 'Resigned this month',
   },
   {
     id: 'contract_expiring',
     label: 'Contract Expiring Soon',
     accent: 'from-orange-500 to-red-600',
-    calmTone: 'bg-orange-50 text-orange-800 border-orange-200',
+    calmTone: 'border-orange-200 bg-gradient-to-br from-white to-orange-50/70 text-orange-800 dark:border-orange-900 dark:from-slate-900 dark:to-orange-950/20 dark:text-orange-300',
     icon: 'CalendarDaysIcon',
-    compute: (list) => list.filter(e => isWithinNextDays(lifecycleValue(e, 'contract_end_date', 'employment_end_date', 'end_date'), 60)).length,
+    match: e => isWithinNextDays(lifecycleValue(e, 'contract_end_date', 'employment_end_date', 'end_date'), 60),
     sub: 'Due within 60 days',
   },
   {
     id: 'pending_onboarding',
     label: 'Pending Onboarding',
     accent: 'from-amber-500 to-orange-600',
-    calmTone: 'bg-amber-50 text-amber-700 border-amber-100',
+    calmTone: 'border-amber-200 bg-gradient-to-br from-white to-amber-50/70 text-amber-800 dark:border-amber-900 dark:from-slate-900 dark:to-amber-950/20 dark:text-amber-300',
     icon: 'ClockIcon',
-    compute: (list) => list.filter(e => e.status === 'pending').length,
+    match: e => e.status === 'pending',
     sub: 'Awaiting first login / setup',
   },
   {
     id: 'new_joiners_30d',
     label: 'New Joiners (30d)',
     accent: 'from-purple-500 to-fuchsia-600',
-    calmTone: 'bg-purple-50 text-purple-700 border-purple-100',
+    calmTone: 'border-violet-200 bg-gradient-to-br from-white to-violet-50/70 text-violet-800 dark:border-violet-900 dark:from-slate-900 dark:to-violet-950/20 dark:text-violet-300',
     icon: 'SparklesIcon',
-    compute: (list) => list.filter(e => daysAgo(e.created_at, 30)).length,
+    match: e => daysAgo(e.created_at, 30),
     sub: 'Joined in the last 30 days',
   },
   {
     id: 'departments',
+    match: e => Boolean((e.department || '').trim()),
+    filterLabel: 'Employees with a department',
     label: 'Departments',
     accent: 'from-cyan-500 to-blue-600',
-    calmTone: 'bg-cyan-50 text-cyan-700 border-cyan-100',
+    calmTone: 'border-blue-200 bg-gradient-to-br from-white to-blue-50/70 text-blue-800 dark:border-blue-900 dark:from-slate-900 dark:to-blue-950/20 dark:text-blue-300',
     icon: 'BuildingOffice2Icon',
     compute: (list) => new Set(list.map(e => (e.department || '').trim()).filter(Boolean)).size,
     sub: 'Distinct department codes',
   },
   {
     id: 'disciplines',
+    match: e => Boolean(matchDiscipline(e.engineer_profile?.discipline || e.department)),
+    filterLabel: 'Employees with a recognised discipline',
     label: 'Disciplines Covered',
     accent: 'from-rose-500 to-pink-600',
-    calmTone: 'bg-rose-50 text-rose-700 border-rose-100',
+    calmTone: 'border-blue-200 bg-gradient-to-br from-white to-blue-50/70 text-blue-800 dark:border-blue-900 dark:from-slate-900 dark:to-blue-950/20 dark:text-blue-300',
     icon: 'BeakerIcon',
     compute: (list) => new Set(list.map(e => matchDiscipline(e.engineer_profile?.discipline || e.department)?.code).filter(Boolean)).size,
     sub: 'Engineering specialisations',
   },
   {
     id: 'mfa_adoption',
+    match: e => Boolean(e.is_mfa_enabled),
+    filterLabel: 'MFA-enabled employees',
     label: 'MFA Adoption',
     accent: 'from-indigo-500 to-violet-600',
-    calmTone: 'bg-indigo-50 text-indigo-700 border-indigo-100',
+    calmTone: 'border-indigo-200 bg-gradient-to-br from-white to-indigo-50/70 text-indigo-800 dark:border-indigo-900 dark:from-slate-900 dark:to-indigo-950/20 dark:text-indigo-300',
     icon: 'ShieldCheckIcon',
     compute: (list) => list.length === 0 ? '0%' : `${Math.round((list.filter(e => e.is_mfa_enabled).length / list.length) * 100)}%`,
     sub: 'Two-factor enabled accounts',
@@ -216,12 +222,15 @@ export const HR_KPIS = [
     id: 'long_tenure',
     label: 'Veterans (10y+)',
     accent: 'from-yellow-500 to-amber-600',
-    calmTone: 'bg-amber-50 text-amber-700 border-amber-100',
+    calmTone: 'border-emerald-200 bg-gradient-to-br from-white to-emerald-50/70 text-emerald-800 dark:border-emerald-900 dark:from-slate-900 dark:to-emerald-950/20 dark:text-emerald-300',
     icon: 'TrophyIcon',
-    compute: (list) => list.filter(e => yearsSince(e.created_at) >= 10).length,
+    match: e => yearsSince(e.created_at) >= 10,
     sub: '10+ years of service',
   },
-]
+].map(kpi => ({
+  ...kpi,
+  compute: kpi.compute || (list => list.filter(kpi.match).length),
+}))
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 5. FILTERS — declarative. The page renders a select per entry.
@@ -284,10 +293,12 @@ export const HR_FILTERS = [
 // ─────────────────────────────────────────────────────────────────────────────
 export const HR_VIEW_MODES = [
   // 'cards' view intentionally removed — toggle this entry back to re-enable it.
-  { id: 'table',     label: 'Table',          icon: 'TableCellsIcon' },
-  { id: 'dept',      label: 'Departments',    icon: 'BuildingOffice2Icon' },
-  { id: 'hierarchy', label: 'Hierarchy',      icon: 'ShareIcon' },
-  { id: 'timesheet', label: 'Time Sheet',     icon: 'ClockIcon' },
+  { id: 'table',     label: 'Table',           icon: 'TableCellsIcon' },
+  // 'dept' tab re-purposed as a live organisation demography rooted at the CEO.
+  // The id stays 'dept' so view-mode wiring, pagination and URL params are untouched.
+  { id: 'dept',      label: 'Org Demography',  icon: 'UserGroupIcon' },
+  // 'hierarchy' view removed — toggle this entry back to re-enable it.
+  { id: 'timesheet', label: 'Time Sheet',      icon: 'ClockIcon' },
 ]
 export const HR_DEFAULT_VIEW_MODE = 'table'
 
@@ -331,10 +342,22 @@ export const HR_CARD_FIELDS = [
 // ─────────────────────────────────────────────────────────────────────────────
 // 8. TABLE COLUMNS
 // ─────────────────────────────────────────────────────────────────────────────
+const employeeIdCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
+
+export const sortEmployeesById = (employees, direction) => {
+  if (!['ascending', 'descending'].includes(direction)) throw new RangeError('Invalid Employee ID sort direction')
+  return [...employees].sort((a, b) => {
+    const left = String(a.employee_id ?? '').trim()
+    const right = String(b.employee_id ?? '').trim()
+    if (!left || !right) return Number(!left) - Number(!right)
+    return employeeIdCollator.compare(left, right) * (direction === 'descending' ? -1 : 1)
+  })
+}
+
 export const HR_TABLE_COLUMNS = [
   { id: 'name',         label: 'Employee',     accessor: (e) => `${e.user?.first_name || ''} ${e.user?.last_name || ''}`.trim() || getEmail(e) },
   { id: 'email',        label: 'Email',        accessor: (e) => getEmail(e) || '—' },
-  { id: 'employee_id',  label: 'Employee ID',  accessor: (e) => e.employee_id || '—' },
+  { id: 'employee_id',  label: 'Employee ID', sortable: true, accessor: (e) => e.employee_id || '—' },
   { id: 'job_title',    label: 'Designation',  accessor: (e) => e.job_title || '—' },
   { id: 'department',   label: 'Department',   accessor: (e) => e.department || '—' },
   { id: 'discipline',   label: 'Discipline',   accessor: (e) => matchDiscipline(e.engineer_profile?.discipline || e.department)?.label || '—' },
@@ -349,15 +372,17 @@ export const HR_TABLE_COLUMNS = [
 // ─────────────────────────────────────────────────────────────────────────────
 export const HR_DETAIL_TABS = [
   { id: 'overview',      label: 'Overview',            icon: 'UserCircleIcon' },
-  { id: 'employment',    label: 'Employment',          icon: 'BriefcaseIcon' },
+  { id: 'employment',    label: 'Organization',        icon: 'BriefcaseIcon' },
   { id: 'documents',     label: 'Documents',           icon: 'DocumentTextIcon' },
   { id: 'leave',         label: 'Leave',               icon: 'CalendarDaysIcon' },
   { id: 'performance',   label: 'Performance',         icon: 'ChartBarIcon' },
   { id: 'compensation',  label: 'Compensation',        icon: 'BanknotesIcon' },
   { id: 'timesheet',     label: 'Time Sheet',          icon: 'ClockIcon' },
+  { id: 'workforce',     label: 'Shifts & Overtime',   icon: 'CalendarDaysIcon' },
   { id: 'competency',    label: 'Competency',          icon: 'AcademicCapIcon' },
   { id: 'access',        label: 'Roles & Access',      icon: 'KeyIcon' },
   { id: 'security',      label: 'Security & Activity', icon: 'ShieldCheckIcon' },
+  { id: 'data_quality',  label: 'Data Quality',         icon: 'CircleStackIcon' },
 ]
 export const HR_DEFAULT_DETAIL_TAB = 'overview'
 
@@ -391,13 +416,17 @@ export const HR_TIMESHEET_KPIS = [
   { id: 'days_full',     label: 'Full Days',       icon: 'SunIcon',            tone: 'amber',   accessor: (s) => s.days_full ?? 0 },
   { id: 'avg_first_in',  label: 'Avg First In',    icon: 'ArrowRightOnRectangleIcon',  tone: 'sky',  accessor: (s) => s.avg_first_in || '—' },
   { id: 'avg_last_out',  label: 'Avg Last Out',    icon: 'ArrowLeftOnRectangleIcon',   tone: 'rose', accessor: (s) => s.avg_last_out || '—' },
+  { id: 'recorded_ot', label: 'Recorded OT (Unapproved)', icon: 'ClockIcon', tone: 'amber', accessor: (s) => Number(s.recorded_overtime_hours || 0).toFixed(2) },
+  { id: 'presence', label: 'Total Presence', icon: 'ClockIcon', tone: 'blue', accessor: (s) => Number(s.total_presence_hours || s.total_hours || 0).toFixed(2) },
 ]
 
 export const HR_TIMESHEET_DAILY_COLUMNS = [
   { id: 'date',     label: 'Date',     accessor: (r) => r.date },
   { id: 'first_in', label: 'First In', accessor: (r) => (r.first_in || '').slice(11, 16) || '—' },
   { id: 'last_out', label: 'Last Out', accessor: (r) => (r.last_out || '').slice(11, 16) || '—' },
-  { id: 'hours',    label: 'Hours',    accessor: (r) => ((r.hours_worked ?? r.hours ?? 0)).toFixed(2) },
+  { id: 'hours',    label: 'Regular', accessor: (r) => Number(r.regular_hours ?? r.hours_worked ?? r.hours ?? 0).toFixed(2) },
+  { id: 'overtime', label: 'Recorded OT', accessor: (r) => Number(r.overtime_hours || 0).toFixed(2) },
+  { id: 'presence', label: 'Total', accessor: (r) => Number(r.total_presence_hours ?? r.hours_worked ?? r.hours ?? 0).toFixed(2) },
   { id: 'punches',  label: 'Punches',  accessor: (r) => r.punch_count ?? r.punches ?? 0 },
 ]
 
@@ -448,8 +477,16 @@ export const HR_TIMESHEET_ACTIVITY_COLUMNS = [
       const d = new Date(r.date)
       return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString(undefined, { weekday: 'short' })
     } },
-  { id: 'hours',  label: 'Hours',  accessor: (r) => {
-      const h = Number(r.hours_worked ?? r.hours ?? 0)
+  { id: 'hours',  label: 'Regular',  accessor: (r) => {
+      const h = Number(r.regular_hours ?? r.hours_worked ?? r.hours ?? 0)
+      return h > 0 ? `${h.toFixed(2)} h` : '—'
+    }, mono: true },
+  { id: 'overtime', label: 'Recorded OT', accessor: (r) => {
+      const h = Number(r.overtime_hours || 0)
+      return h > 0 ? `${h.toFixed(2)} h` : '—'
+    }, mono: true },
+  { id: 'presence', label: 'Total', accessor: (r) => {
+      const h = Number(r.total_presence_hours ?? r.hours_worked ?? r.hours ?? 0)
       return h > 0 ? `${h.toFixed(2)} h` : '—'
     }, mono: true },
   { id: 'status', label: 'Status', accessor: (r) => {
@@ -464,6 +501,8 @@ export const HR_TIMESHEET_ACTIVITY_SORT = 'desc'
 export const HR_TIMESHEET_MONTHLY_COLUMNS = [
   { id: 'month',   label: 'Month',     accessor: (m) => m.__monthLabel || m.month || '—' },
   { id: 'hours',   label: 'Hours',     accessor: (m) => `${Number(m.hours || 0).toFixed(1)} h`, mono: true },
+  { id: 'overtime', label: 'Recorded OT', accessor: (m) => `${Number(m.overtime_hours || 0).toFixed(1)} h`, mono: true },
+  { id: 'presence', label: 'Total Presence', accessor: (m) => `${Number(m.total_presence_hours || m.hours || 0).toFixed(1)} h`, mono: true },
   { id: 'days',    label: 'Days',      accessor: (m) => `${m.days_present || 0}` },
   { id: 'avg',     label: 'Avg/Day',   accessor: (m) => `${Number(m.avg_per_day || 0).toFixed(2)} h`, mono: true },
   { id: 'punches', label: 'Punches',   accessor: (m) => `${m.punches || 0}` },
@@ -477,11 +516,11 @@ export const HR_TIMESHEET_VISUALS = {
   hourBands: [
     { upTo: 0,   color: 'bg-slate-200', label: 'Absent' },
     { upTo: 4,   color: 'bg-amber-300', label: 'Half day' },
-    { upTo: 8,   color: 'bg-sky-400',   label: 'Standard' },
+    { upTo: 9,   color: 'bg-sky-400',   label: 'Standard' },
     { upTo: 999, color: 'bg-emerald-500', label: 'Overtime' },
   ],
   // Target hours per day — drives the bar-width %.
-  targetHoursPerDay: 8,
+  targetHoursPerDay: 9,
   // Donut ring (utilisation) — px geometry.
   ringSize: 132,
   ringStroke: 12,
@@ -617,7 +656,7 @@ export const HR_EDITABLE_FIELDS = {
       helpText: 'Organisation assignment cannot be changed here. Use Admin panel.'
     },
     { id: 'department', label: 'Department', type: 'text', placeholder: 'e.g., Process Engineering', required: true },
-    { id: 'job_title', label: 'Designation', type: 'text', placeholder: 'e.g., Senior Process Engineer', required: true },
+    { id: 'job_title', label: 'Organizational role / Job title', type: 'text', placeholder: 'Select a suggestion or enter the recorded job title', required: true },
     { 
       id: 'status', 
       label: 'Employment Status', 

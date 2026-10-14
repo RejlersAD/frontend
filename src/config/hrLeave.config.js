@@ -407,7 +407,7 @@ export const DAILY_TRACKER_SUBMIT_TO_OPTIONS = [
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 15. ESS ATTENDANCE TAB — soft-coded configuration
-//     Controls the individual employee attendance tracking panel in /hr/leave.
+//     Controls the individual employee attendance panel in /hr/Employeprofile.
 //     
 //     ⚠️  PRODUCTION ACTIVE SETTINGS (user-approved, 2026-06-26):
 //         - Max daily hours capped at 9 hours (FIXED, non-negotiable)
@@ -474,7 +474,7 @@ export const ESS_ATT_COPY = {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 16. ESS TIMESHEET TAB — soft-coded configuration
-//     Controls the individual employee timesheet tracking panel in /hr/leave.
+//     Controls the individual employee timesheet panel in /hr/Employeprofile.
 //     
 //     Implementation mirrors /hr/employees Timesheet view with Live/Daily/Monthly
 //     tabs, but auto-scoped to the logged-in user (self-service).

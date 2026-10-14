@@ -1,3 +1,4 @@
+import { radaiAlert } from '../../../services/radaiDialog'
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -153,14 +154,14 @@ const ElectricalDocumentsHub = () => {
     }));
   };
 
-  const handleDocumentClick = (doc) => {
+  const handleDocumentClick = async (doc) => {
     if (doc.status === DOCUMENT_STATUS.ACTIVE) {
       // SOFT-CODED: Use route from config if available, fallback to upload page
       const targetRoute = doc.route || '/engineering/electrical/datasheet/upload';
       navigate(targetRoute);
     } else {
       // Show coming soon message
-      alert(`${doc.name} is ${doc.status === DOCUMENT_STATUS.COMING_SOON ? 'coming soon' : 'in development'}!`);
+      await radaiAlert(`${doc.name} is ${doc.status === DOCUMENT_STATUS.COMING_SOON ? 'coming soon' : 'in development'}!`);
     }
   };
 

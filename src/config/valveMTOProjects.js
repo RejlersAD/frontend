@@ -105,7 +105,7 @@ export const setActiveProject = (id) => {
   return id;
 };
 
-export const createProject = ({ name, description = '', project = {}, rows = [] } = {}) => {
+export const createProject = ({ name, description = '', project = {}, rows = [], serverId = null } = {}) => {
   const cleanName = truncate((name || '').trim() || `Project ${new Date().toLocaleString()}`, PROJECT_NAME_MAX_LEN);
   const now = new Date().toISOString();
   const entry = {
@@ -116,10 +116,28 @@ export const createProject = ({ name, description = '', project = {}, rows = [] 
     updatedAt:   now,
     project:     { ...project },
     rows:        rows.map((r) => ({ ...r })),
+    // Links this local project to its server-side ValveMTOProject row
+    // (apps.valve_mto) — null until the first successful server save.
+    // See setProjectServerId below and valveMtoService.js.
+    serverId,
   };
   const s = safeRead();
   safeWrite({ activeId: entry.id, items: [entry, ...s.items] });
   return entry;
+};
+
+/**
+ * Links (or updates the link between) a local project and its
+ * server-side ValveMTOProject id — called once after the first
+ * successful server-side save for a project that didn't have one yet.
+ * A no-op if the local project no longer exists (e.g. deleted locally
+ * while a save was in flight).
+ */
+export const setProjectServerId = (id, serverId) => {
+  const s = safeRead();
+  if (!s.items.find((p) => p.id === id)) return;
+  const items = s.items.map((p) => (p.id === id ? { ...p, serverId } : p));
+  safeWrite({ ...s, items });
 };
 
 export const renameProject = (id, name, description) => {
@@ -181,6 +199,6 @@ const _exports = {
   PROJECT_NAME_MAX_LEN, PROJECT_DESC_MAX_LEN, PROJECT_DEFAULT_NAME,
   ensureInitialised, listProjects, getActiveProject, getActiveProjectId,
   getProject, setActiveProject, createProject, renameProject, deleteProject,
-  syncActiveProject,
+  syncActiveProject, setProjectServerId,
 };
 export default _exports;

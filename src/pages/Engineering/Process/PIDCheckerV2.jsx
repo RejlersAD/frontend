@@ -1,3 +1,5 @@
+import useAIProviderStatus from '../../../hooks/useAIProviderStatus'
+import { radaiConfirm } from '../../../services/radaiDialog'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-toastify'
@@ -7,7 +9,7 @@ import { ROUTES } from '../../../config/routes.config'
 import {
   extractLineTags, listExtractions, getExtraction, deleteExtraction,
   listLegends, listLineLists, listEquipmentLists, listInstrumentIndexes,
-  MODE_OCR, MODE_VISION, VISION_PROVIDERS,
+  MODE_OCR, MODE_VISION, VISION_PROVIDERS, CLAUDE_VISION_MODELS, testApiKey,
 } from '../../../services/pidCheckerV2API'
 import { listProjects, createProject, updateProject, deleteProject, getProjectHistory } from '../../../services/pidProjectsService'
 import LegendSheetsModal from './components/LegendSheetsModal'
@@ -53,6 +55,7 @@ const CSV_HEADER = ['tag', 'size', 'service', 'spec', 'serial', 'service_group']
 const SS_KEY_PROVIDER = 'radai_pidv2_byok_provider'
 const SS_KEY_APIKEY   = 'radai_pidv2_byok_apikey'
 const SS_KEY_REMEMBER = 'radai_pidv2_byok_remember'
+const SS_KEY_CLAUDE_MODEL = 'radai_pidv2_byok_claude_model'
 
 
 function toCsv(tags) {
@@ -79,6 +82,38 @@ function downloadBlob(content, filename, type) {
 export default function PIDCheckerV2() {
   const navigate = useNavigate()
   const fileInputRef = useRef(null)
+  // BUG FIX (2026-09-08): a real, confirmed, reported symptom — creating a
+  // new project showed the Master Line List / Equipment List / Instrument
+  // Index as "Active" instead of empty. Two separate frontend causes, both
+  // fixed together:
+  //   1. handleCreateProject never selected the new project at all (see its
+  //      own comment below) — closing the create-project modal just
+  //      revealed whatever project was already open underneath it.
+  //   2. refreshLineList/refreshEquipmentList/refreshInstrumentIndex had no
+  //      staleness guard — a slow in-flight fetch could resolve AFTER a
+  //      switch and overwrite the freshly-cleared state. Mirrors
+  //      PIDVerificationV2.jsx's own projectEpochRef fix for the identical
+  //      class of race — bumped on every project switch, checked by each
+  //      fetch before it writes state.
+  //
+  // CORRECTED (2026-09-08, later same day): these two fixes were real and
+  // are still correct/kept — but they were originally framed as "stop this
+  // project's data leaking into another project," which turned out to be
+  // the wrong mental model. Traced the actual backend
+  // (apps.pid_checker_v2.views: Line/Equipment/InstrumentIndexUploadView)
+  // and confirmed these three "Master" lists are DELIBERATELY global, one
+  // per USER account, not per project — PidCheckerV2LineListUpload has no
+  // project field at all; the other two have only a free-text `project`
+  // CharField parsed from the Excel's own header block (a display label,
+  // not a real relation), and all three models' own unique constraints are
+  // `..._per_user`, not `..._per_user_project` (confirmed against a
+  // previously-pending, now-applied migration that formalized exactly
+  // this). So `projectId` below still matters for clearing/re-fetching UI
+  // state cleanly on a switch (the fixes above), but the Master Lists
+  // themselves are correctly the SAME data across every project for a
+  // given user — that's the intended "Master" (one canonical reference)
+  // design, not a bug.
+  const projectEpochRef = useRef(0)
   const [file, setFile] = useState(null)
   const [loading, setLoading] = useState(false)
   const [uploadPct, setUploadPct] = useState(0)
@@ -91,11 +126,31 @@ export default function PIDCheckerV2() {
   const [visionProvider, setVisionProvider] = useState(
     () => sessionStorage.getItem(SS_KEY_PROVIDER) || VISION_PROVIDERS[0].id
   )
-  const [apiKey, setApiKey] = useState(() => sessionStorage.getItem(SS_KEY_APIKEY) || '')
+  const [visionClaudeModel, setVisionClaudeModel] = useState(
+    () => sessionStorage.getItem(SS_KEY_CLAUDE_MODEL) || CLAUDE_VISION_MODELS[0].id
+  )
+  const [apiKey, setApiKey] = useState('')
+  const centralAI = useAIProviderStatus(visionProvider)
   const [showKey, setShowKey] = useState(false)
   const [rememberKey, setRememberKey] = useState(
     () => sessionStorage.getItem(SS_KEY_REMEMBER) === '1'
   )
+  // "Test Connection" — quick BYOK key ping, independent of extraction.
+  const [testingConnection, setTestingConnection] = useState(false)
+  const [connectionTestResult, setConnectionTestResult] = useState(null) // { valid, message } | null
+  const onTestConnection = useCallback(async () => {
+    if (!apiKey.trim()) { setConnectionTestResult({ valid: false, message: 'Enter an API key first.' }); return }
+    setTestingConnection(true)
+    setConnectionTestResult(null)
+    try {
+      const res = await testApiKey(visionProvider, apiKey.trim())
+      setConnectionTestResult(res)
+    } catch (err) {
+      setConnectionTestResult({ valid: false, message: err?.response?.data?.message || 'Connection test failed. Please try again.' })
+    } finally {
+      setTestingConnection(false)
+    }
+  }, [visionProvider, apiKey])
 
   // ── History (auto-saved extractions) ──────────────────────────────
   const [history, setHistory] = useState([])
@@ -107,6 +162,24 @@ export default function PIDCheckerV2() {
   const [projects, setProjects] = useState([])
   const [loadingProjects, setLoadingProjects] = useState(false)
   const [selectedProject, setSelectedProject] = useState(null)
+  // BUG FIX: SS_KEY_PROVIDER/APIKEY/REMEMBER/CLAUDE_MODEL were GLOBAL keys
+  // for the whole tab, so a key entered for one project leaked into every
+  // other project (including a brand-new one that had never seen a key)
+  // and showed up pre-filled before the user typed anything. The
+  // useState initializers above read the unscoped key at mount (fine —
+  // no project is selected yet at that instant, selectedProject starts
+  // null), then this effect re-syncs from the project-scoped key
+  // (`${BASE_KEY}::${project_id}`) on mount AND every subsequent project
+  // switch — same fix I/O List's UploadCard applies for its own BYOK
+  // fields (see IOListWorkflowPage.jsx).
+  useEffect(() => {
+    const scope = selectedProject?.project_id || 'none'
+    setVisionProvider(sessionStorage.getItem(`${SS_KEY_PROVIDER}::${scope}`) || VISION_PROVIDERS[0].id)
+    setVisionClaudeModel(sessionStorage.getItem(`${SS_KEY_CLAUDE_MODEL}::${scope}`) || CLAUDE_VISION_MODELS[0].id)
+    setApiKey(null || '')
+    setRememberKey(sessionStorage.getItem(`${SS_KEY_REMEMBER}::${scope}`) === '1')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProject?.project_id])
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -127,43 +200,71 @@ export default function PIDCheckerV2() {
   const [legendModalOpen, setLegendModalOpen] = useState(false)
   const [activeLegend, setActiveLegend] = useState(null)
   const [effectiveLegend, setEffectiveLegend] = useState(null) // active OR most-recent
+  // Stable identity — an inline arrow here would change on every render of this
+  // page and, since LegendSheetsModal depends on it, retrigger its load effect
+  // and keep it stuck showing "Loading…".
+  const onLegendActiveChange = useCallback((a) => setActiveLegend(a), [])
 
   // ── Master Line List (Excel) ──────────────────────────────────────
   const [activeLineList, setActiveLineList] = useState(null)
 
   const refreshLineList = useCallback(async () => {
+    const projectId = selectedProject?.project_id
+    const epoch = projectEpochRef.current
+    console.log('refreshLineList called, projectId:', projectId, 'epoch:', epoch)
     try {
-      const rows = await listLineLists()
+      const rows = await listLineLists(projectId)
+      console.log('refreshLineList RAW RESPONSE for projectId:', projectId, rows)
+      if (epoch !== projectEpochRef.current) {
+        console.log('refreshLineList DISCARDED as stale — epoch', epoch, '!==', projectEpochRef.current)
+        return // stale — user switched project mid-request
+      }
       const list = Array.isArray(rows) ? rows : (rows?.results || [])
       setActiveLineList(list.find(r => r.is_active) || null)
     } catch (err) {
       console.warn('[PIDCheckerV2] line list fetch failed', err)
     }
-  }, [])
+  }, [selectedProject])
   // ── Master Equipment List (Excel) ─────────────────────────
   const [activeEquipmentList, setActiveEquipmentList] = useState(null)
 
   const refreshEquipmentList = useCallback(async () => {
+    const projectId = selectedProject?.project_id
+    const epoch = projectEpochRef.current
+    console.log('refreshEquipmentList called, projectId:', projectId, 'epoch:', epoch)
     try {
-      const rows = await listEquipmentLists()
+      const rows = await listEquipmentLists(projectId)
+      console.log('refreshEquipmentList RAW RESPONSE for projectId:', projectId, rows)
+      if (epoch !== projectEpochRef.current) {
+        console.log('refreshEquipmentList DISCARDED as stale — epoch', epoch, '!==', projectEpochRef.current)
+        return // stale — user switched project mid-request
+      }
       const list = Array.isArray(rows) ? rows : (rows?.results || [])
       setActiveEquipmentList(list.find(r => r.is_active) || null)
     } catch (err) {
       console.warn('[PIDCheckerV2] equipment list fetch failed', err)
     }
-  }, [])
+  }, [selectedProject])
   // ── Master Instrument Index (Excel) ─────────────────
   const [activeInstrumentIndex, setActiveInstrumentIndex] = useState(null)
 
   const refreshInstrumentIndex = useCallback(async () => {
+    const projectId = selectedProject?.project_id
+    const epoch = projectEpochRef.current
+    console.log('refreshInstrumentIndex called, projectId:', projectId, 'epoch:', epoch)
     try {
-      const rows = await listInstrumentIndexes()
+      const rows = await listInstrumentIndexes(projectId)
+      console.log('refreshInstrumentIndex RAW RESPONSE for projectId:', projectId, rows)
+      if (epoch !== projectEpochRef.current) {
+        console.log('refreshInstrumentIndex DISCARDED as stale — epoch', epoch, '!==', projectEpochRef.current)
+        return // stale — user switched project mid-request
+      }
       const list = Array.isArray(rows) ? rows : (rows?.results || [])
       setActiveInstrumentIndex(list.find(r => r.is_active) || null)
     } catch (err) {
       console.warn('[PIDCheckerV2] instrument index fetch failed', err)
     }
-  }, [])
+  }, [selectedProject])
 
   // ── Project Management Functions ──────────────────────────────────
   const fetchProjects = useCallback(async () => {
@@ -179,7 +280,33 @@ export default function PIDCheckerV2() {
     }
   }, [])
 
+  // BUG FIX: this used to be defined further down, after handleCreateProject
+  // — moved up here (unchanged otherwise, still a stable/no-deps callback)
+  // so handleCreateProject can actually call it. Also now bumps
+  // projectEpochRef on every switch — see its declaration comment for why.
+  const handleSelectProject = useCallback((project) => {
+    console.log('=== SELECT PROJECT CALLED ===', project?.project_id)
+    projectEpochRef.current += 1
+    setSelectedProject(project)
+    setFile(null)
+    setResult(null)
+    setError(null)
+    setHistory([])
+    // Clear the previous project's reference data immediately so it can't
+    // flash on screen while the new project's fetch (triggered by the
+    // refreshLineList/refreshEquipmentList/refreshInstrumentIndex effects
+    // re-firing on selectedProject change) is still in flight.
+    setActiveLineList(null)
+    setActiveEquipmentList(null)
+    setActiveInstrumentIndex(null)
+    // Fetch project-specific history
+    getProjectHistory(project.project_id)
+      .then(data => setHistory(data))
+      .catch(err => console.warn('[PIDCheckerV2] Failed to load project history:', err))
+  }, [])
+
   const handleCreateProject = useCallback(async (e) => {
+    console.log('=== CREATE PROJECT CLICKED ===')
     e?.preventDefault?.()
     if (!newProjectName.trim()) return
     setCreatingProject(true)
@@ -190,13 +317,22 @@ export default function PIDCheckerV2() {
       setNewProjectName('')
       setNewProjectDesc('')
       toast.success(`Project "${project.project_name}" created`)
+      // BUG FIX: this never actually navigated into the new project before —
+      // selectedProject stayed on whatever project was open when the
+      // create-project modal was opened, so closing the modal just
+      // revealed that same old project's screen (history, BYOK key, etc.
+      // are genuinely project-scoped — unlike the Master Lists, see this
+      // component's own top-of-file comment). handleSelectProject does the
+      // real work (select + clear + fresh fetch), same as clicking the new
+      // project from the list would.
+      handleSelectProject(project)
     } catch (err) {
       toast.error(err.response?.data?.project_name?.[0] || 'Failed to create project')
       console.error('[PIDCheckerV2] createProject error:', err)
     } finally {
       setCreatingProject(false)
     }
-  }, [newProjectName, newProjectDesc])
+  }, [newProjectName, newProjectDesc, handleSelectProject])
 
   const handleUpdateProject = useCallback(async (e) => {
     e?.preventDefault?.()
@@ -237,24 +373,16 @@ export default function PIDCheckerV2() {
     }
   }, [deletingProject, selectedProject])
 
-  const handleSelectProject = useCallback((project) => {
-    setSelectedProject(project)
-    setFile(null)
-    setResult(null)
-    setError(null)
-    setHistory([])
-    // Fetch project-specific history
-    getProjectHistory(project.project_id)
-      .then(data => setHistory(data))
-      .catch(err => console.warn('[PIDCheckerV2] Failed to load project history:', err))
-  }, [])
-
   const handleBackToProjects = useCallback(() => {
+    projectEpochRef.current += 1 // invalidate any in-flight per-project fetch still in the air
     setSelectedProject(null)
     setFile(null)
     setResult(null)
     setError(null)
     setHistory([])
+    setActiveLineList(null)
+    setActiveEquipmentList(null)
+    setActiveInstrumentIndex(null)
   }, [])
 
   const refreshActiveLegend = useCallback(async () => {
@@ -320,18 +448,22 @@ export default function PIDCheckerV2() {
       toast.warn('Choose a PDF first')
       return
     }
-    if (mode === MODE_VISION && !apiKey.trim()) {
-      toast.warn('Paste your AI API key to use Vision mode')
+    if (mode === MODE_VISION && !centralAI.canUseAI) {
+      toast.warn('Ask your administrator to configure the selected AI provider.')
       return
     }
-    // Persist / clear BYOK preference (sessionStorage only — cleared on tab close)
+    // Persist / clear BYOK preference (sessionStorage only — cleared on tab
+    // close), scoped to the active project — see the resync effect next to
+    // selectedProject's declaration for why.
+    const byokScope = selectedProject?.project_id || 'none'
     if (mode === MODE_VISION && rememberKey) {
-      sessionStorage.setItem(SS_KEY_PROVIDER, visionProvider)
-      sessionStorage.setItem(SS_KEY_APIKEY, apiKey)
-      sessionStorage.setItem(SS_KEY_REMEMBER, '1')
+      sessionStorage.setItem(`${SS_KEY_PROVIDER}::${byokScope}`, visionProvider)
+      sessionStorage.setItem(`${SS_KEY_CLAUDE_MODEL}::${byokScope}`, visionClaudeModel)
+      undefined
+      sessionStorage.setItem(`${SS_KEY_REMEMBER}::${byokScope}`, '1')
     } else {
-      sessionStorage.removeItem(SS_KEY_APIKEY)
-      sessionStorage.removeItem(SS_KEY_REMEMBER)
+      sessionStorage.removeItem(`${SS_KEY_APIKEY}::${byokScope}`)
+      sessionStorage.removeItem(`${SS_KEY_REMEMBER}::${byokScope}`)
     }
 
     setLoading(true)
@@ -342,6 +474,7 @@ export default function PIDCheckerV2() {
         mode,
         forceOcr,
         provider: visionProvider,
+        model: visionClaudeModel,
         apiKey: apiKey.trim(),
         projectId: selectedProject?.project_id,
         onProgress: setUploadPct,
@@ -356,7 +489,7 @@ export default function PIDCheckerV2() {
     } finally {
       setLoading(false)
     }
-  }, [file, mode, forceOcr, visionProvider, apiKey, rememberKey, refreshHistory, selectedProject])
+  }, [file, mode, forceOcr, visionProvider, visionClaudeModel, apiKey, rememberKey, refreshHistory, selectedProject, centralAI.canUseAI])
 
   const onReset = useCallback(() => {
     setFile(null)
@@ -367,12 +500,12 @@ export default function PIDCheckerV2() {
     if (fileInputRef.current) fileInputRef.current.value = ''
   }, [])
 
-  const onClearAll = useCallback(() => {
+  const onClearAll = useCallback(async () => {
     if (loading) {
       toast.info('Extraction is still running — please wait for it to finish.')
       return
     }
-    if (!window.confirm(CLEAR_CONFIRM_MSG)) return
+    if (!(await radaiConfirm(CLEAR_CONFIRM_MSG))) return
     onReset()
     toast.success('Inputs cleared — ready for a new upload')
   }, [loading, onReset])
@@ -399,7 +532,7 @@ export default function PIDCheckerV2() {
   }, [])
 
   const onDeleteHistory = useCallback(async (extractionId) => {
-    if (!window.confirm('Delete this saved extraction?')) return
+    if (!(await radaiConfirm('Delete this saved extraction?'))) return
     try {
       await deleteExtraction(extractionId)
       // if it was the currently displayed one, clear the results card
@@ -1159,6 +1292,7 @@ export default function PIDCheckerV2() {
             fileInputRef={fileInputRef}
             file={file}
             onPickFile={onPickFile}
+            projectId={selectedProject?.project_id}
             activeLineList={activeLineList}
             onLineListUploaded={refreshLineList}
             activeEquipmentList={activeEquipmentList}
@@ -1170,13 +1304,18 @@ export default function PIDCheckerV2() {
             forceOcr={forceOcr}
             setForceOcr={setForceOcr}
             visionProvider={visionProvider}
-            setVisionProvider={setVisionProvider}
+            setVisionProvider={(v) => { setVisionProvider(v); setConnectionTestResult(null) }}
+            visionClaudeModel={visionClaudeModel}
+            setVisionClaudeModel={(v) => { setVisionClaudeModel(v); setConnectionTestResult(null) }}
             apiKey={apiKey}
-            setApiKey={setApiKey}
+            setApiKey={(v) => { setApiKey(v); setConnectionTestResult(null) }}
             showKey={showKey}
             setShowKey={setShowKey}
             rememberKey={rememberKey}
             setRememberKey={setRememberKey}
+            onTestConnection={onTestConnection}
+            testingConnection={testingConnection}
+            connectionTestResult={connectionTestResult}
             onSubmit={onExtract}
             loading={loading}
             uploadPct={uploadPct}
@@ -1215,6 +1354,7 @@ export default function PIDCheckerV2() {
             onExportCsv={onExportCsv}
             onExportJson={onExportJson}
             pdfFile={file}
+            projectId={selectedProject?.project_id}
             activeLegend={activeLegend}
             effectiveLegend={effectiveLegend}
             activeLineList={activeLineList}
@@ -1240,6 +1380,38 @@ export default function PIDCheckerV2() {
         @media (max-width: ${LAYOUT_BREAKPOINT_PX}px) {
           .pidcv2-workspace { grid-template-columns: 1fr !important; grid-template-rows: auto 1fr !important; }
         }
+        /* Modern thin scrollbars — replaces the native default (with its
+           chunky up/down arrow buttons) on every internally-scrolling panel
+           in this page. Firefox uses scrollbar-width/-color; Chrome/Edge/
+           Safari need the ::-webkit-scrollbar pseudo-elements below. */
+        .pidcv2-left, .pidcv2-workspace * {
+          scrollbar-width: thin;
+          scrollbar-color: #cbd5e1 transparent;
+        }
+        .pidcv2-left::-webkit-scrollbar,
+        .pidcv2-workspace *::-webkit-scrollbar {
+          width: 8px;
+          height: 8px;
+        }
+        .pidcv2-left::-webkit-scrollbar-track,
+        .pidcv2-workspace *::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .pidcv2-left::-webkit-scrollbar-thumb,
+        .pidcv2-workspace *::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 999px;
+        }
+        .pidcv2-left::-webkit-scrollbar-thumb:hover,
+        .pidcv2-workspace *::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
+        }
+        .pidcv2-left::-webkit-scrollbar-button,
+        .pidcv2-workspace *::-webkit-scrollbar-button {
+          display: none;
+          width: 0;
+          height: 0;
+        }
       `}</style>
 
       {/* Legend Sheets modal */}
@@ -1247,7 +1419,8 @@ export default function PIDCheckerV2() {
         open={legendModalOpen}
         section={LEGEND_SECTION}
         onClose={() => { setLegendModalOpen(false); refreshActiveLegend() }}
-        onActiveChange={(a) => setActiveLegend(a)}
+        onActiveChange={onLegendActiveChange}
+        projectId={selectedProject?.project_id}
       />
     </div>
   )

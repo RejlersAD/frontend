@@ -1,3 +1,4 @@
+import { radaiAlert, radaiConfirm, radaiPrompt } from '../services/radaiDialog'
 import React, { useEffect, useState, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
@@ -305,28 +306,28 @@ const UserManagement = () => {
     
     // Validation
     if (!formData.email || !formData.password || !formData.first_name || !formData.last_name) {
-      alert('Please fill in all required fields (Email, Password, First Name, Last Name)');
+      await radaiAlert('Please fill in all required fields (Email, Password, First Name, Last Name)');
       return;
     }
     
     // Check email validation status
     if (!emailValidation.isValid || !emailValidation.isAvailable) {
-      alert('Please provide a valid and available email address');
+      await radaiAlert('Please provide a valid and available email address');
       return;
     }
     
     if (formData.password.length < 8) {
-      alert('Password must be at least 8 characters long');
+      await radaiAlert('Password must be at least 8 characters long');
       return;
     }
     
     if (formData.module_ids.length === 0) {
-      alert('Please select at least one feature for the user');
+      await radaiAlert('Please select at least one feature for the user');
       return;
     }
     
     if (!formData.organization_id) {
-      alert('Please select an organization for the user');
+      await radaiAlert('Please select an organization for the user');
       return;
     }
     
@@ -358,11 +359,11 @@ const UserManagement = () => {
       console.log('✅ User created successfully:', response);
       
       // Show success message with email notification info
-      alert(
+      (await radaiAlert(
         `User created successfully!\n\n` +
         `A welcome email has been sent to ${formData.email} with login credentials.\n\n` +
         `The user will be required to change their password on first login.`
-      );
+      ));
       
       setShowCreateModal(false);
       dispatch(fetchUsers());
@@ -413,7 +414,7 @@ const UserManagement = () => {
         errorMessage = error.message;
       }
       
-      alert(errorMessage);
+      await radaiAlert(errorMessage);
     }
   };
   
@@ -493,7 +494,7 @@ const UserManagement = () => {
     };
     
     const config = CONFIRM_CONFIG[currentStatus] || CONFIRM_CONFIG.inactive;
-    const confirmed = window.confirm(`${config.title}\n\n${config.message}`);
+    const confirmed = (await radaiConfirm(`${config.title}\n\n${config.message}`));
     
     if (!confirmed) {
       console.log('[UserManagement] Status toggle cancelled by user');
@@ -575,9 +576,9 @@ const UserManagement = () => {
       confirmText: 'Type DELETE to confirm'
     };
     
-    const userConfirmation = window.prompt(
+    const userConfirmation = (await radaiPrompt(
       `${DELETE_CONFIRM_CONFIG.title}\n\n${DELETE_CONFIRM_CONFIG.message}\n\n${DELETE_CONFIRM_CONFIG.confirmText}:`
-    );
+    ));
     
     if (userConfirmation !== 'DELETE') {
       console.log('[UserManagement] Delete cancelled - confirmation failed');

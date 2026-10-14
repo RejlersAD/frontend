@@ -7,8 +7,12 @@ import apiClient from './api.service';
 import { API_BASE_URL } from '../config/api.config';
 
 const API_BASE = '/finance';
+const invoicePreviewRequests = new Map();
 
 const financeService = {
+  async getAwaitingPurchaseOrders(params = {}) { return (await apiClient.get(`${API_BASE}/invoices/awaiting-purchase-orders/`, { params })).data; },
+  async getPurchaseOrderOptions(params = {}) { return (await apiClient.get(`${API_BASE}/invoices/purchase-order-options/`, { params })).data; },
+  async allocatePurchaseOrder(id, payload) { return (await apiClient.post(`${API_BASE}/invoices/${encodeURIComponent(id)}/allocate-purchase-order/`, payload)).data; },
   /**
    * Upload a new invoice
    */
@@ -98,6 +102,8 @@ const financeService = {
     if (filters.status) params.append('status', filters.status);
     if (filters.invoice_type) params.append('invoice_type', filters.invoice_type);
     if (filters.search) params.append('search', filters.search);
+    if (filters.page) params.append('page', filters.page);
+    if (filters.page_size) params.append('page_size', filters.page_size);
     
     const response = await apiClient.get(`${API_BASE}/invoices/?${params.toString()}`);
     return response.data;
@@ -106,6 +112,39 @@ const financeService = {
   /** Read-only normalized A/R + A/P totals, kept separate by currency. */
   async getCombinedInvoiceSummary() {
     const response = await apiClient.get(`${API_BASE}/invoices/combined-summary/`);
+    return response.data;
+  },
+
+  /** Read-only finance dashboard, with separate currencies and source permissions. */
+  async getFinanceCommandCenter() {
+    const response = await apiClient.get(`${API_BASE}/dashboard/command-center/`);
+    return response.data;
+  },
+
+  /** Current receivables with recorded subtotals and independently authorized bills. */
+  async getReceivablesDashboard(filters = {}) {
+    const params = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== '' && value !== undefined && value !== null));
+    const response = await apiClient.get(`${API_BASE}/dashboard/receivables/`, { params });
+    return response.data;
+  },
+
+  /** Paginated customer invoice rows and totals for the whole selected cohort. */
+  async getCustomerInvoiceRegister(filters = {}) {
+    const params = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== '' && value !== undefined && value !== null));
+    const response = await apiClient.get(`${API_BASE}/dashboard/customer-invoices/`, { params });
+    return response.data;
+  },
+
+  /** Executive entry points retain each invoice register's source permissions. */
+  async getExecutiveReceivablesDashboard(filters = {}) {
+    const params = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== '' && value !== undefined && value !== null));
+    const response = await apiClient.get('/dashboard/executive/receivables/', { params });
+    return response.data;
+  },
+
+  async getExecutiveCustomerInvoiceRegister(filters = {}) {
+    const params = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== '' && value !== undefined && value !== null));
+    const response = await apiClient.get('/dashboard/executive/customer-invoices/', { params });
     return response.data;
   },
 
@@ -127,15 +166,16 @@ const financeService = {
 
   /**
    * Preview invoice PDF
+   * Uses backend-provided preview_url (relative path) with token for iframe auth
    */
-  getInvoicePreviewUrl(id) {
-    // Use centralized API config for consistent backend URL
-    // Remove /api/v1 from API_BASE_URL for full domain
-    const backendUrl = API_BASE_URL.replace('/api/v1', '');
-    
-    // Get auth token for authenticated PDF access
+  getInvoicePreviewUrl(invoice) {
+    const previewPath = invoice?.preview_url;
+    if (!previewPath) return '';
     const token = localStorage.getItem('radai_access_token');
-    return `${backendUrl}/api/v1/finance/invoices/${id}/preview/?token=${token}`;
+    const params = new URLSearchParams();
+    if (token) params.set('token', token);
+    const query = params.toString();
+    return `${previewPath}${query ? `?${query}` : ''}`;
   },
 
   /**
@@ -143,10 +183,16 @@ const financeService = {
    * handle missing files without rendering the API error page in an iframe.
    */
   async getInvoicePreviewBlob(id) {
-    const response = await apiClient.get(`${API_BASE}/invoices/${id}/preview/`, {
-      responseType: 'blob',
-    });
-    return response.data;
+    if (!invoicePreviewRequests.has(id)) {
+      const request = apiClient.get(`${API_BASE}/invoices/${id}/preview/`, {
+        responseType: 'blob',
+        suppressErrorToast: true,
+      })
+        .then((response) => response.data)
+        .finally(() => invoicePreviewRequests.delete(id));
+      invoicePreviewRequests.set(id, request);
+    }
+    return invoicePreviewRequests.get(id);
   },
 
   /**

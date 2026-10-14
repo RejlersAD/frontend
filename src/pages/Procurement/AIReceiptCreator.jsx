@@ -1,1476 +1,348 @@
-import React, { useState, useEffect } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import {
-  SparklesIcon,
-  XMarkIcon,
-  DocumentTextIcon,
-  BeakerIcon,
-  CheckCircleIcon,
-  XCircleIcon,
-  ExclamationTriangleIcon,
-  LightBulbIcon,
-  ShieldCheckIcon,
-  CubeIcon,
-  UserGroupIcon,
-  CalendarIcon,
-  TruckIcon
-} from '@heroicons/react/24/outline';
-import { PROCUREMENT_CONFIG, getCategoryByCode } from '../../config/procurement.config';
+import PropTypes from 'prop-types';
+import { XMarkIcon, CheckIcon, CheckCircleIcon, InformationCircleIcon, ArrowTopRightOnSquareIcon, DocumentDuplicateIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import apiClient from '../../services/api.service';
+import goodsReceiptsService from '../../services/goodsReceipts.service';
+import { PurchaseOrderSelector, handoffError } from '../../components/Procurement/PurchaseOrderHandoff';
+import { buildReceivingLines, localReceiptDate, receivingLinePreview, receiptOperation } from './receiptHandoff';
+import { receiptReviewDate } from '../../components/Procurement/goodsReceiptReviewPresentation';
+import { receiptEntrySummary } from './receiptEntryPresentation';
+import ReceiptDeliveryInformation from './ReceiptDeliveryInformation';
+import ReceiptReceivingBasisEditor from './ReceiptReceivingBasisEditor';
+import { buildReceivingBasis } from './receiptReceivingBasis';
+import './AIReceiptCreator.css';
 
-const createEmptyAISuggestions = () => ({
-  grNumber: null,
-  inspectionRequirements: null,
-  certRequirements: null,
-  qualityChecklist: null,
-  inspectorRecommendation: null,
-  acceptanceRecommendation: null,
-  defectAnalysis: null
-});
+const availableOrders = params => goodsReceiptsService.availableOrders({ ...params, queue: 'awaiting' });
+const emptyForm = () => ({ delivery_note_number: '', receipt_date: localReceiptDate(), notes: '', reason: '', delivery_location: '', supplier_reference: '', condition: '', exception_reason: '' });
+const orderText = value => typeof value === 'string' && value.trim() ? value : '—';
+const emptyBasisDrafts = (currency = '') => ({ quantity: [{ description: '', uom: '', ordered: '' }], service_value: [{ description: '', uom: currency, ordered: '' }] });
+const remainingDrafts = data => Object.fromEntries(data.lines.map(line => [line.line_id, { received: String(line.available), rejected: '0' }]));
 
-const AIReceiptCreator = ({ isOpen, onClose, onReceiptCreated, orders }) => {
-  const availableOrders = Array.isArray(orders) ? orders : [];
-  const [formData, setFormData] = useState({
-    po_id: '',
-    po_number: '',
-    received_date: new Date().toISOString().split('T')[0],
-    quantity_received: 0,
-    quantity_rejected: 0,
-    inspector_name: '',
-    inspection_agency: '',
-    packaging_condition: 'good',
-    certificates_received: [],
-    heat_numbers: '',
-    inspection_report_number: '',
-    ndt_required: false,
-    ndt_performed: false,
-    ndt_results: '',
-    dimensional_check_passed: null,
-    visual_inspection_passed: null,
-    material_verification_passed: null,
-    quality_check_passed: null,
-    notes: '',
-    status: 'pending'
-  });
+export default function AIReceiptCreator({ isOpen, onClose, onReceiptCreated, initialOrder = null, reconciliation = false }) {
+  const dialogRef = useRef(null);
+  const anchorRef = useRef(null);
+  const itemsRef = useRef(null);
+  const reviewRef = useRef(null);
+  const busyRef = useRef(false);
+  const operation = useRef(null);
+  const basisOperation = useRef(null);
+  const seedFull = useRef(true);
+  const [order, setOrder] = useState(initialOrder);
+  const [summary, setSummary] = useState(null);
+  const [form, setForm] = useState(emptyForm);
+  const [drafts, setDrafts] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [basisSaving, setBasisSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [stale, setStale] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const [reviewed, setReviewed] = useState(false);
+  const [bounds, setBounds] = useState(null);
+  const [orderDetails, setOrderDetails] = useState(null);
+  const [actor, setActor] = useState({ data: null, loading: false });
+  const [statusChoice, setStatusChoice] = useState('full');
+  const [basisChoice, setBasisChoice] = useState('quantity');
+  const [basisDrafts, setBasisDrafts] = useState(emptyBasisDrafts);
+  const statusChoiceRef = useRef(statusChoice);
+  statusChoiceRef.current = statusChoice;
+  const currency = orderDetails?.currency || order?.currency || summary?.currency || '';
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const close = useCallback(() => { if (!busyRef.current) onCloseRef.current(); }, []);
 
-  const [aiProcessing, setAiProcessing] = useState(false);
-  const [aiSuggestions, setAiSuggestions] = useState(createEmptyAISuggestions);
-  const [selectedPO, setSelectedPO] = useState(null);
-  const [aiInsights, setAiInsights] = useState([]);
-  const [submitting, setSubmitting] = useState(false);
-
-  /**
-   * AI Feature 1: Auto-generate GR Number
-   * Generates unique goods receipt number based on PO and sequence
-   */
-  const generateGRNumber = async () => {
-    setAiProcessing(true);
-    
-    // Simulate AI processing delay
-    await new Promise(resolve => setTimeout(resolve, 1200));
-    
-    if (!selectedPO) {
-      setAiProcessing(false);
-      return;
-    }
-
-    // Soft-coded GR number generation algorithm
-    const poNumber = selectedPO.po_number || '';
-    const date = new Date();
-    const dateStr = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}`;
-    const randomSeq = Math.floor(1000 + Math.random() * 9000);
-    
-    const grNumber = `GR-${poNumber}-${dateStr}-${randomSeq}`;
-    
-    setAiSuggestions(prev => ({
-      ...prev,
-      grNumber: {
-        value: grNumber,
-        confidence: 0.98,
-        reasoning: 'Generated based on PO number, date, and sequence'
-      }
-    }));
-    
-    setFormData(prev => ({ ...prev, gr_number: grNumber }));
-    
-    addAiInsight('success', 'GR Number Generated', `Unique receipt number created: ${grNumber}`);
-    setAiProcessing(false);
-  };
-
-  /**
-   * AI Feature 2: Smart Inspection Requirements Analysis
-   * Analyzes PO items and determines required inspections
-   */
-  const analyzeInspectionRequirements = async () => {
-    setAiProcessing(true);
-    
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    if (!selectedPO || !selectedPO.items) {
-      setAiProcessing(false);
-      return;
-    }
-
-    // Soft-coded inspection requirement algorithm
-    const requirements = {
-      dimensional: false,
-      visual: true, // Always required
-      material: false,
-      ndt: false,
-      hydrostatic: false,
-      functional: false,
-      reasons: []
-    };
-
-    const items = Array.isArray(selectedPO.items) ? selectedPO.items : [];
-    
-    items.forEach(item => {
-      const description = (item.description || '').toLowerCase();
-      const category = item.category || '';
-      
-      // Dimensional checks required for precision items
-      if (description.includes('pipe') || description.includes('valve') || 
-          description.includes('flange') || description.includes('fitting') ||
-          category.includes('piping') || category.includes('valves')) {
-        requirements.dimensional = true;
-        requirements.reasons.push('Dimensional verification required for piping/valve components');
-      }
-      
-      // Material verification for critical materials
-      if (description.includes('stainless') || description.includes('alloy') ||
-          description.includes('duplex') || description.includes('inconel') ||
-          description.includes('carbon steel')) {
-        requirements.material = true;
-        requirements.reasons.push('Material grade verification required for alloy/carbon steel');
-      }
-      
-      // NDT required for pressure equipment
-      if (description.includes('pressure') || description.includes('vessel') ||
-          description.includes('pump') || description.includes('heat exchanger') ||
-          category.includes('rotating') || category.includes('static')) {
-        requirements.ndt = true;
-        requirements.reasons.push('NDT inspection required for pressure-bearing equipment');
-      }
-      
-      // Hydrostatic test for vessels and piping
-      if (description.includes('vessel') || description.includes('tank') ||
-          (description.includes('pipe') && description.includes('pressure'))) {
-        requirements.hydrostatic = true;
-        requirements.reasons.push('Hydrostatic testing required for pressure vessels/piping');
-      }
-      
-      // Functional testing for rotating equipment
-      if (description.includes('pump') || description.includes('compressor') ||
-          description.includes('motor') || category.includes('rotating')) {
-        requirements.functional = true;
-        requirements.reasons.push('Functional testing required for rotating equipment');
-      }
-    });
-
-    setAiSuggestions(prev => ({
-      ...prev,
-      inspectionRequirements: {
-        requirements,
-        confidence: 0.95,
-        itemCount: items.length
-      }
-    }));
-
-    // Update form with AI recommendations
-    setFormData(prev => ({
-      ...prev,
-      ndt_required: requirements.ndt,
-      dimensional_check_passed: requirements.dimensional ? null : true,
-      visual_inspection_passed: null,
-      material_verification_passed: requirements.material ? null : true
-    }));
-
-    addAiInsight('info', 'Inspection Requirements Analyzed', 
-      `${Object.values(requirements).filter(v => v === true).length} inspection types required for ${items.length} items`);
-    
-    setAiProcessing(false);
-  };
-
-  /**
-   * AI Feature 3: Certificate Requirements Verification
-   * Determines required certificates based on item specifications
-   */
-  const analyzeCertificateRequirements = async () => {
-    setAiProcessing(true);
-    
-    await new Promise(resolve => setTimeout(resolve, 1400));
-    
-    if (!selectedPO || !selectedPO.items) {
-      setAiProcessing(false);
-      return;
-    }
-
-    const items = Array.isArray(selectedPO.items) ? selectedPO.items : [];
-    const requiredCerts = new Set();
-    const reasons = [];
-
-    // Soft-coded certificate requirement algorithm
-    items.forEach(item => {
-      const description = (item.description || '').toLowerCase();
-      const category = item.category || '';
-      const materialSpec = item.material_specification || '';
-      
-      // Base certificates - always required
-      requiredCerts.add('MTC 3.1');
-      requiredCerts.add('COC');
-      
-      // Material-specific certificates
-      if (materialSpec || description.includes('carbon steel') || 
-          description.includes('stainless') || description.includes('alloy')) {
-        requiredCerts.add('MTR');
-        requiredCerts.add('PMI Report');
-        reasons.push('Material Test Reports required for metal components');
-      }
-      
-      // Piping and static equipment
-      if (description.includes('pipe') || description.includes('flange') ||
-          description.includes('fitting') || category.includes('piping') ||
-          category.includes('static')) {
-        requiredCerts.add('ASME B31.3');
-        requiredCerts.add('Hydrostatic Test');
-        reasons.push('ASME compliance certificates required for piping systems');
-      }
-      
-      // Valves and fittings
-      if (description.includes('valve') || category.includes('valves')) {
-        requiredCerts.add('API 600');
-        requiredCerts.add('API 6D');
-        requiredCerts.add('Pressure Test');
-        reasons.push('API valve certificates and pressure test reports required');
-      }
-      
-      // Rotating equipment
-      if (description.includes('pump') || description.includes('compressor') ||
-          category.includes('rotating')) {
-        requiredCerts.add('API 610');
-        requiredCerts.add('FAT Report');
-        requiredCerts.add('Performance Test');
-        reasons.push('Factory Acceptance Test and performance certificates required');
-      }
-      
-      // Welding requirements
-      if (item.welding_required || description.includes('weld')) {
-        requiredCerts.add('WPS');
-        requiredCerts.add('PQR');
-        requiredCerts.add('WQTR');
-        requiredCerts.add('NDT Report');
-        reasons.push('Welding procedure and qualification records required');
-      }
-      
-      // Electrical equipment
-      if (description.includes('motor') || description.includes('electrical') ||
-          category.includes('electrical')) {
-        requiredCerts.add('IECEx');
-        requiredCerts.add('ATEX');
-        requiredCerts.add('IEEE Compliance');
-        reasons.push('Electrical safety certifications required for hazardous areas');
-      }
-      
-      // Safety equipment
-      if (description.includes('safety') || description.includes('relief') ||
-          description.includes('psv')) {
-        requiredCerts.add('API 526');
-        requiredCerts.add('Calibration Report');
-        reasons.push('Safety valve certifications and calibration required');
-      }
-      
-      // Chemicals and consumables
-      if (category.includes('chemicals') || category.includes('consumables')) {
-        requiredCerts.add('MSDS');
-        requiredCerts.add('COA');
-        reasons.push('Material Safety Data Sheets and Certificate of Analysis required');
-      }
-    });
-
-    const certArray = Array.from(requiredCerts);
-    
-    setAiSuggestions(prev => ({
-      ...prev,
-      certRequirements: {
-        certificates: certArray,
-        reasons,
-        confidence: 0.93,
-        itemCount: items.length
-      }
-    }));
-
-    addAiInsight('info', `${certArray.length} Certificates Required`, 
-      `AI identified mandatory documentation for ${items.length} items`);
-    
-    setAiProcessing(false);
-  };
-
-  /**
-   * AI Feature 4: Quality Check Guidance
-   * Provides step-by-step inspection checklist
-   */
-  const generateQualityChecklist = async () => {
-    setAiProcessing(true);
-    
-    await new Promise(resolve => setTimeout(resolve, 1600));
-    
-    if (!selectedPO || !selectedPO.items) {
-      setAiProcessing(false);
-      return;
-    }
-
-    const items = Array.isArray(selectedPO.items) ? selectedPO.items : [];
-    const checklist = {
-      dimensional: [],
-      visual: [],
-      material: [],
-      functional: [],
-      documentation: []
-    };
-
-    // Soft-coded quality checklist generation
-    items.forEach(item => {
-      const description = (item.description || '').toLowerCase();
-      const category = item.category || '';
-      
-      // Dimensional checks
-      if (description.includes('pipe') || description.includes('valve') || description.includes('flange')) {
-        checklist.dimensional.push({
-          item: item.description,
-          checks: [
-            'Verify dimensions against drawing specifications',
-            'Check wall thickness (minimum required per spec)',
-            'Measure outside diameter and length',
-            'Verify flange dimensions and bolt hole patterns',
-            'Check tolerances per ASME B31.3 or applicable standard'
-          ]
-        });
-      }
-      
-      // Visual inspection - always required
-      checklist.visual.push({
-        item: item.description,
-        checks: [
-          'Inspect for surface defects (cracks, pitting, corrosion)',
-          'Check coating/painting quality and thickness',
-          'Verify identification markings and tags',
-          'Check packaging condition and protection',
-          'Look for any signs of damage during transport',
-          'Verify heat numbers are stamped/marked correctly'
-        ]
-      });
-      
-      // Material verification
-      if (description.includes('steel') || description.includes('alloy') || item.material_specification) {
-        checklist.material.push({
-          item: item.description,
-          checks: [
-            'Verify material grade matches specification',
-            'Conduct PMI (Positive Material Identification) test',
-            'Check heat number traceability',
-            'Review Material Test Reports (MTR)',
-            'Verify chemical composition per MTC',
-            'Check mechanical properties (tensile, yield, hardness)'
-          ]
-        });
-      }
-      
-      // Functional tests
-      if (description.includes('pump') || description.includes('valve') || 
-          category.includes('rotating')) {
-        checklist.functional.push({
-          item: item.description,
-          checks: [
-            'Perform operational test per manufacturer specifications',
-            'Check pressure rating and perform pressure test',
-            'Verify seat tightness (for valves)',
-            'Test performance parameters (flow, head, efficiency)',
-            'Check seal integrity',
-            'Verify rotation direction and coupling alignment'
-          ]
-        });
-      }
-      
-      // Documentation
-      checklist.documentation.push({
-        item: item.description,
-        checks: [
-          'MTC 3.1 certificate present and valid',
-          'Certificate of Conformity (COC) received',
-          'Test reports match item serial/heat numbers',
-          'Manufacturer data sheets and manuals provided',
-          'Warranty documentation included',
-          'Traceability documentation complete'
-        ]
-      });
-    });
-
-    setAiSuggestions(prev => ({
-      ...prev,
-      qualityChecklist: {
-        checklist,
-        confidence: 0.96,
-        totalChecks: Object.values(checklist).reduce((sum, cat) => sum + cat.length, 0)
-      }
-    }));
-
-    addAiInsight('success', 'Quality Checklist Generated', 
-      `Comprehensive inspection guide created with ${Object.values(checklist).reduce((sum, cat) => sum + cat.length, 0)} check items`);
-    
-    setAiProcessing(false);
-  };
-
-  /**
-   * AI Feature 5: Inspector Recommendation
-   * Suggests qualified inspector based on item requirements
-   */
-  const recommendInspector = async () => {
-    setAiProcessing(true);
-    
-    await new Promise(resolve => setTimeout(resolve, 1300));
-    
-    if (!selectedPO || !selectedPO.items) {
-      setAiProcessing(false);
-      return;
-    }
-
-    const items = Array.isArray(selectedPO.items) ? selectedPO.items : [];
-    
-    // Soft-coded inspector recommendation algorithm
-    const requiredQualifications = new Set();
-    let complexityScore = 0;
-    
-    items.forEach(item => {
-      const description = (item.description || '').toLowerCase();
-      const category = item.category || '';
-      
-      if (description.includes('pressure') || description.includes('vessel')) {
-        requiredQualifications.add('API 510 - Pressure Vessel Inspector');
-        complexityScore += 3;
-      }
-      
-      if (description.includes('pipe') || description.includes('piping')) {
-        requiredQualifications.add('API 570 - Piping Inspector');
-        complexityScore += 2;
-      }
-      
-      if (description.includes('weld')) {
-        requiredQualifications.add('CWI - Certified Welding Inspector');
-        complexityScore += 3;
-      }
-      
-      if (description.includes('ndt') || item.ndt_required) {
-        requiredQualifications.add('ASNT Level II NDT');
-        complexityScore += 3;
-      }
-      
-      if (description.includes('electrical')) {
-        requiredQualifications.add('IECEx Competent Person');
-        complexityScore += 2;
-      }
-      
-      if (category.includes('rotating')) {
-        requiredQualifications.add('Rotating Equipment Specialist');
-        complexityScore += 2;
-      }
-      
-      complexityScore += 1; // Base complexity per item
-    });
-
-    // Determine inspection level
-    let inspectionLevel = 'Standard';
-    let recommendedAgency = 'Internal QC Team';
-    
-    if (complexityScore > 15) {
-      inspectionLevel = 'Critical';
-      recommendedAgency = 'Third Party Agency (SGS, Bureau Veritas, TÜV)';
-    } else if (complexityScore > 8) {
-      inspectionLevel = 'Advanced';
-      recommendedAgency = 'Senior Inspector + Third Party Witness';
-    }
-
-    const recommendation = {
-      level: inspectionLevel,
-      agency: recommendedAgency,
-      qualifications: Array.from(requiredQualifications),
-      complexityScore,
-      estimatedDuration: `${Math.ceil(complexityScore * 0.5)} hours`,
-      reasoning: `Based on ${items.length} items with complexity score of ${complexityScore}`
-    };
-
-    setAiSuggestions(prev => ({
-      ...prev,
-      inspectorRecommendation: {
-        ...recommendation,
-        confidence: 0.91
-      }
-    }));
-
-    setFormData(prev => ({
-      ...prev,
-      inspection_agency: recommendedAgency
-    }));
-
-    addAiInsight('info', `${inspectionLevel} Inspection Required`, 
-      `${requiredQualifications.size} qualification(s) needed - ${recommendedAgency}`);
-    
-    setAiProcessing(false);
-  };
-
-  /**
-   * AI Feature 6: Defect Detection & Analysis
-   * Analyzes inspection results and flags potential issues
-   */
-  const analyzeDefects = () => {
-    const defects = [];
-    const warnings = [];
-    let severity = 'low';
-
-    // Dimensional defects
-    if (formData.dimensional_check_passed === false) {
-      defects.push({
-        type: 'Dimensional',
-        severity: 'high',
-        issue: 'Dimensional measurements out of tolerance',
-        action: 'Reject or request deviation approval',
-        impact: 'May affect fit-up and assembly'
-      });
-      severity = 'high';
-    }
-
-    // Visual defects
-    if (formData.visual_inspection_passed === false) {
-      defects.push({
-        type: 'Visual',
-        severity: 'medium',
-        issue: 'Visual defects detected (cracks, pitting, or coating issues)',
-        action: 'Assess severity and document with photos',
-        impact: 'May compromise integrity or aesthetics'
-      });
-      if (severity === 'low') severity = 'medium';
-    }
-
-    // Material verification issues
-    if (formData.material_verification_passed === false) {
-      defects.push({
-        type: 'Material',
-        severity: 'critical',
-        issue: 'Material grade mismatch or PMI failure',
-        action: 'REJECT - Material substitution not acceptable',
-        impact: 'Safety and compliance violation'
-      });
-      severity = 'critical';
-    }
-
-    // NDT failures
-    if (formData.ndt_required && formData.ndt_performed && formData.ndt_results) {
-      const ndtText = formData.ndt_results.toLowerCase();
-      if (ndtText.includes('fail') || ndtText.includes('reject') || ndtText.includes('defect')) {
-        defects.push({
-          type: 'NDT',
-          severity: 'high',
-          issue: 'NDT testing revealed internal defects',
-          action: 'Reject and request repair/replacement',
-          impact: 'Structural integrity compromised'
-        });
-        severity = severity === 'critical' ? 'critical' : 'high';
-      }
-    }
-
-    // Certificate warnings
-    if (!formData.certificates_received || formData.certificates_received.length === 0) {
-      warnings.push({
-        type: 'Documentation',
-        message: 'No certificates received - hold pending documentation',
-        recommendation: 'Request vendor to provide required certificates'
-      });
-    }
-
-    // Heat number warnings
-    if (!formData.heat_numbers || formData.heat_numbers.trim() === '') {
-      warnings.push({
-        type: 'Traceability',
-        message: 'Missing heat numbers - material traceability incomplete',
-        recommendation: 'Verify heat numbers from markings or request from vendor'
-      });
-    }
-
-    // Packaging condition
-    if (formData.packaging_condition === 'damaged') {
-      warnings.push({
-        type: 'Packaging',
-        message: 'Damaged packaging may have affected item condition',
-        recommendation: 'Perform thorough inspection for transportation damage'
-      });
-    }
-
-    return {
-      defects,
-      warnings,
-      severity,
-      hasIssues: defects.length > 0 || warnings.length > 0
-    };
-  };
-
-  /**
-   * AI Feature 7: Acceptance Decision Recommendation
-   * Provides AI-based acceptance/rejection recommendation
-   */
-  const generateAcceptanceRecommendation = () => {
-    const analysis = analyzeDefects();
-    
-    let decision = 'accept';
-    let reasoning = [];
-    let confidence = 0.95;
-
-    // Critical failures = automatic rejection
-    if (analysis.severity === 'critical') {
-      decision = 'reject';
-      confidence = 0.99;
-      reasoning.push('Critical material verification failure detected');
-      reasoning.push('Acceptance would violate safety and compliance requirements');
-    }
-    // High severity = likely rejection
-    else if (analysis.severity === 'high') {
-      decision = 'reject';
-      confidence = 0.92;
-      reasoning.push('High severity defects exceed acceptable limits');
-      reasoning.push('Recommendation: Return to vendor for replacement');
-    }
-    // Medium severity = conditional acceptance possible
-    else if (analysis.severity === 'medium') {
-      decision = 'conditional';
-      confidence = 0.85;
-      reasoning.push('Medium severity issues detected');
-      reasoning.push('Consider: Accept with conditions or request repair');
-      reasoning.push('Requires engineering review and deviation approval');
-    }
-    // Warnings only = hold pending documentation
-    else if (analysis.warnings.length > 0) {
-      decision = 'hold';
-      confidence = 0.88;
-      reasoning.push('Items appear satisfactory but documentation incomplete');
-      reasoning.push('Hold pending receipt of required certificates');
-    }
-    // All checks passed = accept
-    else {
-      decision = 'accept';
-      confidence = 0.97;
-      reasoning.push('All quality checks passed successfully');
-      reasoning.push('Material and workmanship meet specification requirements');
-      reasoning.push('Documentation complete and satisfactory');
-    }
-
-    return {
-      decision,
-      reasoning,
-      confidence,
-      analysis
-    };
-  };
-
-  // Update acceptance recommendation when quality checks change
   useEffect(() => {
-    if (formData.dimensional_check_passed !== null || 
-        formData.visual_inspection_passed !== null || 
-        formData.material_verification_passed !== null) {
-      
-      const recommendation = generateAcceptanceRecommendation();
-      
-      setAiSuggestions(prev => ({
-        ...prev,
-        acceptanceRecommendation: recommendation
-      }));
+    if (currency) setBasisDrafts(current => ({ ...current, service_value: current.service_value.map(line => line.uom ? line : { ...line, uom: currency }) }));
+  }, [currency]);
 
-      // Update overall quality status
-      const allPassed = formData.dimensional_check_passed !== false &&
-                       formData.visual_inspection_passed !== false &&
-                       formData.material_verification_passed !== false;
-      
-      const anyFailed = formData.dimensional_check_passed === false ||
-                       formData.visual_inspection_passed === false ||
-                       formData.material_verification_passed === false;
-      
-      setFormData(prev => ({
-        ...prev,
-        quality_check_passed: anyFailed ? false : (allPassed ? true : null),
-        status: recommendation.decision === 'reject' ? 'rejected' : 
-               recommendation.decision === 'accept' ? 'accepted' : 
-               recommendation.decision === 'hold' ? 'pending' : 'pending'
-      }));
-    }
-  }, [formData.dimensional_check_passed, formData.visual_inspection_passed, 
-      formData.material_verification_passed, formData.ndt_results]);
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    let active = true;
+    setActor({ data: null, loading: true });
+    apiClient.get('/rbac/users/me/', { params: { view: 'profile' } }).then(({ data }) => {
+      if (active) setActor({ data, loading: false });
+    }).catch(() => { if (active) setActor({ data: null, loading: false }); });
+    return () => { active = false; };
+  }, [isOpen]);
 
-  const handlePOSelect = (e) => {
-    const poId = e.target.value;
-    const po = availableOrders.find(o => String(o.id) === String(poId));
-    
-    if (po) {
-      setSelectedPO(po);
-      setFormData(prev => ({
-        ...prev,
-        po_id: poId,
-        po_number: po.po_number,
-        quantity_received: po.total_quantity || (Array.isArray(po.items)
-          ? po.items.reduce((sum, item) => sum + Number(item.quantity || item.ordered_qty || 0), 0)
-          : 0) || 1
-      }));
-      
-      // Auto-trigger AI analysis
-      setTimeout(() => {
-        generateGRNumber();
-        analyzeInspectionRequirements();
-        analyzeCertificateRequirements();
-        generateQualityChecklist();
-        recommendInspector();
-      }, 500);
-    }
-  };
+  useLayoutEffect(() => {
+    if (!isOpen) return undefined;
+    const main = anchorRef.current?.closest('main') || document.querySelector('#application-content main');
+    const measure = () => {
+      const rect = main?.getBoundingClientRect();
+      const left = Math.max(0, rect?.left || 0);
+      const top = Math.max(0, rect?.top || 0);
+      const next = { left, top, width: Math.max(0, Math.min(rect?.right ?? window.innerWidth, window.innerWidth) - left), height: Math.max(0, Math.min(rect?.bottom ?? window.innerHeight, window.innerHeight) - top) };
+      setBounds(current => current && Object.keys(next).every(key => current[key] === next[key]) ? current : next);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    if (main) observer.observe(main);
+    window.addEventListener('resize', measure);
+    window.addEventListener('scroll', measure, true);
+    return () => { observer.disconnect(); window.removeEventListener('resize', measure); window.removeEventListener('scroll', measure, true); };
+  }, [isOpen]);
 
-  const addAiInsight = (type, title, message) => {
-    setAiInsights(prev => [...prev, { type, title, message, timestamp: Date.now() }]);
-    // Auto-remove after 5 seconds
-    setTimeout(() => {
-      setAiInsights(prev => prev.filter(i => i.timestamp !== Date.now()));
-    }, 5000);
-  };
+  useEffect(() => {
+    setOrderDetails(null);
+    if (!isOpen || !order?.id) return undefined;
+    let active = true;
+    // The receiving summary remains the authority for eligibility and balances.
+    // This optional read supplies display-only order dates and commercial terms.
+    apiClient.get(`/procurement/orders/${encodeURIComponent(order.id)}/`, { suppressErrorToast: true }).then(({ data }) => {
+      if (active && String(data?.id) === String(order.id)) setOrderDetails(data);
+    }).catch(() => { /* Keep known queue metadata when order details are unavailable. */ });
+    return () => { active = false; };
+  }, [isOpen, order?.id]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!selectedPO || !formData.po_id) {
-      addAiInsight('error', 'Purchase Order Required', 'Select a purchase order before recording the receipt.');
-      return;
-    }
-    if (Number(formData.quantity_received || 0) <= 0) {
-      addAiInsight('error', 'Quantity Required', 'Quantity received must be greater than zero.');
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const receivedQuantity = Number(formData.quantity_received || 0);
-      const rejectedQuantity = Number(formData.quantity_rejected || 0);
-      const acceptedQuantity = Math.max(0, receivedQuantity - rejectedQuantity);
-      const poItems = Array.isArray(selectedPO.items) ? selectedPO.items : [];
-      const itemsReceived = poItems.length > 0
-        ? poItems.map((item, index) => {
-            const ordered = Number(item.quantity || item.ordered_qty || 0);
-            return {
-              po_line_id: item.id || item.po_line_id || null,
-              line_number: item.line_number || index + 1,
-              item: item.description || item.item || item.name || `PO item ${index + 1}`,
-              uom: item.unit || item.uom || 'EA',
-              ordered_qty: ordered,
-              received_qty: ordered,
-              accepted_qty: ordered,
-              rejected_qty: 0,
-            };
-          })
-        : [{
-            line_number: 1,
-            item: selectedPO.title || selectedPO.description || 'Goods received against purchase order',
-            uom: 'LOT',
-            ordered_qty: receivedQuantity,
-            received_qty: receivedQuantity,
-            accepted_qty: acceptedQuantity,
-            rejected_qty: rejectedQuantity,
-          }];
-
-      const heatNumbers = Array.isArray(formData.heat_numbers)
-        ? formData.heat_numbers
-        : String(formData.heat_numbers || '').split(',').map(value => value.trim()).filter(Boolean);
-
-      // Map the UI model to the canonical Receipt API contract.
-      const submitData = {
-        purchase_order: formData.po_id,
-        status: formData.status || 'pending',
-        items_received: itemsReceived,
-        inspector_name: formData.inspector_name || '',
-        inspection_agency: formData.inspection_agency || '',
-        inspection_report_number: formData.inspection_report_number || '',
-        certificates_received: formData.certificates_received || [],
-        heat_numbers: heatNumbers,
-        ndt_performed: Boolean(formData.ndt_performed),
-        ndt_results: formData.ndt_results || '',
-        dimensional_check_passed: formData.dimensional_check_passed ?? true,
-        visual_inspection_passed: formData.visual_inspection_passed ?? true,
-        material_verification_passed: formData.material_verification_passed ?? true,
-        quality_check_passed: formData.quality_check_passed ?? true,
-        inspection_notes: `Packaging condition: ${formData.packaging_condition || 'not recorded'}`,
-        notes: formData.notes || '',
-      };
-      
-      const response = await apiClient.post('/procurement/receipts/', submitData);
-      const data = response.data;
-      onReceiptCreated(data);
-      handleClose();
-      addAiInsight('success', 'Receipt Recorded', 'Goods receipt created successfully with AI quality analysis');
-    } catch (error) {
-      console.error('Error creating receipt:', error);
-      const responseData = error.response?.data;
-      const validationMessage = responseData && typeof responseData === 'object'
-        ? Object.entries(responseData).map(([field, messages]) => `${field}: ${Array.isArray(messages) ? messages.join(', ') : messages}`).join(' · ')
-        : null;
-      addAiInsight('error', 'Unable to Record Receipt', validationMessage || error.message || 'Failed to create receipt');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleClose = () => {
-    setFormData({
-      po_id: '',
-      po_number: '',
-      received_date: new Date().toISOString().split('T')[0],
-      quantity_received: 0,
-      quantity_rejected: 0,
-      inspector_name: '',
-      inspection_agency: '',
-      packaging_condition: 'good',
-      certificates_received: [],
-      heat_numbers: '',
-      inspection_report_number: '',
-      ndt_required: false,
-      ndt_performed: false,
-      ndt_results: '',
-      dimensional_check_passed: null,
-      visual_inspection_passed: null,
-      material_verification_passed: null,
-      quality_check_passed: null,
-      notes: '',
-      status: 'pending'
-    });
-    setSelectedPO(null);
-    setSubmitting(false);
-    setAiSuggestions(createEmptyAISuggestions());
-    setAiInsights([]);
-    onClose();
-  };
-
-  const toggleCertificate = (cert) => {
-    setFormData(prev => {
-      const certs = prev.certificates_received || [];
-      if (certs.includes(cert)) {
-        return { ...prev, certificates_received: certs.filter(c => c !== cert) };
-      } else {
-        return { ...prev, certificates_received: [...certs, cert] };
+  useEffect(() => {
+    if (!isOpen) return;
+    setOrder(initialOrder); setSummary(null); setForm(emptyForm()); setDrafts({}); setStatusChoice('full'); setBasisChoice('quantity'); setBasisDrafts(emptyBasisDrafts(initialOrder?.currency || '')); setError(''); setStale(false); setReviewed(false); operation.current = null; basisOperation.current = null; seedFull.current = true;
+  }, [isOpen, initialOrder]);
+  useEffect(() => {
+    if (!isOpen || !order?.id) return undefined;
+    let active = true;
+    setLoading(true);
+    goodsReceiptsService.receivingSummary(order.id).then(data => {
+      if (!active) return;
+      if (!Array.isArray(data?.lines) || !data.po_updated_at) throw new Error('Receipt balances are unavailable.');
+      setSummary(data); setStale(false);
+      if (seedFull.current && data.lines.length && (reconciliation ? data.can_reconcile : data.can_record)) {
+        if (statusChoiceRef.current === 'full') setDrafts(remainingDrafts(data));
+        seedFull.current = false;
       }
-    });
+    }).catch(requestError => { if (active) { setError(handoffError(requestError)); setStale(true); } }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [isOpen, order?.id, retry, reconciliation]);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const previous = document.activeElement;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const elements = () => [...(dialogRef.current?.querySelectorAll('button,a[href],summary,input,select,textarea,[tabindex="0"]') || [])].filter(element => !element.matches(':disabled') && element.getClientRects().length);
+    const frame = requestAnimationFrame(() => elements()[0]?.focus());
+    const keydown = event => {
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); }
+      if (event.key !== 'Tab') return;
+      const controls = elements();
+      if (!controls.length) { event.preventDefault(); dialogRef.current?.focus(); }
+      else if (event.shiftKey && (document.activeElement === controls[0] || !dialogRef.current?.contains(document.activeElement))) { event.preventDefault(); controls.at(-1).focus(); }
+      else if (!event.shiftKey && (document.activeElement === controls.at(-1) || !dialogRef.current?.contains(document.activeElement))) { event.preventDefault(); controls[0].focus(); }
+    };
+    document.addEventListener('keydown', keydown, true);
+    return () => { cancelAnimationFrame(frame); document.removeEventListener('keydown', keydown, true); document.body.style.overflow = overflow; if (previous?.isConnected) previous.focus(); };
+  }, [isOpen, close]);
+
+  const change = (name, value) => { setForm(current => ({ ...current, [name]: value })); setReviewed(false); };
+  const persistBasis = async basis => {
+    const payload = { ...basis, expected_updated_at: summary.po_updated_at };
+    basisOperation.current = receiptOperation(basisOperation.current, { purchase_order: order.id, ...payload });
+    setBasisSaving(true);
+    let acknowledged = false;
+    try {
+      const saved = await goodsReceiptsService.saveReceivingBasis(order.id, { ...payload, operation_key: basisOperation.current.key });
+      acknowledged = true;
+      if (saved?.basis_source !== 'reviewed_receiving' || saved.basis !== basis.basis || !saved.po_updated_at || !Array.isArray(saved.lines) || saved.lines.length !== basis.lines.length || saved.lines.some(line => !line.line_id || !line.uom || !line.ordered)) throw new Error('The receiving basis response could not be verified. Refresh receipt balances.');
+      const refreshed = await goodsReceiptsService.receivingSummary(order.id);
+      if (refreshed?.basis_source !== 'reviewed_receiving' || refreshed.basis !== basis.basis || !refreshed.po_updated_at || !Array.isArray(refreshed.lines) || !refreshed.lines.length) throw new Error('Saved receiving balances could not be verified. Refresh receipt balances.');
+      if (refreshed.po_updated_at !== saved.po_updated_at) throw new Error('The purchase order changed while saving. Refresh receipt balances.');
+      const savedLines = new Map(saved.lines.map(line => [line.line_id, line]));
+      if (savedLines.size !== saved.lines.length || refreshed.lines.length !== saved.lines.length || refreshed.lines.some(line => {
+        const original = savedLines.get(line.line_id);
+        return !original || original.uom !== line.uom || original.ordered !== line.ordered;
+      })) throw new Error('Saved receiving lines could not be verified. Refresh receipt balances.');
+      const received = statusChoice === 'full' ? remainingDrafts(refreshed) : {};
+      setSummary(refreshed); setDrafts(received); setStale(false); seedFull.current = false;
+      return { summary: refreshed, drafts: received };
+    } catch (requestError) { if (acknowledged || requestError?.response?.status === 409) setStale(true); throw requestError; }
+    finally { setBasisSaving(false); }
   };
-
+  const saveBasis = async () => {
+    if (busyRef.current || loading || stale || !order?.id || !summary?.po_updated_at || summary.can_review_basis !== true || summary.needs_basis_review !== true) return;
+    setError('');
+    try {
+      const basis = buildReceivingBasis(basisChoice, basisDrafts[basisChoice], currency);
+      busyRef.current = true; setBusy(true);
+      await persistBasis(basis); setReviewed(false);
+    } catch (requestError) { setError(handoffError(requestError)); }
+    finally { busyRef.current = false; setBusy(false); }
+  };
+  const submit = async event => {
+    event.preventDefault();
+    if (busyRef.current || loading || stale) return;
+    setError('');
+    try {
+      const needsBasis = summary?.needs_basis_review === true && summary?.can_review_basis === true;
+      if (!order?.id || !summary?.po_updated_at || (!needsBasis && (reconciliation ? summary.can_reconcile !== true : summary.can_record !== true))) throw new Error('This purchase order is not available for receipt.');
+      if (!form.receipt_date) throw new Error('Enter a receipt date.');
+      if (!form.delivery_location.trim()) throw new Error('Enter the delivery location.');
+      if (!form.condition) throw new Error('Select the delivery condition.');
+      if (['partial', 'rejected'].includes(statusChoice || receiptEntrySummary(summary, drafts, currency).deliveryStatus) && !form.exception_reason.trim()) throw new Error('Enter an exception reason for the partial or rejected delivery.');
+      if (reconciliation && !form.reason.trim()) throw new Error('Enter a reconciliation reason.');
+      if (reconciliation && !reviewed) throw new Error('Review and confirm this receipt reconciliation.');
+      let currentSummary = summary;
+      let receivedDrafts = drafts;
+      if (needsBasis) {
+        const basis = buildReceivingBasis(basisChoice, basisDrafts[basisChoice], currency);
+        busyRef.current = true; setBusy(true);
+        const saved = await persistBasis(basis);
+        currentSummary = saved.summary; receivedDrafts = saved.drafts;
+        if (statusChoice !== 'full') {
+          setError('Enter the received quantities or service value for this delivery.');
+          itemsRef.current?.focus(); return;
+        }
+      }
+      if (reconciliation ? currentSummary.can_reconcile !== true : currentSummary.can_record !== true) throw new Error(currentSummary.blocked_reason || 'This purchase order is not available for receipt.');
+      const items = buildReceivingLines(currentSummary, receivedDrafts);
+      const currentProjection = receiptEntrySummary(currentSummary, receivedDrafts, currency);
+      if (!currentProjection.valid) throw new Error(currentProjection.validationMessage);
+      const recordedStatus = statusChoice || currentProjection.deliveryStatus;
+      if (recordedStatus !== currentProjection.deliveryStatus) throw new Error('Adjust the received quantities to match the selected delivery status.');
+      const payload = { ...form, delivery_status: recordedStatus, purchase_order: order.id, status: 'pending', expected_po_updated_at: currentSummary.po_updated_at, items_received: items };
+      for (const key of ['dimensional_check_passed', 'visual_inspection_passed', 'material_verification_passed', 'quality_check_passed']) payload[key] = null;
+      if (!reconciliation) delete payload.reason;
+      operation.current = receiptOperation(operation.current, payload);
+      busyRef.current = true; setBusy(true);
+      const receipt = await goodsReceiptsService.create({ ...payload, operation_key: operation.current.key }, reconciliation);
+      if (!receipt?.id || String(receipt.purchase_order) !== String(order.id) || receipt.operation_key !== operation.current.key || !['pending', 'accepted', 'partial', 'rejected'].includes(receipt.status)) throw new Error('The receipt response could not be verified. Refresh before recording again.');
+      onReceiptCreated(receipt); onClose();
+    } catch (requestError) { setError(handoffError(requestError)); if (requestError?.response?.status === 409) setStale(true); }
+    finally { busyRef.current = false; setBusy(false); }
+  };
   if (!isOpen) return null;
-
-  return createPortal(
-    <div className="fixed inset-0 z-[100] overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-      <div className="fixed inset-0 bg-gray-900/70 backdrop-blur-sm" aria-hidden="true" onClick={handleClose} />
-      <div className="relative flex min-h-full items-center justify-center p-4 sm:p-6">
-        <div className="relative w-full max-w-6xl overflow-hidden rounded-xl bg-white text-left shadow-2xl">
-          {/* Header */}
-          <div className="bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <div className="flex-shrink-0 bg-white bg-opacity-20 rounded-lg p-2">
-                  <SparklesIcon className="h-8 w-8 text-white" />
-                </div>
-                <div>
-                  <h3 className="text-2xl font-bold text-white" id="modal-title">
-                    AI-Powered Goods Receipt
-                  </h3>
-                  <p className="text-purple-100 text-sm mt-1">
-                    Intelligent quality inspection and material traceability
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={handleClose}
-                className="bg-white bg-opacity-20 rounded-md p-2 inline-flex items-center justify-center text-white hover:bg-opacity-30 focus:outline-none"
-              >
-                <XMarkIcon className="h-6 w-6" />
-              </button>
+  const canonicalBasis = ['quantity', 'service_value'].includes(summary?.basis) ? summary.basis : null;
+  const receiptType = canonicalBasis || basisChoice;
+  const service = receiptType === 'service_value';
+  const title = reconciliation ? 'Reconcile receipt evidence' : service ? 'Record service acceptance' : 'Record goods receipt';
+  const allowed = reconciliation ? summary?.can_reconcile === true : summary?.can_record === true;
+  const canReviewBasis = summary?.needs_basis_review === true && summary?.can_review_basis === true;
+  let pendingBasis = null;
+  if (canReviewBasis) {
+    try { pendingBasis = buildReceivingBasis(basisChoice, basisDrafts[basisChoice], currency); }
+    catch { /* Required source fields are validated on save or submit. */ }
+  }
+  const fullBasisReady = !!pendingBasis && statusChoice === 'full';
+  const po = { ...order, ...orderDetails };
+  const projection = receiptEntrySummary(summary, drafts, currency);
+  const deliveryStatus = statusChoice || projection.deliveryStatus || 'full';
+  const deliveryFieldsComplete = !!form.receipt_date && !!form.delivery_location.trim() && !!form.condition && (!['partial', 'rejected'].includes(deliveryStatus) || !!form.exception_reason.trim());
+  const deliveryComplete = deliveryFieldsComplete && !!deliveryStatus && (canReviewBasis || deliveryStatus === projection.deliveryStatus);
+  const canCopy = allowed && !loading && !stale && summary?.lines.length > 0 && projection.groups.every(group => group.ordered !== null && group.previouslyReceived !== null);
+  const ready = (allowed || canReviewBasis) && !loading && !stale && deliveryComplete && (canReviewBasis ? fullBasisReady : projection.valid) && (!reconciliation || (form.reason.trim() && reviewed));
+  const checks = [
+    ['Purchase order available', !!order?.id && (allowed || canReviewBasis) && !stale && !loading],
+    ['Delivery details complete', deliveryComplete],
+    [canReviewBasis ? 'Receiving lines complete' : 'Quantities within remaining balance', canReviewBasis ? !!pendingBasis : projection.valid],
+    ...(reconciliation ? [['Reconciliation reviewed', !!form.reason.trim() && reviewed]] : []),
+  ];
+  const copyRemaining = () => {
+    if (!canCopy) return;
+    setDrafts(remainingDrafts(summary));
+    setStatusChoice('full'); setReviewed(false); setError('');
+  };
+  const chooseDeliveryStatus = value => {
+    if (busy || loading || stale) return;
+    if (value === 'full' && canCopy) { copyRemaining(); return; }
+    setStatusChoice(value);
+    setDrafts(current => Object.fromEntries(Object.entries(current).map(([key, draft]) => [key, { ...draft, rejected: value === 'rejected' ? draft.received : '0' }])));
+    setReviewed(false); setError('');
+  };
+  const chooseReceiptType = value => {
+    if (busy || loading || stale || canonicalBasis) return;
+    setBasisChoice(value); setReviewed(false); setError('');
+  };
+  const focusPanel = ref => { ref.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); ref.current?.focus({ preventScroll: true }); };
+  const status = String(po.status || '').replaceAll('_', ' ');
+  return <><span ref={anchorRef} hidden />{createPortal(<><div className="receipt-entry-backdrop" aria-hidden="true" />
+    <div ref={dialogRef} tabIndex={-1} className="receipt-entry" style={bounds || undefined} role="dialog" aria-modal="true" aria-labelledby="receipt-create-title" aria-busy={busy}>
+      <form onSubmit={submit} className="receipt-entry__form">
+        <div className="receipt-entry__body">
+          <header className="receipt-entry__header">
+            <div><div className="receipt-entry__breadcrumb"><span>Procurement</span><span>/</span><span>Goods Receipts</span><span>/</span><strong>New</strong></div>
+              <h1 id="receipt-create-title">{title}</h1><p>Verify the purchase order, delivery details and received {service ? 'service value' : 'quantities'}.</p></div>
+            <button type="button" className="receipt-entry__icon-button" aria-label="Close receipt creator" onClick={close} disabled={busy}><XMarkIcon /></button>
+          </header>
+          <ol className="receipt-entry__steps" aria-label="Receipt progress">
+            {['Select purchase order', 'Delivery information', 'Items received', 'Review receipt'].map((label, index) => {
+              const done = index === 0 ? !!order && allowed && !stale : index === 1 ? !!order && deliveryFieldsComplete : index === 2 ? projection.valid : false;
+              const active = index === (!order ? 0 : !deliveryFieldsComplete ? 1 : !projection.valid || !deliveryComplete ? 2 : 3);
+              return <li key={label} className={done ? 'is-complete' : active ? 'is-current' : ''} aria-current={active ? 'step' : undefined}><span className="receipt-entry__step-number">{done ? <CheckIcon /> : index + 1}</span><span>{label}</span></li>;
+            })}
+          </ol>
+          <div className="receipt-entry__info"><InformationCircleIcon /><span>{loading ? 'Loading receipt balances…' : stale ? 'Refresh balances before recording' : order ? 'Purchase order linked' : 'Select a purchase order to begin'}</span><i aria-hidden="true" /> <span>Required fields are marked <b>*</b></span></div>
+          {error && <div role="alert" className="receipt-entry__error">{error}</div>}
+          {order && (stale || (!summary && !loading)) && <button type="button" className="receipt-entry__button receipt-entry__refresh" disabled={busy} onClick={() => { setError(''); setReviewed(false); setRetry(value => value + 1); }}>Refresh receipt balances</button>}
+          {summary && !allowed && !(summary.needs_basis_review && summary.can_review_basis) && <p role="status" className="receipt-entry__error">{summary.blocked_reason || 'This purchase order is not available for receipt.'}</p>}
+          <fieldset disabled={busy} className="receipt-entry__grid">
+            <section className="receipt-entry__panel receipt-entry__order" aria-labelledby="receipt-order-title">
+              <h2 id="receipt-order-title">Purchase order</h2>
+              {initialOrder || reconciliation ? <div className="receipt-entry__selected-order"><strong>{order?.po_number || 'Select a purchase order'}</strong></div> : <PurchaseOrderSelector label="Purchase Order" fetchPage={availableOrders} value={order?.id} onChange={selected => { setOrder(selected); setDrafts({}); setStatusChoice('full'); setBasisChoice('quantity'); setBasisDrafts(emptyBasisDrafts(selected?.currency || '')); setSummary(null); setError(''); setStale(false); setReviewed(false); basisOperation.current = null; operation.current = null; seedFull.current = true; }} disabled={busy} />}
+              {order && <>
+                {status && <span className="receipt-entry__badge receipt-entry__order-status">{status}</span>}
+                <details className="receipt-entry__order-details" open={(bounds?.width ?? window.innerWidth) > 720}><summary>Purchase order details</summary><dl className="receipt-entry__facts">
+                  <div><dt>Supplier</dt><dd>{orderText(po.vendor_name)}</dd></div>
+                  <div><dt>Project</dt><dd>{orderText(po.project_display || po.project_number || po.rad_project_no)}</dd></div>
+                  <div><dt>PO date</dt><dd>{po.po_date ? receiptReviewDate(po.po_date) : '—'}</dd></div>
+                  <div><dt>Expected delivery</dt><dd>{po.expected_delivery ? receiptReviewDate(po.expected_delivery) : '—'}</dd></div>
+                  <div><dt>Currency</dt><dd>{currency || '—'}</dd></div>
+                  <div><dt>Order value</dt><dd>{typeof po.total_amount === 'string' || typeof po.total_amount === 'number' ? po.total_amount : '—'}</dd></div>
+                  <div><dt>Delivery terms</dt><dd>{orderText(po.delivery_terms)}</dd></div>
+                  <div><dt>Payment terms</dt><dd>{orderText(po.payment_terms)}</dd></div>
+                </dl>
+                {summary && <div className="receipt-entry__progress"><h3>Order progress</h3>{projection.groups.map(group => <div key={group.key} className="receipt-entry__progress-group"><span>{group.label}</span><dl><div><dt>Ordered</dt><dd>{group.ordered ?? '—'}</dd></div><div><dt>Previously received</dt><dd>{group.previouslyReceived ?? '—'}</dd></div><div><dt>Remaining</dt><dd>{group.balance ?? '—'}</dd></div></dl></div>)}</div>}
+                </details>
+                <a className="receipt-entry__link" href={`/procurement/orders/${encodeURIComponent(order.id)}`} target="_blank" rel="noopener noreferrer"><ArrowTopRightOnSquareIcon />Open purchase order</a>
+              </>}
+            </section>
+            <div className="receipt-entry__centre">
+              <ReceiptDeliveryInformation form={form} basis={receiptType} actor={actor} deliveryStatus={deliveryStatus} onChange={change} onStatusChange={chooseDeliveryStatus} onTypeChange={chooseReceiptType} typeLocked={!!canonicalBasis} disabled={busy || loading || stale || (!!summary && !allowed && !canReviewBasis)} />
+              <section ref={itemsRef} tabIndex={-1} className="receipt-entry__panel receipt-entry__items" aria-labelledby="receipt-items-title">
+                <div className="receipt-entry__panel-heading"><h2 id="receipt-items-title">{service ? `Service value (${currency})` : 'Items received'}</h2><button type="button" className="receipt-entry__button" disabled={busy || !canCopy} onClick={copyRemaining}><DocumentDuplicateIcon />{service ? 'Copy remaining value' : 'Copy remaining quantities'}</button></div>
+                {canReviewBasis ? <ReceiptReceivingBasisEditor basis={basisChoice} lines={basisDrafts[basisChoice]} onChange={lines => { setBasisDrafts(current => ({ ...current, [basisChoice]: lines })); setError(''); setReviewed(false); }} disabled={busy || loading || stale} saving={basisSaving} onSave={saveBasis} /> : loading ? <p role="status" className="receipt-entry__empty">Loading receipt balances…</p> : !order ? <p className="receipt-entry__empty">Select a purchase order to view its items.</p> : summary?.lines.length ? <div className="receipt-entry__table-scroll"><table>
+                  <caption className="sr-only">{service ? 'Service value lines' : 'Purchase order lines'}</caption>
+                  <thead><tr>{['Description', 'Ordered', 'Previously Received', service ? 'Received Value' : 'Received Quantity', 'Balance Remaining', 'Line Status'].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead>
+                  <tbody>{summary.lines.map(line => {
+                    const received = drafts[line.line_id]?.received ?? '';
+                    const preview = receivingLinePreview(line, received, drafts[line.line_id]?.rejected);
+                    const invalid = received !== '' && preview.balance === null;
+                    return <tr key={line.line_id}>
+                      <th scope="row">{line.description}<small>{service ? currency : line.uom}</small></th>
+                      <td>{line.ordered}</td>
+                      <td>{preview.previouslyReceived ?? '—'}{Number(line.pending) > 0 && <small>{line.pending} awaiting confirmation</small>}</td>
+                      <td><input aria-label={`Received ${service ? 'value' : 'quantity'} for ${line.description}`} aria-invalid={invalid || undefined} disabled={!allowed || stale} type="number" min="0" max={line.available} step="any" placeholder="0" value={received} onChange={event => { const value = event.target.value; setDrafts(current => ({ ...current, [line.line_id]: { received: value, rejected: statusChoice === 'rejected' ? value : '0' } })); if (statusChoice === 'full') setStatusChoice(''); setReviewed(false); }} /></td>
+                      <td>{preview.balance ?? '—'}</td>
+                      <td><span className={`receipt-entry__badge receipt-entry__badge--${preview.status === 'Complete' ? 'complete' : preview.status === 'Partial' ? 'partial' : invalid ? 'invalid' : 'neutral'}`}>{preview.status === 'Complete' && <CheckCircleIcon />}{preview.status || 'Check quantity'}</span>{preview.awaitingConfirmation && <small>Awaiting confirmation</small>}</td>
+                    </tr>;
+                  })}</tbody>
+                  <tfoot>{projection.groups.map(group => <tr key={group.key}><th scope="row">Total · {group.label}</th><td>{group.ordered ?? '—'}</td><td>{group.previouslyReceived ?? '—'}</td><td>{group.received ?? '—'}</td><td>{group.balance ?? '—'}</td><td /></tr>)}</tfoot>
+                </table></div> : summary ? <p role="status" className="receipt-entry__empty">No receivable lines are available for this purchase order.</p> : <p className="receipt-entry__empty">Receipt balances are unavailable.</p>}
+                {allowed && !loading && !stale && !projection.valid && Object.values(drafts).some(draft => draft.received !== '') && <p className="receipt-entry__validation">{projection.validationMessage}</p>}
+              </section>
+              <section className="receipt-entry__panel receipt-entry__notes" aria-labelledby="receipt-notes-title"><h2 id="receipt-notes-title">Notes</h2><label>Remarks<textarea rows={3} placeholder="Add delivery remarks…" value={form.notes} onChange={event => change('notes', event.target.value)} /></label>
+                {reconciliation && <div className="receipt-entry__reconciliation"><label>Reconciliation reason<textarea required rows={2} value={form.reason} onChange={event => change('reason', event.target.value)} /></label><label className="receipt-entry__checkbox"><input type="checkbox" checked={reviewed} onChange={event => setReviewed(event.target.checked)} />I reviewed the quantities or service value and confirm this receipt evidence.</label></div>}
+              </section>
             </div>
-          </div>
-
-          {/* AI Insights Bar */}
-          {aiInsights.length > 0 && (
-            <div className="bg-gradient-to-r from-blue-50 to-purple-50 px-6 py-3 border-b border-purple-200">
-              <div className="flex items-center space-x-2">
-                <LightBulbIcon className="h-5 w-5 text-purple-600 animate-pulse" />
-                <div className="flex-1 overflow-x-auto">
-                  {aiInsights.slice(-1).map((insight, idx) => (
-                    <div key={insight.timestamp} className="text-sm">
-                      <span className="font-semibold text-purple-900">{insight.title}:</span>
-                      <span className="text-purple-700 ml-2">{insight.message}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit}>
-            <div className="bg-white px-6 py-6 max-h-[calc(100vh-250px)] overflow-y-auto">
-              <div className="space-y-6">
-                {/* PO Selection */}
-                <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg p-6 border-2 border-indigo-200">
-                  <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                    <DocumentTextIcon className="h-5 w-5 mr-2 text-indigo-600" />
-                    Purchase Order Selection
-                  </h4>
-                  
-                  <div className="grid grid-cols-1 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Select Purchase Order *
-                      </label>
-                      <select
-                        value={formData.po_id}
-                        onChange={handlePOSelect}
-                        required
-                        className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                      >
-                        <option value="">Choose a PO to receive...</option>
-                        {availableOrders.map(order => (
-                          <option key={order.id} value={order.id}>
-                            {order.po_number} - {order.vendor_name} ({order.status})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {selectedPO && (
-                      <div className="bg-white rounded-lg p-4 border border-indigo-200">
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                          <div>
-                            <span className="text-gray-500">Vendor:</span>
-                            <span className="ml-2 font-medium">{selectedPO.vendor_name}</span>
-                          </div>
-                          <div>
-                            <span className="text-gray-500">Delivery Date:</span>
-                            <span className="ml-2 font-medium">
-                              {selectedPO.delivery_date ? new Date(selectedPO.delivery_date).toLocaleDateString() : 'N/A'}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-gray-500">Items:</span>
-                            <span className="ml-2 font-medium">
-                              {selectedPO.items ? selectedPO.items.length : 0}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-gray-500">Amount:</span>
-                            <span className="ml-2 font-medium">
-                              ${selectedPO.total_amount ? parseFloat(selectedPO.total_amount).toFixed(2) : '0.00'}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {aiSuggestions.grNumber && (
-                    <div className="mt-4 bg-green-50 border border-green-200 rounded-lg p-3">
-                      <div className="flex items-start">
-                        <CheckCircleIcon className="h-5 w-5 text-green-600 mt-0.5 mr-2" />
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-green-900">GR Number Generated</p>
-                          <p className="text-sm text-green-700 mt-1">{formData.gr_number}</p>
-                          <p className="text-xs text-green-600 mt-1">{aiSuggestions.grNumber.reasoning}</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Receipt Details */}
-                {selectedPO && (
-                  <>
-                    <div className="bg-white rounded-lg border-2 border-gray-200 p-6">
-                      <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                        <TruckIcon className="h-5 w-5 mr-2 text-gray-600" />
-                        Receipt Details
-                      </h4>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            <CalendarIcon className="h-4 w-4 inline mr-1" />
-                            Received Date *
-                          </label>
-                          <input
-                            type="date"
-                            value={formData.received_date}
-                            onChange={(e) => setFormData({...formData, received_date: e.target.value})}
-                            required
-                            className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            <CubeIcon className="h-4 w-4 inline mr-1" />
-                            Quantity Received *
-                          </label>
-                          <input
-                            type="number"
-                            value={formData.quantity_received}
-                            onChange={(e) => setFormData({...formData, quantity_received: parseInt(e.target.value) || 0})}
-                            required
-                            min="0"
-                            className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Quantity Rejected
-                          </label>
-                          <input
-                            type="number"
-                            value={formData.quantity_rejected}
-                            onChange={(e) => setFormData({...formData, quantity_rejected: parseInt(e.target.value) || 0})}
-                            min="0"
-                            className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Packaging Condition *
-                          </label>
-                          <select
-                            value={formData.packaging_condition}
-                            onChange={(e) => setFormData({...formData, packaging_condition: e.target.value})}
-                            className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                          >
-                            <option value="excellent">Excellent</option>
-                            <option value="good">Good</option>
-                            <option value="fair">Fair</option>
-                            <option value="damaged">Damaged</option>
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Inspector Information */}
-                    <div className="bg-white rounded-lg border-2 border-gray-200 p-6">
-                      <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                        <UserGroupIcon className="h-5 w-5 mr-2 text-gray-600" />
-                        Inspector Information
-                      </h4>
-
-                      {aiSuggestions.inspectorRecommendation && (
-                        <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
-                          <div className="flex items-start">
-                            <SparklesIcon className="h-5 w-5 text-blue-600 mt-0.5 mr-2" />
-                            <div className="flex-1">
-                              <p className="text-sm font-medium text-blue-900">AI Inspector Recommendation</p>
-                              <p className="text-sm text-blue-700 mt-1">
-                                Level: <span className="font-semibold">{aiSuggestions.inspectorRecommendation.level}</span>
-                              </p>
-                              <p className="text-sm text-blue-700">
-                                Agency: {aiSuggestions.inspectorRecommendation.agency}
-                              </p>
-                              {aiSuggestions.inspectorRecommendation.qualifications.length > 0 && (
-                                <div className="mt-2">
-                                  <p className="text-xs text-blue-600 font-medium">Required Qualifications:</p>
-                                  <ul className="list-disc list-inside text-xs text-blue-600 mt-1">
-                                    {aiSuggestions.inspectorRecommendation.qualifications.map((qual, idx) => (
-                                      <li key={idx}>{qual}</li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )}
-                              <p className="text-xs text-blue-500 mt-2">
-                                Est. Duration: {aiSuggestions.inspectorRecommendation.estimatedDuration}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Inspector Name
-                          </label>
-                          <input
-                            type="text"
-                            value={formData.inspector_name}
-                            onChange={(e) => setFormData({...formData, inspector_name: e.target.value})}
-                            className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                            placeholder="Optional inspector name"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Inspection Agency
-                          </label>
-                          <input
-                            type="text"
-                            value={formData.inspection_agency}
-                            onChange={(e) => setFormData({...formData, inspection_agency: e.target.value})}
-                            className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                            placeholder="e.g., SGS, Bureau Veritas"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Inspection Report Number
-                          </label>
-                          <input
-                            type="text"
-                            value={formData.inspection_report_number}
-                            onChange={(e) => setFormData({...formData, inspection_report_number: e.target.value})}
-                            className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                            placeholder="IR-2024-001"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Quality Checks */}
-                    <div className="bg-gradient-to-r from-green-50 to-blue-50 rounded-lg border-2 border-green-200 p-6">
-                      <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                        <ShieldCheckIcon className="h-6 w-6 mr-2 text-green-600" />
-                        Quality Inspection Checks
-                      </h4>
-
-                      {aiSuggestions.inspectionRequirements && (
-                        <div className="mb-4 bg-white rounded-lg p-4 border border-green-300">
-                          <div className="flex items-start">
-                            <SparklesIcon className="h-5 w-5 text-green-600 mt-0.5 mr-2" />
-                            <div className="flex-1">
-                              <p className="text-sm font-medium text-green-900">AI Inspection Analysis</p>
-                              <ul className="list-disc list-inside text-sm text-green-700 mt-2 space-y-1">
-                                {aiSuggestions.inspectionRequirements.requirements.reasons.map((reason, idx) => (
-                                  <li key={idx}>{reason}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="bg-white rounded-lg p-4 border-2 border-gray-200">
-                          <label className="block text-sm font-medium text-gray-900 mb-3">
-                            <CheckCircleIcon className="h-4 w-4 inline mr-1" />
-                            Dimensional Check
-                          </label>
-                          <div className="space-y-2">
-                            <button
-                              type="button"
-                              onClick={() => setFormData({...formData, dimensional_check_passed: true})}
-                              className={`w-full px-3 py-2 text-sm rounded ${formData.dimensional_check_passed === true ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-                            >
-                              ✓ Passed
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setFormData({...formData, dimensional_check_passed: false})}
-                              className={`w-full px-3 py-2 text-sm rounded ${formData.dimensional_check_passed === false ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-                            >
-                              ✗ Failed
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="bg-white rounded-lg p-4 border-2 border-gray-200">
-                          <label className="block text-sm font-medium text-gray-900 mb-3">
-                            <CheckCircleIcon className="h-4 w-4 inline mr-1" />
-                            Visual Inspection
-                          </label>
-                          <div className="space-y-2">
-                            <button
-                              type="button"
-                              onClick={() => setFormData({...formData, visual_inspection_passed: true})}
-                              className={`w-full px-3 py-2 text-sm rounded ${formData.visual_inspection_passed === true ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-                            >
-                              ✓ Passed
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setFormData({...formData, visual_inspection_passed: false})}
-                              className={`w-full px-3 py-2 text-sm rounded ${formData.visual_inspection_passed === false ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-                            >
-                              ✗ Failed
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="bg-white rounded-lg p-4 border-2 border-gray-200">
-                          <label className="block text-sm font-medium text-gray-900 mb-3">
-                            <CheckCircleIcon className="h-4 w-4 inline mr-1" />
-                            Material Verification
-                          </label>
-                          <div className="space-y-2">
-                            <button
-                              type="button"
-                              onClick={() => setFormData({...formData, material_verification_passed: true})}
-                              className={`w-full px-3 py-2 text-sm rounded ${formData.material_verification_passed === true ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-                            >
-                              ✓ Passed
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setFormData({...formData, material_verification_passed: false})}
-                              className={`w-full px-3 py-2 text-sm rounded ${formData.material_verification_passed === false ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-                            >
-                              ✗ Failed
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* NDT Section */}
-                      <div className="mt-4 bg-white rounded-lg p-4 border-2 border-purple-200">
-                        <div className="flex items-center mb-3">
-                          <BeakerIcon className="h-5 w-5 mr-2 text-purple-600" />
-                          <label className="text-sm font-medium text-gray-900">
-                            Non-Destructive Testing (NDT)
-                          </label>
-                        </div>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <label className="flex items-center space-x-2">
-                              <input
-                                type="checkbox"
-                                checked={formData.ndt_required}
-                                onChange={(e) => setFormData({...formData, ndt_required: e.target.checked})}
-                                className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                              />
-                              <span className="text-sm text-gray-700">NDT Required</span>
-                            </label>
-                          </div>
-                          
-                          {formData.ndt_required && (
-                            <div>
-                              <label className="flex items-center space-x-2">
-                                <input
-                                  type="checkbox"
-                                  checked={formData.ndt_performed}
-                                  onChange={(e) => setFormData({...formData, ndt_performed: e.target.checked})}
-                                  className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                                />
-                                <span className="text-sm text-gray-700">NDT Performed</span>
-                              </label>
-                            </div>
-                          )}
-                        </div>
-
-                        {formData.ndt_required && formData.ndt_performed && (
-                          <div className="mt-4">
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              NDT Results
-                            </label>
-                            <textarea
-                              value={formData.ndt_results}
-                              onChange={(e) => setFormData({...formData, ndt_results: e.target.value})}
-                              rows="3"
-                              className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                              placeholder="Enter NDT test results (e.g., UT, RT, MT, PT)"
-                            />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Certificates */}
-                    <div className="bg-white rounded-lg border-2 border-gray-200 p-6">
-                      <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                        <DocumentTextIcon className="h-5 w-5 mr-2 text-gray-600" />
-                        Material Certificates & Documentation
-                      </h4>
-
-                      {aiSuggestions.certRequirements && (
-                        <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
-                          <div className="flex items-start">
-                            <SparklesIcon className="h-5 w-5 text-blue-600 mt-0.5 mr-2" />
-                            <div className="flex-1">
-                              <p className="text-sm font-medium text-blue-900">
-                                AI Certificate Requirements - {aiSuggestions.certRequirements.certificates.length} certificates needed
-                              </p>
-                              <p className="text-xs text-blue-600 mt-1">
-                                Confidence: {(aiSuggestions.certRequirements.confidence * 100).toFixed(0)}%
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        {(Array.isArray(aiSuggestions.certRequirements?.certificates)
-                          ? aiSuggestions.certRequirements.certificates
-                          : Object.keys(PROCUREMENT_CONFIG.certifications || {}).map(code => code.toUpperCase())
-                        ).map((cert, idx) => (
-                          <button
-                            key={idx}
-                            type="button"
-                            onClick={() => toggleCertificate(cert)}
-                            className={`px-3 py-2 text-sm rounded border-2 transition-colors ${
-                              formData.certificates_received?.includes(cert)
-                                ? 'bg-green-500 text-white border-green-600'
-                                : 'bg-white text-gray-700 border-gray-300 hover:border-indigo-500'
-                            }`}
-                          >
-                            {formData.certificates_received?.includes(cert) && '✓ '}
-                            {cert}
-                          </button>
-                        ))}
-                      </div>
-
-                      <div className="mt-4">
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Heat Numbers / Serial Numbers
-                        </label>
-                        <textarea
-                          value={formData.heat_numbers}
-                          onChange={(e) => setFormData({...formData, heat_numbers: e.target.value})}
-                          rows="2"
-                          className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                          placeholder="Enter heat numbers separated by commas (e.g., HN12345, HN67890)"
-                        />
-                      </div>
-                    </div>
-
-                    {/* AI Acceptance Recommendation */}
-                    {aiSuggestions.acceptanceRecommendation && (
-                      <div className={`rounded-lg border-2 p-6 ${
-                        aiSuggestions.acceptanceRecommendation.decision === 'accept' ? 'bg-green-50 border-green-300' :
-                        aiSuggestions.acceptanceRecommendation.decision === 'reject' ? 'bg-red-50 border-red-300' :
-                        aiSuggestions.acceptanceRecommendation.decision === 'conditional' ? 'bg-yellow-50 border-yellow-300' :
-                        'bg-blue-50 border-blue-300'
-                      }`}>
-                        <div className="flex items-start">
-                          <SparklesIcon className={`h-6 w-6 mt-0.5 mr-3 ${
-                            aiSuggestions.acceptanceRecommendation.decision === 'accept' ? 'text-green-600' :
-                            aiSuggestions.acceptanceRecommendation.decision === 'reject' ? 'text-red-600' :
-                            aiSuggestions.acceptanceRecommendation.decision === 'conditional' ? 'text-yellow-600' :
-                            'text-blue-600'
-                          }`} />
-                          <div className="flex-1">
-                            <h4 className={`text-lg font-bold mb-2 ${
-                              aiSuggestions.acceptanceRecommendation.decision === 'accept' ? 'text-green-900' :
-                              aiSuggestions.acceptanceRecommendation.decision === 'reject' ? 'text-red-900' :
-                              aiSuggestions.acceptanceRecommendation.decision === 'conditional' ? 'text-yellow-900' :
-                              'text-blue-900'
-                            }`}>
-                              AI Acceptance Recommendation: {aiSuggestions.acceptanceRecommendation.decision.toUpperCase()}
-                            </h4>
-                            <div className="space-y-2">
-                              {aiSuggestions.acceptanceRecommendation.reasoning.map((reason, idx) => (
-                                <p key={idx} className={`text-sm ${
-                                  aiSuggestions.acceptanceRecommendation.decision === 'accept' ? 'text-green-800' :
-                                  aiSuggestions.acceptanceRecommendation.decision === 'reject' ? 'text-red-800' :
-                                  aiSuggestions.acceptanceRecommendation.decision === 'conditional' ? 'text-yellow-800' :
-                                  'text-blue-800'
-                                }`}>
-                                  • {reason}
-                                </p>
-                              ))}
-                            </div>
-                            <p className={`text-xs mt-3 font-medium ${
-                              aiSuggestions.acceptanceRecommendation.decision === 'accept' ? 'text-green-700' :
-                              aiSuggestions.acceptanceRecommendation.decision === 'reject' ? 'text-red-700' :
-                              aiSuggestions.acceptanceRecommendation.decision === 'conditional' ? 'text-yellow-700' :
-                              'text-blue-700'
-                            }`}>
-                              AI Confidence: {(aiSuggestions.acceptanceRecommendation.confidence * 100).toFixed(0)}%
-                            </p>
-
-                            {/* Defect Analysis */}
-                            {aiSuggestions.acceptanceRecommendation.analysis.defects.length > 0 && (
-                              <div className="mt-4 p-3 bg-white rounded border-2 border-red-300">
-                                <p className="text-sm font-semibold text-red-900 mb-2">⚠️ Defects Detected:</p>
-                                {aiSuggestions.acceptanceRecommendation.analysis.defects.map((defect, idx) => (
-                                  <div key={idx} className="mb-2 last:mb-0">
-                                    <p className="text-sm font-medium text-red-800">{defect.type} ({defect.severity})</p>
-                                    <p className="text-xs text-red-700">{defect.issue}</p>
-                                    <p className="text-xs text-red-600 italic">Action: {defect.action}</p>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-
-                            {/* Warnings */}
-                            {aiSuggestions.acceptanceRecommendation.analysis.warnings.length > 0 && (
-                              <div className="mt-4 p-3 bg-white rounded border-2 border-yellow-300">
-                                <p className="text-sm font-semibold text-yellow-900 mb-2">⚡ Warnings:</p>
-                                {aiSuggestions.acceptanceRecommendation.analysis.warnings.map((warning, idx) => (
-                                  <div key={idx} className="mb-2 last:mb-0">
-                                    <p className="text-sm font-medium text-yellow-800">{warning.type}</p>
-                                    <p className="text-xs text-yellow-700">{warning.message}</p>
-                                    <p className="text-xs text-yellow-600 italic">{warning.recommendation}</p>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Notes */}
-                    <div className="bg-white rounded-lg border-2 border-gray-200 p-6">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Additional Notes
-                      </label>
-                      <textarea
-                        value={formData.notes}
-                        onChange={(e) => setFormData({...formData, notes: e.target.value})}
-                        rows="3"
-                        className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                        placeholder="Enter any additional inspection notes or observations..."
-                      />
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="bg-gray-50 px-6 py-4 flex justify-between items-center">
-              <button
-                type="button"
-                onClick={handleClose}
-                className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-              >
-                Cancel
-              </button>
-              
-              <div className="flex space-x-3">
-                {aiProcessing && (
-                  <div className="flex items-center text-sm text-purple-600">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-600 mr-2"></div>
-                    AI Analyzing...
-                  </div>
-                )}
-                
-                <button
-                  type="submit"
-                  disabled={!selectedPO || submitting}
-                  className="inline-flex items-center px-6 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {submitting ? (
-                    <span className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                  ) : (
-                    <CheckCircleIcon className="h-5 w-5 mr-2" />
-                  )}
-                  {submitting ? 'Recording...' : 'Record Goods Receipt'}
-                </button>
-              </div>
-            </div>
-          </form>
+            <section ref={reviewRef} tabIndex={-1} className="receipt-entry__panel receipt-entry__review" aria-labelledby="receipt-review-title">
+              <h2 id="receipt-review-title">Receipt review</h2>
+              <div className={`receipt-entry__readiness ${ready ? 'is-ready' : ''}`} aria-live="polite">{ready ? <CheckCircleIcon /> : <InformationCircleIcon />}<strong>{ready ? 'Ready to record' : stale ? 'Balance refresh required' : 'Complete receipt details'}</strong></div>
+              <h3>Validation checklist</h3><ul className="receipt-entry__checklist">{checks.map(([label, passed]) => <li key={label}><span className={passed ? 'is-passed' : ''} aria-hidden="true">{passed ? <CheckIcon /> : null}</span><span className="sr-only">{passed ? 'Complete: ' : 'Required: '}</span>{label}</li>)}</ul>
+              <h3>Receipt outcome</h3><div className="receipt-entry__outcome"><span className="receipt-entry__outcome-dot" /><div><strong>{fullBasisReady ? 'Full delivery' : projection.valid ? projection.deliveryStatus === 'rejected' ? 'Rejected delivery recorded for review' : projection.complete ? 'Remaining balance entered' : 'Partial receipt' : 'Awaiting quantities'}</strong><p>{fullBasisReady || projection.valid ? projection.deliveryStatus === 'rejected' ? 'Awaiting authorized rejection review.' : 'Awaiting confirmation after recording.' : 'Enter received quantities to review.'}</p></div></div>
+              <h3>Summary</h3><dl className="receipt-entry__facts receipt-entry__summary">
+                <div><dt>Receipt number</dt><dd>Auto-generated</dd></div>
+                <div><dt>PO number</dt><dd>{order?.po_number || '—'}</dd></div>
+                <div><dt>Supplier</dt><dd>{orderText(po.vendor_name)}</dd></div>
+                <div><dt>Receipt date</dt><dd>{form.receipt_date ? receiptReviewDate(form.receipt_date) : '—'}</dd></div>
+                <div><dt>Lines entered</dt><dd>{canReviewBasis ? pendingBasis?.lines.length || 0 : projection.enteredLineCount}</dd></div>
+                {projection.groups.map(group => <div key={group.key}><dt>Received ({group.label})</dt><dd>{group.received ?? '—'}</dd></div>)}
+              </dl>
+              <button type="button" className="receipt-entry__button receipt-entry__review-button" onClick={() => focusPanel(itemsRef)}>Review quantities<ChevronRightIcon /></button>
+            </section>
+          </fieldset>
         </div>
-      </div>
-    </div>,
-    document.body
-  );
-};
-
-export default AIReceiptCreator;
+        <footer className="receipt-entry__footer"><button type="button" disabled={busy} onClick={close} className="receipt-entry__button">Cancel</button><span className={`receipt-entry__footer-status ${ready ? 'is-ready' : ''}`}>{ready ? <CheckCircleIcon /> : <InformationCircleIcon />}{ready ? 'All required information complete' : stale ? 'Refresh receipt balances' : 'Complete the required information'}</span><button type="submit" disabled={busy || loading || stale || (!allowed && !canReviewBasis)} className="receipt-entry__button receipt-entry__submit"><CheckIcon />{basisSaving ? 'Saving basis…' : busy ? 'Recording…' : reconciliation ? 'Record reconciliation' : 'Record receipt'}</button></footer>
+      </form>
+    </div></>, document.body)}</>;
+}
+AIReceiptCreator.propTypes = { isOpen: PropTypes.bool, onClose: PropTypes.func.isRequired, onReceiptCreated: PropTypes.func.isRequired, initialOrder: PropTypes.object, reconciliation: PropTypes.bool };

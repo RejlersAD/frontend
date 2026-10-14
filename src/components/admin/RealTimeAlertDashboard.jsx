@@ -86,7 +86,7 @@ const RealTimeAlertDashboard = () => {
   // Fetch dashboard stats
   useEffect(() => {
     fetchDashboardStats();
-    const interval = setInterval(fetchDashboardStats, 30000); // Refresh every 30s
+    const interval = setInterval(fetchDashboardStats, 300000); // Refresh every 5 min (was 30s)
     return () => clearInterval(interval);
   }, []);
 

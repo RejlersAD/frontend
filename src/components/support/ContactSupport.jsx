@@ -1,3 +1,4 @@
+import { radaiAlert } from '../../services/radaiDialog'
 import React, { useState } from 'react'
 import { SUPPORT_CONFIG } from '../../config/support.config'
 
@@ -21,14 +22,14 @@ const ContactSupport = ({ isModal = false, onClose }) => {
   const [showContactForm, setShowContactForm] = useState(false)
   const [submitStatus, setSubmitStatus] = useState(null)
 
-  const handleContactMethod = (method) => {
+  const handleContactMethod = async (method) => {
     if (!method.available) {
-      alert('This contact method is coming soon!')
+      await radaiAlert('This contact method is coming soon!')
       return
     }
 
     if (method.action === 'chat') {
-      alert('Live chat coming soon!')
+      await radaiAlert('Live chat coming soon!')
     } else if (method.action.startsWith('http')) {
       window.open(method.action, '_blank')
     } else {

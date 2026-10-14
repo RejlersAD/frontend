@@ -1,0 +1,43 @@
+.cc-portfolio-page .ppr-chart { position: relative; min-width: 0; width: 100%; color: var(--cc-text, #08234e); }
+.cc-portfolio-page .ppr-chart > svg { display: block; width: 100%; overflow: visible; }
+.cc-portfolio-page .ppr-chart-scatter > svg { height: 160px; }
+.cc-portfolio-page .ppr-chart-trend > svg { height: 116px; }
+.cc-portfolio-page .ppr-chart-grid line { stroke: var(--cc-border, #dce6f4); stroke-width: .8; }
+.cc-portfolio-page :is(.ppr-chart-grid text, .ppr-chart-tick, .ppr-chart-axis) { fill: var(--cc-muted, #546784); font-family: inherit; font-size: 9px; }
+.cc-portfolio-page .ppr-chart-axis { font-size: 9px; }
+.cc-portfolio-page .ppr-chart-target { stroke: #8797b0; stroke-width: 1.2; stroke-dasharray: 5 4; }
+.cc-portfolio-page .ppr-chart-recovery rect { fill: #fff0ef; }
+.cc-portfolio-page .ppr-chart-recovery text { fill: #b8474f; font-size: 8px; }
+.cc-portfolio-page .ppr-chart-mark { cursor: default; outline: none; }
+.cc-portfolio-page .ppr-chart-mark:focus-visible .ppr-chart-symbol { stroke: var(--cc-text, #08234e); stroke-width: 2.5; stroke-dasharray: none; }
+.cc-portfolio-page .ppr-chart-mark:hover .ppr-chart-symbol { stroke-width: 2.5; }
+.cc-portfolio-page .ppr-chart-empty { position: absolute; inset: 30px 28px 39px 43px; display: grid; place-items: center; pointer-events: none; text-align: center; }
+.cc-portfolio-page .ppr-chart-trend .ppr-chart-empty { bottom: 27px; }
+.cc-portfolio-page .ppr-chart-empty > span { max-width: 250px; padding: 7px 12px; border: 1px solid var(--cc-border, #dce6f4); border-radius: 4px; color: var(--cc-muted, #546784); background: var(--cc-surface, #fff); font-size: 10px; line-height: 15px; }
+.cc-portfolio-page .ppr-chart-footer { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; column-gap: 18px; row-gap: 3px; }
+.cc-portfolio-page .ppr-chart-legend { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 4px 15px; list-style: none; padding: 0; margin: 4px 0 0; color: var(--cc-muted, #546784); font-size: 9px; line-height: 14px; }
+.cc-portfolio-page .ppr-chart-legend li { display: inline-flex; align-items: center; gap: 5px; }
+.cc-portfolio-page .ppr-chart-legend-dot { display: block; width: 8px; height: 8px; border-radius: 50%; background: var(--ppr-series); }
+.cc-portfolio-page .ppr-chart-legend-line { display: block; width: 20px; height: 0; border-top: 2px solid var(--ppr-series); }
+.cc-portfolio-page .ppr-chart-legend-dashed { border-top-style: dashed; }
+.cc-portfolio-page .ppr-chart-size-note { margin-top: 4px; color: var(--cc-muted, #546784); font-size: 9px; line-height: 14px; }
+.cc-portfolio-page .ppr-chart-tooltip { position: absolute; z-index: 3; left: 44px; right: 22px; bottom: 30px; width: max-content; max-width: calc(100% - 66px); padding: 7px 10px; border: 1px solid var(--cc-border, #dce6f4); border-radius: 4px; color: var(--cc-text, #08234e); background: var(--cc-surface, #fff); box-shadow: 0 3px 12px #1024471a; font-size: 10px; line-height: 15px; pointer-events: none; overflow-wrap: anywhere; }
+.cc-portfolio-page .ppr-kpi-sparkline { display: block; width: 94px; max-width: 100%; height: 30px; flex-shrink: 0; }
+.dark .cc-portfolio-page .ppr-chart-recovery rect { fill: #472735; }
+.dark .cc-portfolio-page .ppr-chart-recovery text { fill: #ffafb8; }
+.dark .cc-portfolio-page .ppr-chart-target { stroke: #a5b4cd; }
+.dark .cc-portfolio-page .ppr-chart-tooltip { box-shadow: 0 3px 12px #0005; }
+@media (max-width: 520px) {
+  .cc-portfolio-page .ppr-chart-legend { column-gap: 10px; }
+  .cc-portfolio-page .ppr-chart-empty > span { font-size: 9px; padding: 6px 8px; }
+}
+@media print {
+  .cc-portfolio-page .ppr-chart { --cc-surface: #fff; --cc-text: #08234e; --cc-muted: #425574; --cc-border: #dce6f4; break-inside: avoid; color: #08234e; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .cc-portfolio-page :is(.ppr-chart-grid text, .ppr-chart-tick, .ppr-chart-axis) { fill: #425574; }
+  .cc-portfolio-page .ppr-chart-grid line { stroke: #dce6f4; }
+  .cc-portfolio-page :is(.ppr-chart-legend, .ppr-chart-size-note, .ppr-chart-empty > span) { color: #425574; }
+  .cc-portfolio-page .ppr-chart-empty > span { background: #fff; border-color: #dce6f4; }
+  .cc-portfolio-page .ppr-chart-tooltip { display: none; }
+  .cc-portfolio-page .ppr-chart .ppr-chart-recovery rect { fill: #fff0ef; }
+  .cc-portfolio-page .ppr-chart .ppr-chart-recovery text { fill: #b8474f; }
+}

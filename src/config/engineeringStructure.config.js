@@ -5,6 +5,7 @@
  */
 
 import { ROUTES } from './routes.config'
+import envConfig from './environment.config'
 import {
   BeakerIcon,
   WrenchIcon,
@@ -18,7 +19,9 @@ import {
   DocumentChartBarIcon,
   CircleStackIcon,
   DocumentMagnifyingGlassIcon,
-  DocumentCheckIcon
+  DocumentCheckIcon,
+  CubeIcon,
+  BookOpenIcon
 } from '@heroicons/react/24/outline'
 
 // SOFT-CODED: P&ID Feature Naming Configuration
@@ -32,6 +35,16 @@ const PID_NAMING_CONFIG = {
 
 // SOFT-CODED: Toggle visibility of Digitization > Datasheets in frontend navigation
 const ENABLE_DIGITIZATION_DATASHEET_FEATURE = false
+
+// SOFT-CODED: hide Non-TEFF Metadata Generator EVERYWHERE (all environments,
+// incl. local development) — application parked. Sidebar entry and Solutions
+// card hidden for all users incl. super admin. Direct URL access unaffected.
+// Flip to `false` to restore; set NON_TEFF_PROD_ONLY = true to hide only in
+// production while keeping local access.
+const HIDE_NON_TEFF_EVERYWHERE = true
+const NON_TEFF_PROD_ONLY = false
+const NON_TEFF_HIDDEN = HIDE_NON_TEFF_EVERYWHERE
+  || (NON_TEFF_PROD_ONLY && envConfig.getEnvironment() === 'production')
 
 /**
  * Engineering Disciplines Configuration
@@ -71,7 +84,7 @@ export const ENGINEERING_DISCIPLINES = {
         path: ROUTES.PID_VERIFICATION, // SOFT-CODED: Using centralized route config
         description: 'AI-powered P&ID drawing verification and tag validation',
         moduleCode: 'pid_analysis',
-        badge: 'NEW'
+        badge: ''
       },
       // SOFT-CODED: PFD Quality Checker — deterministic rule engine
       // SOFT-CODED: display name changed from 'PFD Quality Checker' → 'PFD QC'
@@ -83,7 +96,9 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/process/pfd-quality-checker',
         description: 'Deterministic PFD quality checks — equipment tags, streams, title block & safety',
         moduleCode: 'pfd_quality',
-        badge: 'NEW'
+        badge: '',
+        // SOFT-CODED: hidden for ALL users (incl. super admin) — parked for now
+        enabled: false
       },
       // SOFT-CODED: PFD Verification disabled — source files preserved
       // {
@@ -104,17 +119,29 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/process/datasheet',
         description: 'Process equipment datasheets',
         moduleCode: 'process_datasheet',
-        badge: 'New'
-      }
-    ,      {        id: 'lineList',
+        badge: '',
+        // SOFT-CODED: hidden for ALL users (incl. super admin) — under development
+        enabled: false
+      },
+      {
+        id: 'hmbStreamTableConsolidator',
+        name: 'HMB Consolidator',
+        fullName: 'HMB Stream Table Consolidator',
+        icon: CircleStackIcon,
+        path: ROUTES.HMB_STREAM_TABLE_CONSOLIDATOR,
+        description: 'Compare HYSYS stream tables locally across multiple cases',
+        moduleCode: 'hmb_extractor',
+        badge: 'NEW'
+      },
+      {
+        id: 'lineList',
         name: 'Line List',
         fullName: 'Line List - Base Extraction',
         icon: TableCellsIcon,
         path: '/engineering/process/line-list',
         description: 'Extract 8 base columns from P&ID (P&ID-only, no enrichment)',
         moduleCode: 'pid_line_list'
-      }
-      ,
+      },
       {
         id: 'equipmentList',
         name: 'Equipment List',
@@ -123,7 +150,7 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/process/equipment-list',
         description: 'Extract equipment tags (Vessels, Pumps, HE, Reactors…) from P&ID with type classification and line connections',
         moduleCode: 'pid_equipment_list',
-        badge: 'NEW'
+        badge: ''
       }
     ]
   },
@@ -146,7 +173,7 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/piping/critical-line-list',
         description: '5-document upload (P&ID+PFD+HMB+PMS+NACE) for full 35-column extraction with enrichment',
         moduleCode: 'piping_critical_line_list',
-        badge: 'FULL'
+        badge: ''
       },
       {
         id: 'pms',
@@ -156,7 +183,7 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/piping/pms',
         description: 'Valve material take-off list — quantities, specs and project rollup',
         moduleCode: 'piping_pms',
-        badge: 'New'
+        badge: ''
       },
       {
         id: 'pipingDataSheet',
@@ -166,6 +193,7 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/piping/datasheet',
         description: 'Piping component datasheets',
         moduleCode: 'piping_datasheet',
+        enabled: false,
       }
     ]
   },
@@ -188,7 +216,7 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/instrument/index',
         description: 'Comprehensive instrument index management',
         moduleCode: 'instrument_index',
-        badge: 'New'
+        badge: ''
       },
       // SOFT-CODED: IO List promoted from the Datasheets hub to a first-class
       // sub-feature under 1.3 Instrument (route unchanged — reuses existing
@@ -201,7 +229,7 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/instrument/datasheet/io-list',
         description: 'Generate a canonical Input/Output list from the instrument register, or run a deterministic QC on an existing list',
         moduleCode: 'instrument_io_list',
-        badge: 'Generator + QC'
+        badge: ''
       },
       {
         id: 'instrumentDataSheet',
@@ -211,7 +239,9 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/instrument/datasheet',
         description: 'Instrument specification datasheets',
         moduleCode: 'instrument_datasheet',
-        badge: 'New'
+        badge: '',
+        // SOFT-CODED: hidden for ALL users (incl. super admin) — under development
+        enabled: false
       }
     ]
   },
@@ -234,7 +264,7 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/electrical/sld',
         description: 'Single line diagram design and analysis',
         moduleCode: 'electrical_sld',
-        badge: 'New'
+        badge: ''
       },
       // SOFT-CODED: Electrical Check List - NEW FEATURE
       {
@@ -245,9 +275,9 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/electrical/checklist',
         description: 'Electrical engineering quality check lists and compliance verification',
         moduleCode: 'electrical_checklist',
-        badge: 'New'
+        badge: ''
       },
-      // SOFT-CODED: Electrical Datasheet - RE-ENABLED
+      // SOFT-CODED: Electrical Datasheet hidden for ALL users (incl. super admin) — under development
       {
         id: 'electricalDatasheets',
         name: 'Datasheets',
@@ -256,7 +286,8 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/electrical/datasheet',
         description: '27 electrical engineering initiatives - Datasheets, diagrams, layouts, schedules',
         moduleCode: 'electrical_datasheet',
-        badge: 'New'
+        badge: '',
+        enabled: false
       }
     ]
   },
@@ -279,7 +310,7 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/civil/datasheet',
         description: 'Civil and structural datasheets',
         moduleCode: 'civil_datasheet',
-        badge: 'New'
+        badge: ''
       }
     ]
   },
@@ -302,7 +333,7 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/mechanical/datasheet',
         description: 'Mechanical equipment datasheets',
         moduleCode: 'mechanical_datasheet',
-        badge: 'New'
+        badge: ''
       }
     ]
   },
@@ -317,16 +348,6 @@ export const ENGINEERING_DISCIPLINES = {
     gradient: 'from-pink-500 to-pink-600',
     order: 7,
     subFeatures: [
-      {
-        id: 'specCustomization',
-        name: 'Spec Customization',
-        fullName: 'Specification Customization',
-        icon: CircleStackIcon,
-        path: '/engineering/digitization/spec-customization',
-        description: 'AI-powered spec generation and customization',
-        moduleCode: 'spec_customization',
-        badge: 'AI'
-      },
       ...(ENABLE_DIGITIZATION_DATASHEET_FEATURE
         ? [{
           id: 'digitizationDatasheet',
@@ -336,7 +357,7 @@ export const ENGINEERING_DISCIPLINES = {
           path: '/engineering/digitization/datasheet',
           description: 'Digital transformation datasheets and documentation',
           moduleCode: 'digitization_datasheet',
-          badge: 'New'
+          badge: ''
         }]
         : []),
       {
@@ -347,7 +368,50 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/digitization/non-teff-metadata',
         description: 'Extract metadata from Non-TEFF documents (PDF, Excel, Word, AutoCAD)',
         moduleCode: 'non_teff_metadata',
-        badge: 'AI'
+        badge: '',
+        // SOFT-CODED: hidden in production (env-aware — local unaffected)
+        enabled: !NON_TEFF_HIDDEN
+      },
+      {
+        id: 'smartPlant3D',
+        name: 'Smart Plant 3D',
+        fullName: 'SmartPlant 3D Integration',
+        icon: CubeIcon,
+        path: '/engineering/digitization/smart-plant-3d',
+        description: 'SmartPlant 3D integration and paper specification workflows',
+        moduleCode: 'spec_customization',
+        badge: ''
+      }
+      // SOFT-CODED: 'Valve Standards Reference' is NOT a separate sidebar entry —
+      // it lives under Smart Plant 3D (opened via the card on SmartPlant3DPage,
+      // route still at /engineering/digitization/valve-standards). Previously
+      // duplicated here as a sibling sub-feature by mistake; removed 2026-08-27
+      // to avoid a second top-level Digitization menu item for the same feature.
+    ]
+  },
+
+  // SOFT-CODED: 1.8 Legend Manager — central legend-sheet library shared by
+  // all engineering extraction tools (Line List, Equipment List, Instrument
+  // Index, P&ID QC …). Configure once per project; every tool inherits.
+  legendManager: {
+    id: 'legendManager',
+    name: 'Legend Manager',
+    fullName: 'Legend Sheet Manager',
+    icon: BookOpenIcon,
+    description: 'Central legend-sheet library — one legend pack per project, inherited by every extraction tool',
+    color: 'indigo',
+    gradient: 'from-indigo-500 to-blue-600',
+    order: 8,
+    subFeatures: [
+      {
+        id: 'manageLegends',
+        name: 'Manage Legends',
+        fullName: 'Legend Sheet Manager',
+        icon: BookOpenIcon,
+        path: '/engineering/legends',
+        description: 'Central legend-sheet library — manage per-section legends and project legend packs',
+        moduleCode: 'legend_manager',
+        badge: ''
       }
     ]
   }
@@ -482,7 +546,6 @@ export const hasAccess = (moduleCode, userModules, isAdmin) => {
 }
 
 export default ENGINEERING_DISCIPLINES
-
 
 
 

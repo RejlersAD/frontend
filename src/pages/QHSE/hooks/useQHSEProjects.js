@@ -1,12 +1,12 @@
+import { getQhseApiBase } from '../../../services/qhse.service';
 import { useEffect, useState, useCallback } from 'react';
 import { STORAGE_KEYS } from '../../../config/app.config';
-import { API_BASE_URL } from '../../../config/api.config';
 
 /**
  * Custom hook to fetch QHSE Running Projects from Django API
  * Replaces Google Sheets with PostgreSQL backend
  */
-export const useQHSERunningProjects = () => {
+export const useQHSERunningProjects = ({ preserveMissingQualityCounts = false } = {}) => {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -31,7 +31,7 @@ export const useQHSERunningProjects = () => {
 
       // Fetch all projects (handling pagination)
       let allProjects = [];
-      let nextUrl = `${API_BASE_URL}/qhse/projects/?page_size=1000`; // Get all at once
+      let nextUrl = `${getQhseApiBase()}/projects/?page_size=1000`; // Get all at once
       
       console.log('🌐 Fetching from:', nextUrl);
       
@@ -128,12 +128,13 @@ export const useQHSERunningProjects = () => {
         clientAudit1: project.clientAudit1 || null,
         clientAudit2: project.clientAudit2 || null,
         delayInAuditsNoDays: Number(project.delayInAuditsNoDays || 0),
-        carsOpen: Number(project.carsOpen || 0),
+        // Safety reporting must distinguish absent evidence from a recorded zero.
+        carsOpen: preserveMissingQualityCounts ? project.carsOpen : Number(project.carsOpen || 0),
         carsDelayedClosingNoDays: Number(project.carsDelayedClosingNoDays || 0),
-        carsClosed: Number(project.carsClosed || 0),
-        obsOpen: Number(project.obsOpen || 0),
+        carsClosed: preserveMissingQualityCounts ? project.carsClosed : Number(project.carsClosed || 0),
+        obsOpen: preserveMissingQualityCounts ? project.obsOpen : Number(project.obsOpen || 0),
         obsDelayedClosingNoDays: Number(project.obsDelayedClosingNoDays || 0),
-        obsClosed: Number(project.obsClosed || 0),
+        obsClosed: preserveMissingQualityCounts ? project.obsClosed : Number(project.obsClosed || 0),
         projectKPIsAchievedPercent: project.projectKPIsAchievedPercent || '0%',
         projectCompletionPercent: project.projectCompletionPercent || '0%',
         rejectionOfDeliverablesPercent: project.rejectionOfDeliverablesPercent || '0%',
@@ -166,7 +167,7 @@ export const useQHSERunningProjects = () => {
       setLoading(false);
       setIsRefreshing(false);
     }
-  }, []);
+  }, [preserveMissingQualityCounts]);
 
   const refetch = useCallback(() => {
     fetchData(true);

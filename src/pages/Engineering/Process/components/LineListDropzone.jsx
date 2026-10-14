@@ -22,8 +22,13 @@ const MAX_MB = 15
  *   activeLineList     — the currently-active LL summary (or null)
  *   onUploaded(data)   — called with the API response when parse succeeds
  *   disabled           — parent-controlled (e.g. during PDF extraction)
+ *   projectId          — active project's UUID, sent with the upload request
+ *                        but NOT used to scope it — the Master Line List is
+ *                        deliberately global (one per user account, not per
+ *                        project); see PIDCheckerV2.jsx's top-of-file
+ *                        comment for the full trace.
  */
-export default function LineListDropzone({ activeLineList, onUploaded, disabled }) {
+export default function LineListDropzone({ activeLineList, onUploaded, disabled, projectId }) {
   const fileRef = useRef(null)
   const [uploading, setUploading] = useState(false)
   const [pct, setPct] = useState(0)
@@ -38,7 +43,7 @@ export default function LineListDropzone({ activeLineList, onUploaded, disabled 
     }
     setUploading(true); setPct(0)
     try {
-      const data = await uploadLineList(f, { onProgress: setPct })
+      const data = await uploadLineList(f, { onProgress: setPct, projectId })
       toast.success(`Uploaded — ${data.total_rows} line items parsed`)
       onUploaded?.(data)
     } catch (err) {

@@ -10,7 +10,7 @@
  *   • timesheetService.fetchLive()    → live IN/OUT roster + summary
  *   • timesheetService.fetchDaily()   → today's per-user hours
  *   • timesheetService.fetchMonthly() → month-to-date hours / late / full day
- *   • rbacService.getUsers()          → workforce master (status, MFA, dept)
+ *   • HR workforce-summary API        → EmployeeMaster status, MFA and department
  *
  * Everything visible on the page — labels, polling intervals, KPI compute
  * functions, section visibility, colours, accent gradients, empty-state
@@ -43,10 +43,6 @@ export const formatLeaveRecord = (record) => ({
 export const HR_DASHBOARD_POLL_MS = Number(
   import.meta.env?.VITE_HR_DASHBOARD_POLL_MS || 30000
 )
-
-// Maximum employees to pull for workforce analytics. Matches the page-size used
-// by /hr/employees so caching can be shared if a future enhancement adds it.
-export const HR_DASHBOARD_FETCH_PAGE_SIZE = 500
 
 // Number of recent punches to show in the live activity feed.
 export const HR_DASHBOARD_LIVE_FEED_LIMIT = 8
@@ -231,6 +227,7 @@ export const HR_DASHBOARD_KPIS = [
 //    without touching the page component.
 // ─────────────────────────────────────────────────────────────────────────────
 export const HR_DASHBOARD_SECTIONS = {
+  commandCenterLayout: true,
   liveFeed: true,
   workforceComposition: false,  // SOFT-CODED: Disabled to hide "Workforce composition" and "Engineering disciplines" sections
   todayPunctuality: true,
@@ -239,8 +236,11 @@ export const HR_DASHBOARD_SECTIONS = {
   quickLinks: true,
   aiChampion: true,
   pendingActions: true,    // Inbox: leave + alerts + salary + slips
-  payrollSnapshot: true,   // Second KPI row from 4.2 + 4.3 data
+  pendingActionsPanel: false, // Keep notification data/bell without the large dashboard panel
+  payrollSnapshot: false,  // Removed from the HR overview; payroll remains available in 4.2
+  attendanceAtTop: true,   // Place attendance intelligence directly below headcount KPIs
   leaveRecordsConsolidated: true,  // Consolidated leave report for all users
+  leaveRecordsDetailPanel: false, // Summary now lives in the four-column operational row
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -249,6 +249,18 @@ export const HR_DASHBOARD_SECTIONS = {
 //     `priority` controls sort order in the inbox (lower = more urgent).
 // ─────────────────────────────────────────────────────────────────────────────
 export const HR_DASHBOARD_PENDING_TYPES = [
+  {
+    id: 'overtime', label: 'Overtime Requests', icon: 'ClockIcon',
+    route: '/hr/leave?view=encashment&ot_status=pending', priority: 2,
+    bg: 'bg-indigo-50', border: 'border-indigo-200', text: 'text-indigo-700',
+    dot: 'bg-indigo-500', badge: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+    actionLabel: 'View OT', zeroMsg: 'No pending overtime requests',
+    singularMsg: 'OT request awaiting approval', pluralMsg: 'OT requests awaiting approval',
+    getItems: (d) => (d?.pendingOvertime || []).slice(0, 3),
+    getCount: (d) => Number(d?.pendingOvertimeCount ?? 0),
+    getRowLabel: (r) => r.employee_name || r.employee_code || 'Employee',
+    getRowSub: (r) => `${r.work_date} / ${Number(r.requested_hours)} hours`,
+  },
   {
     id:       'alerts',
     label:    'Audit Alerts',
@@ -273,7 +285,7 @@ export const HR_DASHBOARD_PENDING_TYPES = [
     id:       'leave',
     label:    'Leave Requests',
     icon:     'CalendarDaysIcon',
-    route:    '/hr/payroll?tab=leave',
+    route:    '/hr/leave',
     priority: 2,
     bg:    'bg-amber-50',
     border:'border-amber-200',
@@ -313,7 +325,7 @@ export const HR_DASHBOARD_PENDING_TYPES = [
     id:       'slips',
     label:    'Salary Slip Approvals',
     icon:     'DocumentTextIcon',
-    route:    '/hr/payroll?tab=engine',
+    route:    '/hr/payroll?tab=salary',
     priority: 4,
     bg:    'bg-indigo-50',
     border:'border-indigo-200',
@@ -710,7 +722,7 @@ export const HR_DASHBOARD_QUICK_LINKS = [
     id: 'selfservice',
     label: 'Self-Service Portal',
     description: 'Personal leave, attendance, timesheet & payroll',
-    to: '/hr/leave',
+    to: '/hr/Employeprofile',
     icon: 'SparklesIcon',
     tone: 'bg-violet-50 text-violet-700 border-violet-100 hover:bg-violet-100',
   },
@@ -982,7 +994,6 @@ export const getGreeting = () => {
 // ─────────────────────────────────────────────────────────────────────────────
 export default {
   HR_DASHBOARD_POLL_MS,
-  HR_DASHBOARD_FETCH_PAGE_SIZE,
   HR_DASHBOARD_LIVE_FEED_LIMIT,
   HR_DASHBOARD_RECENT_JOINER_DAYS,
   HR_DASHBOARD_RECENT_JOINER_LIMIT,

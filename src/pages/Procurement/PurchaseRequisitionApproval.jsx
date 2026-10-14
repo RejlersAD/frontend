@@ -1,19 +1,39 @@
-﻿/**
+import { radaiAlert, radaiConfirm } from '../../services/radaiDialog'
+/**
  * Purchase Requisition Approval Component
  * Dynamic multi-tier approval workflow (PM -> Engineering Manager -> Manager of Projects -> VP Operations)
  * 
  * Features:
  * - Dynamic Approval History mapping over all configured workflow stages
- * - Super Admin & assigned approver permission validation
+ * - Assigned approver validation for the active workflow level
  * - Soft-coded rejection validation
  * - Digital signature support
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useId } from 'react';
+import PropTypes from 'prop-types';
+import { useNavigate } from 'react-router-dom';
 import apiClient from '../../services/api.service';
+import { downloadPurchaseRequisitionDocument, fetchPurchaseRequisitionWord, purchaseRequisitionDocumentError } from '../../services/purchaseRequisitionDocuments';
+import PdfDocumentPreview from '../../components/Common/PdfDocumentPreview';
 import PurchaseRequisitionDocumentPreview from './PurchaseRequisitionDocumentPreview';
+import { buildGeneratedRequisitionPdf } from './generatedRequisitionPdf';
+import RecommendationSourceDocument from './RecommendationSourceDocument';
+import RejectedRequisitionRevision, { RequisitionRevisionHistory } from './RejectedRequisitionRevision';
+import ApprovalRecordPdfPreview from './ApprovalRecordPdfPreview';
+import { getOriginalRecommendationDocuments } from './recommendationSourceDocuments';
+import { approvalLevelLabel, recommendationDisplayApprovals, recommendationSourceApprovals } from './recommendationApprovalEvidence';
+import { recommendationProjectNumbers } from './recommendationProjectNumbers';
+import RecordedApprovalHistory from './RecordedApprovalHistory';
+import { recommendationVat } from './recommendationVat';
+import UploadedPurchaseOrderPreview from './UploadedPurchaseOrderPreview';
+import useUploadedPurchaseOrderSources from './useUploadedPurchaseOrderSources';
+import { displayApprovalWorkflow, nameOnly } from '../../utils/employeeDisplayName';
+import { buildProcurementPdfFilename } from '../../utils/procurementPdfFilename';
+import { activeApprovalStages, approvalSignatureEvidence, canDecideProcurement, isAssignedApprover } from '../../utils/procurementApproval';
 import {
-  XMarkIcon,
+  ArrowLeftIcon,
+  ArrowDownTrayIcon,
   CheckCircleIcon,
   XCircleIcon,
   DocumentTextIcon,
@@ -25,7 +45,23 @@ import {
   ArrowPathIcon,
   LockClosedIcon,
   PaperAirplaneIcon,
+  PrinterIcon,
+  LinkIcon,
 } from '@heroicons/react/24/outline';
+
+const linkedPurchaseOrderPdfRequests = new Map();
+
+const requestLinkedPurchaseOrderPdf = (id) => {
+  if (!linkedPurchaseOrderPdfRequests.has(id)) {
+    const request = apiClient.get(`/procurement/orders/${id}/export-pdf/`, {
+      responseType: 'blob',
+      timeout: 120000,
+      suppressErrorToast: true,
+    }).finally(() => linkedPurchaseOrderPdfRequests.delete(id));
+    linkedPurchaseOrderPdfRequests.set(id, request);
+  }
+  return linkedPurchaseOrderPdfRequests.get(id);
+};
 
 const REJECTION_CONFIG = {
   MIN_REASON_LENGTH: 10,
@@ -38,61 +74,258 @@ const REJECTION_CONFIG = {
   }
 };
 
-const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser, onApprovalComplete }) => {
+const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequisition, currentUser, onApprovalComplete, onSourceUploaded, pageMode = false }) => {
+  const [reloadedRecord, setReloadedRecord] = useState(null);
+  const requisition = reloadedRecord && reloadedRecord.original === initialRequisition ? reloadedRecord.record : initialRequisition;
+  const [submissionConflict, setSubmissionConflict] = useState('');
+  const [showSourceApprovers, setShowSourceApprovers] = useState(false);
+  const [editingSourceApproval, setEditingSourceApproval] = useState(false);
+  const [reloadingRecord, setReloadingRecord] = useState(false);
+  const reloadContextRef = useRef(null);
+  useEffect(() => {
+    reloadContextRef.current = {};
+    setReloadedRecord(null);
+    setSubmissionConflict('');
+    setShowSourceApprovers(false);
+    setEditingSourceApproval(false);
+    setReloadingRecord(false);
+    return () => { reloadContextRef.current = null; };
+  }, [isOpen, initialRequisition]);
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [currentApproverType, setCurrentApproverType] = useState(null);
   const [rejectionReason, setRejectionReason] = useState('');
   const [rejectionError, setRejectionError] = useState('');
   const [signature, setSignature] = useState('');
+  const [signatureLoading, setSignatureLoading] = useState(false);
+  const [signatureError, setSignatureError] = useState('');
   const [referralTarget, setReferralTarget] = useState('moe');
   const [referralRemarks, setReferralRemarks] = useState('');
   const [referralError, setReferralError] = useState('');
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState('');
+  const [pdfPreviewFilename, setPdfPreviewFilename] = useState('');
+  const [pdfPreviewLoading, setPdfPreviewLoading] = useState(false);
+  const [pdfPreviewError, setPdfPreviewError] = useState('');
+  const [pdfPreviewRetryKey, setPdfPreviewRetryKey] = useState(0);
+  const [wordPending, setWordPending] = useState(false);
+  const [wordError, setWordError] = useState('');
+  const wordRequest = useRef(null);
+  const [previewSelection, setPreviewSelection] = useState({ context: '', tab: 'pr' });
+  const [linkedPoPreviewUrl, setLinkedPoPreviewUrl] = useState('');
+  const [linkedPoPreviewFilename, setLinkedPoPreviewFilename] = useState('');
+  const [linkedPoPreviewLoading, setLinkedPoPreviewLoading] = useState(false);
+  const [linkedPoPreviewError, setLinkedPoPreviewError] = useState('');
+  const [linkedPoPreviewRetryKey, setLinkedPoPreviewRetryKey] = useState(0);
+  const pdfFrameRef = useRef(null);
+  const pdfSourceRef = useRef(null);
+  const previewId = useId();
+  const isRevised = Boolean(requisition?.price_remarks_data?.approval_revision_history?.length);
+  const hasOriginalPr = !isRevised && getOriginalRecommendationDocuments(requisition?.attachments).length > 0;
+  const hasCombinedDocuments = hasOriginalPr && Boolean(requisition?.linked_po_id);
+  const previewContext = `${isOpen}:${requisition?.id}:${requisition?.linked_po_id}:${hasOriginalPr}`;
+  const activePreview = previewSelection.context === previewContext ? previewSelection.tab : hasCombinedDocuments ? 'combined' : 'pr';
+  const setActivePreview = tab => setPreviewSelection({ context: previewContext, tab });
+  const linkedPoSources = useUploadedPurchaseOrderSources(requisition?.linked_po_id, isOpen && activePreview === 'po');
+  const useOriginalLinkedPo = linkedPoSources.loading || Boolean(linkedPoSources.error) || linkedPoSources.documents.length > 0;
+
+  useEffect(() => {
+    setWordPending(false);
+    setWordError('');
+    return () => { wordRequest.current?.abort(); wordRequest.current = null; };
+  }, [isOpen, requisition?.id, requisition?.updated_at]);
+
+  useEffect(() => {
+    if (!isOpen) setPreviewSelection({ context: '', tab: 'pr' });
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    let active = true;
+    setSignatureLoading(true);
+    setSignatureError('');
+    apiClient.get('/users/employees/my-signature/', { suppressErrorToast: true })
+      .then(({ data }) => {
+        if (!active) return;
+        setSignature(data?.signature || '');
+        if (!data?.signature) setSignatureError('Add a signature in Profile > My Signature before approving.');
+      })
+      .catch(() => {
+        if (active) setSignatureError('Your saved signature could not be loaded.');
+      })
+      .finally(() => { if (active) setSignatureLoading(false); });
+    return () => { active = false; };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !requisition?.id || hasOriginalPr) return undefined;
+
+    let active = true;
+    let objectUrl = '';
+    const generatePreviewPdf = async () => {
+      setPdfPreviewLoading(true);
+      setPdfPreviewError('');
+      setPdfPreviewUrl('');
+      try {
+        const source = pdfSourceRef.current;
+        if (!source) throw new Error('The live preview source is not ready.');
+
+        const pdf = await buildGeneratedRequisitionPdf(source, {
+          title: requisition.pr_number || 'Purchase Requisition', subject: 'Purchase requisition approval form',
+        });
+        if (!active) return;
+
+        objectUrl = URL.createObjectURL(pdf.output('blob'));
+        setPdfPreviewFilename(buildProcurementPdfFilename(
+          requisition.pr_number || `PR-${requisition.id}`,
+          'pr',
+          requisition.issued_date || requisition.created_at,
+        ));
+        setPdfPreviewUrl(objectUrl);
+      } catch (previewError) {
+        if (!active) return;
+        console.error('Failed to generate the Live Purchase Recommendation PDF:', previewError);
+        setPdfPreviewError(previewError.message || 'The Live Purchase Recommendation PDF could not be generated.');
+      } finally {
+        if (active) setPdfPreviewLoading(false);
+      }
+    };
+
+    const generationTimer = window.setTimeout(generatePreviewPdf, 100);
+
+    return () => {
+      active = false;
+      window.clearTimeout(generationTimer);
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [isOpen, requisition?.id, requisition?.pr_number, requisition?.issued_date, requisition?.created_at, hasOriginalPr, pdfPreviewRetryKey]);
+
+  useEffect(() => {
+    const linkedOrderId = requisition?.linked_po_id;
+    if (!isOpen || activePreview !== 'po' || !linkedOrderId || useOriginalLinkedPo) return undefined;
+
+    let active = true;
+    let objectUrl = '';
+    setLinkedPoPreviewLoading(true);
+    setLinkedPoPreviewError('');
+    setLinkedPoPreviewUrl('');
+
+    requestLinkedPurchaseOrderPdf(linkedOrderId)
+      .then((response) => {
+        if (!active) return;
+        const disposition = response.headers?.['content-disposition'] || '';
+        const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+        objectUrl = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+        setLinkedPoPreviewFilename(filenameMatch?.[1] || buildProcurementPdfFilename(
+          requisition.po_number_reference || `PO-${linkedOrderId}`,
+          'po',
+        ));
+        setLinkedPoPreviewUrl(objectUrl);
+      })
+      .catch(async (previewError) => {
+        if (!active) return;
+        console.error('Failed to load linked Purchase Order PDF:', previewError);
+        let serviceMessage = previewError.response?.data?.detail || previewError.response?.data?.error;
+        if (previewError.response?.data instanceof Blob) {
+          try {
+            const errorPayload = JSON.parse(await previewError.response.data.text());
+            serviceMessage = errorPayload.detail || errorPayload.error;
+          } catch {
+            // Preserve the safe fallback for non-JSON upstream responses.
+          }
+        }
+        if (active) setLinkedPoPreviewError(serviceMessage || 'The linked Purchase Order PDF is unavailable.');
+      })
+      .finally(() => { if (active) setLinkedPoPreviewLoading(false); });
+
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [activePreview, isOpen, requisition?.linked_po_id, requisition?.po_number_reference, useOriginalLinkedPo, linkedPoPreviewRetryKey]);
 
   if (!isOpen || !requisition) return null;
 
   const normalizedRequisitionStatus = (requisition.status || '').toString().trim().toLowerCase();
   const isDraft = normalizedRequisitionStatus === 'draft';
-  const isFullyApproved = normalizedRequisitionStatus === 'approved';
   const isRejected = normalizedRequisitionStatus === 'rejected';
-  const isApprovalInProgress = ['submitted', 'in_review'].includes(
+  const isConverted = normalizedRequisitionStatus === 'converted';
+  const isStandardApprovalInProgress = ['submitted', 'in_review'].includes(
     normalizedRequisitionStatus
   );
 
   const normalizeApprovalStatus = (rawStatus) => {
     const normalized = (rawStatus || '').toString().trim().toLowerCase();
     if (['approved', 'complete', 'completed'].includes(normalized)) return 'approved';
+    if (normalized === 'verified') return 'verified';
     if (['not_approved', 'rejected', 'declined'].includes(normalized)) return 'not_approved';
+    if (['not_recorded', 'not recorded', 'unknown'].includes(normalized)) return 'not_recorded';
     return 'pending';
   };
 
+  const approvalDisplayStatus = (stageOrStatus) => {
+    const stage = typeof stageOrStatus === 'object' && stageOrStatus !== null
+      ? stageOrStatus
+      : null;
+    const rawStatus = stage ? stage.status : stageOrStatus;
+    const normalized = normalizeApprovalStatus(rawStatus);
+    return isConverted && normalized === 'pending' && !stage?.evidence_requested_at
+      ? 'not_recorded'
+      : normalized;
+  };
+
+  const approvalStatusLabel = (stageOrStatus) => {
+    const normalized = approvalDisplayStatus(stageOrStatus);
+    if (normalized === 'approved') return 'Approved';
+    if (normalized === 'verified') return 'Signature verified';
+    if (normalized === 'not_approved') return 'Rejected';
+    if (normalized === 'not_recorded') return 'Not recorded';
+    return 'Pending';
+  };
+
   // Dynamic Workflow Hierarchy Array
-  const approvalHierarchy = Array.isArray(requisition.approval_workflow_config) && requisition.approval_workflow_config.length > 0
+  const rawApprovalHierarchy = Array.isArray(requisition.approval_workflow_config) && requisition.approval_workflow_config.length > 0
     ? requisition.approval_workflow_config
     : Array.isArray(requisition.approval_hierarchy)
       ? requisition.approval_hierarchy
       : [];
+  const approvalHierarchy = displayApprovalWorkflow(
+    rawApprovalHierarchy,
+    requisition.po_number_reference,
+    requisition.po_applicable,
+  );
+  const sourceApprovalHistory = recommendationSourceApprovals(requisition);
+  const showingSourceHistory = approvalHierarchy.length === 0 && sourceApprovalHistory.length > 0;
+  const displayedApprovalHistory = recommendationDisplayApprovals(requisition, showingSourceHistory
+    ? displayApprovalWorkflow(sourceApprovalHistory, requisition.po_number_reference, requisition.po_applicable)
+    : approvalHierarchy);
+  const projectNumbers = recommendationProjectNumbers(requisition);
 
   // Active stage determination
   const pendingStages = approvalHierarchy.filter((entry) => {
     const status = (entry?.status || 'pending').toString().trim().toLowerCase();
-    return status === 'pending' || status === 'in_review';
+    return (status === 'pending' || status === 'in_review')
+      && (!isConverted || Boolean(entry?.evidence_requested_at));
   });
-  const activeLevel = pendingStages.length
-    ? Math.min(...pendingStages.map((entry, index) => Number(entry?.level) || (approvalHierarchy.indexOf(entry) + 1 || index + 1)))
-    : null;
-  const activeLevelStages = pendingStages.filter((entry) => (Number(entry?.level) || approvalHierarchy.indexOf(entry) + 1) === activeLevel);
+  const isEvidenceRecoveryActive = isConverted && pendingStages.length > 0;
+  const isApprovalInProgress = isStandardApprovalInProgress || isEvidenceRecoveryActive;
+  const hasMissingApprovalEvidence = isConverted && approvalHierarchy.some(
+    stage => approvalDisplayStatus(stage) === 'not_recorded'
+  );
+  const activeLevelStages = activeApprovalStages(rawApprovalHierarchy);
 
   const currentUserData = currentUser?.user || currentUser || {};
   const currentUserId = currentUserData?.id || currentUser?.user_id || currentUser?.id;
-  const currentStage = activeLevelStages.find(entry => String(entry?.user_id || entry?.approver_id) === String(currentUserId))
+  const currentStage = activeLevelStages.find(entry => isAssignedApprover(entry, currentUser))
     || activeLevelStages[0]
     || null;
 
   const currentStageLabel = currentStage?.stage || currentStage?.role || 'the current approver';
   const currentStageRole = `${currentStage?.role || ''} ${currentStage?.stage || ''}`.toLowerCase();
   
-  const currentStageKey = currentStageRole.includes('engineering manager') || currentStageRole.includes('manager of engineering') || currentStageRole.includes('moe') || currentStageRole.includes('engineering review')
+  const currentStageKey = currentStageRole.includes('procurement department') || (currentStage && Number(currentStage.level) === 0)
+    ? 'procurement'
+    : currentStageRole.includes('engineering manager') || currentStageRole.includes('manager of engineering') || currentStageRole.includes('moe') || currentStageRole.includes('engineering review')
     ? 'eng_manager'
     : currentStageRole.includes('manager of projects') || currentStageRole.includes('projects manager')
       ? 'manager_projects'
@@ -100,7 +333,9 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
         ? 'vp'
         : currentStageRole.includes('level 1 approver') || currentStageRole.includes('project manager') || currentStageRole.includes('department manager') || currentStageRole.includes('technical review')
           ? 'pm'
-          : null;
+          : currentStageRole.includes('general manager') || currentStageRole.includes('ceo')
+            ? 'general_manager'
+            : 'dynamic';
 
   // Authorization Evaluation
   const issuedByValue = requisition.issued_by?.id || requisition.issued_by_id || requisition.issued_by;
@@ -113,40 +348,31 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
   const isSuperAdmin = currentUserData?.is_superuser === true || currentUserRoles.some(
     (role) => role?.code === 'super_admin' || role?.name === 'Super Administrator'
   );
+  const moduleActions = currentUser?.module_actions ?? currentUserData?.module_actions;
+  const canExportWord = moduleActions ? Boolean(moduleActions.procurement_requisitions?.includes('export')) : isSuperAdmin;
+  const canUploadSource = module => moduleActions
+    ? ['create', 'update'].every(action => (moduleActions[module] || []).includes(action))
+    : isSuperAdmin;
 
-  const assignedCurrentUserId = currentStage?.user_id || currentStage?.approver_id;
-  const isAssignedCurrentApprover = Boolean(
-    currentUserId && assignedCurrentUserId && String(currentUserId) === String(assignedCurrentUserId)
-  );
-
-  // Employment position is authoritative here. RBAC roles grant module access,
-  // but they do not prove that the logged-in user holds the VP Operations post.
-  const currentUserJobTitle = (currentUser?.job_title || currentUserData?.job_title || '')
-    .toString()
-    .trim()
-    .toLowerCase()
-    .replace(/[_-]+/g, ' ')
-    .replace(/\s+/g, ' ');
-  const holdsVpOperationsPosition = [
-    'vice president of operations',
-    'vice president operations',
-    'vp operations',
-    'vp of operations',
-  ].includes(currentUserJobTitle);
-
-  // VP Operations has no administrator bypass: both assignment and position
-  // are required. Other stages retain the existing Super Admin override.
-  const canActOnCurrentStage = Boolean(
-    currentStage && (
-      currentStageKey === 'vp'
-        ? isAssignedCurrentApprover && holdsVpOperationsPosition
-        : isSuperAdmin || isAssignedCurrentApprover
-    )
-  );
+  const canEditSourceApprovers = (isCurrentUserIssuer || isSuperAdmin)
+    && (!moduleActions || Boolean(moduleActions.procurement_requisitions?.includes('update')));
+  const canActOnCurrentStage = !submissionConflict && !editingSourceApproval && canDecideProcurement(requisition, currentUser);
 
   const APPROVER_CONFIG = {
+    dynamic: {
+      label: currentStageLabel,
+      approveEndpoint: 'process_dynamic_approval',
+      rejectEndpoint: 'process_dynamic_rejection',
+      canApprove: isApprovalInProgress && currentStageKey === 'dynamic' && canActOnCurrentStage
+    },
+    procurement: {
+      label: 'Procurement Department',
+      approveEndpoint: 'process_dynamic_approval',
+      rejectEndpoint: 'process_dynamic_rejection',
+      canApprove: isApprovalInProgress && currentStageKey === 'procurement' && canActOnCurrentStage
+    },
     pm: {
-      label: activeLevel === 1 ? 'Level 1 Approver' : 'Project Manager',
+      label: Number(currentStage?.level) === 1 ? 'Level 1 Approver' : 'Project Manager',
       approveEndpoint: 'pm_approve',
       rejectEndpoint: 'pm_reject',
       canApprove: isApprovalInProgress && currentStageKey === 'pm' && canActOnCurrentStage
@@ -168,21 +394,77 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
       approveEndpoint: 'vp_approve',
       rejectEndpoint: 'vp_reject',
       canApprove: isApprovalInProgress && currentStageKey === 'vp' && canActOnCurrentStage
+    },
+    general_manager: {
+      label: 'CEO',
+      approveEndpoint: 'process_dynamic_approval',
+      rejectEndpoint: 'process_dynamic_rejection',
+      canApprove: isApprovalInProgress && currentStageKey === 'general_manager' && canActOnCurrentStage
     }
   };
 
   const hasAnyApprovalCapability = Object.values(APPROVER_CONFIG).some(config => config.canApprove);
 
   const handleSubmitForApproval = async () => {
-    if (!isDraft || (!isCurrentUserIssuer && !isSuperAdmin)) return;
+    if (submissionConflict || loading || editingSourceApproval || !isDraft || (!isCurrentUserIssuer && !isSuperAdmin)) return;
     setLoading(true);
     try {
-      const response = await apiClient.post(`/procurement/requisitions/${requisition.id}/submit/`);
-      alert(`PR ${response.data.pr_number || requisition.pr_number} submitted for approval. The assigned Project Manager can now approve or reject it.`);
+      const response = await apiClient.post(`/procurement/requisitions/${requisition.id}/submit/`, {
+        expected_updated_at: requisition.updated_at || '',
+      });
+      await radaiAlert(`PR ${response.data.pr_number || requisition.pr_number} submitted for approval. The assigned Project Manager can now approve or reject it.`);
       onApprovalComplete?.(response.data);
       onClose();
     } catch (error) {
-      alert(error.response?.data?.error || error.response?.data?.detail || 'Failed to submit requisition for approval.');
+      if (error.response?.status === 409 && error.response?.data?.code === 'stale_requisition') {
+        setSubmissionConflict(error.response.data.error);
+        return;
+      }
+      await radaiAlert(error.response?.data?.error || error.response?.data?.detail || 'Failed to submit requisition for approval.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const reloadLatestRecord = async () => {
+    if (reloadingRecord) return;
+    const context = reloadContextRef.current;
+    setReloadingRecord(true);
+    try {
+      const { data } = await apiClient.get(`/procurement/requisitions/${requisition.id}/`, { params: { _fresh: Date.now() }, suppressErrorToast: true });
+      if (reloadContextRef.current !== context) return;
+      if (String(data?.id) !== String(requisition.id)) throw new Error('The loaded recommendation did not match.');
+      setReloadedRecord({ original: initialRequisition, record: data });
+      setShowSourceApprovers(false);
+      setPdfPreviewRetryKey(value => value + 1);
+      setSubmissionConflict('');
+    } catch {
+      if (reloadContextRef.current === context) setSubmissionConflict('The latest recommendation could not be loaded. Try reloading again before submitting.');
+    } finally {
+      if (reloadContextRef.current === context) setReloadingRecord(false);
+    }
+  };
+
+  const handleResendMissingApprovals = async () => {
+    if (!isConverted || editingSourceApproval || loading || submissionConflict) return;
+    const confirmed = (await radaiConfirm(
+      'Resend the missing approval requests? Approvers will be notified and must record their own decisions.'
+    ));
+    if (!confirmed) return;
+
+    setLoading(true);
+    try {
+      const response = await apiClient.post(
+        `/procurement/requisitions/${requisition.id}/resend-missing-approvals/`
+      );
+      await radaiAlert(response.data?.message || 'Missing approval requests were resent.');
+      onApprovalComplete?.(response.data);
+    } catch (error) {
+      (await radaiAlert(
+        error.response?.data?.error
+        || error.response?.data?.detail
+        || 'Failed to resend missing approval requests.'
+      ));
     } finally {
       setLoading(false);
     }
@@ -205,7 +487,11 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
   const handleApprove = async (approverType) => {
     const config = APPROVER_CONFIG[approverType];
     if (!config || !config.canApprove) {
-      alert(`Action Locked: Awaiting review by ${currentStageLabel}`);
+      await radaiAlert(`Action Locked: Awaiting review by ${currentStageLabel}`);
+      return;
+    }
+    if (!signature) {
+      await radaiAlert('Add your signature in Profile > My Signature before approving.');
       return;
     }
 
@@ -213,24 +499,29 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
     try {
       const response = await apiClient.post(
         `/procurement/requisitions/${requisition.id}/${config.approveEndpoint}/`,
-        { signature: signature || '' }
+        { signature: '', ...(requisition.updated_at ? { expected_updated_at: requisition.updated_at } : {}) }
       );
 
-      alert(`Requisition approved by ${config.label}!`);
+      await radaiAlert(`Requisition approved by ${config.label}!`);
+      window.dispatchEvent(new Event('procurement-approval-updated'));
       if (onApprovalComplete) onApprovalComplete(response.data);
       onClose();
     } catch (error) {
       console.error('Approval error:', error);
-      alert(error.response?.data?.error || error.response?.data?.detail || 'Failed to approve requisition.');
+      if (error.response?.status === 409) {
+        setSubmissionConflict(error.response.data?.error || 'This recommendation changed.');
+        return;
+      }
+      await radaiAlert(error.response?.data?.error || error.response?.data?.detail || 'Failed to approve requisition.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleRejectClick = (approverType) => {
+  const handleRejectClick = async (approverType) => {
     const config = APPROVER_CONFIG[approverType];
     if (!config?.canApprove) {
-      alert(`Action Locked: Awaiting review by ${currentStageLabel}`);
+      await radaiAlert(`Action Locked: Awaiting review by ${currentStageLabel}`);
       return;
     }
     setCurrentApproverType(approverType);
@@ -241,7 +532,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
 
   const handleRejectSubmit = async () => {
     const config = APPROVER_CONFIG[currentApproverType];
-    if (!config) return;
+    if (!config?.canApprove) return;
 
     const validation = validateRejectionReason(rejectionReason);
     if (!validation.valid) {
@@ -255,15 +546,17 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
     try {
       const response = await apiClient.post(
         `/procurement/requisitions/${requisition.id}/${config.rejectEndpoint}/`,
-        { reason: rejectionReason.trim() }
+        { reason: rejectionReason.trim(), ...(requisition.updated_at ? { expected_updated_at: requisition.updated_at } : {}) }
       );
 
-      alert(`Requisition rejected by ${config.label}`);
+      await radaiAlert(`Requisition rejected by ${config.label}`);
+      window.dispatchEvent(new Event('procurement-approval-updated'));
       if (onApprovalComplete) onApprovalComplete(response.data);
       onClose();
       setShowRejectModal(false);
     } catch (error) {
       console.error('Rejection error:', error);
+      if (error.response?.status === 409) setSubmissionConflict(error.response.data?.error || 'This recommendation changed.');
       setRejectionError(error.response?.data?.error || error.response?.data?.detail || 'Failed to reject requisition.');
     } finally {
       setLoading(false);
@@ -271,6 +564,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
   };
 
   const handleReferral = async () => {
+    if (loading || submissionConflict || editingSourceApproval) return;
     if (referralRemarks.trim().length < 10) {
       setReferralError('Add at least 10 characters explaining the discussion required.');
       return;
@@ -280,11 +574,12 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
     try {
       const response = await apiClient.post(
         `/procurement/requisitions/${requisition.id}/refer-rejection/`,
-        { target: referralTarget, remarks: referralRemarks.trim() }
+        { target: referralTarget, remarks: referralRemarks.trim(), ...(requisition.updated_at ? { expected_updated_at: requisition.updated_at } : {}) }
       );
-      alert(`Rejected PR referred to ${referralTarget === 'moe' ? 'Manager of Engineering' : 'Manager of Projects'} for discussion.`);
+      await radaiAlert(`Rejected PR referred to ${referralTarget === 'moe' ? 'Manager of Engineering' : 'Manager of Projects'} for discussion.`);
       onApprovalComplete?.(response.data);
     } catch (error) {
+      if (error.response?.status === 409) setSubmissionConflict(error.response.data?.error || 'This recommendation changed.');
       setReferralError(error.response?.data?.error || error.response?.data?.remarks || 'Failed to create referral.');
     } finally {
       setLoading(false);
@@ -292,65 +587,253 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
   };
 
   const formatCurrency = (amount, currency = 'USD') => {
-    if (!amount) return 'N/A';
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount);
+    const numericAmount = Number(amount || 0);
+    try {
+      return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency || 'USD' }).format(numericAmount);
+    } catch {
+      return `${currency || 'USD'} ${numericAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+    }
   };
 
   const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    if (!dateString) return '—';
+    return new Date(dateString).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: '2-digit' });
   };
 
-  const getStatusColor = (status) => {
-    const normalized = normalizeApprovalStatus(status);
-    if (normalized === 'approved') return 'bg-emerald-100 text-emerald-800 border-emerald-300';
+  const formatTimestamp = (dateString) => {
+    if (!dateString) return '—';
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return '—';
+    return date.toLocaleString('en-GB', {
+      day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
+  };
+
+  const showingLinkedPo = activePreview === 'po' && Boolean(requisition.linked_po_id);
+  const showingCombined = activePreview === 'combined' && hasCombinedDocuments;
+  const showingOriginal = showingLinkedPo ? useOriginalLinkedPo : hasOriginalPr;
+  const activePdfUrl = showingOriginal ? '' : showingLinkedPo ? linkedPoPreviewUrl : pdfPreviewUrl;
+  const activePdfFilename = showingLinkedPo ? linkedPoPreviewFilename : pdfPreviewFilename;
+  const activePdfLoading = showingLinkedPo ? linkedPoPreviewLoading : pdfPreviewLoading;
+  const activePdfError = showingLinkedPo ? linkedPoPreviewError : pdfPreviewError;
+  const previewTabs = [
+    ...(hasCombinedDocuments ? [{ key: 'combined', label: 'PR + PO', Icon: DocumentTextIcon }] : []),
+    { key: 'pr', label: 'PR Preview', Icon: DocumentTextIcon },
+    ...(requisition.linked_po_id ? [{ key: 'po', label: 'Linked PO', Icon: LinkIcon }] : []),
+  ];
+
+  const handlePreviewTabKeyDown = event => {
+    const currentIndex = previewTabs.findIndex(tab => tab.key === activePreview);
+    let nextIndex;
+    if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % previewTabs.length;
+    else if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + previewTabs.length) % previewTabs.length;
+    else if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = previewTabs.length - 1;
+    else return;
+    event.preventDefault();
+    const nextTab = previewTabs[nextIndex].key;
+    setActivePreview(nextTab);
+    event.currentTarget.parentElement.querySelector(`[data-preview-tab="${nextTab}"]`)?.focus();
+  };
+
+  const downloadPdf = () => {
+    if (!activePdfUrl) return;
+    const link = document.createElement('a');
+    link.href = activePdfUrl;
+    link.download = activePdfFilename || (showingLinkedPo ? 'Purchase_Order.pdf' : 'Purchase_Recommendation.pdf');
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
+
+  const downloadWord = async () => {
+    if (!canExportWord || wordRequest.current) return;
+    const controller = new AbortController();
+    wordRequest.current = controller;
+    setWordPending(true);
+    setWordError('');
+    try {
+      const document = await fetchPurchaseRequisitionWord(requisition, { signal: controller.signal });
+      if (!controller.signal.aborted) downloadPurchaseRequisitionDocument(document);
+    } catch (problem) {
+      const message = await purchaseRequisitionDocumentError(problem);
+      if (!controller.signal.aborted) setWordError(message);
+    } finally {
+      if (wordRequest.current === controller) { wordRequest.current = null; setWordPending(false); }
+    }
+  };
+
+  const printPdf = () => {
+    if (showingLinkedPo && activePdfUrl) {
+      window.open(activePdfUrl, '_blank', 'noopener,noreferrer');
+    } else if (pdfFrameRef.current?.contentWindow) {
+      pdfFrameRef.current.contentWindow.focus();
+      pdfFrameRef.current.contentWindow.print();
+    }
+  };
+
+  const { netAmount: netPrice, taxAmount, totalAmount: totalPrice, vatRate } = recommendationVat(requisition);
+  const vendor = requisition.vendor_details || {};
+  const vendorId = requisition.vendor?.id ?? requisition.vendor ?? vendor.id;
+  const recordedVendorName = requisition.vendor_name || requisition.supplier_name || vendor.name || '';
+  const normalizeVendorName = value => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const matchingVendors = (requisition.selected_vendors || []).filter(candidate => {
+    const candidateId = candidate.vendor_id ?? candidate.id;
+    if (vendorId) return candidateId != null && String(vendorId) === String(candidateId);
+    return recordedVendorName && normalizeVendorName(candidate.vendor_name || candidate.name) === normalizeVendorName(recordedVendorName);
+  });
+  const selectedVendor = matchingVendors.length === 1 ? matchingVendors[0] : {};
+  const effectiveSupplier = requisition.supplier_contact_details;
+  const vendorName = (effectiveSupplier ? effectiveSupplier.vendor_name : recordedVendorName || selectedVendor.vendor_name || selectedVendor.name) || '—';
+  const vendorContact = (effectiveSupplier ? effectiveSupplier.contact_person : vendor.contact_person || selectedVendor.contact_person) || '—';
+  const vendorEmail = (effectiveSupplier ? effectiveSupplier.email : vendor.email || selectedVendor.email) || '—';
+
+  const getStatusColor = (stageOrStatus) => {
+    const normalized = approvalDisplayStatus(stageOrStatus);
+    if (normalized === 'approved' || normalized === 'verified') return 'bg-emerald-100 text-emerald-800 border-emerald-300';
     if (normalized === 'not_approved') return 'bg-red-100 text-red-800 border-red-300';
+    if (normalized === 'not_recorded') return 'bg-slate-100 text-slate-700 border-slate-300';
     return 'bg-amber-100 text-amber-800 border-amber-300';
+  };
+
+  const getRecordStatusColor = () => {
+    if (normalizedRequisitionStatus === 'converted') return 'border-slate-300 bg-slate-100 text-slate-700';
+    if (normalizedRequisitionStatus === 'approved') return 'border-emerald-300 bg-emerald-100 text-emerald-800';
+    if (normalizedRequisitionStatus === 'rejected') return 'border-red-300 bg-red-100 text-red-800';
+    if (['submitted', 'in_review'].includes(normalizedRequisitionStatus)) return 'border-blue-300 bg-blue-100 text-blue-800';
+    return 'border-slate-300 bg-white text-slate-700';
   };
 
   return (
     <>
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto p-4">
-        <div className="bg-white rounded-xl shadow-2xl max-w-6xl w-full my-8">
+      {!hasOriginalPr && <div className="pointer-events-none fixed left-[-10000px] top-0 w-[794px] bg-white p-4" aria-hidden="true">
+        <div ref={pdfSourceRef} className="bg-white p-3">
+          <PurchaseRequisitionDocumentPreview requisition={requisition} live documentOnly />
+        </div>
+      </div>}
+      <div className={pageMode ? 'min-h-[calc(100vh-4rem)] bg-slate-50' : 'fixed inset-0 z-50 overflow-y-auto bg-slate-50'}>
+        <div className="mx-auto min-h-full w-full max-w-[1680px] px-4 py-5 sm:px-6 lg:px-8">
+          {submissionConflict && <div role="alert" className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+            <p>{submissionConflict}</p><p>Reload and review the latest recommendation before continuing.</p>
+            <button type="button" className="mt-2 font-semibold underline" onClick={reloadLatestRecord} disabled={reloadingRecord}>{reloadingRecord ? 'Reloading...' : 'Reload latest version'}</button>
+          </div>}
           
           {/* Modal Header */}
-          <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-8 py-6 rounded-t-xl">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <DocumentTextIcon className="h-8 w-8" />
-                <div>
-                  <h2 className="text-2xl font-bold">Purchase Requisition Review</h2>
-                  <p className="text-indigo-100 text-sm mt-1">
-                    PR No: {requisition.pr_number} <span aria-hidden="true">&middot;</span> Status: {requisition.status_display || requisition.status}
-                  </p>
+          <header className="mb-5 rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm sm:px-5">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-center">
+              <div className="flex min-w-0 items-start gap-3">
+                <button type="button" onClick={onClose} aria-label="Back to Purchase Recommendations" title="Back to Purchase Recommendations" className="inline-grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2">
+                  <ArrowLeftIcon className="h-4 w-4" />
+                </button>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h1 className="truncate text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">{requisition.pr_number || `PR-${requisition.id}`}</h1>
+                    <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getRecordStatusColor()}`}>{requisition.status_display || requisition.status || 'Draft'}</span>
+                    {requisition.linked_po_id && <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700" title={requisition.po_number_reference || 'Linked Purchase Order'}><LinkIcon className="h-3.5 w-3.5" /> Linked PO</span>}
+                  </div>
                 </div>
               </div>
-              <button onClick={onClose} className="text-white hover:text-indigo-200 transition-colors">
-                <XMarkIcon className="h-7 w-7" />
-              </button>
-            </div>
-
-            {/* Dynamic Status Header Badges */}
-            <div className="mt-4 flex flex-wrap items-center gap-4">
-              {approvalHierarchy.map((stage, idx) => (
-                <div key={idx} className="flex items-center space-x-2">
-                  <span className="text-indigo-100 text-xs font-medium">{stage.role || stage.stage}:</span>
-                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${getStatusColor(stage.status)}`}>
-                    {normalizeApprovalStatus(stage.status) === 'approved' ? 'Approved' : 
-                     normalizeApprovalStatus(stage.status) === 'not_approved' ? 'Rejected' : 'Pending'}
-                  </span>
+              <section className="min-w-0 flex-1 xl:mx-6" aria-label="Approval history">
+                {!approvalHierarchy.length && !sourceApprovalHistory.length && <p className="mb-1 text-xs text-slate-600">Approval workflow has not been configured.</p>}
+                {showingSourceHistory && <p className="mb-1 text-xs text-slate-600">Approvals recorded on uploaded PR{!requisition.price_remarks_data?.signed_document_verification?.signed_off && ' · Signature verification incomplete'}</p>}
+                <div className="flex min-w-0 flex-wrap rounded-lg border border-slate-200 bg-slate-50" role="list" aria-label="Approval workflow progress">
+                  {displayedApprovalHistory.length > 0 ? displayedApprovalHistory.map((stage, index) => {
+                    const stageStatus = approvalDisplayStatus(stage);
+                    const evidence = approvalSignatureEvidence(stage);
+                    const stageTimestamp = stage.approved_at || stage.rejected_at || stage.evidence_requested_at;
+                    return (
+                      <div key={`${stage.role || stage.stage}-${index}`} className="flex min-w-0 basis-[170px] flex-grow items-center gap-2.5 border-b border-r border-slate-200 px-3 py-2" role="listitem" title={[stage.role || stage.stage, stage.user_name, approvalLevelLabel(stage), approvalStatusLabel(stage), stageTimestamp && formatTimestamp(stageTimestamp)].filter(Boolean).join(' · ')}>
+                          <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full border ${getStatusColor(stage)}`}>
+                            {stageStatus === 'approved' || stageStatus === 'verified' ? <CheckCircleIcon className="h-4 w-4" /> : <span className="h-1.5 w-1.5 rounded-full bg-current" />}
+                          </span>
+                          <div className="min-w-0"><p className="break-words text-xs font-semibold text-slate-800">{stage.role || stage.stage || `Stage ${index + 1}`}{approvalLevelLabel(stage) && <span className="block text-indigo-700">{approvalLevelLabel(stage)}</span>}</p><p className="break-words text-sm text-slate-700">{nameOnly(stage.user_name) || 'Name not recorded'}</p>{evidence.mismatch && <p className="mt-0.5 text-xs font-semibold text-amber-800">Signature needs review{evidence.recordedName ? `. Recorded signer: ${nameOnly(evidence.recordedName)}` : ''}</p>}<p className="mt-0.5 break-words text-xs text-slate-500">{approvalStatusLabel(stage)}{stageTimestamp ? ` · ${formatTimestamp(stageTimestamp)}` : stageStatus === 'approved' ? ' · Date not recorded' : showingSourceHistory && !stage.default_level_zero && !stage.source_review_annotation && stageStatus === 'not_recorded' ? ' · Signature not verified' : ''}</p>{stage.special_note && <p title={stage.special_note} className="mt-1 line-clamp-2 break-words text-xs text-slate-600">Special note: {stage.special_note}</p>}</div>
+                      </div>
+                    );
+                  }) : <p className="px-3 py-2 text-xs text-slate-500">{hasOriginalPr ? 'Uploaded approval evidence needs verification.' : 'Approval workflow has not been configured.'}</p>}
                 </div>
-              ))}
+                {requisition.price_remarks_data?.signed_document_verification?.document_sha256 && <button type="button"
+                  onClick={() => setShowSourceApprovers(value => !value)} disabled={editingSourceApproval}
+                  aria-expanded={showSourceApprovers} className="mt-2 text-xs font-semibold text-indigo-700 underline disabled:opacity-50">Review source approvers</button>}
+              </section>
+              <div className="flex shrink-0 flex-wrap items-center gap-2" aria-label="Purchase Recommendation actions">
+                {canExportWord && <button type="button" onClick={downloadWord} disabled={wordPending} aria-busy={wordPending} title="Download saved Purchase Requisition data as Word (.docx). Original signed documents remain separate." className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-50">
+                  <ArrowDownTrayIcon className="h-4 w-4" aria-hidden="true" />{wordPending ? 'Preparing Word...' : 'Download Word'}
+                </button>}
+                {!showingOriginal && <>
+                <button type="button" onClick={printPdf} disabled={!activePdfUrl} aria-label={`Print ${showingLinkedPo ? 'linked Purchase Order' : 'Purchase Recommendation'} preview`} title={`Print ${showingLinkedPo ? 'linked Purchase Order' : 'Purchase Recommendation'} preview`} className="inline-grid h-9 w-9 place-items-center rounded-lg border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-50">
+                  <PrinterIcon className="h-4 w-4" />
+                </button>
+                <button type="button" onClick={downloadPdf} disabled={!activePdfUrl} aria-label={`Download ${showingLinkedPo ? 'linked Purchase Order' : 'Purchase Recommendation'} PDF`} title={`Download ${showingLinkedPo ? 'linked Purchase Order' : 'Purchase Recommendation'} PDF`} className="inline-grid h-9 w-9 place-items-center rounded-lg border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-50">
+                  <ArrowDownTrayIcon className="h-4 w-4" />
+                </button>
+                </>}
+                {isDraft && (isCurrentUserIssuer || isSuperAdmin) && (
+                  <button type="button" onClick={() => navigate(`/procurement/requisitions/${requisition.id}/edit`)} className="inline-flex h-9 items-center rounded-lg bg-indigo-600 px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2">
+                    <PencilSquareIcon className="mr-2 h-4 w-4" /> Edit
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
+          </header>
+
+          {showSourceApprovers && <section className="mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm" aria-label="Source approver review">
+            <h2 className="mb-3 text-base font-semibold text-slate-900">Recorded approval history</h2>
+            <RecordedApprovalHistory requisition={requisition} expectedUpdatedAt={requisition.updated_at}
+              canEdit={canEditSourceApprovers} disabled={loading || Boolean(submissionConflict)}
+              onSaved={record => { setReloadedRecord({ original: initialRequisition, record }); setPdfPreviewRetryKey(value => value + 1); }}
+              onStaleRecord={setSubmissionConflict} onEditingChange={setEditingSourceApproval} />
+          </section>}
+
+          {wordError && <div role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{wordError}</div>}
+          {isRejected && <div className="mb-4"><RejectedRequisitionRevision requisition={requisition}
+            onReopened={() => navigate(`/procurement/requisitions/${requisition.id}/edit`)}
+            onReloaded={record => setReloadedRecord({ original: initialRequisition, record })} /></div>}
+          {isRevised && <div className="mb-4"><RequisitionRevisionHistory requisition={requisition} /></div>}
 
           {/* Modal Content Body */}
-          <div className="p-8 max-h-[70vh] overflow-y-auto">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <main>
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
               
               {/* Left Column - PR Form Information */}
-              <div className="lg:col-span-2 space-y-6">
-                <PurchaseRequisitionDocumentPreview requisition={requisition} />
+              <div className="space-y-6 xl:col-span-3">
+                <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                  <h2 className="mb-5 flex items-center text-base font-semibold text-slate-900"><DocumentTextIcon className="mr-2 h-5 w-5 text-indigo-600" /> Recommendation Information</h2>
+                  <dl className="grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2">
+                    <div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">PR Number</dt><dd className="mt-1 text-sm font-semibold text-slate-950">{requisition.pr_number || '—'}</dd></div>
+                    <div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Issued Date</dt><dd className="mt-1 text-sm text-slate-900">{formatDate(requisition.issued_date)}</dd></div>
+                    <div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Issued By</dt><dd className="mt-1 text-sm text-slate-900">{requisition.issued_by_name || '—'}</dd></div>
+                    <div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Project / Department</dt><dd className="mt-1 text-sm text-slate-900">{requisition.project_department || requisition.enterprise_project_name || '—'}</dd></div>
+                    <div className="sm:col-span-2"><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Project numbers</dt><dd className="mt-1 break-words text-sm text-slate-900">{projectNumbers.join(', ') || '—'}</dd></div>
+                    <div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Type</dt><dd className="mt-1 text-sm text-slate-900">{requisition.requisition_type_display || requisition.requisition_type || '—'}</dd></div>
+                    <div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Priority</dt><dd className="mt-1 text-sm text-slate-900">{requisition.priority_display || requisition.priority || '—'}</dd></div>
+                    <div className="sm:col-span-2"><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Product / Service</dt><dd className="mt-1 whitespace-pre-wrap text-sm text-slate-900">{requisition.product_service || requisition.description_reason || '—'}</dd></div>
+                  </dl>
+                </section>
+
+                <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                  <h2 className="mb-5 text-base font-semibold text-slate-900">Financial Details</h2>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Net Amount</p><p className="mt-2 text-lg font-bold text-slate-950">{formatCurrency(netPrice, requisition.currency)}</p></div>
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{vatRate === null ? 'VAT not confirmed' : vatRate === 0 ? 'No VAT' : 'VAT (5%)'}</p><p className="mt-2 text-lg font-bold text-slate-950">{formatCurrency(taxAmount, requisition.currency)}</p></div>
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">{vatRate === null ? 'Recorded total' : 'Total'}</p><p className="mt-2 text-xl font-bold text-emerald-700">{formatCurrency(totalPrice, requisition.currency)}</p></div>
+                  </div>
+                </section>
+
+                <div className="grid gap-6 md:grid-cols-2">
+                  <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <h2 className="mb-4 flex items-center text-base font-semibold text-slate-900"><UserCircleIcon className="mr-2 h-5 w-5 text-purple-600" /> Vendor Details</h2>
+                    <dl className="space-y-3"><div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Vendor Name</dt><dd className="mt-1 text-sm font-semibold text-slate-950">{vendorName}</dd></div><div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Contact</dt><dd className="mt-1 text-sm text-slate-900">{vendorContact}</dd></div><div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Email</dt><dd className="mt-1 break-all text-sm text-indigo-700">{vendorEmail}</dd></div></dl>
+                  </section>
+                  <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <h2 className="mb-4 flex items-center text-base font-semibold text-slate-900"><ClockIcon className="mr-2 h-5 w-5 text-indigo-600" /> Timeline</h2>
+                    <div className="space-y-4"><div className="flex gap-3"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-indigo-100"><CheckCircleIcon className="h-5 w-5 text-indigo-600" /></span><div><p className="text-sm font-semibold text-slate-900">Recommendation Created</p><p className="text-xs text-slate-500">{formatTimestamp(requisition.created_at)}</p></div></div><div className="flex gap-3"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-amber-100"><PencilSquareIcon className="h-5 w-5 text-amber-600" /></span><div><p className="text-sm font-semibold text-slate-900">Last Updated</p><p className="text-xs text-slate-500">{formatTimestamp(requisition.updated_at)}</p></div></div></div>
+                  </section>
+                </div>
+
+                <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                  <h2 className="text-base font-semibold text-slate-900">Purchase Recommendation</h2>
+                  <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">{requisition.purchase_recommendation || requisition.description_reason || 'No recommendation notes recorded.'}</p>
+                </section>
                 <div className="hidden">
                 <div className="bg-gray-50 rounded-lg p-6 border border-gray-200">
                   <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
@@ -430,12 +913,16 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                         <p className="text-lg font-bold text-indigo-600">{requisition.currency}</p>
                       </div>
                       <div>
-                        <p className="text-sm text-gray-500">Total Price</p>
-                        <p className="text-lg font-bold text-indigo-600">{formatCurrency(requisition.total_price, requisition.currency)}</p>
+                        <p className="text-sm text-gray-500">{vatRate === null ? 'Recorded total' : 'Total'}</p>
+                        <p className="text-lg font-bold text-indigo-600">{formatCurrency(totalPrice, requisition.currency)}</p>
                       </div>
                       <div>
                         <p className="text-sm text-gray-500">Net Total (excl VAT)</p>
-                        <p className="text-lg font-bold text-indigo-600">{formatCurrency(requisition.net_total_excl_vat, requisition.currency)}</p>
+                        <p className="text-lg font-bold text-indigo-600">{formatCurrency(netPrice, requisition.currency)}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-500">{vatRate === null ? 'VAT not confirmed' : vatRate === 0 ? 'No VAT' : 'VAT (5%)'}</p>
+                        <p className="text-lg font-bold text-indigo-600">{formatCurrency(taxAmount, requisition.currency)}</p>
                       </div>
                     </div>
                   </div>
@@ -449,7 +936,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                       <p className="font-medium text-gray-900">{requisition.po_applicable ? 'Yes' : 'No'}</p>
                       {requisition.po_applicable && requisition.po_number_reference && (
                         requisition.linked_po_id
-                          ? <a href={`/procurement/orders/${requisition.linked_po_id}`} target="_blank" rel="noreferrer" className="font-semibold text-indigo-600 hover:underline">{requisition.po_number_reference} ┬╖ View completed PO</a>
+                          ? <button type="button" onClick={() => setActivePreview('po')} className="inline-flex items-center gap-1.5 font-semibold text-indigo-600 hover:text-indigo-800 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><LinkIcon className="h-4 w-4" />{requisition.po_number_reference} · View in preview</button>
                           : <p className="font-semibold text-gray-900">{requisition.po_number_reference}</p>
                       )}
                     </div>
@@ -469,62 +956,83 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                 </div>
               </div>
               {/* Right Column - Dynamic Approval History & Action Controls */}
-              <div className="space-y-6">
-                
-                {/* Dynamic Approval History List */}
-                <div className="bg-white rounded-lg border-2 border-gray-200 p-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                    <ClockIcon className="h-5 w-5 mr-2 text-indigo-600" />
-                    Approval History
-                  </h3>
-
-                  <div className="space-y-4">
-                    {approvalHierarchy.length > 0 ? (
-                      approvalHierarchy.map((stage, index) => {
-                        const statusNormalized = normalizeApprovalStatus(stage.status);
-                        return (
-                          <div key={index} className="pb-3 border-b border-gray-100 last:border-0 last:pb-0">
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="text-sm font-semibold text-gray-800">
-                                {stage.role || stage.stage || `Stage ${index + 1}`}
-                              </span>
-                              <span className={`px-2.5 py-0.5 rounded text-xs font-semibold border ${getStatusColor(stage.status)}`}>
-                                {statusNormalized === 'approved' ? 'Approved' : 
-                                 statusNormalized === 'not_approved' ? 'Rejected' : 'Pending'}
-                              </span>
-                            </div>
-                            {stage.user_name && (
-                              <div className="flex items-center space-x-1.5 text-xs text-gray-600 mt-1">
-                                <UserCircleIcon className="h-4 w-4 text-gray-400" />
-                                <span>{stage.user_name}</span>
-                              </div>
-                            )}
-                            {stage.approved_at && (
-                              <p className="text-xs text-gray-500 mt-0.5">
-                                {formatDate(stage.approved_at)} at {new Date(stage.approved_at).toLocaleTimeString()}
-                              </p>
-                            )}
-                            {stage.rejected_at && (
-                              <p className="text-xs text-red-500 mt-0.5">
-                                Rejected on {formatDate(stage.rejected_at)}
-                              </p>
-                            )}
-                          </div>
-                        );
-                      })
-                    ) : (
-                      <p className="text-xs text-gray-500">No workflow steps found.</p>
-                    )}
-                  </div>
-
-                  {isRejected && requisition.rejection_reason && (
-                    <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                      <p className="text-sm font-medium text-red-800 mb-1">Rejection Reason:</p>
-                      <p className="text-sm text-red-700">{requisition.rejection_reason}</p>
+              <aside className="min-w-0 space-y-6 xl:col-span-2">
+                <section className="pr-approval-preview overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" aria-label="Procurement document preview">
+                  {previewTabs.length > 1 && <div className="pr-approval-preview-header flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-2 py-1">
+                    <div className="inline-flex min-w-0 max-w-full flex-wrap rounded-lg bg-slate-100 p-1" role="tablist" aria-label="Available documents">
+                      {previewTabs.map(({ key, label, Icon }) => (
+                      <button
+                        key={key}
+                        id={`${previewId}-${key}-tab`}
+                        type="button"
+                        role="tab"
+                        aria-selected={activePreview === key}
+                        aria-controls={`${previewId}-panel`}
+                        tabIndex={activePreview === key ? 0 : -1}
+                        data-preview-tab={key}
+                        onClick={() => setActivePreview(key)}
+                        onKeyDown={handlePreviewTabKeyDown}
+                        className={`inline-flex h-9 min-w-0 items-center gap-2 rounded-md px-3 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${activePreview === key ? 'bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200' : 'text-slate-600 hover:bg-white/70 hover:text-slate-900'}`}
+                        title={key === 'po' ? requisition.po_number_reference || 'Linked Purchase Order' : undefined}
+                      >
+                        <Icon className="h-4 w-4 shrink-0" />
+                        <span className="min-w-0 text-left">
+                          <span className="block">{label}</span>
+                        </span>
+                      </button>
+                      ))}
                     </div>
-                  )}
+                    {!showingOriginal && <button
+                      type="button"
+                      onClick={downloadPdf}
+                      disabled={!activePdfUrl}
+                      aria-label={`Download ${showingLinkedPo ? 'linked Purchase Order' : 'Purchase Recommendation'} PDF`}
+                      title={`Download ${showingLinkedPo ? 'linked Purchase Order' : 'Purchase Recommendation'} PDF`}
+                      className="inline-grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-50"
+                    >
+                      <ArrowDownTrayIcon className="h-4 w-4" />
+                    </button>}
+                  </div>}
+                  <div id={`${previewId}-panel`} className="pr-approval-preview-viewport" role="tabpanel" aria-labelledby={previewTabs.length > 1 ? `${previewId}-${activePreview}-tab` : undefined} aria-label={previewTabs.length === 1 ? 'PR Preview' : undefined} tabIndex={0}>
+                    {showingCombined ? <ApprovalRecordPdfPreview requisitionId={requisition.id} requisitionNumber={requisition.pr_number} linkedOrderId={requisition.linked_po_id} sourceVersion={`${requisition.updated_at || ''}:${requisition.price_remarks_data?.signed_document_verification?.document_sha256 || ''}`}
+                      canUploadPurchaseOrder={canUploadSource('procurement_orders')} canImportRequisition={canUploadSource('procurement_requisitions')}
+                      onSourceUploaded={onSourceUploaded} onShowOriginalPr={() => setActivePreview('pr')} /> : showingOriginal ? (showingLinkedPo
+                      ? <UploadedPurchaseOrderPreview key={requisition.linked_po_id} orderId={requisition.linked_po_id} sourceState={linkedPoSources} />
+                      : <RecommendationSourceDocument key={requisition.id} requisitionId={requisition.id} attachments={requisition.attachments} documentSha={requisition.price_remarks_data?.signed_document_verification?.document_sha256} embedded />) : <>
+                    {activePdfLoading && <div className="text-center text-white"><div className="mx-auto h-9 w-9 animate-spin rounded-full border-4 border-slate-500 border-t-white" /><p className="mt-3 text-sm">{showingLinkedPo ? 'Loading linked Purchase Order…' : 'Creating PDF from the live preview…'}</p></div>}
+                    {!activePdfLoading && activePdfError && <div className="max-w-sm px-6 text-center text-white"><ExclamationTriangleIcon className="mx-auto h-9 w-9 text-amber-300" /><p className="mt-3 text-sm">{activePdfError}</p><button type="button" onClick={() => showingLinkedPo ? setLinkedPoPreviewRetryKey((key) => key + 1) : setPdfPreviewRetryKey((key) => key + 1)} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-800"><ArrowPathIcon className="h-4 w-4" /> Retry preview</button></div>}
+                    {!activePdfLoading && activePdfUrl && (showingLinkedPo
+                      ? <PdfDocumentPreview continuous url={activePdfUrl} title={`${activePdfFilename || 'Linked Purchase Order'} preview`} className="w-full bg-white" />
+                      : <iframe key={`${activePreview}-${activePdfUrl}`} ref={pdfFrameRef} src={`${activePdfUrl}#page=1&zoom=page-width&view=FitH&toolbar=0&navpanes=0&scrollbar=1`} title={`${activePdfFilename || 'Purchase Recommendation'} preview`} className="h-full w-full bg-white" />)}
+                    </>}
+                  </div>
+                </section>
+                
+                {(hasMissingApprovalEvidence || isEvidenceRecoveryActive || (isRejected && (isCurrentUserIssuer || isSuperAdmin))) && (
+                <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm" aria-label="Approval notices">
+                    {hasMissingApprovalEvidence && (
+                      <div className="rounded-lg border border-slate-300 bg-slate-50 p-3 text-xs text-slate-700">
+                        <p>
+                          This PR is linked to a converted PO, but internal approval evidence was not recorded for the stages marked below.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={handleResendMissingApprovals}
+                          disabled={loading}
+                          className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-2 font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                        >
+                          <ArrowPathIcon className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                          {loading ? 'Resending...' : 'Resend approval requests'}
+                        </button>
+                      </div>
+                    )}
+                    {isEvidenceRecoveryActive && (
+                      <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800">
+                        Approval recovery is active. The current approver has been notified and can record a decision from the Approvals tab.
+                      </div>
+                    )}
                   {isRejected && (isCurrentUserIssuer || isSuperAdmin) && (
-                    <div className="mt-4 rounded-lg border border-indigo-200 bg-indigo-50 p-4">
+                    <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4">
                       <p className="text-sm font-semibold text-indigo-900">Discussion / Resolution Referral</p>
                       {requisition.resolution_referral?.status === 'open' ? (
                         <div className="mt-2 text-xs text-indigo-800">
@@ -538,12 +1046,13 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                           </select>
                           <textarea value={referralRemarks} onChange={event => { setReferralRemarks(event.target.value); setReferralError(''); }} rows={3} className="w-full rounded-lg border border-indigo-300 px-3 py-2 text-sm" placeholder="Explain the discussion or resolution required..." />
                           {referralError && <p className="text-xs text-red-600">{referralError}</p>}
-                          <button type="button" onClick={handleReferral} disabled={loading} className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">Send for Discussion</button>
+                          <button type="button" onClick={handleReferral} disabled={loading || editingSourceApproval || Boolean(submissionConflict)} className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">Send for Discussion</button>
                         </div>
                       )}
                     </div>
                   )}
-                </div>
+                </section>
+                )}
 
                 {/* Interactive Action Controls */}
                 {isDraft && currentStage && (
@@ -553,10 +1062,10 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                       <div className="flex-1">
                         <h3 className="text-sm font-bold text-blue-900">Approval has not started</h3>
                         <p className="mt-1 text-xs leading-relaxed text-blue-800">
-                          {currentStage.user_name || currentStageLabel} is assigned and pending, but this requisition is still a draft. Approve and Reject become available only after submission.
+                          {nameOnly(currentStage.user_name) || currentStageLabel} is assigned and pending, but this requisition is still a draft. Approve and Reject become available only after submission.
                         </p>
                         {(isCurrentUserIssuer || isSuperAdmin) ? (
-                          <button type="button" onClick={handleSubmitForApproval} disabled={loading} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
+                          <button type="button" onClick={handleSubmitForApproval} disabled={loading || editingSourceApproval || Boolean(submissionConflict)} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
                             <PaperAirplaneIcon className="h-4 w-4" />
                             {loading ? 'Submitting...' : 'Submit for Approval'}
                           </button>
@@ -592,16 +1101,14 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                     </h3>
 
                     <div className="mb-4">
-                      <label className="block text-xs font-medium text-gray-700 mb-2">
-                        Digital Signature (Optional)
-                      </label>
-                      <input
-                        type="text"
-                        value={signature}
-                        onChange={(e) => setSignature(e.target.value)}
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        placeholder="Enter your name or signature"
-                      />
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <label className="block text-xs font-medium text-gray-700">Saved Signature</label>
+                        <button type="button" onClick={() => navigate('/profile?tab=signature')} className="text-xs font-semibold text-indigo-600 hover:text-indigo-800">Manage signature</button>
+                      </div>
+                      <div className={`flex min-h-20 items-center justify-center rounded-lg border p-3 ${signatureError ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-gray-50'}`}>
+                        {signatureLoading ? <ArrowPathIcon className="h-5 w-5 animate-spin text-indigo-600" /> : signature ? <img src={signature} alt="Saved signature" className="max-h-16 max-w-[220px] object-contain" /> : <p className="text-center text-xs font-medium text-amber-700">{signatureError}</p>}
+                      </div>
+                      <p className="mt-1 text-[11px] text-gray-500">This image will be copied into the approval record.</p>
                     </div>
 
                     <div className="space-y-3">
@@ -662,12 +1169,12 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                   </div>
                 )}
 
-              </div>
+              </aside>
             </div>
-          </div>
+          </main>
 
           {/* Modal Footer */}
-          <div className="bg-gray-50 px-8 py-4 rounded-b-xl border-t border-gray-200 flex items-center justify-between">
+          {!pageMode && <div className="mt-6 flex items-center justify-between rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
             <p className="text-xs text-gray-500">
               Form Reference: {requisition.form_reference || 'RAD-OM-PRC-0001'}
             </p>
@@ -677,7 +1184,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
             >
               Close
             </button>
-          </div>
+          </div>}
         </div>
       </div>
 
@@ -732,7 +1239,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
                 </button>
                 <button
                   onClick={handleRejectSubmit}
-                  disabled={loading || rejectionReason.trim().length < REJECTION_CONFIG.MIN_REASON_LENGTH}
+                  disabled={loading || Boolean(submissionConflict) || rejectionReason.trim().length < REJECTION_CONFIG.MIN_REASON_LENGTH}
                   className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium disabled:opacity-50"
                 >
                   {loading ? 'Rejecting...' : 'Confirm Rejection'}
@@ -744,6 +1251,16 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition, currentUser
       )}
     </>
   );
+};
+
+PurchaseRequisitionApproval.propTypes = {
+  isOpen: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
+  requisition: PropTypes.object,
+  currentUser: PropTypes.object,
+  onApprovalComplete: PropTypes.func,
+  onSourceUploaded: PropTypes.func,
+  pageMode: PropTypes.bool,
 };
 
 export default PurchaseRequisitionApproval;

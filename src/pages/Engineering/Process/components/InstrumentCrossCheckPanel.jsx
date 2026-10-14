@@ -1,3 +1,4 @@
+import useAIProviderStatus from '../../../../hooks/useAIProviderStatus'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'react-toastify'
 import {
@@ -77,7 +78,7 @@ const FILTERS = [
  *   onInstrumentIndexChange — refetch trigger after activate/delete
  */
 export default function InstrumentCrossCheckPanel({
-  tags, pdfFile, activeInstrumentIndex, provider, apiKey, onInstrumentIndexChange, onResultChange,
+  tags, pdfFile, activeInstrumentIndex, provider, apiKey, onInstrumentIndexChange, onResultChange, projectId,
 }) {
   const [loading, setLoading] = useState(false)
   const [extracting, setExtracting] = useState(false)
@@ -89,7 +90,8 @@ export default function InstrumentCrossCheckPanel({
   const [expanded, setExpanded] = useState(null)
   const [manualInput, setManualInput] = useState('')
 
-  const canAi = Boolean(provider && apiKey)
+  const centralAI = useAIProviderStatus(provider)
+  const canAi = centralAI.canUseAI
 
   // Auto-detect instrument tags from the extracted result set
   const detectedTags = useMemo(() => {
@@ -134,7 +136,7 @@ export default function InstrumentCrossCheckPanel({
 
   const onExtractFromPid = useCallback(async () => {
     if (!pdfFile) { toast.warn('Upload a P&ID PDF on the left first'); return }
-    if (!canAi)   { toast.warn('Enter a BYOK API key on the left to enable Vision extraction'); return }
+    if (!canAi)   { toast.warn('Ask your administrator to configure the selected AI provider'); return }
     setExtracting(true)
     setExtractStatus('Queued for extraction…')
     try {
@@ -156,13 +158,14 @@ export default function InstrumentCrossCheckPanel({
   const onRun = useCallback(async () => {
     if (!activeInstrumentIndex) { toast.warn('Upload and activate an Instrument Index first'); return }
     if (hasAttributes && !canAi) {
-      toast.warn('Attribute cross-check needs a BYOK API key — running tag-only comparison')
+      toast.warn('AI is unavailable — running tag-only comparison')
     }
     setLoading(true)
     try {
       const data = await instrumentCrossCheck({
         instrumentTags: finalTags,
         instrumentIndexId: activeInstrumentIndex.instrument_index_id,
+        projectId,
         useAi: useAi && canAi,
         provider,
         apiKey,
@@ -182,7 +185,7 @@ export default function InstrumentCrossCheckPanel({
     } finally {
       setLoading(false)
     }
-  }, [finalTags, activeInstrumentIndex, useAi, canAi, provider, apiKey, attributesByTag, hasAttributes])
+  }, [finalTags, activeInstrumentIndex, useAi, canAi, provider, apiKey, attributesByTag, hasAttributes, projectId])
 
   // Reset stale result when the active index changes
   useEffect(() => { setResult(null); setExpanded(null) }, [activeInstrumentIndex?.instrument_index_id])
@@ -230,7 +233,7 @@ export default function InstrumentCrossCheckPanel({
         </div>
 
         <label
-          title={canAi ? '' : 'Enter a BYOK API key in the extraction panel first'}
+          title={canAi ? '' : 'Ask your administrator to configure the selected AI provider'}
           style={{
             marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6,
             fontSize: 12, color: canAi ? THEME_TEXT : THEME_MUTED,
@@ -247,6 +250,7 @@ export default function InstrumentCrossCheckPanel({
         <InstrumentIndexHistoryPopover
           activeInstrumentIndex={activeInstrumentIndex}
           onChange={onInstrumentIndexChange}
+          projectId={projectId}
         />
 
         <button
@@ -310,8 +314,8 @@ export default function InstrumentCrossCheckPanel({
             type="button" onClick={onExtractFromPid} disabled={!canExtract}
             title={
               !pdfFile ? 'Upload a P&ID PDF on the left first'
-                : !canAi ? 'Enter a BYOK API key on the left first'
-                : 'Run Vision extraction (BYOK)'
+                : !canAi ? 'Ask your administrator to configure the selected AI provider'
+                : 'Run AI Vision extraction'
             }
             style={{
               marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6,

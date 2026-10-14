@@ -1,0 +1,85 @@
+.pea-backdrop { position: fixed; inset: 0; z-index: 10000; display: grid; place-items: center; padding: 20px; background: #132d5373; }
+.pea-dialog { --pea-ink: #0b2153; --pea-muted: #526d96; --pea-border: #dce6f3; display: flex; flex-direction: column; width: min(1100px, 100%); max-height: min(900px, calc(100dvh - 40px)); min-width: 0; color: var(--pea-ink); border: 1px solid #d4dfef; border-radius: 10px; background: #fff; box-shadow: 0 20px 70px #14284b40; font: 13px/1.45 "Segoe UI", Arial, sans-serif; }
+.pea-dialog * { box-sizing: border-box; }
+.pea-dialog h2, .pea-dialog h3, .pea-dialog h4, .pea-dialog p, .pea-dialog dl, .pea-dialog dd { margin: 0; }
+.pea-dialog button, .pea-dialog select { font: inherit; }
+.pea-dialog button { cursor: pointer; }
+.pea-dialog :focus-visible { outline: 2px solid #0751ff; outline-offset: 3px; }
+.pea-header, .pea-footer { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 16px; padding: 17px 22px; }
+.pea-header { border-bottom: 1px solid var(--pea-border); }
+.pea-header h2 { color: #091b4e; font-size: 19px; line-height: 26px; font-weight: 700; }
+.pea-header p { margin-top: 3px; color: var(--pea-muted); font-size: 12px; }
+.pea-icon-button { display: grid; place-items: center; width: 34px; height: 34px; flex-shrink: 0; padding: 5px; border: 0; border-radius: 5px; background: #fff; color: #31517e; }
+.pea-icon-button:hover { background: #f2f6ff; }
+.pea-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 21px 22px 24px; }
+.pea-button { display: inline-flex; justify-content: center; align-items: center; gap: 7px; min-height: 36px; padding: 7px 12px; border: 1px solid #c2d3ed; border-radius: 5px; background: #fff; color: #0751df; font-weight: 500; white-space: nowrap; }
+.pea-button:hover { background: #f2f6ff; }
+.pea-employee { display: flex; gap: 13px; align-items: center; margin-bottom: 20px; }
+.pea-avatar { display: grid; place-items: center; flex-shrink: 0; width: 50px; height: 50px; border-radius: 50%; color: #0751df; background: #eaf1ff; font-size: 18px; font-weight: 600; }
+.pea-employee > div { min-width: 0; }
+.pea-employee h3 { color: #091b4e; font-size: 18px; font-weight: 650; overflow-wrap: anywhere; }
+.pea-employee p { margin-top: 3px; color: var(--pea-muted); overflow-wrap: anywhere; }
+.pea-employee .pea-project { color: #244879; font-size: 12px; }
+.pea-refresh { margin-left: auto; align-self: flex-start; }
+.pea-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--pea-border); border-radius: 6px; background: #f9fbfe; }
+.pea-summary > div { display: grid; grid-template-columns: 25px 1fr; gap: 1px 12px; align-items: center; padding: 14px 18px; }
+.pea-summary > div + div { border-left: 1px solid var(--pea-border); }
+.pea-summary svg { grid-row: span 2; color: #0751df; }
+.pea-summary > div:nth-child(2) svg { color: #0b8054; }
+.pea-summary > div:nth-child(3) svg { color: #a65500; }
+.pea-summary dt { color: var(--pea-muted); font-size: 12px; }
+.pea-summary dd { color: #10265b; font-size: 22px; font-weight: 650; line-height: 29px; }
+.pea-toolbar { display: flex; align-items: center; gap: 11px; margin: 19px 0; }
+.pea-toolbar label { color: #355680; font-weight: 600; }
+.pea-toolbar select { min-width: 0; width: min(550px, 100%); min-height: 37px; padding: 7px 10px; border: 1px solid #c8d6e9; border-radius: 5px; background: #fff; color: #0b2153; }
+.pea-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.16fr); gap: 25px; align-items: start; }
+.pea-columns > section { min-width: 0; }
+.pea-columns h3 { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: #10265b; font-size: 15px; font-weight: 650; }
+.pea-columns h3 > span { min-width: 22px; padding: 1px 6px; border-radius: 4px; color: #3c5c8c; background: #edf2f9; font-size: 11px; text-align: center; }
+.pea-assignment { margin-bottom: 12px; padding: 13px 14px; border: 1px solid var(--pea-border); border-radius: 6px; }
+.pea-task-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; margin-bottom: 7px; }
+.pea-task-type { color: var(--pea-muted); font-size: 11px; }
+.pea-assignment h4 { color: #10265b; font-size: 13px; font-weight: 650; overflow-wrap: anywhere; }
+.pea-status { display: inline-flex; padding: 2px 7px; border-radius: 4px; color: #435e87; background: #eef2f7; font-size: 11px; white-space: nowrap; }
+.pea-status.is-in_progress { background: #edf3ff; color: #0751df; }
+.pea-status.is-review { background: #fff5df; color: #945000; }
+.pea-status.is-completed { background: #e8f6ed; color: #08734b; }
+.pea-status.is-blocked { background: #fff0ed; color: #ad3524; }
+.pea-assignment .pea-historical { margin-top: 5px; color: #68748c; font-size: 11px; }
+.pea-progress { display: flex; align-items: center; gap: 10px; margin-top: 13px; color: #355680; font-size: 11px; }
+.pea-progress progress, .pea-progress-track { appearance: none; flex: 1; width: 0; height: 6px; overflow: hidden; border: 0; border-radius: 5px; background: #edf2f9; accent-color: #0751ff; }
+.pea-progress progress::-webkit-progress-bar { background: #edf2f9; }
+.pea-progress progress::-webkit-progress-value { background: #0751ff; border-radius: 5px; }
+.pea-progress progress::-moz-progress-bar { background: #0751ff; border-radius: 5px; }
+.pea-task-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 15px; margin-top: 13px !important; }
+.pea-task-facts dt { margin-bottom: 2px; color: var(--pea-muted); font-size: 11px; }
+.pea-task-facts dd { color: #274879; font-size: 12px; overflow-wrap: anywhere; }
+.pea-timeline { margin: 0; padding: 0; list-style: none; }
+.pea-timeline > li { position: relative; display: flex; gap: 13px; padding: 0 0 20px; }
+.pea-timeline > li::before { content: ''; position: absolute; top: 10px; bottom: -4px; left: 5px; width: 1px; background: #dce6f3; }
+.pea-timeline > li:last-child::before { display: none; }
+.pea-event-dot { position: relative; flex-shrink: 0; width: 11px; height: 11px; margin-top: 5px; border: 2px solid #96b7f7; border-radius: 50%; background: #fff; }
+.pea-event-dot.is-complete { border-color: #14935f; background: #e8f6ed; }
+.pea-event { min-width: 0; flex: 1; }
+.pea-event-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 2px 10px; }
+.pea-event-heading h4 { color: #153164; font-size: 13px; font-weight: 650; }
+.pea-event-heading time { color: var(--pea-muted); font-size: 11px; }
+.pea-event .pea-event-task { margin-top: 3px; color: #355680; font-size: 12px; overflow-wrap: anywhere; }
+.pea-event .pea-event-actor { margin-top: 3px; color: var(--pea-muted); font-size: 11px; }
+.pea-changes { margin-top: 8px !important; padding: 8px 10px; border: 1px solid #e5edf8; border-radius: 5px; background: #f9fbfe; }
+.pea-changes > div { display: grid; grid-template-columns: 66px minmax(0, 1fr); gap: 6px; font-size: 11px; }
+.pea-changes > div + div { margin-top: 5px; }
+.pea-changes dt { color: var(--pea-muted); }
+.pea-changes dd { color: #355680; overflow-wrap: anywhere; }
+.pea-changes strong { color: #183d77; font-weight: 600; }
+.pea-change-arrow { color: #667ea1; }
+.pea-empty { padding: 18px; color: var(--pea-muted); border: 1px dashed #cedcf0; border-radius: 6px; background: #fbfcfe; }
+.pea-loading, .pea-error { display: flex; gap: 11px; align-items: center; padding: 24px 4px; color: #315789; }
+.pea-error { align-items: flex-start; color: #a12e25; }
+.pea-error > svg { flex-shrink: 0; }
+.pea-error .pea-button { margin-top: 12px; }
+.pea-footer { justify-content: flex-end; padding-top: 12px; padding-bottom: 12px; border-top: 1px solid var(--pea-border); }
+.pea-spin { animation: pea-spin 1s linear infinite; }
+@keyframes pea-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .pea-spin { animation: none; } }
+@media (max-width: 760px) { .pea-backdrop { padding: 10px; }.pea-dialog { max-height: calc(100dvh - 20px); }.pea-columns { grid-template-columns: minmax(0, 1fr); gap: 18px; }.pea-header, .pea-footer { padding-left: 16px; padding-right: 16px; }.pea-body { padding: 17px 16px; }.pea-employee { flex-wrap: wrap; }.pea-refresh { margin-left: 63px; }.pea-summary > div { padding: 10px; grid-template-columns: 1fr; gap: 3px; }.pea-summary svg { display: none; }.pea-summary dt { font-size: 11px; }.pea-summary dd { font-size: 20px; }.pea-toolbar select { flex: 1; }.pea-event-heading { align-items: flex-start; } }

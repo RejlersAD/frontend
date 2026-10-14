@@ -1,3 +1,4 @@
+import { radaiConfirm, radaiAlert } from '../../services/radaiDialog'
 /**
  * Process Datasheet Dashboard
  * Overview and management of all datasheets
@@ -307,14 +308,14 @@ const DatasheetDashboard = () => {
   };
 
   const handleDelete = async (datasheet) => {
-    if (window.confirm('Are you sure you want to delete this datasheet?')) {
+    if ((await radaiConfirm('Are you sure you want to delete this datasheet?'))) {
       try {
         await api.delete(`/process-datasheet/datasheets/${datasheet.id}/`);
         loadDatasheets();
         loadStatistics();
       } catch (error) {
         console.error('Error deleting datasheet:', error);
-        alert('Failed to delete datasheet');
+        await radaiAlert('Failed to delete datasheet');
       }
     }
   };
@@ -323,10 +324,10 @@ const DatasheetDashboard = () => {
     try {
       await api.post(`/process-datasheet/datasheets/${datasheet.id}/validate/`);
       loadDatasheets();
-      alert('Validation completed successfully');
+      await radaiAlert('Validation completed successfully');
     } catch (error) {
       console.error('Error validating datasheet:', error);
-      alert('Failed to validate datasheet');
+      await radaiAlert('Failed to validate datasheet');
     }
   };
 

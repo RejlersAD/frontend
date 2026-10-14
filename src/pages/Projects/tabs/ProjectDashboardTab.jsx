@@ -1,400 +1,78 @@
-/**
- * ProjectDashboardTab.jsx
- * ─────────────────────────────────────────────────────────────────────────────
- * First tab in the Project Management module.
- * Displays the key commercial and scheduling facts for the selected project:
- *   1. Project Name & Code
- *   2. Client Name
- *   3. Start & Finish Date
- *   4. Contract Value with Currency
- *   5. Scope Type
- *
- * This tab reads ONLY from the `project` prop (already fetched by ProjectsPage)
- * so it requires no additional API call — zero latency on first open.
- *
- * All display strings are sourced from PROJECT_COPY (projectControl.config.js);
- * all option labels are resolved from PROJECT_SCOPE_TYPE_OPTIONS and
- * PROJECT_CURRENCY_OPTIONS so there is no hardcoded label text in this file.
- * ─────────────────────────────────────────────────────────────────────────────
- */
+/* eslint-disable react/prop-types */
+import React from 'react'
+import { ArrowRight, BarChart3, CalendarDays, CheckCircle2, ChevronRight, ClipboardList, Database, Flag, ShieldCheck, Timer, Wallet, AlertTriangle } from 'lucide-react'
+import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { formatDate, formatDateTime, formatMoney } from '../useProjectPerformance'
 
-import React, { useMemo } from 'react'
-import {
-  BuildingOffice2Icon,
-  CalendarDaysIcon,
-  CurrencyDollarIcon,
-  WrenchScrewdriverIcon,
-  IdentificationIcon,
-  ClockIcon,
-  CheckBadgeIcon,
-  ExclamationTriangleIcon,
-  NoSymbolIcon,
-} from '@heroicons/react/24/outline'
+const valueLabel = value => value === null || value === undefined ? 'Not available' : Number(value).toFixed(2)
+const percentLabel = value => value === null || value === undefined ? 'Not available' : `${Number(value).toLocaleString('en-GB', { maximumFractionDigits: 1 })}%`
+const monthLabel = value => new Date(`${String(value).slice(0, 10)}T00:00:00`).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
 
-import {
-  PROJECT_COPY,
-  PROJECT_SCOPE_TYPE_OPTIONS,
-  PROJECT_CURRENCY_OPTIONS,
-  PROJECT_STATUS_OPTIONS,
-  PROJECT_PRIORITY_OPTIONS,
-} from '../../../config/projectControl.config'
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Soft-coded display helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Resolve a value→label from any option list; falls back gracefully.
-const resolveLabel = (options, value) =>
-  options.find((o) => o.value === value)?.label ?? value ?? '—'
-
-// Format a decimal number as a localised string with 2 decimal places.
-// The browser locale is used so regional separators are respected.
-const fmtNumber = (n) =>
-  n != null && n !== '' ? Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'
-
-// Format an ISO date string (yyyy-mm-dd) to a readable date.
-const fmtDate = (iso) => {
-  if (!iso) return '—'
-  const d = new Date(iso + 'T00:00:00')   // force local timezone
-  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+function TextAction({ children, onClick }) {
+  return <button type="button" className="pp-text-action" onClick={onClick}>{children}<ArrowRight size={15} /></button>
 }
 
-// Derive duration in full calendar months between start and end.
-const durationMonths = (start, end) => {
-  if (!start || !end) return null
-  const s = new Date(start)
-  const e = new Date(end)
-  if (e < s) return null
-  return (e.getFullYear() - s.getFullYear()) * 12 + (e.getMonth() - s.getMonth())
+export function PerformancePanel({ title, icon: Icon, action, children, className = '' }) {
+  return <section className={`pp-panel ${className}`} aria-label={title}><header className="pp-panel-heading"><h2><Icon size={19} aria-hidden="true" />{title}</h2>{action}</header>{children}</section>
 }
 
-// Determine schedule health relative to today's date.
-const scheduleHealth = (start, end, status) => {
-  if (status === 'completed') return { key: 'completed', label: 'Completed', color: 'emerald' }
-  if (status === 'cancelled') return { key: 'cancelled', label: 'Cancelled', color: 'slate' }
-  const today = new Date()
-  if (!end) return { key: 'unknown', label: 'No End Date', color: 'amber' }
-  const endDate = new Date(end + 'T00:00:00')
-  if (today > endDate) return { key: 'overdue', label: 'Overdue', color: 'rose' }
-  // Soft threshold: amber when within 30 days of end
-  const WARN_DAYS = 30
-  const diff = (endDate - today) / (1000 * 60 * 60 * 24)
-  if (diff <= WARN_DAYS) return { key: 'due_soon', label: `Due in ${Math.round(diff)} d`, color: 'amber' }
-  return { key: 'on_track', label: 'On Track', color: 'emerald' }
+export function ManagementActions({ actions, onAction, limit }) {
+  return <div className="pp-table-wrap"><table className="pp-table pp-actions-table" data-table-typography="preserve"><colgroup>{[5, 12, 36, 17, 15, 15].map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}</colgroup><thead><tr><th scope="col">#</th><th scope="col">Priority</th><th scope="col">Action</th><th scope="col">Owner</th><th scope="col">Due date</th><th scope="col"><span className="sr-only">Open action</span></th></tr></thead><tbody>{actions.slice(0, limit || actions.length).map((item, index) => <tr key={item.id}><td>{index + 1}</td><td><span className={`pp-priority pp-${item.priority}`}>{item.priority?.replace(/^./, letter => letter.toUpperCase())}</span></td><td><strong title={item.title}>{item.title}</strong><small title={item.detail}>{item.detail}</small></td><td title={item.ownerConfirmed === false ? 'Suggested owner: ' + (item.suggestedOwner || item.owner || 'Not recorded') : undefined}>{item.ownerConfirmed === false ? 'Not assigned' : item.owner || 'Not assigned'}</td><td>{item.dueDate ? formatDate(item.dueDate) : '—'}</td><td><button type="button" className="pp-button" onClick={() => onAction(item.view)}>{item.button || 'Review'}</button></td></tr>)}</tbody></table></div>
 }
 
-// Tone → Tailwind class mapping for badge chips.
-const BADGE_CLASSES = {
-  emerald: 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200',
-  amber:   'bg-amber-100  text-amber-700  ring-1 ring-amber-200',
-  rose:    'bg-rose-100   text-rose-700   ring-1 ring-rose-200',
-  slate:   'bg-slate-100  text-slate-600  ring-1 ring-slate-200',
-  indigo:  'bg-indigo-100 text-indigo-700 ring-1 ring-indigo-200',
-  violet:  'bg-violet-100 text-violet-700 ring-1 ring-violet-200',
+export function ActivityTable({ events, limit }) {
+  return <div className="pp-table-wrap" role="region" aria-label="Project activity records" tabIndex={0}><table className="pp-table pp-activity-table" data-table-typography="preserve"><thead><tr><th scope="col">Time</th><th scope="col">Event</th><th scope="col">Source</th><th scope="col">User</th><th scope="col">Impact</th></tr></thead><tbody>{events.slice(0, limit || events.length).map(event => <tr key={event.id}><td>{formatDateTime(event.event_at)}</td><td>{event.event_type_display || event.event_type}</td><td>{({ purchase_order: 'Procurement', invoice: 'Finance', payment: 'Finance' })[event.source_type] || event.source_type?.replaceAll('_', ' ') || 'Commercial'}</td><td>{event.actor || 'Not recorded'}</td><td>{event.processing_error ? 'Processing requires review' : event.ledger_rebuilt ? 'Cost ledger updated' : 'Commercial record updated'}</td></tr>)}</tbody></table></div>
 }
 
-// Soft-coded status → colour mapping (mirrors PROJECT_STATUS_OPTIONS values).
-const STATUS_TONES = {
-  planning:  'indigo',
-  active:    'emerald',
-  on_hold:   'amber',
-  completed: 'emerald',
-  cancelled: 'slate',
-}
-const PRIORITY_TONES = {
-  low:      'slate',
-  medium:   'indigo',
-  high:     'amber',
-  critical: 'rose',
-}
-
-// Schedule health → icon component mapping.
-const HEALTH_ICONS = {
-  completed: CheckBadgeIcon,
-  cancelled: NoSymbolIcon,
-  overdue:   ExclamationTriangleIcon,
-  due_soon:  ClockIcon,
-  on_track:  CheckBadgeIcon,
-  unknown:   ClockIcon,
+function ScheduleChart({ model }) {
+  const points = model.chartPoints || []
+  const latest = points.at(-1)
+  const hasPlanned = points.some(point => point.planned !== null && point.planned !== undefined)
+  const hasActual = points.some(point => point.actual !== null && point.actual !== undefined)
+  return <div className="pp-schedule-body"><div className="pp-chart">
+    <div className="pp-chart-legend"><span><i className="pp-planned-line" />Recorded planned progress</span><span><i className="pp-actual-line" />Actual progress</span></div>
+    {points.length && (hasPlanned || hasActual) ? <div className="pp-chart-canvas" role="img" aria-label={`Schedule progress history: ${points.length} recorded periods. Latest planned ${percentLabel(latest.planned)}, actual ${percentLabel(latest.actual)}.`}>
+      <ResponsiveContainer width="100%" height="100%"><LineChart data={points} margin={{ top: 8, right: 15, bottom: 4, left: -13 }}><CartesianGrid stroke="#e7eef8" /><XAxis dataKey="date" tickFormatter={monthLabel} tick={{ fill: '#506a91', fontSize: 10 }} axisLine={{ stroke: '#b9cce5' }} tickLine={{ stroke: '#b9cce5' }} minTickGap={20} /><YAxis domain={[0, 100]} ticks={[0, 20, 40, 60, 80, 100]} tickFormatter={value => `${value}%`} tick={{ fill: '#506a91', fontSize: 10 }} axisLine={{ stroke: '#b9cce5' }} tickLine={{ stroke: '#b9cce5' }} /><Tooltip labelFormatter={formatDate} formatter={(value, name) => [percentLabel(value), name]} contentStyle={{ fontSize: 12, borderRadius: 6, borderColor: '#dbe5f1' }} />{latest && <ReferenceLine x={latest.date} stroke="#9badc7" strokeDasharray="4 4" />}<Line name="Planned progress" dataKey="planned" type="linear" stroke="#1555ff" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} connectNulls={false} isAnimationActive={false} /><Line name="Actual progress" dataKey="actual" type="linear" stroke="#dd1245" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} connectNulls={false} isAnimationActive={false} /></LineChart></ResponsiveContainer>
+    </div> : <div className="pp-empty pp-chart-canvas"><BarChart3 size={30} /><strong>{model.availability?.snapshots === false ? 'Progress history unavailable' : 'No recorded progress history'}</strong><p>Capture reporting snapshots to compare planned and actual progress over time.</p></div>}
+    <p className="pp-chart-note" title={model.chartNote}>{points.length ? "Sealed reporting periods. Lines connect recorded observations." : model.availability?.snapshots === false ? "Reporting history could not be loaded." : "Capture a reporting snapshot to start this chart."}</p>
+  </div><dl className="pp-schedule-summary"><div><dt>Variance</dt><dd className={model.variance < 0 ? 'pp-danger' : 'pp-blue'}>{model.variance === null || model.variance === undefined ? 'Not available' : `${model.variance > 0 ? '+' : ''}${Number(model.variance).toLocaleString('en-GB', { maximumFractionDigits: 1 })} pp`}</dd></div><div><dt>SPI</dt><dd className={model.spi !== null && model.spi < 1 ? 'pp-danger' : ''}>{valueLabel(model.spi)}</dd></div><div><dt>{model.baselineApproved ? 'Baseline finish' : 'Working planned finish'}</dt><dd>{formatDate(model.baselineFinish)}</dd></div><div><dt>Working forecast finish</dt><dd>{model.forecastFinish ? formatDate(model.forecastFinish) : 'Pending schedule update'}</dd></div></dl></div>
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Sub-components
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * InfoCard — a single labelled field inside the dashboard grid.
- * `icon` is a Heroicon component, `label` is the field name, `value` is the
- * main display string, and `sub` is optional grey helper text below it.
- */
-function InfoCard({ icon: Icon, label, value, sub, accentClass = 'from-indigo-50 to-violet-50 border-indigo-100' }) {
-  return (
-    <div className={`relative overflow-hidden rounded-xl border bg-gradient-to-br ${accentClass} p-5 flex flex-col gap-1.5`}>
-      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
-        <Icon className="h-4 w-4 text-indigo-400 flex-shrink-0" />
-        {label}
-      </div>
-      <div className="text-base font-semibold text-slate-900 leading-snug min-h-[1.5rem]">
-        {value || <span className="text-slate-400 font-normal">—</span>}
-      </div>
-      {sub && <div className="text-xs text-slate-500">{sub}</div>}
-    </div>
-  )
-}
-
-/**
- * ProgressBar — soft-coded visual progress indicator.
- */
-function ProgressBar({ pct = 0 }) {
-  const clamped = Math.max(0, Math.min(100, Number(pct) || 0))
-  const color = clamped >= 80 ? 'bg-emerald-500' : clamped >= 40 ? 'bg-indigo-500' : 'bg-amber-500'
-  return (
-    <div className="mt-1 flex items-center gap-2">
-      <div className="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full transition-all duration-500 ${color}`} style={{ width: `${clamped}%` }} />
-      </div>
-      <span className="text-xs font-semibold text-slate-700 w-9 text-right">{clamped}%</span>
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Main tab component
-// ─────────────────────────────────────────────────────────────────────────────
-
-export default function ProjectDashboardTab({ project }) {
-  if (!project) {
-    return (
-      <div className="bg-white border border-slate-200 rounded-xl p-12 text-center text-slate-400">
-        {PROJECT_COPY.noProjects}
-      </div>
-    )
+export default function ProjectDashboardTab({ performance, onSelectView, onEdit, onOpenDialog }) {
+  const { model, loading, issues, reload } = performance
+  const action = view => {
+    if (view === 'edit-project') onEdit()
+    else if (['data-quality', 'actions', 'activity', 'reporting-source'].includes(view)) onOpenDialog(view)
+    else onSelectView(view || 'project-dashboard')
   }
-
-  // Resolve human-readable labels from soft-coded option lists.
-  // useMemo ensures this is recomputed only when the project changes.
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const derived = useMemo(() => {
-    const scopeLabel    = resolveLabel(PROJECT_SCOPE_TYPE_OPTIONS, project.scope_type)
-    const statusLabel   = resolveLabel(PROJECT_STATUS_OPTIONS,    project.status)
-    const priorityLabel = resolveLabel(PROJECT_PRIORITY_OPTIONS,  project.priority)
-    const currencyLabel = resolveLabel(PROJECT_CURRENCY_OPTIONS,  project.currency)
-    const currencyCode  = project.currency || 'AED'
-
-    const contractFormatted =
-      project.contract_value != null && project.contract_value !== ''
-        ? `${currencyCode} ${fmtNumber(project.contract_value)}`
-        : null
-
-    const months = durationMonths(project.start_date, project.end_date)
-    const durationLabel = months != null ? `${months} month${months !== 1 ? 's' : ''}` : null
-
-    const health = scheduleHealth(project.start_date, project.end_date, project.status)
-    const HealthIcon = HEALTH_ICONS[health.key] || ClockIcon
-
-    return {
-      scopeLabel,
-      statusLabel,
-      priorityLabel,
-      currencyLabel,
-      currencyCode,
-      contractFormatted,
-      durationLabel,
-      health,
-      HealthIcon,
-    }
-  }, [project])
-
-  const {
-    scopeLabel, statusLabel, priorityLabel,
-    contractFormatted, durationLabel,
-    health, HealthIcon,
-  } = derived
-
-  return (
-    <div className="space-y-6">
-
-      {/* ── Header identity strip ───────────────────────────────────────── */}
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-        <div className="bg-gradient-to-r from-indigo-600 via-violet-600 to-fuchsia-600 px-6 py-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2 text-white/70 text-xs font-semibold uppercase tracking-wider">
-                <IdentificationIcon className="h-3.5 w-3.5" />
-                {project.code || PROJECT_COPY.selectorPlaceholder}
-              </div>
-              <h2 className="text-xl font-bold text-white mt-0.5 leading-snug">
-                {project.name}
-              </h2>
-              {project.client_name && (
-                <div className="flex items-center gap-1.5 text-white/80 text-sm mt-1">
-                  <BuildingOffice2Icon className="h-4 w-4" />
-                  {project.client_name}
-                </div>
-              )}
-            </div>
-
-            {/* Status + Priority badges */}
-            <div className="flex flex-wrap gap-2">
-              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${BADGE_CLASSES[STATUS_TONES[project.status] || 'slate']}`}>
-                {statusLabel}
-              </span>
-              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${BADGE_CLASSES[PRIORITY_TONES[project.priority] || 'slate']}`}>
-                {priorityLabel} Priority
-              </span>
-              {/* Schedule health chip */}
-              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${BADGE_CLASSES[health.color]}`}>
-                <HealthIcon className="h-3 w-3" />
-                {health.label}
-              </span>
-            </div>
-          </div>
-
-          {/* Progress bar */}
-          <div className="mt-3">
-            <div className="flex items-center justify-between text-xs text-white/70 mb-1">
-              <span>Overall Progress</span>
-              <span className="font-semibold text-white">{project.progress ?? 0}%</span>
-            </div>
-            <div className="h-2 bg-white/20 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-white/80 rounded-full transition-all duration-500"
-                style={{ width: `${Math.max(0, Math.min(100, Number(project.progress) || 0))}%` }}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Description */}
-        {project.description && (
-          <div className="px-6 py-4 text-sm text-slate-600 border-t border-slate-100">
-            {project.description}
-          </div>
-        )}
-      </div>
-
-      {/* ── Key facts grid (5 required fields + extras) ─────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-
-        {/* 1. Project Name & Code */}
-        <InfoCard
-          icon={IdentificationIcon}
-          label="Project Name & Code"
-          value={`${project.name}  ·  ${project.code}`}
-          accentClass="from-indigo-50 to-violet-50 border-indigo-100"
-        />
-
-        {/* 2. Client Name */}
-        <InfoCard
-          icon={BuildingOffice2Icon}
-          label="Client"
-          value={project.client_name || null}
-          sub={project.location || null}
-          accentClass="from-sky-50 to-cyan-50 border-sky-100"
-        />
-
-        {/* 3. Start & Finish Date */}
-        <InfoCard
-          icon={CalendarDaysIcon}
-          label="Schedule"
-          value={`${fmtDate(project.start_date)}  →  ${fmtDate(project.end_date)}`}
-          sub={durationLabel ? `Duration: ${durationLabel}` : null}
-          accentClass="from-emerald-50 to-teal-50 border-emerald-100"
-        />
-
-        {/* 4. Contract Value with Currency */}
-        <InfoCard
-          icon={CurrencyDollarIcon}
-          label="Contract Value"
-          value={contractFormatted ?? null}
-          sub={project.currency ? `Currency: ${project.currency}` : null}
-          accentClass="from-amber-50 to-yellow-50 border-amber-100"
-        />
-
-        {/* 5. Scope Type */}
-        <InfoCard
-          icon={WrenchScrewdriverIcon}
-          label="Scope Type"
-          value={project.scope_type ? scopeLabel : null}
-          accentClass="from-fuchsia-50 to-pink-50 border-fuchsia-100"
-        />
-
-        {/* Internal Budget (informational) */}
-        {project.budget != null && project.budget !== '' && (
-          <InfoCard
-            icon={CurrencyDollarIcon}
-            label="Internal Budget"
-            value={`AED ${fmtNumber(project.budget)}`}
-            sub={
-              project.spent
-                ? `Spent: AED ${fmtNumber(project.spent)} (${project.budget > 0 ? Math.round((project.spent / project.budget) * 100) : 0}%)`
-                : null
-            }
-            accentClass="from-slate-50 to-slate-100 border-slate-200"
-          />
-        )}
-      </div>
-
-      {/* ── Team & tasks quick-stats ────────────────────────────────────── */}
-      {(project.team_size > 0 || project.tasks_summary?.total > 0) && (
-        <div className="bg-white border border-slate-200 rounded-xl px-6 py-5">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">Quick Stats</h3>
-          <div className="flex flex-wrap gap-6">
-            {project.team_size > 0 && (
-              <div className="text-center">
-                <div className="text-2xl font-bold text-indigo-600">{project.team_size}</div>
-                <div className="text-xs text-slate-500 mt-0.5">Team Members</div>
-              </div>
-            )}
-            {project.tasks_summary?.total > 0 && (
-              <>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-slate-700">{project.tasks_summary.total}</div>
-                  <div className="text-xs text-slate-500 mt-0.5">Total Tasks</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-emerald-600">{project.tasks_summary.completed}</div>
-                  <div className="text-xs text-slate-500 mt-0.5">Completed</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-amber-600">{project.tasks_summary.in_progress}</div>
-                  <div className="text-xs text-slate-500 mt-0.5">In Progress</div>
-                </div>
-              </>
-            )}
-            {project.milestones_summary?.total > 0 && (
-              <div className="text-center">
-                <div className="text-2xl font-bold text-violet-600">{project.milestones_summary.completed}/{project.milestones_summary.total}</div>
-                <div className="text-xs text-slate-500 mt-0.5">Milestones</div>
-              </div>
-            )}
-          </div>
-          {project.tasks_summary?.total > 0 && (
-            <div className="mt-4">
-              <div className="text-xs text-slate-500 mb-1">Task Completion</div>
-              <ProgressBar pct={Math.round((project.tasks_summary.completed / project.tasks_summary.total) * 100)} />
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── Tags ────────────────────────────────────────────────────────── */}
-      {Array.isArray(project.tags) && project.tags.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-xl px-6 py-4">
-          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Tags</div>
-          <div className="flex flex-wrap gap-2">
-            {project.tags.map((tag) => (
-              <span
-                key={tag}
-                className="px-2.5 py-1 text-xs rounded-full bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100"
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
+  if (loading || !model) return <div className="pp-loading" role="status"><span>Loading project performance…</span>{[84, 277, 158].map(height => <div key={height} style={{ height }} />)}</div>
+  const milestoneRows = model.milestones || []
+  const forecastDetail = model.milestones === null ? 'Milestones unavailable' : !milestoneRows.length ? 'Milestones incomplete' : model.forecastFinish ? 'Current working forecast' : 'Schedule update required'
+  const cards = [
+    { label: 'Overall health', value: model.health.label, detail: `${model.actions.length} items need review`, icon: AlertTriangle, tone: model.health.tone, view: 'actions' },
+    { label: 'Physical progress', value: percentLabel(model.progress), detail: `${model.workingFallback ? 'Working data date' : 'Report date'} ${formatDate(model.dataDate)}`, icon: BarChart3, tone: 'blue', view: 'reporting-source' },
+    { label: 'Schedule', value: model.spi === null ? 'Not available' : `SPI ${valueLabel(model.spi)}`, detail: model.spi === null ? 'No sealed performance index' : model.spi < 1 ? 'Behind sealed period plan' : 'On or ahead of sealed plan', icon: CalendarDays, tone: model.spi !== null && model.spi < 1 ? 'warning' : 'blue', view: 'reporting-source' },
+    { label: 'Cost', value: model.cpi === null ? 'Not available' : `CPI ${valueLabel(model.cpi)}`, detail: model.legacyCostBasis ? 'Legacy period cost basis' : model.cpi === null ? 'No sealed performance index' : model.cpi < 1 ? 'Sealed cost efficiency below plan' : 'Within sealed period cost plan', icon: Wallet, tone: model.cpi !== null && model.cpi >= 1 ? 'success' : 'warning', view: 'reporting-source' },
+    { label: 'Forecast finish', value: model.milestones === null ? 'Unavailable' : !milestoneRows.length ? 'Not reliable' : model.forecastFinish ? formatDate(model.forecastFinish) : 'Not available', detail: forecastDetail, icon: Flag, tone: !model.forecastFinish || !milestoneRows.length ? 'danger' : 'blue', view: 'milestones' },
+  ]
+  const completed = milestoneRows.filter(item => item.is_completed).length
+  return <div className="pp-dashboard">
+    {issues.length > 0 && <section className="pp-notice pp-error" role="alert"><AlertTriangle size={20} /><div><strong>Some project data is unavailable</strong><ul>{issues.map(issue => <li key={typeof issue === 'string' ? issue : issue.label}>{typeof issue === 'string' ? issue : issue.message}</li>)}</ul></div><button type="button" className="pp-button" onClick={reload}>Retry data</button></section>}
+    <section className="pp-reporting-source" aria-label="Reporting source"><div><strong>{model.progressSource}</strong><span>{formatDate(model.dataDate, 'Data date not recorded')}{model.reportingVersion !== null ? ` · Version ${model.reportingVersion}` : ''}</span><small>Ledger totals and registers show current records.</small>{model.legacyCostBasis && <small className="pp-danger">Legacy cost basis: CPI/EAC unavailable</small>}</div><button type="button" className="pp-text-action" onClick={() => action('reporting-source')}>View reporting source<ArrowRight size={14} /></button></section>
+    <section className="pp-kpis" aria-label="Performance indicators">{cards.map(({ label, value, detail, icon: Icon, tone, view }) => <button type="button" key={label} className={`pp-kpi pp-${tone}`} onClick={() => action(view)}><Icon size={29} aria-hidden="true" /><span className="pp-kpi-copy"><span>{label}</span><strong>{value}</strong><small>{detail}</small></span><ChevronRight size={19} /></button>)}</section>
+    <div className="pp-main-grid">
+      <PerformancePanel title="Schedule performance" icon={Timer} className="pp-schedule" action={<TextAction onClick={() => action('plan-baseline')}>Open schedule</TextAction>}><ScheduleChart model={model} /></PerformancePanel>
+      <PerformancePanel title="Management actions" icon={Flag} className="pp-attention" action={<div className="pp-panel-actions"><span>{model.actions.length} actions to review</span><TextAction onClick={() => action('actions')}>View all</TextAction></div>}>{model.actions.length ? <ManagementActions actions={model.actions} onAction={action} limit={4} /> : <div className="pp-empty"><CheckCircle2 size={28} /><p>No management actions identified from the available data.</p></div>}</PerformancePanel>
     </div>
-  )
+    <div className="pp-detail-grid">
+      <PerformancePanel title="Cost & forecast" icon={Wallet} className="pp-cost" action={<TextAction onClick={() => action('commercial-dashboard')}>Open cost control</TextAction>}>
+        {model.costWarning && <div className="pp-cost-warning"><AlertTriangle size={19} /><span>{model.costWarning}</span></div>}
+        <dl className="pp-cost-facts">{[['Contract value', model.contract], ['Control budget', model.budget], ['Actual cost', model.actual], ['Commitments', model.committed], ['Estimate at completion', model.eac], ['Remaining budget', model.remaining]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{formatMoney(value, label === 'Contract value' ? model.contractCurrency || model.currency : label === 'Estimate at completion' ? model.reportingCurrency : model.currency)}{label === 'Control budget' && model.costWarning && <small>Review required</small>}{label === 'Estimate at completion' && <small>Sealed {formatDate(model.forecastDataDate, 'period unavailable')}</small>}</dd></div>)}</dl>
+      </PerformancePanel>
+      <PerformancePanel title="Milestone readiness" icon={ClipboardList} className="pp-milestones"><div className="pp-readiness-body"><Flag size={28} /><div><h3>{model.milestones === null ? 'Milestones unavailable' : milestoneRows.length ? `${completed} of ${milestoneRows.length} complete` : 'No milestones recorded'}</h3><p>{model.milestones === null ? 'Retry the project data request to review milestones.' : milestoneRows.length ? 'Review upcoming dates and outstanding project milestones.' : 'Add contractual and internal milestones to improve forecast readiness.'}</p></div></div><div className="pp-readiness-footer"><button type="button" className="pp-button" onClick={() => action('milestones')}>{milestoneRows.length ? 'Review milestones' : 'Add milestones'}</button></div></PerformancePanel>
+      <PerformancePanel title="Risks & changes" icon={ShieldCheck} className="pp-risks"><div className="pp-readiness-body"><ShieldCheck size={28} /><div><h3>{model.riskAvailable ? `${model.risk.counts.openRisks} open risk${model.risk.counts.openRisks === 1 ? '' : 's'}` : model.risk.availability.notConfigured ? 'Risk register not connected' : 'Risk register unavailable'}</h3><p>{model.riskAvailable ? `${model.risk.counts.highRisks} high or critical · ${model.risk.counts.openIssues} open issues. ${model.risk.scopeLabel}.` : model.risk.availability.notConfigured ? 'Connect a planning workspace and schedule to manage the project register.' : 'Refresh project data to retry the current linked register.'}</p></div></div><div className="pp-readiness-footer"><div><span>Pending changes</span><strong>{model.risk.countsComplete ? model.risk.counts.pendingChanges : 'Unavailable'}</strong></div><button type="button" className="pp-button" onClick={() => action('risk')}>Review register</button></div></PerformancePanel>
+    </div>
+    <PerformancePanel title="Recent project activity" icon={CalendarDays} className="pp-activity" action={<TextAction onClick={() => action('activity')}>View activity</TextAction>}>{model.recentEvents?.length ? <ActivityTable events={model.recentEvents} limit={3} /> : <div className="pp-empty"><p>{model.recentEvents === null ? 'Commercial activity is unavailable.' : 'No audited commercial activity has been recorded.'}</p></div>}</PerformancePanel>
+    <section className="pp-confidence" aria-label="Data confidence"><div className="pp-confidence-title"><Database size={25} /><h2>Data confidence</h2></div><div className="pp-confidence-items">{model.confidence.map(item => <button type="button" key={item.label} onClick={() => action(item.view)}><span className={`pp-${item.tone}`}>{item.tone === 'success' ? <CheckCircle2 size={20} /> : <AlertTriangle size={20} />}</span><span><span>{item.label}</span><strong className={`pp-${item.tone}`}>{item.status}</strong></span></button>)}</div><div className="pp-confidence-score" title="The percentage of required data checks that are ready; it is not a forecast probability."><span>Data completeness</span><strong>{model.readinessScore}% {model.readinessScore < 80 ? 'Limited' : 'Available'}</strong><div role="progressbar" aria-label="Project data completeness" aria-valuemin={0} aria-valuemax={100} aria-valuenow={model.readinessScore}><span style={{ width: `${model.readinessScore}%` }} /></div></div><button type="button" className="pp-button" onClick={() => action('data-quality')}>Review data quality</button></section>
+  </div>
 }

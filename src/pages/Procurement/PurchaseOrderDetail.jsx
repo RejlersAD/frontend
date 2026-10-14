@@ -1,6 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import { radaiAlert, radaiConfirm } from '../../services/radaiDialog'
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useSelector } from 'react-redux';
+import { toast } from 'react-toastify';
 import {
   ArrowLeftIcon,
   ShoppingCartIcon,
@@ -14,13 +17,22 @@ import {
   CheckCircleIcon,
   XMarkIcon,
   PrinterIcon,
+  ArrowDownTrayIcon,
+  ArrowTopRightOnSquareIcon,
+  ArrowPathIcon,
 } from '@heroicons/react/24/outline';
 import apiClient from '../../services/api.service';
+import PdfDocumentPreview from '../../components/Common/PdfDocumentPreview';
 import { getStatusConfig } from '../../config/procurement.config';
+import { purchaseOrderPhaseStatus } from './purchaseOrderPhase';
 import { BRANDING_CONFIG } from '../../config/branding.config';
-import PurchaseOrderLivePreview from './PurchaseOrderLivePreview';
 import PurchaseOrderForm from './PurchaseOrderForm';
-import { buildProcurementPdfFilename } from '../../utils/procurementPdfFilename';
+import PurchaseOrderNumberEditor from './PurchaseOrderNumberEditor';
+import UploadedPurchaseOrderPreview from './UploadedPurchaseOrderPreview';
+import useUploadedPurchaseOrderSources from './useUploadedPurchaseOrderSources';
+import { downloadPurchaseOrderDocument, fetchPurchaseOrderDocument, purchaseOrderDocumentError } from '../../services/purchaseOrderDocuments';
+import { purchaseOrderLineNet, purchaseOrderVat } from './purchaseOrderVat';
+import { canDecideProcurement, purchaseOrderSignatureEvidence, purchaseOrderLifecycleBlockReason } from '../../utils/procurementApproval';
 
 const formatDate = (value) => {
   if (!value) return '—';
@@ -30,7 +42,19 @@ const formatDate = (value) => {
     : date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
+const formatTimestamp = (value) => {
+  if (!value) return '—';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '—';
+  return `${parsed.toLocaleString('en-GB', {
+    timeZone: 'Asia/Dubai',
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  })} GST`;
+};
+
 const formatMoney = (value, currency = 'USD') => {
+  if (value === null || value === undefined || value === '') return 'Not recorded';
   const amount = Number(value || 0);
   try {
     return new Intl.NumberFormat('en-US', {
@@ -45,52 +69,107 @@ const formatMoney = (value, currency = 'USD') => {
 };
 
 const textOrDash = (value) => String(value || '').trim() || '—';
+const purchaseOrderPdfRequests = new Map();
+const purchaseOrderRevision = order => `${order.id}:${order.updated_at || JSON.stringify(order)}`;
+
+const requestPurchaseOrderPdf = (order) => {
+  const key = purchaseOrderRevision(order);
+  if (!purchaseOrderPdfRequests.has(key)) {
+    const request = fetchPurchaseOrderDocument(order).finally(() => purchaseOrderPdfRequests.delete(key));
+    purchaseOrderPdfRequests.set(key, request);
+  }
+  return purchaseOrderPdfRequests.get(key);
+};
 
 /**
  * Purchase Order Detail Page - Soft-Coded Design
  * Displays comprehensive PO information with status tracking
  */
 const PurchaseOrderDetail = () => {
+  const accessProfile = useSelector(state => state.rbac.currentUser || state.auth.user);
+  const accessUser = accessProfile?.user || accessProfile;
+  const canUpdate = Boolean(accessUser?.is_superuser
+    || accessProfile?.roles?.some(role => ['super_admin', 'admin'].includes(role.code))
+    || (accessProfile?.module_actions || accessUser?.module_actions)?.procurement_orders?.includes('update'));
   const { id } = useParams();
+  const activeOrderId = useRef(id);
+  activeOrderId.current = id;
+  const exportAttempt = useRef(0);
   const navigate = useNavigate();
   
   // Soft-coded state management
   const [order, setOrder] = useState(null);
+  const currentOrder = useRef(order);
+  currentOrder.current = order;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState('');
   const [showEditForm, setShowEditForm] = useState(false);
+  const [approvalComment, setApprovalComment] = useState('');
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState('');
+  const [pdfDocument, setPdfDocument] = useState(null);
+  const [pdfPreviewFilename, setPdfPreviewFilename] = useState('');
+  const [pdfPreviewLoading, setPdfPreviewLoading] = useState(false);
+  const [pdfPreviewError, setPdfPreviewError] = useState('');
+  const [pdfPreviewRetryKey, setPdfPreviewRetryKey] = useState(0);
+  const [previewSelection, setPreviewSelection] = useState({ id, tab: 'document' });
+  const previewTab = previewSelection.id === id ? previewSelection.tab : 'document';
+  const uploadedSources = useUploadedPurchaseOrderSources(id, previewTab === 'original');
+  const useGeneratedPreview = previewTab === 'document';
 
   const handlePrintPurchaseOrder = () => {
-    const filename = buildProcurementPdfFilename(
-      order?.po_number || `PO-${id}`,
-      'po',
-      order?.po_date,
-    );
-    const previousTitle = document.title;
-    const restoreTitle = () => {
-      document.title = previousTitle;
-      window.removeEventListener('afterprint', restoreTitle);
-    };
+    try {
+      if (!pdfPreviewUrl) return;
+      window.open(pdfPreviewUrl, '_blank', 'noopener,noreferrer');
+    } catch {
+      toast.error('The PDF could not be printed. Download it and print from your PDF viewer.');
+    }
+  };
 
-    document.title = filename.replace(/\.pdf$/i, '');
-    window.addEventListener('afterprint', restoreTitle, { once: true });
-    window.print();
-    window.setTimeout(restoreTitle, 1000);
+  const handleExportPurchaseOrder = async (format) => {
+    const attempt = ++exportAttempt.current;
+    const revision = purchaseOrderRevision(order);
+    try {
+      setExportLoading(format);
+      const result = format === 'pdf'
+        ? pdfDocument?.revision === purchaseOrderRevision(order) ? pdfDocument : await requestPurchaseOrderPdf(order)
+        : await fetchPurchaseOrderDocument(order, format);
+      if (activeOrderId.current !== id || exportAttempt.current !== attempt) return;
+      if (!currentOrder.current || purchaseOrderRevision(currentOrder.current) !== revision) {
+        toast.info('The purchase order changed while the document was being prepared. Download the updated document.');
+        return;
+      }
+      downloadPurchaseOrderDocument(result);
+    } catch (exportError) {
+      if (activeOrderId.current !== id || exportAttempt.current !== attempt) return;
+      console.error(`Failed to export Purchase Order as ${format}:`, exportError);
+      const message = await purchaseOrderDocumentError(exportError);
+      if (activeOrderId.current === id && exportAttempt.current === attempt) await radaiAlert(message);
+    } finally {
+      if (activeOrderId.current === id && exportAttempt.current === attempt) setExportLoading('');
+    }
   };
 
   /**
    * Soft-coded data fetching with error handling
    */
   useEffect(() => {
+    const controller = new AbortController();
+    exportAttempt.current += 1;
     const fetchOrderDetails = async () => {
       try {
         setLoading(true);
         setError(null);
+        setActionLoading(false);
+        setExportLoading('');
         
-        const response = await apiClient.get(`/procurement/orders/${id}/`);
+        const response = await apiClient.get(`/procurement/orders/${id}/`, { signal: controller.signal });
+        if (controller.signal.aborted || activeOrderId.current !== id) return;
+        if (String(response.data?.id) !== String(id)) throw new Error('The returned purchase order does not match this page. Reload the record.');
         setOrder(response.data);
       } catch (error) {
+        if (controller.signal.aborted || activeOrderId.current !== id) return;
         console.error('Error fetching order details:', error);
         const statusCode = error.response?.status;
         const backendMessage =
@@ -107,55 +186,99 @@ const PurchaseOrderDetail = () => {
           action: () => navigate('/procurement/orders')
         });
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted && activeOrderId.current === id) setLoading(false);
       }
     };
 
     if (id) {
       fetchOrderDetails();
     }
+    return () => {
+      controller.abort();
+      exportAttempt.current += 1;
+    };
   }, [id, navigate]);
+
+  useEffect(() => {
+    if (!id || !order || String(order.id) !== String(id)) return undefined;
+
+    let active = true;
+    let objectUrl = '';
+    setPdfPreviewLoading(true);
+    setPdfPreviewError('');
+    setPdfPreviewUrl('');
+    setPdfDocument(null);
+
+    requestPurchaseOrderPdf(order)
+      .then((response) => {
+        if (!active) return;
+        objectUrl = URL.createObjectURL(response.blob);
+        setPdfPreviewFilename(response.filename);
+        setPdfPreviewUrl(objectUrl);
+        setPdfDocument({ ...response, revision: purchaseOrderRevision(order) });
+      })
+      .catch((previewError) => {
+        if (!active) return;
+        console.error('Failed to load the embedded Purchase Order PDF:', previewError);
+        setPdfPreviewError('The Purchase Order PDF could not be generated.');
+      })
+      .finally(() => {
+        if (active) setPdfPreviewLoading(false);
+      });
+
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [id, order, pdfPreviewRetryKey]);
 
   /**
    * Soft-coded action handler: Send Order
    */
   const handleSendOrder = async () => {
-    const confirmed = window.confirm(`Send Purchase Order ${order.po_number} to vendor?`);
-    if (!confirmed) return;
+    if (!canUpdate || currentOrder.current?.can_send_to_vendor !== true) return;
+    const confirmed = (await radaiConfirm(`Send Purchase Order ${order.po_number} to vendor?`));
+    if (!confirmed || activeOrderId.current !== id || currentOrder.current?.can_send_to_vendor !== true) return;
 
     try {
       setActionLoading(true);
-      await apiClient.patch(`/procurement/orders/${id}/`, { status: 'sent' });
-      
-      // Update local state
-      setOrder(prev => ({ ...prev, status: 'sent' }));
-      alert('✅ Purchase Order sent successfully!');
+      const response = await apiClient.patch(`/procurement/orders/${id}/`, { status: 'sent' });
+      if (activeOrderId.current !== id) return;
+      if (String(response.data?.id) !== String(id)) throw new Error('The saved purchase order could not be confirmed. Reload the record.');
+      setOrder(response.data);
+      toast.success('Purchase order issued.');
     } catch (error) {
+      if (activeOrderId.current !== id) return;
       console.error('Error sending order:', error);
-      alert(`❌ Failed to send order: ${error.response?.data?.detail || error.message}`);
+      toast.error(`Failed to send order: ${error.response?.data?.detail || error.response?.data?.status || error.message}`);
     } finally {
-      setActionLoading(false);
+      if (activeOrderId.current === id) setActionLoading(false);
     }
   };
 
-  /**
-   * Soft-coded action handler: Mark as Completed
-   */
-  const handleMarkComplete = async () => {
-    const confirmed = window.confirm(`Mark Purchase Order ${order.po_number} as completed?`);
-    if (!confirmed) return;
-
+  const handleApprovalDecision = async (decision) => {
+    if (!canDecideProcurement(order, accessProfile, 'po')) return;
+    if (decision === 'reject' && approvalComment.trim().length < 3) {
+      toast.error('Please enter a rejection reason.');
+      return;
+    }
     try {
       setActionLoading(true);
-      await apiClient.patch(`/procurement/orders/${id}/`, { status: 'completed' });
-      
-      setOrder(prev => ({ ...prev, status: 'completed' }));
-      alert('✅ Purchase Order marked as completed!');
-    } catch (error) {
-      console.error('Error updating order:', error);
-      alert(`❌ Failed to update order: ${error.response?.data?.detail || error.message}`);
+      const response = await apiClient.post(`/procurement/orders/${id}/${decision}/`, {
+        approval_stage: order.current_approval?.stage,
+        note: approvalComment.trim(),
+      });
+      if (activeOrderId.current !== id) return;
+      if (String(response.data?.purchase_order?.id) !== String(id)) throw new Error('The saved purchase order could not be confirmed. Reload the record.');
+      setOrder(response.data.purchase_order);
+      setApprovalComment('');
+      window.dispatchEvent(new Event('procurement-approval-updated'));
+      toast.success(`Purchase Order ${decision === 'approve' ? 'approved' : 'rejected'} successfully.`);
+    } catch (decisionError) {
+      if (activeOrderId.current !== id) return;
+      toast.error(decisionError.response?.data?.detail || decisionError.response?.data?.error || `Failed to ${decision} Purchase Order.`);
     } finally {
-      setActionLoading(false);
+      if (activeOrderId.current === id) setActionLoading(false);
     }
   };
 
@@ -163,7 +286,8 @@ const PurchaseOrderDetail = () => {
    * Soft-coded status badge renderer
    */
   const getStatusBadge = (status) => {
-    const config = getStatusConfig('purchaseOrder', status);
+    const phaseStatus = purchaseOrderPhaseStatus(status);
+    const config = getStatusConfig('purchaseOrder', phaseStatus);
     const colorClasses = {
       green: 'bg-green-100 text-green-800 border-green-300',
       red: 'bg-red-100 text-red-800 border-red-300',
@@ -173,14 +297,14 @@ const PurchaseOrderDetail = () => {
     };
     
     return (
-      <span className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-semibold border-2 ${colorClasses[config.color]}`}>
-        {config.label}
+      <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${colorClasses[config.color]}`}>
+        {phaseStatus === 'sent' ? 'Issued' : config.label}
       </span>
     );
   };
 
   // Loading state - soft-coded
-  if (loading) {
+  if (loading || (!error && order && String(order.id) !== String(id))) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -230,14 +354,20 @@ const PurchaseOrderDetail = () => {
     );
   }
 
+  if (canUpdate && showEditForm) {
+    return <PurchaseOrderForm isOpen pageMode editData={order}
+      onClose={() => setShowEditForm(false)}
+      onSuccess={(updatedOrder, { close = false } = {}) => { setOrder(updatedOrder); if (close) setShowEditForm(false); }} />;
+  }
+
   const currency = order.currency || 'USD';
-  const fallbackSubtotal = Number(order.total_amount || 0)
-    - Number(order.tax_amount || 0)
-    + Number(order.discount_amount || 0);
+  const pricing = purchaseOrderVat(order);
+  const fallbackSubtotal = pricing.subtotal ?? 0;
   const printableItems = Array.isArray(order.items) && order.items.length > 0
     ? order.items.map((item, index) => {
         const quantity = Number(item.quantity ?? item.qty ?? 1) || 0;
-        const unitPrice = Number(item.unit_price ?? item.price ?? 0) || 0;
+        const lineNet = purchaseOrderLineNet(item) ?? 0;
+        const unitPrice = Number(item.unit_price ?? item.price ?? (quantity ? (lineNet + Number(item.discount || 0)) / quantity : 0)) || 0;
         return {
           id: item.id || index + 1,
           lineCode: item.line_code || item.lineCode || item.item_code || item.code || '',
@@ -246,7 +376,7 @@ const PurchaseOrderDetail = () => {
           quantity,
           unit: item.unit || item.uom || item.unit_of_measure || 'EA',
           unitPrice,
-          total: Number(item.total ?? item.line_total ?? quantity * unitPrice) || 0,
+          total: Number(item.total ?? item.line_total ?? purchaseOrderLineNet(item) ?? 0),
         };
       })
     : [{
@@ -259,99 +389,20 @@ const PurchaseOrderDetail = () => {
         unitPrice: fallbackSubtotal,
         total: fallbackSubtotal,
       }];
-  const itemSubtotal = printableItems.reduce((sum, item) => sum + item.total, 0);
-  const discountAmount = Number(order.discount_amount || 0);
-  const taxAmount = Number(order.tax_amount || 0);
-  const grandTotal = Number(order.total_amount || itemSubtotal - discountAmount + taxAmount);
+  const itemSubtotal = pricing.netAmount;
+  const discountAmount = pricing.discountAmount ?? 0;
+  const taxAmount = pricing.taxAmount;
+  const grandTotal = pricing.totalAmount;
   const invoicingEmails = Array.isArray(order.invoicing_emails)
     ? order.invoicing_emails.join(', ')
     : order.invoicing_emails;
-  const approvalSignatureSource = /^(data:image\/|https?:\/\/|\/)/i.test(order.approval_signature || '')
-    ? order.approval_signature
+  const signatureEvidence = purchaseOrderSignatureEvidence(order);
+  const approvalSignatureSource = /^(data:image\/|https?:\/\/|\/)/i.test(signatureEvidence.signature)
+    ? signatureEvidence.signature
     : null;
-  const printableAttachments = (Array.isArray(order.attachments) ? order.attachments : [])
-    .map((attachment) => {
-      if (typeof attachment === 'string') {
-        return { name: attachment.split('/').pop() || attachment };
-      }
-      return {
-        ...attachment,
-        name: attachment.name || attachment.file_name || attachment.filename || 'Attachment',
-      };
-    });
-  const printableVendor = {
-    name: order.vendor_name,
-    address: order.vendor_address || order.seller_address,
-    country: order.vendor_country || order.country,
-  };
-  const printablePrReference = {
-    id: order.pr_reference,
-    pr_number: order.pr_number,
-  };
-
   return (
     <>
-      {createPortal(
-        <section className="po-print-document" aria-label="Printable purchase order">
-          <style>{`
-            .po-print-document { display: none; }
-            @page { size: A4 portrait; margin: 0; }
-            @media print {
-              html, body {
-                margin: 0 !important;
-                padding: 0 !important;
-                background: #fff !important;
-                color: #111827 !important;
-                height: auto !important;
-                overflow: visible !important;
-              }
-              body > * { display: none !important; }
-              body > .po-print-document {
-                display: block !important;
-                width: 100% !important;
-                margin: 0 !important;
-                padding: 0 !important;
-                overflow: visible !important;
-              }
-              .po-print-document, .po-print-document * {
-                box-sizing: border-box;
-                visibility: visible !important;
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-              }
-              .po-template-document, .po-template-pages { margin: 0 !important; padding: 0 !important; }
-              .po-template-page {
-                width: 210mm !important;
-                max-width: none !important;
-                min-height: 297mm !important;
-                height: 297mm !important;
-                margin: 0 !important;
-                padding: 14mm 16mm 10mm !important;
-                border: 0 !important;
-                box-shadow: none !important;
-                break-after: page;
-                page-break-after: always;
-                overflow: hidden !important;
-              }
-              .po-template-page:last-child {
-                break-after: auto;
-                page-break-after: auto;
-              }
-              .po-template-page table { border-collapse: collapse; }
-              .po-template-page tr { break-inside: avoid; page-break-inside: avoid; }
-              a { color: inherit !important; text-decoration: none !important; }
-            }
-          `}</style>
-          <PurchaseOrderLivePreview
-            formData={order}
-            vendor={printableVendor}
-            prReference={printablePrReference}
-            files={printableAttachments}
-            documentOnly
-          />
-        </section>,
-        document.body
-      )}
+
 
       {false && createPortal(
         <>
@@ -439,7 +490,7 @@ const PurchaseOrderDetail = () => {
             </tr>
             <tr>
               <th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left font-semibold">Status</th>
-              <td className="border border-gray-400 px-2 py-1.5 uppercase">{textOrDash(order.status_display || order.status)}</td>
+              <td className="border border-gray-400 px-2 py-1.5 uppercase">{purchaseOrderPhaseStatus(order.status) === 'sent' ? 'Issued' : textOrDash(order.status_display || order.status)}</td>
               <th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left font-semibold">Required Delivery</th>
               <td className="border border-gray-400 px-2 py-1.5">{formatDate(order.expected_delivery)}</td>
             </tr>
@@ -461,7 +512,7 @@ const PurchaseOrderDetail = () => {
             <h2 className="bg-gray-900 px-2 py-1.5 text-[9px] font-bold uppercase tracking-wide text-white">Supplier / Vendor</h2>
             <div className="min-h-[94px] px-3 py-2 text-[8.5px] leading-4">
               <p className="font-bold">{textOrDash(order.vendor_name)}</p>
-              <p><span className="font-semibold">Contact:</span> {textOrDash(order.seller_contact_person || order.seller_reference)}</p>
+              <p><span className="font-semibold">Contact:</span> {textOrDash(order.seller_contact_person)}</p>
               <p><span className="font-semibold">Email:</span> {textOrDash(order.seller_email)}</p>
               <p><span className="font-semibold">Phone:</span> {textOrDash(order.seller_phone)}</p>
               <p><span className="font-semibold">Address:</span> {textOrDash(order.seller_address)}</p>
@@ -515,9 +566,9 @@ const PurchaseOrderDetail = () => {
         <div className="po-print-block mt-2 flex justify-end">
           <table className="w-[46%] text-[8.5px]">
             <tbody>
-              <tr><th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">Subtotal</th><td className="border border-gray-400 px-2 py-1.5 text-right">{formatMoney(itemSubtotal, currency)}</td></tr>
-              {discountAmount > 0 && <tr><th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">Discount</th><td className="border border-gray-400 px-2 py-1.5 text-right">− {formatMoney(discountAmount, currency)}</td></tr>}
-              <tr><th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">VAT / Tax ({Number(order.vat_percentage || 0)}%)</th><td className="border border-gray-400 px-2 py-1.5 text-right">{formatMoney(taxAmount, currency)}</td></tr>
+              <tr><th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">Net amount after discounts</th><td className="border border-gray-400 px-2 py-1.5 text-right">{formatMoney(itemSubtotal, currency)}</td></tr>
+              {discountAmount > 0 && <tr><th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">Order discount (included)</th><td className="border border-gray-400 px-2 py-1.5 text-right">{formatMoney(discountAmount, currency)}</td></tr>}
+              <tr><th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">VAT / Tax{pricing.vatRate == null ? '' : ` (${pricing.vatRate}%)`}</th><td className="border border-gray-400 px-2 py-1.5 text-right">{formatMoney(taxAmount, currency)}</td></tr>
               <tr className="font-bold"><th className="border border-gray-900 bg-gray-900 px-2 py-2 text-left text-white">Grand Total</th><td className="border border-gray-900 px-2 py-2 text-right text-[10px]">{formatMoney(grandTotal, currency)}</td></tr>
             </tbody>
           </table>
@@ -552,9 +603,11 @@ const PurchaseOrderDetail = () => {
           </div>
           <div className="min-h-[74px] border-t border-gray-500 pt-2">
             <p className="font-bold">Approved By</p>
-            <p>{textOrDash(order.approved_by_name || order.approved_by_user_name)}</p>
+            <p>{textOrDash(signatureEvidence.recordedName || order.approved_by_name || order.approved_by_user_name)}</p>
             <p>{textOrDash(order.approved_by_title)}</p>
-            <p>Date: {formatDate(order.approved_date)}</p>
+            {signatureEvidence.mismatch && <p className="font-semibold text-amber-800">Signature needs review. Assigned approver: {textOrDash(signatureEvidence.stage?.approver || signatureEvidence.stage?.user_name)}</p>}
+            {!signatureEvidence.mismatch && order.approval_signature && !signatureEvidence.verified && <p className="text-amber-800">Signer not verified</p>}
+            <p>Timestamp: {formatTimestamp(order.approved_at || order.approval_log?.find((entry) => String(entry.status).toLowerCase() === 'approved')?.approved_at || order.approval_log?.find((entry) => String(entry.status).toLowerCase() === 'approved')?.date || order.approved_date)}</p>
             {approvalSignatureSource && (
               <img src={approvalSignatureSource} alt="Approval signature" className="mt-1 max-h-9 max-w-[150px] object-contain object-left" />
             )}
@@ -570,179 +623,267 @@ const PurchaseOrderDetail = () => {
         document.body
       )}
 
-    <div className="po-screen-view min-h-screen bg-gray-50">
-      <div className="py-6">
-        {/* Header - Soft-coded */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center space-x-4">
+    <div className="po-screen-view min-h-screen bg-slate-50">
+      <div className="py-4 sm:py-6">
+        <div className="mx-auto max-w-[1680px] px-4 sm:px-6 lg:px-8">
+          <header className="mb-5 rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm sm:px-5">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+              <div className="flex min-w-0 items-start gap-3">
               <button
                 onClick={() => navigate('/procurement/orders')}
-                className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                  aria-label="Back to purchase orders"
+                  title="Back to purchase orders"
+                  className="inline-grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
               >
-                <ArrowLeftIcon className="h-4 w-4 mr-2" />
-                Back
+                <ArrowLeftIcon className="h-4 w-4" />
               </button>
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900 flex items-center">
-                  <ShoppingCartIcon className="h-8 w-8 mr-3 text-indigo-600" />
-                  {order.po_number || `PO-${order.id}`}
-                </h1>
-                {typeof order.po_number_verified === 'boolean' && (
-                  <span
-                    className={`mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                      order.po_number_verified
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : 'bg-red-100 text-red-800'
-                    }`}
-                    title={order.po_number_verification_message}
-                  >
-                    {order.po_number_verified ? 'PO number verified' : 'PO number requires correction'}
-                  </span>
-                )}
-                <p className="mt-1 text-sm text-gray-600">
-                  Purchase Order Details
-                </p>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h1 className="truncate text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">
+                      {order.po_number || `PO-${order.id}`}
+                    </h1>
+                    {canUpdate && <PurchaseOrderNumberEditor key={order.id} order={order} onSaved={setOrder} />}
+                    {getStatusBadge(order.status)}
+                    {typeof order.po_number_verified === 'boolean' && (
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                          order.po_number_verified
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : 'bg-red-100 text-red-800'
+                        }`}
+                        title={order.po_number_verification_message}
+                      >
+                        {order.po_number_verified ? 'Number verified' : 'Number requires correction'}
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
-            </div>
-            
-            {/* Action Buttons - Soft-coded based on status */}
-            <div className="flex space-x-3">
-              <button
+
+              <div className="flex flex-wrap items-center gap-2" aria-label="Purchase order actions">
+              {useGeneratedPreview && <button
                 type="button"
                 onClick={handlePrintPurchaseOrder}
-                className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                disabled={actionLoading || pdfPreviewLoading || !pdfPreviewUrl}
+                  aria-label="Print PDF"
+                  title="Print PDF"
+                  className="inline-grid h-9 w-9 place-items-center rounded-lg border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-50"
               >
-                <PrinterIcon className="h-4 w-4 mr-2" />
-                Print / Save PDF
+                <PrinterIcon className="h-4 w-4" />
+              </button>}
+
+              <button
+                type="button"
+                onClick={() => handleExportPurchaseOrder('pdf')}
+                disabled={actionLoading || Boolean(exportLoading)}
+                aria-label={exportLoading === 'pdf' ? 'Preparing PDF document' : 'Download PDF'}
+                title="Download PDF"
+                className="inline-grid h-9 w-9 place-items-center rounded-lg border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-50"
+              >
+                <ArrowDownTrayIcon className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => handleExportPurchaseOrder('word')}
+                disabled={actionLoading || Boolean(exportLoading)}
+                  aria-label={exportLoading === 'word' ? 'Preparing Word document' : 'Export Word document'}
+                  title={exportLoading === 'word' ? 'Preparing Word document' : 'Export Word document'}
+                  className="inline-grid h-9 w-9 place-items-center rounded-lg border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-50"
+              >
+                <ArrowDownTrayIcon className={`h-4 w-4 ${exportLoading === 'word' ? 'animate-pulse' : ''}`} />
               </button>
               
-              {order.status === 'draft' && (
+              {canUpdate && order.status === 'draft' && (
                 <button
                   onClick={handleSendOrder}
-                  disabled={actionLoading}
-                  className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50"
+                  disabled={actionLoading || order.can_send_to_vendor !== true}
+                  aria-describedby={order.can_send_to_vendor !== true ? 'po-lifecycle-block-reason' : undefined}
+                    className="inline-flex h-9 items-center rounded-lg bg-indigo-600 px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-50"
                 >
                   <PaperAirplaneIcon className="h-4 w-4 mr-2" />
                   {actionLoading ? 'Sending...' : 'Send to Vendor'}
                 </button>
               )}
               
-              {(order.status === 'sent' || order.status === 'acknowledged' || order.status === 'in_progress') && (
-                <button
-                  onClick={handleMarkComplete}
-                  disabled={actionLoading}
-                  className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 disabled:opacity-50"
-                >
-                  <CheckCircleIcon className="h-4 w-4 mr-2" />
-                  {actionLoading ? 'Updating...' : 'Mark Complete'}
-                </button>
-              )}
-              
-              {order.status !== 'completed' && (
+              {canUpdate && (
                 <button
                   onClick={() => setShowEditForm(true)}
-                  className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                    className="inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
                 >
                   <PencilIcon className="h-4 w-4 mr-2" />
                   Edit
                 </button>
               )}
+              </div>
             </div>
-          </div>
+          </header>
 
-          {showEditForm && order.status !== 'completed' && (
-            <PurchaseOrderForm
-              isOpen={showEditForm}
-              editData={order}
-              onClose={() => setShowEditForm(false)}
-              onSuccess={(updatedOrder) => {
-                setOrder(updatedOrder);
-                setShowEditForm(false);
-              }}
-            />
+          {canUpdate && order.status === 'draft' && order.can_send_to_vendor !== true && (
+            <p id="po-lifecycle-block-reason" role="status" className="mb-6 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+              {purchaseOrderLifecycleBlockReason(order)}
+            </p>
           )}
 
-          {/* Status Badge */}
-          <div className="mb-6">
-            {getStatusBadge(order.status)}
-          </div>
+          {canDecideProcurement(order, accessProfile, 'po') && (
+            <section className="mb-6 rounded-xl border-2 border-amber-300 bg-amber-50 p-5 shadow-sm">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div className="flex-1">
+                  <p className="text-xs font-bold uppercase tracking-wider text-amber-700">Decision required</p>
+                  <h2 className="mt-1 text-lg font-bold text-slate-950">
+                    Level {order.current_approval?.level ?? '—'} · {order.current_approval?.stage || 'Purchase Order approval'}
+                  </h2>
+                  <label className="mt-3 block text-xs font-semibold text-slate-700" htmlFor="po-approval-comment">Comment / rejection reason</label>
+                  <textarea
+                    id="po-approval-comment"
+                    value={approvalComment}
+                    onChange={(event) => setApprovalComment(event.target.value)}
+                    rows={2}
+                    className="mt-1 w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200"
+                    placeholder="Optional for approval; required for rejection"
+                  />
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <button type="button" disabled={actionLoading} onClick={() => handleApprovalDecision('reject')} className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-rose-700 disabled:opacity-50">
+                    <XMarkIcon className="h-5 w-5" /> Reject
+                  </button>
+                  <button type="button" disabled={actionLoading} onClick={() => handleApprovalDecision('approve')} className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50">
+                    <CheckCircleIcon className="h-5 w-5" /> Approve
+                  </button>
+                </div>
+              </div>
+            </section>
+          )}
 
-          {/* Main Content Grid - Soft-coded layout */}
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
             {/* Left Column - Order Information */}
-            <div className="lg:col-span-2 space-y-6">
+            <div className="space-y-6 xl:col-span-3">
               {/* Basic Information Card */}
-              <div className="bg-white shadow rounded-lg p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+              <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                <h2 className="mb-5 flex items-center text-base font-semibold text-slate-900">
                   <DocumentTextIcon className="h-5 w-5 mr-2 text-indigo-600" />
                   Order Information
                 </h2>
-                
-                <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+
+                <dl className="grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2">
                   <div>
-                    <dt className="text-sm font-medium text-gray-500">PO Number</dt>
-                    <dd className="mt-1 text-sm text-gray-900 font-semibold">{order.po_number || '-'}</dd>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">PO Number</dt>
+                    <dd className="mt-1 text-sm font-semibold text-slate-950">{order.po_number || '-'}</dd>
                   </div>
                   
                   <div>
-                    <dt className="text-sm font-medium text-gray-500">Order Date</dt>
-                    <dd className="mt-1 text-sm text-gray-900">
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Order Date</dt>
+                    <dd className="mt-1 text-sm text-slate-900">
                       {order.po_date ? new Date(order.po_date).toLocaleDateString() : '-'}
                     </dd>
                   </div>
                   
                   <div>
-                    <dt className="text-sm font-medium text-gray-500">Expected Delivery</dt>
-                    <dd className="mt-1 text-sm text-gray-900">
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Expected Delivery</dt>
+                    <dd className="mt-1 text-sm text-slate-900">
                       {order.expected_delivery ? new Date(order.expected_delivery).toLocaleDateString() : '-'}
                     </dd>
                   </div>
                   
                   <div>
-                    <dt className="text-sm font-medium text-gray-500">Project</dt>
-                    <dd className="mt-1 text-sm text-gray-900">{order.project_number || '-'}</dd>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Project</dt>
+                    <dd className="mt-1 text-sm text-slate-900">{order.project_display || order.project_number || '-'}</dd>
                   </div>
                   
                   <div className="sm:col-span-2">
-                    <dt className="text-sm font-medium text-gray-500">Title/Description</dt>
-                    <dd className="mt-1 text-sm text-gray-900">{order.title || order.description || '-'}</dd>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Title / Description</dt>
+                    <dd className="mt-1 text-sm leading-6 text-slate-900">{order.title || order.description || '-'}</dd>
                   </div>
                   
                   {order.notes && (
                     <div className="sm:col-span-2">
-                      <dt className="text-sm font-medium text-gray-500">Notes</dt>
-                      <dd className="mt-1 text-sm text-gray-900 whitespace-pre-wrap">{order.notes}</dd>
+                      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Notes</dt>
+                      <dd className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-900">{order.notes}</dd>
                     </div>
                   )}
                 </dl>
-              </div>
+              </section>
 
               {/* Financial Information Card */}
-              <div className="bg-white shadow rounded-lg p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+              <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                <h2 className="mb-5 flex items-center text-base font-semibold text-slate-900">
                   <CurrencyDollarIcon className="h-5 w-5 mr-2 text-green-600" />
                   Financial Details
                 </h2>
-                
-                <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div className="sm:col-span-2 bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-lg border-2 border-green-200">
-                    <dt className="text-sm font-medium text-gray-600">Total Amount</dt>
-                    <dd className="mt-1 text-3xl font-bold text-green-700">
-                      {order.currency || 'USD'} {parseFloat(order.total_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </dd>
+
+                <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="rounded-lg bg-slate-50 p-4">
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Net Amount</dt>
+                    <dd className="mt-1 text-lg font-bold text-slate-900">{formatMoney(itemSubtotal, currency)}</dd>
                   </div>
-                  
-                  <div>
-                    <dt className="text-sm font-medium text-gray-500">Currency</dt>
-                    <dd className="mt-1 text-sm text-gray-900 font-semibold">{order.currency || 'USD'}</dd>
+                  <div className="rounded-lg bg-slate-50 p-4">
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">VAT / Tax{pricing.vatRate == null ? '' : ` (${pricing.vatRate}%)`}</dt>
+                    <dd className="mt-1 text-lg font-bold text-slate-900">{formatMoney(taxAmount, currency)}</dd>
                   </div>
-                  
-                  <div>
-                    <dt className="text-sm font-medium text-gray-500">Payment Terms</dt>
-                    <dd className="mt-1 text-sm text-gray-900">{order.payment_terms || 'Not specified'}</dd>
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Total Amount</dt>
+                    <dd className="mt-1 text-xl font-bold text-emerald-800">{formatMoney(grandTotal, currency)}</dd>
                   </div>
                 </dl>
+                <dl className="mt-5 grid grid-cols-1 gap-4 border-t border-slate-100 pt-4 sm:grid-cols-2">
+                  <div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Currency</dt><dd className="mt-1 text-sm font-semibold text-slate-900">{currency}</dd></div>
+                  <div><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Payment Terms</dt><dd className="mt-1 text-sm text-slate-900">{order.payment_terms || 'Not specified'}</dd></div>
+                </dl>
+              </section>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <h2 className="mb-4 flex items-center text-base font-semibold text-slate-900">
+                    <UserIcon className="mr-2 h-5 w-5 text-purple-600" />
+                    Vendor Details
+                  </h2>
+                  <dl className="space-y-3">
+                    <div>
+                      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Vendor Name</dt>
+                      <dd className="mt-1 text-sm font-semibold text-slate-950">{order.vendor_name || 'Not assigned'}</dd>
+                    </div>
+                    {order.seller_contact_person && (
+                      <div>
+                        <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Contact</dt>
+                        <dd className="mt-1 text-sm text-slate-900">{order.seller_contact_person}</dd>
+                      </div>
+                    )}
+                    {order.seller_email && (
+                      <div>
+                        <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Email</dt>
+                        <dd className="mt-1 break-all text-sm text-slate-900">{order.seller_email}</dd>
+                      </div>
+                    )}
+                  </dl>
+                </section>
+
+                <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <h2 className="mb-4 flex items-center text-base font-semibold text-slate-900">
+                    <CalendarIcon className="mr-2 h-5 w-5 text-indigo-600" />
+                    Timeline
+                  </h2>
+                  <div className="space-y-3">
+                    <div className="flex items-start">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-100">
+                        <CheckCircleIcon className="h-5 w-5 text-indigo-600" />
+                      </div>
+                      <div className="ml-3">
+                        <p className="text-sm font-medium text-slate-900">Order Created</p>
+                        <p className="text-xs text-slate-500">{order.created_at ? new Date(order.created_at).toLocaleString() : '-'}</p>
+                      </div>
+                    </div>
+                    {order.updated_at && order.updated_at !== order.created_at && (
+                      <div className="flex items-start">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100">
+                          <PencilIcon className="h-5 w-5 text-amber-600" />
+                        </div>
+                        <div className="ml-3">
+                          <p className="text-sm font-medium text-slate-900">Last Updated</p>
+                          <p className="text-xs text-slate-500">{new Date(order.updated_at).toLocaleString()}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </section>
               </div>
 
               {/* Shipping Information */}
@@ -757,62 +898,51 @@ const PurchaseOrderDetail = () => {
               )}
             </div>
 
-            {/* Right Column - Vendor & Additional Info */}
-            <div className="space-y-6">
-              {/* Vendor Information Card */}
-              <div className="bg-white shadow rounded-lg p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                  <UserIcon className="h-5 w-5 mr-2 text-purple-600" />
-                  Vendor Details
-                </h2>
-                
-                <dl className="space-y-3">
-                  <div>
-                    <dt className="text-sm font-medium text-gray-500">Vendor Name</dt>
-                    <dd className="mt-1 text-sm text-gray-900 font-semibold">{order.vendor_name || 'Not assigned'}</dd>
-                  </div>
-                </dl>
-              </div>
-
-              {/* Timeline Card - Soft-coded status history */}
-              <div className="bg-white shadow rounded-lg p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                  <CalendarIcon className="h-5 w-5 mr-2 text-indigo-600" />
-                  Timeline
-                </h2>
-                
-                <div className="space-y-3">
-                  <div className="flex items-start">
-                    <div className="flex-shrink-0">
-                      <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center">
-                        <CheckCircleIcon className="h-5 w-5 text-indigo-600" />
-                      </div>
-                    </div>
-                    <div className="ml-3">
-                      <p className="text-sm font-medium text-gray-900">Order Created</p>
-                      <p className="text-xs text-gray-500">
-                        {order.created_at ? new Date(order.created_at).toLocaleString() : '-'}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  {order.updated_at && order.updated_at !== order.created_at && (
-                    <div className="flex items-start">
-                      <div className="flex-shrink-0">
-                        <div className="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
-                          <PencilIcon className="h-5 w-5 text-yellow-600" />
-                        </div>
-                      </div>
-                      <div className="ml-3">
-                        <p className="text-sm font-medium text-gray-900">Last Updated</p>
-                        <p className="text-xs text-gray-500">
-                          {new Date(order.updated_at).toLocaleString()}
-                        </p>
-                      </div>
+            {/* Right Column - PDF Preview */}
+            <div className="space-y-6 xl:col-span-2">
+              <section aria-label="Purchase order PDF preview" className="po-detail-pdf-preview relative flex min-h-[360px] h-[calc(100dvh-240px)] flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow">
+                <div className="pop-tabs" role="tablist" aria-label="Purchase order PDF source">
+                  {['document', 'original'].map(tab => <button key={tab} id={`po-${tab}-tab`} type="button" role="tab" aria-selected={previewTab === tab} aria-controls={previewTab === tab ? `po-${tab}-panel` : undefined} onClick={() => setPreviewSelection({ id, tab })}>{tab === 'document' ? 'Document' : 'Original source'}</button>)}
+                </div>
+                <div id={`po-${previewTab}-panel`} role="tabpanel" aria-labelledby={`po-${previewTab}-tab`} className="flex min-h-0 flex-1 flex-col">
+                {useGeneratedPreview ? <>
+                  {pdfPreviewLoading && (
+                    <div className="flex h-full items-center justify-center gap-2 bg-slate-50 text-sm text-gray-500">
+                      <ArrowPathIcon className="h-5 w-5 animate-spin" /> Generating PDF preview…
                     </div>
                   )}
+
+                  {!pdfPreviewLoading && pdfPreviewError && (
+                    <div className="flex h-full flex-col items-center justify-center bg-slate-50 px-8 text-center">
+                      <DocumentTextIcon className="h-12 w-12 text-gray-300" />
+                      <p className="mt-4 text-sm font-semibold text-gray-800">PDF preview unavailable</p>
+                      <p className="mt-1 text-xs text-gray-500">{pdfPreviewError}</p>
+                      <button
+                        type="button"
+                        onClick={() => setPdfPreviewRetryKey((value) => value + 1)}
+                        className="mt-4 inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 shadow-sm hover:border-indigo-300 hover:text-indigo-700"
+                      >
+                        <ArrowPathIcon className="mr-1.5 h-4 w-4" /> Retry preview
+                      </button>
+                    </div>
+                  )}
+
+                  {!pdfPreviewLoading && pdfPreviewUrl && (
+                    <PdfDocumentPreview
+                      continuous
+                      title={`Purchase Order ${order.po_number || order.id} PDF preview`}
+                      url={pdfPreviewUrl}
+                      className="min-h-0 flex-1"
+                      actions={<div className="upo-actions">
+                        <a href={pdfPreviewUrl} download={pdfPreviewFilename} aria-label="Download Purchase Order PDF" title="Download Purchase Order PDF"><ArrowDownTrayIcon aria-hidden="true" /></a>
+                        <a href={pdfPreviewUrl} target="_blank" rel="noopener noreferrer" aria-label="Open Purchase Order PDF" title="Open Purchase Order PDF"><ArrowTopRightOnSquareIcon aria-hidden="true" /></a>
+                      </div>}
+                    />
+                  )}
+                </> : <UploadedPurchaseOrderPreview orderId={id} sourceState={uploadedSources} />}
                 </div>
-              </div>
+              </section>
+
             </div>
           </div>
         </div>

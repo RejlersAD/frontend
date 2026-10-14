@@ -1,0 +1,91 @@
+/* Draft approval route: a connected step list, separate from recorded history. */
+.recommendation-form-workspace .prf-approval-workflow { min-width: 0; padding: 12px; overflow: visible; border: 0; background: transparent; box-shadow: none; color: #173659; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-bottom: 12px; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-heading h2 { margin: 0; font-size: 18px; line-height: 25px; font-weight: 650; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-heading > span { color: #63748a; font-size: 12px; line-height: 18px; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-layout { display: grid; min-width: 0; gap: 8px; }
+
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-controls { display: grid; grid-template-columns: minmax(118px, .6fr) minmax(0, 1.8fr) auto; align-items: end; gap: 10px; min-width: 0; }
+.recommendation-form-workspace .prf-approval-workflow :is(.prf-workflow-count, .prf-workflow-search) { position: relative; min-width: 0; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-controls label { display: block; margin: 0 0 5px; color: #34699d; font-size: 12px; line-height: 18px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.recommendation-form-workspace .prf-legacy-card.prf-approval-workflow :is(input:not([type=radio]):not([type=checkbox]), select) { width: 100%; max-width: 100%; min-width: 0; min-height: 36px; padding: 6px 9px; border: 1px solid #bfd0e4; border-radius: 6px; background: #fff; color: #183858; font-size: 14px; line-height: 22px; }
+.recommendation-form-workspace .prf-approval-workflow input::placeholder { color: #62758d; opacity: 1; }
+.recommendation-form-workspace .prf-approval-workflow :is(input, select):disabled { color: #62758d; background: #f4f7fa; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-counter { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; max-width: 100%; padding: 6px 0; border: 0; border-radius: 0; background: none; color: #63748a; font-size: 13px; line-height: 20px; font-weight: 500; white-space: nowrap; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-counter.is-success { color: #176348; }
+
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-steps { display: grid; min-width: 0; gap: 0; margin: 0; padding: 0; list-style: none; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-step { position: relative; display: grid; grid-template-columns: 24px minmax(0, 1fr); column-gap: 10px; min-width: 0; padding: 0 0 12px; border: 0; border-radius: 0; background: none; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-step:last-child { padding-bottom: 0; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-step::before { content: ''; position: absolute; top: 20px; bottom: -6px; left: 11px; width: 1px; background: #d0dce8; pointer-events: none; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-step:last-child::before { content: none; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-step.is-complete::before { background: #a1cfb7; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-step.is-active::before { background: #bdd5f5; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-step-marker { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; margin-top: 6px; border: 1px solid #c6d2df; border-radius: 50%; background: #f5f8fb; color: #526884; font-size: 10px; line-height: 16px; font-weight: 600; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-step-marker svg { width: 15px; height: 15px; }
+.recommendation-form-workspace .prf-approval-workflow .is-complete .prf-workflow-step-marker { border-color: #a2d3b8; background: #eaf7ef; color: #177544; }
+.recommendation-form-workspace .prf-approval-workflow .is-active .prf-workflow-step-marker { border-color: #4484d9; background: #edf4ff; color: #075bda; }
+.recommendation-form-workspace .prf-approval-workflow :is(.is-waiting, .is-optional) .prf-workflow-step-marker { border-color: #c6d2df; background: #f5f8fb; color: #526884; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-step-body { display: grid; grid-template-columns: minmax(160px, .95fr) minmax(0, 1.2fr) 56px; align-items: start; gap: 8px 12px; min-width: 0; padding: 0; border: 0; background: none; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-step-heading { display: grid; grid-template-columns: minmax(64px, 90px) minmax(0, 1fr); align-items: center; gap: 3px 8px; min-width: 0; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-stage-label { grid-column: 1; grid-row: 1; min-width: 0; color: #345f94; font-size: 14px; line-height: 22px; font-weight: 600; }
+.recommendation-form-workspace .prf-approval-workflow span.prf-workflow-stage-label { padding: 7px; }
+.recommendation-form-workspace .prf-legacy-card.prf-approval-workflow .prf-workflow-step-heading input:not([type=radio]):not([type=checkbox]) { grid-column: 1; grid-row: 1; padding-inline: 6px; color: #345f94; font-size: 14px; font-weight: 600; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-step-heading h3 { grid-column: 2; margin: 0; color: #183858; font-size: 14px; line-height: 20px; font-weight: 600; overflow-wrap: anywhere; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-step-meta { grid-column: 2; margin: 0; color: #63748a; font-size: 12px; line-height: 18px; overflow-wrap: anywhere; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-step-heading label { grid-column: 1 / -1; display: block; margin: 4px 0 0; color: #526884; font-size: 12px; line-height: 18px; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-step-heading select { margin-top: 4px; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-approver { min-width: 0; color: #183858; font-size: 14px; line-height: 20px; overflow-wrap: anywhere; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-approver > p { margin: 0; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-approver > p + p { margin-top: 2px; color: #63748a; font-size: 12px; line-height: 18px; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-assignees { display: grid; gap: 6px; min-width: 0; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-assignee { display: grid; grid-template-columns: minmax(64px, 90px) minmax(0, 1fr) auto; align-items: center; gap: 8px; min-width: 0; }
+.recommendation-form-workspace .prf-legacy-card.prf-approval-workflow input.prf-workflow-assignee-label:not([type=radio]):not([type=checkbox]) { padding-inline: 6px; color: #345f94; font-weight: 600; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-assignee-name { min-width: 0; color: #183858; font-size: 14px; line-height: 20px; font-weight: 600; overflow-wrap: anywhere; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-placeholder { display: block; padding: 8px 0; color: #63748a; font-size: 13px; line-height: 20px; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-position { display: block; min-width: 0; margin-top: 6px; color: #526884; font-size: 12px; line-height: 18px; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-position select { margin-top: 4px; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-step-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; min-width: 0; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-step-actions:empty { display: none; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-step-status { display: inline-block; margin: 0; padding: 8px 0; color: #63748a; font-size: 12px; line-height: 20px; white-space: normal; }
+.recommendation-form-workspace .prf-approval-workflow .is-complete .prf-workflow-step-status { color: #176348; }
+.recommendation-form-workspace .prf-approval-workflow .is-active .prf-workflow-step-status { color: #075bda; font-weight: 600; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-remove { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 36px; max-width: 100%; padding: 6px; border: 0; border-radius: 5px; background: transparent; color: #b32b43; font-size: 13px; line-height: 20px; font-weight: 600; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-remove:hover { background: #fff3f5; text-decoration: underline; }
+
+.recommendation-form-workspace .prf-approval-workflow :is(.prf-employee-picker, .prf-employee-search) { position: relative; min-width: 0; }
+.recommendation-form-workspace .prf-approval-workflow .prf-employee-selected { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; padding: 2px 8px; border: 1px solid #d7e3f0; border-radius: 6px; background: #fff; }
+.recommendation-form-workspace .prf-approval-workflow .prf-employee-selected > div { flex: 1; min-width: 0; }
+.recommendation-form-workspace .prf-approval-workflow .prf-employee-name { display: block; margin: 0; color: #183858; font-size: 14px; line-height: 20px; font-weight: 600; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+.recommendation-form-workspace .prf-approval-workflow .prf-employee-detail { display: block; margin: 2px 0 0; color: #63748a; font-size: 12px; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.recommendation-form-workspace .prf-approval-workflow .prf-employee-edit { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; min-width: 36px; min-height: 36px; padding: 6px 4px; border: 0; border-radius: 4px; background: transparent; color: #075bda; font-size: 13px; line-height: 20px; font-weight: 600; }
+.recommendation-form-workspace .prf-approval-workflow .prf-employee-edit:hover { background: #edf4ff; text-decoration: underline; }
+.recommendation-form-workspace .prf-approval-workflow .prf-employee-results { position: absolute; z-index: 40; inset: calc(100% + 4px) 0 auto; min-width: 0; width: 100%; max-height: 240px; margin: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; border: 1px solid #bfd0e4; border-radius: 6px; background: #fff; box-shadow: 0 8px 20px #16395926; }
+.recommendation-form-workspace .prf-approval-workflow .prf-employee-results > button { display: block; width: 100%; min-height: 44px; padding: 8px 10px; border: 0; border-bottom: 1px solid #e7edf5; border-radius: 0; background: #fff; color: #183858; font-size: 14px; line-height: 20px; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.recommendation-form-workspace .prf-approval-workflow .prf-employee-results > button:last-child { border-bottom: 0; }
+.recommendation-form-workspace .prf-approval-workflow .prf-employee-results > button:hover { background: #edf4ff; }
+.recommendation-form-workspace .prf-approval-workflow .prf-employee-results > p { margin: 0; padding: 9px 10px; color: #63748a; font-size: 13px; line-height: 20px; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-errors { min-width: 0; color: #b32b43; font-size: 13px; line-height: 20px; overflow-wrap: anywhere; }
+.recommendation-form-workspace .prf-approval-workflow .prf-workflow-errors > * + * { margin-top: 6px; }
+
+@container pr-editor (max-width: 700px) {
+  .recommendation-form-workspace .prf-approval-workflow .prf-workflow-controls { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+  .recommendation-form-workspace .prf-approval-workflow .prf-workflow-count { grid-column: 1; grid-row: 1; }
+  .recommendation-form-workspace .prf-approval-workflow .prf-workflow-counter { grid-column: 2; grid-row: 1; min-height: 44px; }
+  .recommendation-form-workspace .prf-approval-workflow .prf-workflow-search { grid-column: 1 / -1; grid-row: 2; }
+  .recommendation-form-workspace .prf-legacy-card.prf-approval-workflow :is(input:not([type=radio]):not([type=checkbox]), select) { min-height: 44px; padding: 9px 10px; font-size: 16px; line-height: 24px; }
+  .recommendation-form-workspace .prf-approval-workflow .prf-workflow-step { column-gap: 8px; padding-bottom: 16px; }
+  .recommendation-form-workspace .prf-approval-workflow .prf-workflow-step-marker { margin-top: 10px; }
+  .recommendation-form-workspace .prf-approval-workflow .prf-workflow-step::before { top: 24px; bottom: -10px; }
+  .recommendation-form-workspace .prf-approval-workflow .prf-workflow-step-body { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .recommendation-form-workspace .prf-approval-workflow .prf-workflow-step-heading { grid-template-columns: minmax(74px, 104px) minmax(0, 1fr); }
+  .recommendation-form-workspace .prf-approval-workflow .prf-workflow-assignee { grid-template-columns: 74px minmax(0, 1fr); gap: 4px 8px; }
+  .recommendation-form-workspace .prf-approval-workflow .prf-workflow-assignee .prf-workflow-remove { grid-column: 2; justify-self: start; padding-inline: 0; }
+  .recommendation-form-workspace .prf-legacy-card.prf-approval-workflow .prf-workflow-step-heading input:not([type=radio]):not([type=checkbox]) { font-size: 16px; }
+  .recommendation-form-workspace .prf-approval-workflow .prf-workflow-step-actions { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 4px 12px; }
+  .recommendation-form-workspace .prf-approval-workflow .prf-workflow-step-status { padding: 0; }
+  .recommendation-form-workspace .prf-approval-workflow .prf-employee-selected { padding: 6px 8px; }
+  .recommendation-form-workspace .prf-approval-workflow .prf-employee-detail { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+  .recommendation-form-workspace .prf-approval-workflow :is(.prf-workflow-remove, .prf-employee-edit) { min-width: 44px; min-height: 44px; }
+  .recommendation-form-workspace .prf-approval-workflow .prf-employee-results { position: relative; inset: auto; margin-top: 5px; max-height: 260px; box-shadow: 0 3px 10px #16395915; }
+}

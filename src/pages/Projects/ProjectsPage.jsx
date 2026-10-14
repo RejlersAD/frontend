@@ -1,130 +1,148 @@
+import { radaiConfirm } from '../../services/radaiDialog'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  ChartBarIcon, DocumentTextIcon, FolderIcon, SparklesIcon,
-  ArrowTrendingUpIcon, ShieldCheckIcon,
-  PlusIcon, PencilSquareIcon, TrashIcon,
-  ArrowsPointingOutIcon, ArrowsPointingInIcon,
-  CloudArrowDownIcon, Squares2X2Icon,
-} from '@heroicons/react/24/outline'
+import { PlusIcon, SparklesIcon } from '@heroicons/react/24/outline'
 
 import {
   PROJECT_VIEW_MODES, PROJECT_DEFAULT_VIEW, PROJECT_COPY,
-  PROJECT_CONTROL_SUBFEATURES,
 } from '../../config/projectControl.config'
 import * as PC from '../../services/projectControl.service'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 
-import ProjectSelector from './components/ProjectSelector'
-import ProjectHeaderStrip from './components/ProjectHeaderStrip'
+import ProjectControlHeader from './components/ProjectControlHeader'
+import ProjectPortfolio from './ProjectPortfolio'
+import SharedRecordsWorkspace from './SharedRecordsWorkspace'
 import PhaseStubCard from './components/PhaseStubCard'
 import ProjectFormModal from './components/ProjectFormModal'
+import { AgreementSetupDialog } from './components/AgreementWorkspace'
+import useAgreementWorkspace from '../../hooks/useAgreementWorkspace'
 import QhseImportModal from './components/QhseImportModal'
-import ProjectDashboardTab from './tabs/ProjectDashboardTab'
+import ProjectDetailsOverview from './ProjectDetailsOverview'
 import CostDashboardTab from './tabs/CostDashboardTab'
-import EstimatesTab from './tabs/EstimatesTab'
-import DocumentsTab from './tabs/DocumentsTab'
+import CommercialDashboardTab, { downloadCommercialCsv } from './tabs/CommercialDashboardTab'
+import MilestoneControlTab, { downloadMilestoneCsv } from './tabs/MilestoneControlTab'
+import EstimatesTab, { downloadEstimateCsv } from './tabs/EstimatesTab'
+import useEstimateControl from './useEstimateControl'
+import DocumentsTab, { downloadDocumentRegisterCsv } from './tabs/DocumentsTab'
+import useDocumentControl from './useDocumentControl'
 import TakeoffTab from './tabs/TakeoffTab'
 import EVMTab from './tabs/EVMTab'
-import RiskTab from './tabs/RiskTab'
+import RiskChangeControlTab, { downloadRiskRegisterCsv } from './tabs/RiskChangeControlTab'
+import useRiskChangeControl from './useRiskChangeControl'
+import PlanBaselineTab, { downloadScheduleCsv } from './tabs/PlanBaselineTab'
+import ControlsPeriodsTab from './tabs/ControlsPeriodsTab'
+import EPCLifecycleTab from './tabs/EPCLifecycleTab'
+import PortfolioExceptionsTab from './tabs/PortfolioExceptionsTab'
+import Notification from '../../components/ui/Notification'
+import useProjectPerformance from './useProjectPerformance'
+import useSchedulePerformance from './useSchedulePerformance'
+import useCommercialPerformance from './useCommercialPerformance'
+import useMilestoneControl from './useMilestoneControl'
+import ProjectPerformanceDialogs from './components/ProjectPerformanceDialogs'
+import './ProjectPerformance.css'
+import './SchedulePerformance.css'
+import './CommercialPerformance.css'
+import './MilestoneControl.css'
+import './RiskChangeControl.css'
+import './EstimateControl.css'
+import './DocumentControl.css'
+import './ProjectPlanningHeader.css'
+import './ProjectPortfolioShell.css'
+import './ProjectDetailsWorkspace.css'
 
-const ICONS = {
-  squares:  Squares2X2Icon,
-  chart:    ChartBarIcon,
-  document: DocumentTextIcon,
-  folder:   FolderIcon,
-  sparkles: SparklesIcon,
-  trending: ArrowTrendingUpIcon,
-  shield:   ShieldCheckIcon,
+const loadProjectList = async () => {
+  const projects = []
+  let page = 1
+  let next = true
+  while (next) {
+    const data = await PC.listProjects({ page, page_size: 100 })
+    projects.push(...(Array.isArray(data) ? data : data?.results || []))
+    next = Boolean(data?.next)
+    page += 1
+  }
+  return projects
 }
 
 const TAB_COMPONENTS = {
-  'project-dashboard': ProjectDashboardTab,
+  'project-dashboard': ProjectDetailsOverview,
+  'plan-baseline':     PlanBaselineTab,
+  'controls-periods':  ControlsPeriodsTab,
+  'epc-lifecycle': EPCLifecycleTab,
+  'portfolio-exceptions': PortfolioExceptionsTab,
   'cost-dashboard':    CostDashboardTab,
+  'commercial-dashboard': CommercialDashboardTab,
+  'milestones':           MilestoneControlTab,
   'estimates':         EstimatesTab,
   'documents':         DocumentsTab,
   'ai-takeoff':        TakeoffTab,
   'evm':               EVMTab,
-  'risk':              RiskTab,
+  'risk':              RiskChangeControlTab,
 }
 
 export default function ProjectsPage() {
   const navigate = useNavigate()
-  const location = useLocation()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const isSharedRecords = searchParams.get('view') === 'shared-records'
+  const isPortfolio = searchParams.get('view') === 'portfolio'
+    || (!searchParams.get('project') && !searchParams.get('view'))
   const [projects, setProjects] = useState([])
-  const [selectedProjectId, setSelectedProjectId] = useState(null)
+  const [selectedProjectId, setSelectedProjectId] = useState(() => searchParams.get('project'))
   const [phaseFlags, setPhaseFlags] = useState({})
   const [view, setView] = useState(PROJECT_DEFAULT_VIEW)
   const [loadingProjects, setLoadingProjects] = useState(true)
   const [loadingFlags, setLoadingFlags] = useState(true)
   const [error, setError] = useState(null)
   const [formOpen, setFormOpen] = useState(false)
+  const [agreementReviewOpen, setAgreementReviewOpen] = useState(false)
   const [formMode, setFormMode] = useState('create')
   const [editingProject, setEditingProject] = useState(null)
   const [toast, setToast] = useState(null)
-  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [deletingProject, setDeletingProject] = useState(false)
+  const deleteInFlight = useRef(false)
   const [qhseImportOpen, setQhseImportOpen] = useState(false)
-  const rootRef = useRef(null)
-
-  // Fullscreen API — toggle browser fullscreen on the page root
-  const toggleFullscreen = useCallback(() => {
-    const el = rootRef.current
-    if (!el) return
-    const fsEl = document.fullscreenElement || document.webkitFullscreenElement
-    if (!fsEl) {
-      const req = el.requestFullscreen || el.webkitRequestFullscreen
-      req?.call(el)
-    } else {
-      const exit = document.exitFullscreen || document.webkitExitFullscreen
-      exit?.call(document)
-    }
-  }, [])
-
-  useEffect(() => {
-    const onChange = () => {
-      setIsFullscreen(Boolean(document.fullscreenElement || document.webkitFullscreenElement))
-    }
-    document.addEventListener('fullscreenchange', onChange)
-    document.addEventListener('webkitfullscreenchange', onChange)
-    return () => {
-      document.removeEventListener('fullscreenchange', onChange)
-      document.removeEventListener('webkitfullscreenchange', onChange)
-    }
-  }, [])
-
-  // Keyboard shortcut: F key toggles fullscreen (ignored while typing in inputs)
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key !== 'f' && e.key !== 'F') return
-      const tag = (e.target?.tagName || '').toLowerCase()
-      if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target?.isContentEditable) return
-      if (e.ctrlKey || e.metaKey || e.altKey) return
-      e.preventDefault()
-      toggleFullscreen()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [toggleFullscreen])
+  const [refreshVersion, setRefreshVersion] = useState(0)
+  const [lastRefreshed, setLastRefreshed] = useState(null)
+  const [overviewDialog, setOverviewDialog] = useState(null)
+  const [milestoneDialog, setMilestoneDialog] = useState(null)
+  const [riskDialog, setRiskDialog] = useState(null)
+  const [estimateDialog, setEstimateDialog] = useState(null)
+  const [documentDialog, setDocumentDialog] = useState(null)
+  const [documentId, setDocumentId] = useState(null)
+  const [estimateId, setEstimateId] = useState(null)
+  const [compareEstimateId, setCompareEstimateId] = useState(null)
+  const [scheduleBaselineId, setScheduleBaselineId] = useState('')
+  const [scheduleVersionId, setScheduleVersionId] = useState('')
+  const [scheduleId, setScheduleId] = useState('')
+  const [planningProjectId, setPlanningProjectId] = useState('')
+  const [scheduleGenerationId, setScheduleGenerationId] = useState('')
+  const [scheduleAnalysisRunId, setScheduleAnalysisRunId] = useState('')
+  const [scheduleControlsHost, setScheduleControlsHost] = useState(null)
+  const scheduleMode = searchParams.get('scheduleMode') === 'documents' ? 'documents' : 'planner'
+  const scheduleTab = searchParams.get('scheduleTab') || (searchParams.get('scheduleMode') === 'management' ? 'performance' : 'activities')
+  const commercialMode = searchParams.get('commercialMode') === 'controls' ? 'controls' : 'management'
 
   const reloadProjects = useCallback(async ({ selectId } = {}) => {
     setLoadingProjects(true)
     try {
-      const data = await PC.listProjects()
-      const list = Array.isArray(data) ? data : (data?.results || [])
+      const list = await loadProjectList()
       setProjects(list)
       if (selectId) {
         setSelectedProjectId(selectId)
+        const nextParams = new URLSearchParams(searchParams)
+        nextParams.set('project', selectId)
+        setSearchParams(nextParams, { replace: true })
       } else if (list.length && !list.find((p) => String(p.id) === String(selectedProjectId))) {
         setSelectedProjectId(list[0].id)
       } else if (!list.length) {
         setSelectedProjectId(null)
       }
       setError(null)
+      setRefreshVersion(value => value + 1)
     } catch (e) {
       setError(e?.message || 'Failed to load projects')
     } finally {
       setLoadingProjects(false)
     }
-  }, [selectedProjectId])
+  }, [selectedProjectId, searchParams, setSearchParams])
 
   // Initial load: projects + phase flags in parallel
   useEffect(() => {
@@ -133,7 +151,7 @@ export default function ProjectsPage() {
     setLoadingFlags(true)
     setError(null)
 
-    Promise.allSettled([PC.listProjects(), PC.getPhaseFlags()])
+    Promise.allSettled([loadProjectList(), PC.getPhaseFlags()])
       .then(([projectsRes, flagsRes]) => {
         if (cancelled) return
         if (projectsRes.status === 'fulfilled') {
@@ -157,6 +175,22 @@ export default function ProjectsPage() {
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // The portfolio endpoint returns a compact row. Hydrate the selected project
+  // so the overview and header receive the complete controlled record.
+  useEffect(() => {
+    if (isPortfolio || isSharedRecords || loadingProjects || !selectedProjectId) return
+    let cancelled = false
+    PC.getProject(selectedProjectId)
+      .then((detail) => {
+        if (cancelled) return
+        setProjects((current) => current.map((project) => (
+          String(project.id) === String(selectedProjectId) ? { ...project, ...detail } : project
+        )))
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [isPortfolio, isSharedRecords, loadingProjects, selectedProjectId, refreshVersion])
 
   useEffect(() => {
     if (!toast) return
@@ -187,211 +221,199 @@ export default function ProjectsPage() {
     }
   }
   const handleDelete = async () => {
-    if (!selectedProject) return
-    if (!window.confirm(PROJECT_COPY.deleteConfirm(selectedProject.name))) return
+    if (!selectedProject || deleteInFlight.current) return
+    const target = selectedProject
+    if (!target.updated_at) { setToast({ type: 'error', message: 'Refresh the project before deleting it.' }); return }
+    deleteInFlight.current = true
     try {
-      await PC.deleteProject(selectedProject.id)
-      setToast({ type: 'success', message: `Deleted “${selectedProject.name}”.` })
-      await reloadProjects({ selectId: null })
+      if (!(await radaiConfirm(PROJECT_COPY.deleteConfirm(target.name), { confirmLabel: 'Delete permanently' }))) return
+      setDeletingProject(true)
+      const result = await PC.deleteProject(target.id, target.updated_at)
+      setProjects(current => current.filter(project => String(project.id) !== String(target.id)))
+      setSelectedProjectId(null)
+      setSearchParams({}, { replace: true })
+      setOverviewDialog(null); setDocumentDialog(null); setEstimateDialog(null)
+      setMilestoneDialog(null); setRiskDialog(null); setAgreementReviewOpen(false)
+      setToast({ type: result?.cleanup_pending ? 'warning' : 'success', message: result?.cleanup_pending
+        ? 'Project removed. Some uploaded files are awaiting deletion.' : `Permanently deleted “${target.name}”.` })
     } catch (e) {
-      setToast({ type: 'error', message: e?.message || 'Delete failed.' })
-    }
+      const detail = e?.response?.data?.detail || e?.response?.data?.error
+      setToast({ type: 'error', message: typeof detail === 'string' ? detail : 'Unable to permanently delete this project. Please try again.' })
+    } finally { deleteInFlight.current = false; setDeletingProject(false) }
   }
 
   const selectedProject = useMemo(
-    () => projects.find((p) => String(p.id) === String(selectedProjectId)) || null,
-    [projects, selectedProjectId]
+    () => isPortfolio || isSharedRecords ? null : projects.find((p) => String(p.id) === String(selectedProjectId)) || null,
+    [isPortfolio, isSharedRecords, projects, selectedProjectId]
   )
+  const agreementWorkspace = useAgreementWorkspace(selectedProject?.id, () => setRefreshVersion(value => value + 1))
+  const agreementJob = agreementWorkspace.data?.active_job || agreementWorkspace.data?.latest_job
+  const agreementStatus = agreementWorkspace.busy === 'analyze' ? 'Uploading agreement…'
+    : agreementWorkspace.busy === 'accept' ? 'Building draft…'
+      : agreementWorkspace.running ? `Analyzing · ${Number(agreementJob?.progress || 0)}%`
+        : agreementWorkspace.error || ['failed', 'cancelled'].includes(agreementJob?.status) ? 'Analysis needs attention'
+          : agreementWorkspace.data?.workspace?.stale ? 'Sources changed · review'
+            : agreementWorkspace.data?.workspace && agreementWorkspace.data.workspace.status !== 'accepted' ? 'Draft ready to review' : ''
+  const performance = useProjectPerformance(selectedProject, refreshVersion)
+  const schedulePerformance = useSchedulePerformance(selectedProject, performance, refreshVersion, {
+    enabled: view === 'plan-baseline' || view === 'milestones' || view === 'risk', baselineId: scheduleBaselineId, versionId: scheduleVersionId, scheduleId, planningProjectId,
+    generationId: view === 'plan-baseline' ? scheduleGenerationId : null,
+    analysisRunId: view === 'plan-baseline' ? scheduleAnalysisRunId : null,
+  })
+  const commercialPerformance = useCommercialPerformance(selectedProject, performance, refreshVersion, {
+    enabled: view === 'commercial-dashboard',
+  })
+  const milestoneControl = useMilestoneControl(selectedProject, performance, schedulePerformance, { enabled: view === 'milestones' })
+  const riskControl = useRiskChangeControl(selectedProject, performance, schedulePerformance, { enabled: view === 'risk' })
+  const estimateControl = useEstimateControl(selectedProject, refreshVersion, { enabled: view === 'estimates', estimateId, compareId: compareEstimateId })
+  const documentControl = useDocumentControl(selectedProject, refreshVersion, { enabled: view === 'documents', documentId })
+  useEffect(() => { setMilestoneDialog(null); setRiskDialog(null); setEstimateDialog(null); setEstimateId(null); setCompareEstimateId(null); setDocumentDialog(null); setDocumentId(null) }, [selectedProjectId])
+  useEffect(() => { setScheduleBaselineId(''); setScheduleVersionId(''); setScheduleId(''); setPlanningProjectId(''); setScheduleGenerationId(''); setScheduleAnalysisRunId('') }, [selectedProjectId])
+  useEffect(() => { setAgreementReviewOpen(false) }, [selectedProjectId])
+  useEffect(() => {
+    if (selectedProject && !performance.loading && performance.model) setLastRefreshed(new Date().toISOString())
+  }, [selectedProject, performance.loading, performance.model])
+  useEffect(() => { setOverviewDialog(null); setLastRefreshed(null) }, [selectedProjectId])
+
+  const handleSelectProject = useCallback(id => {
+    setSelectedProjectId(id)
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.set('project', id)
+    setSearchParams(nextParams, { replace: true })
+  }, [searchParams, setSearchParams])
+
+  const handleOpenPortfolioProject = project => {
+    setSelectedProjectId(project.id)
+    setView(PROJECT_DEFAULT_VIEW)
+    setSearchParams({ project: String(project.id) })
+  }
+
+  useEffect(() => {
+    const requested = searchParams.get('project')
+    if (requested && String(selectedProjectId) !== requested) setSelectedProjectId(requested)
+  }, [searchParams, selectedProjectId])
+
+  const handleSelectView = useCallback((nextView) => {
+    if (view === 'project-dashboard' && ['risk', 'plan-baseline'].includes(nextView)) setScheduleVersionId('')
+    setView(nextView)
+    const nextParams = new URLSearchParams(searchParams)
+    if (nextView === PROJECT_DEFAULT_VIEW) nextParams.delete('view')
+    else nextParams.set('view', nextView)
+    setSearchParams(nextParams, { replace: true })
+  }, [searchParams, setSearchParams, view])
+
+  const handleScheduleMode = (nextMode, nextTab) => {
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.set('view', 'plan-baseline')
+    if (nextMode === 'documents') nextParams.set('scheduleMode', 'documents')
+    else nextParams.delete('scheduleMode')
+    if (nextMode === 'management') nextParams.set('scheduleTab', 'performance')
+    else if (nextTab) nextParams.set('scheduleTab', nextTab)
+    setSearchParams(nextParams, { replace: true })
+  }
+
+  const handleScheduleTab = nextTab => {
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('scheduleMode')
+    if (nextTab === 'activities') nextParams.delete('scheduleTab')
+    else nextParams.set('scheduleTab', nextTab)
+    setSearchParams(nextParams, { replace: true })
+  }
+  const handleScheduleSelection = useCallback(selection => {
+    setPlanningProjectId(selection.planningProjectId)
+    setScheduleId(selection.scheduleId)
+    setScheduleVersionId(selection.versionId)
+    setScheduleGenerationId(selection.generationId || '')
+    setScheduleAnalysisRunId(selection.analysisRunId || '')
+  }, [])
+
+  const handleCommercialMode = nextMode => {
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.set('view', 'commercial-dashboard')
+    if (nextMode === 'controls') nextParams.set('commercialMode', 'controls')
+    else nextParams.delete('commercialMode')
+    setSearchParams(nextParams, { replace: true })
+    if (nextMode !== 'controls') {
+      commercialPerformance.reload()
+    }
+  }
+
+  useEffect(() => {
+    const requestedView = searchParams.get('view')
+    if (PROJECT_VIEW_MODES.some((mode) => mode.key === requestedView)) {
+      setView(requestedView)
+    } else if (!requestedView) {
+      setView(PROJECT_DEFAULT_VIEW)
+    }
+  }, [searchParams])
 
   const ActiveTab = TAB_COMPONENTS[view] || CostDashboardTab
   const activeMode = PROJECT_VIEW_MODES.find((m) => m.key === view)
   const isActiveFlagOn = activeMode ? phaseFlags[activeMode.phaseFlag] !== false : true
+  const handlePerformanceAction = (nextView, nextDocumentId) => {
+    if (nextView === 'documents' && nextDocumentId != null) {
+      setDocumentId(nextDocumentId)
+      handleSelectView('documents')
+    } else if (nextView === 'edit-project') handleOpenEdit()
+    else if (['actions', 'activity', 'data-quality', 'reporting-source'].includes(nextView)) setOverviewDialog(nextView)
+    else handleSelectView(nextView || PROJECT_DEFAULT_VIEW)
+  }
+
+  if (isSharedRecords) return <SharedRecordsWorkspace onBack={() => setSearchParams({ view: 'portfolio' })} />
 
   return (
-    <div
-      ref={rootRef}
-      className={[
-        'min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30',
-        isFullscreen ? 'overflow-y-auto h-screen' : '',
-      ].join(' ')}
-    >
-      {/* Header band */}
-      <div className="relative bg-white border-b border-slate-200 overflow-hidden">
-        {/* Decorative AI gradient glow */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -top-24 -right-24 h-72 w-72 rounded-full bg-gradient-to-br from-indigo-400/20 via-purple-400/10 to-transparent blur-3xl"
-        />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -bottom-32 -left-20 h-72 w-72 rounded-full bg-gradient-to-tr from-sky-400/10 via-emerald-300/10 to-transparent blur-3xl"
-        />
+    <div className={`project-control-workspace project-performance-workspace${isPortfolio ? ' pp-portfolio-workspace' : ` pp-details-workspace${view === 'plan-baseline' ? ` pp-schedule-workspace${scheduleMode === 'planner' ? ' pp-planning-workspace' : ''}` : view === 'commercial-dashboard' ? ' pp-commercial-workspace' : view === 'milestones' ? ' pp-milestone-workspace' : view === 'risk' ? ' pp-risk-workspace' : view === 'estimates' ? ' pp-estimate-workspace' : view === 'documents' ? ' pp-document-workspace' : ''}`}`}>
+      {isPortfolio ? <ProjectPortfolio projects={projects} loading={loadingProjects} error={error}
+        onCreate={handleOpenCreate} onOpen={handleOpenPortfolioProject}
+        onRefresh={() => reloadProjects({})} onImport={() => setQhseImportOpen(true)}
+        onSharedRecords={() => setSearchParams({ view: 'shared-records' })} /> : <>
+      <ProjectControlHeader
+        projects={projects}
+        selectedProject={selectedProject}
+        selectedProjectId={selectedProjectId}
+        onSelectProject={handleSelectProject}
+        loading={loadingProjects}
+        error={error}
+        phaseFlags={phaseFlags}
+        activeView={view}
+        scheduleMode={scheduleMode}
+        onScheduleControlsMount={setScheduleControlsHost}
+        onSelectView={handleSelectView}
+        onNavigate={navigate}
+        onCreate={handleOpenCreate}
+        onAnalyzeAgreement={() => setAgreementReviewOpen(true)}
+        agreementStatus={agreementStatus}
+        onEdit={handleOpenEdit}
+        onImport={() => setQhseImportOpen(true)}
+        onDelete={handleDelete}
+        deletingProject={deletingProject}
+        onRefresh={async () => {
+          await reloadProjects({ selectId: selectedProjectId })
+          setToast({ type: 'success', message: 'Project data refreshed.' })
+        }}
+        onExport={() => view === 'documents' ? downloadDocumentRegisterCsv(documentControl.model, selectedProject) : view === 'estimates' ? downloadEstimateCsv(estimateControl.model, selectedProject) : view === 'risk' ? downloadRiskRegisterCsv(riskControl.model, selectedProject) : view === 'plan-baseline' ? downloadScheduleCsv(schedulePerformance.model, selectedProject) : view === 'commercial-dashboard' ? downloadCommercialCsv(commercialPerformance.model, selectedProject) : view === 'milestones' ? downloadMilestoneCsv(milestoneControl.model, selectedProject) : window.print()}
+        performance={performance}
+        schedulePerformance={schedulePerformance}
+        onUpdateSchedule={() => handleScheduleMode('planner')}
+        commercialPerformance={commercialPerformance}
+        onUpdateCommercial={() => handleCommercialMode('controls')}
+        milestoneControl={milestoneControl}
+        onAddMilestone={() => setMilestoneDialog({ type: 'create' })}
+        documentControl={documentControl}
+        onAddDocument={() => setDocumentDialog({ type: 'create' })}
+        estimateControl={estimateControl}
+        onNewEstimate={type => setEstimateDialog({ type })}
+        riskControl={riskControl}
+        onAddRiskRecord={itemType => setRiskDialog({ type: 'create', itemType })}
+        lastRefreshed={lastRefreshed}
+        onOpenDialog={setOverviewDialog}
+      />
 
-        <div className="relative w-full px-3 pt-6 pb-2 sm:px-4">
-          {/* Title row */}
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-gradient-to-br from-indigo-500 via-violet-500 to-fuchsia-500 text-white shadow-sm ring-1 ring-white/30">
-                  <SparklesIcon className="h-5 w-5" />
-                </span>
-                <h1 className="text-2xl font-semibold tracking-tight bg-gradient-to-r from-slate-900 via-indigo-700 to-violet-700 bg-clip-text text-transparent">
-                  Project Control
-                </h1>
-                <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider rounded-full bg-indigo-50 text-indigo-600 ring-1 ring-indigo-100">
-                  <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-pulse" />
-                  AI&nbsp;Assisted
-                </span>
-              </div>
-              <p className="text-sm text-slate-500 mt-1.5 max-w-2xl">
-                Cost intelligence, estimates, documents and predictive analytics — phased rollout.
-              </p>
-              
-              {/* SOFT-CODED: Sub-features navigation */}
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                {PROJECT_CONTROL_SUBFEATURES.filter(sf => sf.isActive).map((subFeature) => {
-                  const isCurrentPage = location.pathname === subFeature.route
-                  return (
-                    <button
-                      key={subFeature.id}
-                      onClick={() => !isCurrentPage && navigate(subFeature.route)}
-                      className={[
-                        'group relative inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all',
-                        isCurrentPage
-                          ? `${subFeature.bgColor} ${subFeature.textColor} ${subFeature.borderColor} border-2 shadow-sm`
-                          : `bg-white text-slate-600 border border-slate-200 ${subFeature.hoverBg} hover:border-slate-300 hover:shadow`,
-                      ].join(' ')}
-                      disabled={isCurrentPage}
-                    >
-                      <span className="text-base">{subFeature.icon}</span>
-                      <span className="font-mono text-[10px] opacity-60">{subFeature.number}</span>
-                      <span>{subFeature.name}</span>
-                      {subFeature.isNew && subFeature.badge && (
-                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${subFeature.badgeColor}`}>
-                          {subFeature.badge}
-                        </span>
-                      )}
-                      {!isCurrentPage && (
-                        <svg className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-
-            {/* Primary CTA — always visible, never clipped */}
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setQhseImportOpen(true)}
-                title={PROJECT_COPY.importFromQhse}
-                className="inline-flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium text-indigo-700 bg-white/80 backdrop-blur border border-indigo-200 hover:bg-indigo-50 hover:border-indigo-300 rounded-lg transition-colors whitespace-nowrap"
-              >
-                <CloudArrowDownIcon className="h-4 w-4" />
-                <span className="hidden md:inline">{PROJECT_COPY.importFromQhse}</span>
-              </button>
-              <button
-                type="button"
-                onClick={toggleFullscreen}
-                title={isFullscreen ? 'Exit fullscreen (F)' : 'Enter fullscreen (F)'}
-                aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-                aria-pressed={isFullscreen}
-                className="inline-flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium text-slate-700 bg-white/80 backdrop-blur border border-slate-200 hover:bg-slate-50 hover:border-slate-300 rounded-lg transition-colors whitespace-nowrap"
-              >
-                {isFullscreen
-                  ? <ArrowsPointingInIcon className="h-4 w-4" />
-                  : <ArrowsPointingOutIcon className="h-4 w-4" />}
-                <span className="hidden md:inline">{isFullscreen ? 'Exit Full' : 'Full Screen'}</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleOpenCreate}
-                title={PROJECT_COPY.newProject}
-                className="group inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-white rounded-lg bg-gradient-to-r from-indigo-600 via-violet-600 to-fuchsia-600 hover:from-indigo-500 hover:via-violet-500 hover:to-fuchsia-500 shadow-md shadow-indigo-500/20 hover:shadow-lg hover:shadow-violet-500/30 transition-all whitespace-nowrap"
-              >
-                <PlusIcon className="h-4 w-4 transition-transform group-hover:rotate-90" />
-                <span>{PROJECT_COPY.newProject}</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Selector + secondary actions */}
-          <div className="mt-5 flex flex-col sm:flex-row sm:items-center gap-2">
-            <div className="flex-1 min-w-0 sm:max-w-md">
-              <ProjectSelector
-                projects={projects}
-                value={selectedProjectId}
-                onChange={setSelectedProjectId}
-                loading={loadingProjects}
-                error={error}
-              />
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={handleOpenEdit}
-                disabled={!selectedProject}
-                title="Edit selected project"
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-700 bg-white/80 backdrop-blur border border-slate-200 hover:bg-slate-50 hover:border-slate-300 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
-              >
-                <PencilSquareIcon className="h-4 w-4" />
-                <span className="hidden md:inline">Edit</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleDelete}
-                disabled={!selectedProject}
-                title="Delete selected project"
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-rose-600 bg-white/80 backdrop-blur border border-rose-200 hover:bg-rose-50 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
-              >
-                <TrashIcon className="h-4 w-4" />
-                <span className="hidden md:inline">Delete</span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Tab bar */}
-        <div className="relative w-full px-3 mt-4 sm:px-4">
-          <nav className="flex gap-1 overflow-x-auto">
-            {PROJECT_VIEW_MODES.map((mode) => {
-              const Icon = ICONS[mode.icon] || ChartBarIcon
-              const enabled = phaseFlags[mode.phaseFlag] !== false
-              const active = view === mode.key
-              return (
-                <button
-                  key={mode.key}
-                  onClick={() => setView(mode.key)}
-                  className={[
-                    'flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap',
-                    active
-                      ? 'border-indigo-600 text-indigo-700'
-                      : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300',
-                  ].join(' ')}
-                >
-                  <Icon className="h-4 w-4" />
-                  <span>{mode.label}</span>
-                  {!enabled && mode.phaseLabel && (
-                    <span className="ml-1 text-[10px] uppercase tracking-wider bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">
-                      {mode.phaseLabel}
-                    </span>
-                  )}
-                </button>
-              )
-            })}
-          </nav>
-        </div>
-      </div>
+      {selectedProject && <AgreementSetupDialog key={selectedProject.id} open={agreementReviewOpen}
+        workspace={agreementWorkspace} view={view} onClose={() => setAgreementReviewOpen(false)} />}
 
       {/* Body */}
-      <div className="w-full px-3 py-6 space-y-6 sm:px-4">
-        {selectedProject && (
-          <ProjectHeaderStrip project={selectedProject} />
-        )}
-
+      <div className="pp-body">
         {loadingProjects || loadingFlags ? (
           <div className="bg-white border border-slate-200 rounded-xl p-12 text-center text-slate-500">
             {PROJECT_COPY.loadingProjects}
@@ -418,9 +440,57 @@ export default function ProjectsPage() {
         ) : !isActiveFlagOn ? (
           <PhaseStubCard mode={activeMode} />
         ) : (
-          <ActiveTab project={selectedProject} phaseFlags={phaseFlags} />
+          <ActiveTab
+            key={['plan-baseline', 'milestones', 'risk', 'estimates', 'documents', 'epc-lifecycle'].includes(view) ? selectedProject.id : undefined}
+            project={selectedProject}
+            projects={projects}
+            phaseFlags={phaseFlags}
+            onSelectView={handleSelectView}
+            onSelectProject={handleSelectProject}
+            onNavigate={navigate}
+            onEdit={handleOpenEdit}
+            onProjectUpdated={async () => {
+              const detail = await PC.getProject(selectedProject.id)
+              setProjects(current => current.map(row => String(row.id) === String(selectedProject.id) ? { ...row, ...detail } : row))
+              setRefreshVersion(value => value + 1)
+            }}
+            performance={performance}
+            onOpenDialog={setOverviewDialog}
+            schedulePerformance={schedulePerformance}
+            scheduleMode={scheduleMode}
+            scheduleControlsHost={scheduleControlsHost}
+            scheduleTab={scheduleTab}
+            onScheduleTab={handleScheduleTab}
+            onScheduleSelection={handleScheduleSelection}
+            onScheduleMode={handleScheduleMode}
+            onSelectBaseline={setScheduleBaselineId}
+            onSelectVersion={setScheduleVersionId}
+            commercialPerformance={commercialPerformance}
+            commercialMode={commercialMode}
+            onCommercialMode={handleCommercialMode}
+            documentControl={documentControl}
+            documentDialog={documentDialog}
+            onDocumentDialog={setDocumentDialog}
+            onSelectDocument={setDocumentId}
+            onOpenDocument={id => handlePerformanceAction('documents', id)}
+            refreshVersion={refreshVersion}
+            estimateControl={estimateControl}
+            estimateDialog={estimateDialog}
+            onEstimateDialog={setEstimateDialog}
+            onSelectEstimate={setEstimateId}
+            onCompareEstimate={setCompareEstimateId}
+            riskControl={riskControl}
+            riskDialog={riskDialog}
+            onRiskDialog={setRiskDialog}
+            milestoneControl={milestoneControl}
+            milestoneDialog={milestoneDialog}
+            onMilestoneDialog={setMilestoneDialog}
+            onOpenSchedule={() => handleScheduleMode('planner')}
+          />
         )}
       </div>
+      {overviewDialog && selectedProject && <ProjectPerformanceDialogs key={`${selectedProject.id}:${overviewDialog}`} type={overviewDialog} model={performance.model} agreementDraft={agreementWorkspace.data?.workspace} agreementFiles={agreementWorkspace.data?.files} onClose={() => setOverviewDialog(null)} onAction={handlePerformanceAction} />}
+      </>}
 
       <ProjectFormModal
         open={formOpen}
@@ -448,13 +518,9 @@ export default function ProjectsPage() {
       />
 
       {toast && (
-        <div
-          className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded shadow-lg text-sm text-white ${
-            toast.type === 'error' ? 'bg-rose-600' : 'bg-emerald-600'
-          }`}
-        >
+        <Notification tone={toast.type} className="fixed bottom-6 right-6 z-50">
           {toast.message}
-        </div>
+        </Notification>
       )}
     </div>
   )

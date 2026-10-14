@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../../services/radaiDialog'
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import {
@@ -75,8 +76,7 @@ const SocialMediaLinksSection = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const trimmedUrl = formData.url.trim();
-    if (!formData.platform || !trimmedUrl) {
+    if (!formData.platform || !formData.url) {
       toast.error('Platform and URL are required');
       return;
     }
@@ -94,7 +94,7 @@ const SocialMediaLinksSection = () => {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ ...formData, url: trimmedUrl }),
+        body: JSON.stringify(formData),
       });
 
       if (!res.ok) {
@@ -127,7 +127,7 @@ const SocialMediaLinksSection = () => {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Delete this link?')) return;
+    if (!(await radaiConfirm('Delete this link?'))) return;
     
     setIsLoading(true);
     try {
@@ -389,7 +389,7 @@ const SocialMediaLinksSection = () => {
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <p className="text-sm text-blue-700 flex items-center gap-2">
             <Globe className="w-4 h-4" />
-            <strong>Tip:</strong> Add at least 3 professional links to earn the &quot;Well Connected&quot; badge!
+            <strong>Tip:</strong> Add at least 3 professional links to earn the "Well Connected" badge!
           </p>
         </div>
       )}

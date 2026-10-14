@@ -1,3 +1,8 @@
+import useAuthenticatedPhoto from '../hooks/useAuthenticatedPhoto'
+import { useCurrentProfilePhoto } from '../components/Layout/ProfilePhotoContext'
+import './UserDetail.css'
+import rbacService from '../services/rbac.service'
+import { radaiConfirm, radaiAlert } from '../services/radaiDialog'
 /**
  * User Detail Page
  * Comprehensive user profile and activity view
@@ -28,6 +33,26 @@ import {
 } from '@heroicons/react/24/outline'
 import { API_BASE_URL } from '../config/api.config'
 
+const normalizeUserProfile = (profile) => {
+  const account = profile.user || {}
+  const identity = profile.canonical_identity || {}
+  return {
+    ...profile,
+    first_name: identity.first_name || account.first_name || '',
+    last_name: identity.last_name || account.last_name || '',
+    email: identity.email || account.email || '',
+    is_active: account.is_active ?? false,
+    is_staff: account.is_staff ?? false,
+    is_superuser: account.is_superuser ?? false,
+    department: identity.department || profile.department || '',
+    job_title: identity.designation || profile.job_title || '',
+    employee_number: identity.employee_number || profile.employee_id || '',
+    login_account_id: identity.login_account_id || account.id,
+    employee_uuid: identity.employee_uuid || profile.canonical_employee,
+    access_profile_uuid: identity.access_profile_uuid || profile.id,
+  }
+}
+
 /**
  * Reusable Detail Page Component
  * This pattern can be replicated for other entities
@@ -41,9 +66,23 @@ const UserDetail = () => {
   const [userModules, setUserModules] = useState([])
   const [userRoles, setUserRoles] = useState([])
   const [userActivity, setUserActivity] = useState([])
+  const [activityError, setActivityError] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [activeTab, setActiveTab] = useState('overview')
+  const [photoFailed, setPhotoFailed] = useState(false)
+  const sharedPhoto = useCurrentProfilePhoto()
+  const isCurrentUser = userData && (String(userData.login_account_id) === String(sharedPhoto.userId) || (userData.email && userData.email === sharedPhoto.email))
+  const managedPhoto = useAuthenticatedPhoto(userData && !isCurrentUser ? `/rbac/users/${id}/profile-photo/` : null, userData?.profile_photo)
+  const profilePhoto = (isCurrentUser ? sharedPhoto.photo : managedPhoto) || userData?.profile_photo
+  const [moduleSearch, setModuleSearch] = useState('')
+  const [modulePage, setModulePage] = useState(1)
+  useEffect(() => { setPhotoFailed(false) }, [id, profilePhoto])
+  useEffect(() => { setModulePage(1); setModuleSearch('') }, [id])
+  const matchingModules = userModules.filter(module => [module.name, module.code, module.description, typeof module === 'string' ? module : ''].some(value => String(value || '').toLowerCase().includes(moduleSearch.trim().toLowerCase())))
+  const modulePages = Math.max(1, Math.ceil(matchingModules.length / 12))
+  const currentModulePage = Math.min(modulePage, modulePages)
+  const visibleModules = matchingModules.slice((currentModulePage - 1) * 12, currentModulePage * 12)
 
   useEffect(() => {
     fetchUserDetails()
@@ -52,6 +91,7 @@ const UserDetail = () => {
   const fetchUserDetails = async () => {
     try {
       setLoading(true)
+      setError(null)
       const token = localStorage.getItem('radai_access_token') || localStorage.getItem('access')
       const headers = {
         'Authorization': `Bearer ${token}`,
@@ -62,39 +102,18 @@ const UserDetail = () => {
       const userResponse = await fetch(`${API_BASE_URL}/rbac/users/${id}/`, { headers })
       if (!userResponse.ok) throw new Error('Failed to fetch user')
       const user = await userResponse.json()
-      setUserData(user)
+      setUserData(normalizeUserProfile(user))
 
-      // Fetch user modules
+      // The profile response includes effective modules and active role assignments.
+      setUserModules(Array.isArray(user.modules) ? user.modules : [])
+      setUserRoles(Array.isArray(user.roles) ? user.roles : [])
+      setUserActivity([])
+      setActivityError('')
       try {
-        const modulesResponse = await fetch(`${API_BASE_URL}/rbac/users/${id}/modules/`, { headers })
-        if (modulesResponse.ok) {
-          const modules = await modulesResponse.json()
-          setUserModules(modules)
-        }
-      } catch (err) {
-        console.log('Modules not available')
-      }
-
-      // Fetch user roles
-      try {
-        const rolesResponse = await fetch(`${API_BASE_URL}/rbac/users/${id}/roles/`, { headers })
-        if (rolesResponse.ok) {
-          const roles = await rolesResponse.json()
-          setUserRoles(roles)
-        }
-      } catch (err) {
-        console.log('Roles not available')
-      }
-
-      // Fetch user activity (if available)
-      try {
-        const activityResponse = await fetch(`${API_BASE_URL}/rbac/users/${id}/activity/`, { headers })
-        if (activityResponse.ok) {
-          const activity = await activityResponse.json()
-          setUserActivity(activity.results || activity)
-        }
-      } catch (err) {
-        console.log('Activity not available')
+        const response = await rbacService.getAuditLogs({resource_type: 'UserProfile', resource_id: id, page_size: 20, ordering: '-timestamp'})
+        setUserActivity(response.data?.results || (Array.isArray(response.data) ? response.data : []))
+      } catch {
+        setActivityError('Account activity is unavailable. Please try again later.')
       }
 
       setLoading(false)
@@ -106,7 +125,7 @@ const UserDetail = () => {
   }
 
   const handleDelete = async () => {
-    if (!window.confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
+    if (!(await radaiConfirm('Are you sure you want to delete this user? This action cannot be undone.'))) {
       return
     }
 
@@ -121,11 +140,11 @@ const UserDetail = () => {
 
       if (!response.ok) throw new Error('Failed to delete user')
 
-      alert('User deleted successfully')
+      await radaiAlert('User deleted successfully')
       navigate('/admin/users')
     } catch (err) {
       console.error('Error deleting user:', err)
-      alert('Failed to delete user')
+      await radaiAlert('Failed to delete user')
     }
   }
 
@@ -146,15 +165,15 @@ const UserDetail = () => {
       if (!response.ok) throw new Error('Failed to update status')
 
       const updated = await response.json()
-      setUserData(updated)
+      setUserData(normalizeUserProfile(updated))
     } catch (err) {
       console.error('Error updating status:', err)
-      alert('Failed to update user status')
+      await radaiAlert('Failed to update user status')
     }
   }
 
   const handleResetPassword = async () => {
-    if (!window.confirm('Send password reset email to this user?')) {
+    if (!(await radaiConfirm('Send password reset email to this user?'))) {
       return
     }
 
@@ -170,17 +189,17 @@ const UserDetail = () => {
 
       if (!response.ok) throw new Error('Failed to reset password')
 
-      alert('Password reset email sent successfully')
+      await radaiAlert('Password reset email sent successfully')
     } catch (err) {
       console.error('Error resetting password:', err)
-      alert('Failed to send password reset email')
+      await radaiAlert('Failed to send password reset email')
     }
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 p-8">
-        <div className="max-w-7xl mx-auto">
+      <div className="user-detail-workspace">
+        <div className="ud-container">
           <div className="flex items-center justify-center py-20">
             <div className="relative">
               <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-200"></div>
@@ -194,8 +213,8 @@ const UserDetail = () => {
 
   if (error || !userData) {
     return (
-      <div className="min-h-screen bg-gray-50 p-8">
-        <div className="max-w-7xl mx-auto">
+      <div className="user-detail-workspace">
+        <div className="ud-container">
           <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
             <XCircleIcon className="w-20 h-20 text-red-500 mx-auto mb-4" />
             <h2 className="text-2xl font-bold text-gray-900 mb-2">User Not Found</h2>
@@ -220,27 +239,27 @@ const UserDetail = () => {
   ]
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-7xl mx-auto">
+    <div className="user-detail-workspace">
+      <div className="ud-container">
         {/* Header */}
-        <div className="mb-6">
+        <div className="ud-header">
           <button
             onClick={() => navigate('/admin/users')}
-            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4 transition-colors"
+            className="ud-back"
           >
             <ArrowLeftIcon className="w-5 h-5" />
             Back to Users
           </button>
 
-          <div className="flex items-center justify-between">
+          <div className="ud-heading">
             <div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2">User Details</h1>
               <p className="text-gray-600">Complete profile and activity information</p>
             </div>
-            <div className="flex gap-3">
+            <div className="ud-actions">
               <button
                 onClick={() => navigate('/admin/users')}
-                className="px-4 py-2 bg-white border-2 border-gray-200 rounded-xl hover:border-blue-500 transition-all flex items-center gap-2"
+                className="ud-primary"
               >
                 <PencilIcon className="w-5 h-5" />
                 Edit
@@ -276,11 +295,11 @@ const UserDetail = () => {
         </div>
 
         {/* Profile Card */}
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl shadow-xl p-8 mb-6 text-white">
+        <div className="ud-profile">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-6">
-              <div className="w-24 h-24 bg-white/20 rounded-full flex items-center justify-center text-4xl font-bold backdrop-blur-sm">
-                {userData.first_name?.[0]}{userData.last_name?.[0]}
+              <div className="ud-avatar">
+                {profilePhoto && !photoFailed ? <img key={profilePhoto} src={profilePhoto} alt={`${userData.first_name} ${userData.last_name}`} onError={() => setPhotoFailed(true)} /> : <>{userData.first_name?.[0]}{userData.last_name?.[0]}</>}
               </div>
               <div>
                 <h2 className="text-3xl font-bold mb-2">
@@ -313,21 +332,22 @@ const UserDetail = () => {
               </div>
             </div>
             <div className="text-right">
-              <p className="text-blue-100 text-sm mb-1">User ID</p>
-              <p className="text-2xl font-bold">#{userData.employee_id || userData.id}</p>
+              <p className="text-blue-100 text-sm mb-1">Employee Number</p>
+              <p className="text-2xl font-bold">#{userData.employee_number || 'Not assigned'}</p>
             </div>
           </div>
         </div>
 
         {/* Tabs */}
-        <div className="bg-white rounded-2xl shadow-lg mb-6 overflow-hidden">
-          <div className="border-b border-gray-200">
-            <div className="flex">
+        <div className="ud-tabs-panel">
+          <div className="ud-tabs">
+            <div className="flex" role="tablist" aria-label="User details">
               {tabs.map((tab) => {
                 const Icon = tab.icon
                 return (
                   <button
                     key={tab.id}
+                    role="tab" aria-selected={activeTab === tab.id}
                     onClick={() => setActiveTab(tab.id)}
                     className={`flex-1 px-6 py-4 flex items-center justify-center gap-2 font-medium transition-all ${
                       activeTab === tab.id
@@ -337,19 +357,19 @@ const UserDetail = () => {
                   >
                     <Icon className="w-5 h-5" />
                     {tab.name}
-                  </button>
+                 </button>
                 )
               })}
             </div>
           </div>
 
-          <div className="p-8">
+          <div className="ud-tab-content">
             {/* Overview Tab */}
             {activeTab === 'overview' && (
               <div className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Contact Information */}
-                  <div className="bg-gray-50 rounded-xl p-6">
+                  <div className="ud-panel">
                     <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                       <EnvelopeIcon className="w-5 h-5 text-blue-600" />
                       Contact Information
@@ -369,7 +389,7 @@ const UserDetail = () => {
                   </div>
 
                   {/* Organization Information */}
-                  <div className="bg-gray-50 rounded-xl p-6">
+                  <div className="ud-panel">
                     <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                       <BuildingOfficeIcon className="w-5 h-5 text-purple-600" />
                       Organization
@@ -397,12 +417,24 @@ const UserDetail = () => {
                   </div>
 
                   {/* Account Details */}
-                  <div className="bg-gray-50 rounded-xl p-6">
+                  <div className="ud-panel">
                     <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                       <CalendarIcon className="w-5 h-5 text-green-600" />
                       Account Details
                     </h3>
                     <div className="space-y-3">
+                      <div>
+                        <p className="text-sm text-gray-500 mb-1">Canonical Employee UUID</p>
+                        <p className="break-all font-mono text-sm text-gray-900">{userData.employee_uuid || 'Not linked'}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-500 mb-1">Login Account ID</p>
+                        <p className="font-mono text-sm text-gray-900">{userData.login_account_id || 'Not linked'}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-500 mb-1">Access Profile UUID</p>
+                        <p className="break-all font-mono text-sm text-gray-900">{userData.access_profile_uuid}</p>
+                      </div>
                       <div>
                         <p className="text-sm text-gray-500 mb-1">Created At</p>
                         <p className="text-gray-900 font-medium">
@@ -433,7 +465,7 @@ const UserDetail = () => {
                   </div>
 
                   {/* Statistics */}
-                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6">
+                  <div className="ud-panel ud-statistics">
                     <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                       <ChartBarIcon className="w-5 h-5 text-indigo-600" />
                       Statistics
@@ -448,8 +480,8 @@ const UserDetail = () => {
                         <p className="text-sm text-gray-600">Roles</p>
                       </div>
                       <div>
-                        <p className="text-2xl font-bold text-green-600">{userActivity.length}</p>
-                        <p className="text-sm text-gray-600">Activities</p>
+                        <p className="text-2xl font-bold text-green-600">{activityError ? '?' : userActivity.length}</p>
+                        <p className="text-sm text-gray-600">Recent account changes</p>
                       </div>
                       <div>
                         <p className="text-2xl font-bold text-orange-600">
@@ -467,38 +499,25 @@ const UserDetail = () => {
             {activeTab === 'modules' && (
               <div>
                 <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-xl font-bold text-gray-900">Assigned Modules</h3>
-                  <span className="px-4 py-2 bg-blue-100 text-blue-700 rounded-xl font-semibold">
+                   <span className="px-4 py-2 bg-blue-100 text-blue-700 rounded-xl font-semibold">
                     {userModules.length} Modules
                   </span>
                 </div>
-                {userModules.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {userModules.map((module, index) => (
-                      <div
-                        key={index}
-                        className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-4 border-2 border-blue-200"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">
-                            {module.code?.[0] || module.name?.[0] || 'M'}
-                          </div>
-                          <div>
-                            <p className="font-bold text-gray-900">{module.name || module.code || module}</p>
-                            {module.description && (
-                              <p className="text-sm text-gray-600">{module.description}</p>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-12">
-                    <KeyIcon className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-600">No modules assigned</p>
-                  </div>
-                )}
+                <div className="ud-module-toolbar">
+                  <input type="search" aria-label="Search assigned modules" placeholder="Search modules..." value={moduleSearch} onChange={event => { setModuleSearch(event.target.value); setModulePage(1) }} />
+                  <span>{matchingModules.length} of {userModules.length} modules</span>
+                </div>
+                <ul className="ud-module-list" aria-label="Assigned modules">
+                  {visibleModules.map((module, index) => <li key={module.id || module.code || index}>
+                    <span className="ud-module-symbol"><KeyIcon /></span>
+                    <div><strong>{module.name || module.code || module}</strong>{module.description && <p>{module.description}</p>}</div>
+                  </li>)}
+                </ul>
+                {!matchingModules.length && <p className="ud-module-empty">{userModules.length ? 'No modules match your search.' : 'No modules assigned.'}</p>}
+                <div className="ud-module-pagination">
+                  <span>Showing {matchingModules.length ? (currentModulePage - 1) * 12 + 1 : 0}&ndash;{Math.min(currentModulePage * 12, matchingModules.length)} of {matchingModules.length}</span>
+                  <div><button disabled={currentModulePage === 1} onClick={() => setModulePage(currentModulePage - 1)}>Previous</button><span>Page {currentModulePage} of {modulePages}</span><button disabled={currentModulePage === modulePages} onClick={() => setModulePage(currentModulePage + 1)}>Next</button></div>
+                </div>
               </div>
             )}
 
@@ -516,7 +535,7 @@ const UserDetail = () => {
                     {userRoles.map((role, index) => (
                       <div
                         key={index}
-                        className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-6 border-2 border-purple-200"
+                        className="ud-role"
                       >
                         <div className="flex items-start justify-between">
                           <div>
@@ -572,7 +591,7 @@ const UserDetail = () => {
                     {userActivity.map((activity, index) => (
                       <div
                         key={index}
-                        className="bg-white border-2 border-gray-200 rounded-xl p-4 hover:border-blue-500 transition-all"
+                        className="ud-activity"
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
@@ -596,7 +615,7 @@ const UserDetail = () => {
                 ) : (
                   <div className="text-center py-12">
                     <ChartBarIcon className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-600">No activity recorded</p>
+                    <p className="text-gray-600">{activityError || 'No account activity recorded'}</p>
                   </div>
                 )}
               </div>

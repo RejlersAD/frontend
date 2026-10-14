@@ -2,20 +2,8 @@ import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
-import http from 'http'
-
-// Soft-coded: disable HTTP keep-alive so the proxy re-resolves the backend
-// hostname on every request.  Without this, Node caches the old container IP
-// after a backend restart, causing 503 "connect ECONNREFUSED" errors until
-// the frontend container is also restarted.
-//
-// NOTE: the custom `agent` option does not always propagate cleanly through
-// Vite's bundled http-proxy in dev mode and has been observed to silently
-// stall requests (proxyReq event never fires).  It is therefore opt-in via
-// `VITE_PROXY_DISABLE_KEEPALIVE=1` rather than always-on.
-const PROXY_AGENT = process.env.VITE_PROXY_DISABLE_KEEPALIVE === '1'
-  ? new http.Agent({ keepAlive: false })
-  : undefined
+import { createProxyAgent } from './scripts/vite-proxy-agent.mjs'
+import { officePreviewAliases, officePreviewDependencies } from './scripts/office-preview-aliases.mjs'
 
 // Soft-coded proxy timeouts (override via env vars when needed)
 // Default raised to 20 min to accommodate long-running AI extractions on
@@ -31,6 +19,10 @@ const PROXY_UPSTREAM_TIMEOUT_MS = Number(process.env.VITE_PROXY_UPSTREAM_TIMEOUT
 export default defineConfig(({ mode }) => {
   // Load environment variables for this mode
   const env = loadEnv(mode, process.cwd(), '')
+  const requestedWatchInterval = Number(env.VITE_WATCH_INTERVAL_MS)
+  const watchInterval = Number.isFinite(requestedWatchInterval) && requestedWatchInterval > 0
+    ? requestedWatchInterval
+    : 3000
   
   // Smart API URL detection (soft-coded for Docker and production)
   // Priority: VITE_API_PROXY_TARGET env var → fallback to localhost:8000
@@ -42,6 +34,12 @@ export default defineConfig(({ mode }) => {
   let apiUrl = env.VITE_API_PROXY_TARGET || 'http://localhost:8000'
   const apiUrlObj = new URL(apiUrl)
   const targetHost = apiUrlObj.host // dynamic: 'localhost:8000' OR 'aiflowbackend-production.up.railway.app'
+  // Docker DNS must not queue behind the file polling/source transforms that
+  // share Node's native lookup worker pool. Other environments retain their
+  // usual resolver. Fresh connections also pick up backend container changes.
+  const proxyAgent = createProxyAgent(apiUrl, {
+    disableKeepAlive: env.VITE_PROXY_DISABLE_KEEPALIVE === '1',
+  })
 
   // Soft-coded: detect when pointing at production so we can warn in the browser
   const IS_PROD_BACKEND = !apiUrl.includes('localhost') && !apiUrl.includes('127.0.0.1') && !apiUrl.includes('backend_local') && !apiUrl.includes('aiflow_backend')
@@ -57,29 +55,46 @@ export default defineConfig(({ mode }) => {
       react(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['assets/Rejlers_Logo.png', 'favicon.ico'],
+        includeAssets: [
+          'assets/Rejlers_Logo.png',
+          'assets/radai-icon-192.png',
+          'assets/radai-icon-512.png',
+          'assets/radai-icon-maskable-512.png',
+          'assets/radai-apple-touch-icon.png',
+        ],
         manifest: {
+          id: '/',
           name: 'RADAI',
           short_name: 'RADAI',
           description: 'Next-generation AI-powered engineering workspace for the Oil & Gas industry',
           theme_color: '#0A1628',
-          background_color: '#0A1628',
+          background_color: '#f5f6f8',
           display: 'standalone',
+          display_override: ['standalone', 'minimal-ui'],
           scope: '/',
-          start_url: '/',
+          start_url: '/dashboard',
           orientation: 'any',
+          lang: 'en',
+          dir: 'ltr',
+          categories: ['business', 'productivity', 'utilities'],
           icons: [
             {
-              src: '/assets/icon-192x192.png',
+              src: '/assets/radai-icon-192.png',
               sizes: '192x192',
               type: 'image/png',
-              purpose: 'any maskable'
+              purpose: 'any'
             },
             {
-              src: '/assets/icon-512x512.png',
+              src: '/assets/radai-icon-512.png',
               sizes: '512x512',
               type: 'image/png',
-              purpose: 'any maskable'
+              purpose: 'any'
+            },
+            {
+              src: '/assets/radai-icon-maskable-512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'maskable'
             }
           ],
           // Desktop shortcuts for quick access to common features
@@ -89,26 +104,31 @@ export default defineConfig(({ mode }) => {
               short_name: 'Login',
               description: 'Quick login to RADAI',
               url: '/login',
-              icons: [{ src: '/assets/icon-192x192.png', sizes: '192x192' }]
+              icons: [{ src: '/assets/radai-icon-192.png', sizes: '192x192', type: 'image/png' }]
             },
             {
               name: 'Dashboard',
               short_name: 'Dashboard',
               description: 'Open RADAI Dashboard',
               url: '/dashboard',
-              icons: [{ src: '/assets/icon-192x192.png', sizes: '192x192' }]
+              icons: [{ src: '/assets/radai-icon-192.png', sizes: '192x192', type: 'image/png' }]
             },
             {
               name: 'PID Verification',
               short_name: 'PID',
               description: 'PID Verification Tool',
               url: '/engineering/process/pid-verification-v1', // SOFT-CODED: Updated to V1 route
-              icons: [{ src: '/assets/icon-192x192.png', sizes: '192x192' }]
+              icons: [{ src: '/assets/radai-icon-192.png', sizes: '192x192', type: 'image/png' }]
             }
-          ]
+          ],
+          launch_handler: {
+            client_mode: ['navigate-existing', 'auto']
+          }
         },
         workbox: {
+          importScripts: ['/push-handler.js'],
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+          cleanupOutdatedCaches: true,
           // CRITICAL: Increase file size limit for precaching large bundles
           // Default 2 MB is too small for production builds with all features
           // The current full-feature bundle is ~14 MB before gzip (~2.6 MB
@@ -118,33 +138,26 @@ export default defineConfig(({ mode }) => {
           // SOFT-CODED: Allow navigation to all routes (not just /)
           navigateFallback: 'index.html',
           navigateFallbackAllowlist: [/.*/], // Allow all paths for SPA routing
-          runtimeCaching: [
-            {
-              urlPattern: /^https:\/\/radai\.ae\/api\/.*/i,
-              handler: 'NetworkFirst',
-              options: {
-                cacheName: 'api-cache',
-                expiration: {
-                  maxEntries: 100,
-                  maxAgeSeconds: 60 * 5 // 5 minutes
-                },
-                cacheableResponse: {
-                  statuses: [0, 200]
-                }
-              }
-            }
-          ]
+          navigateFallbackDenylist: [/^\/api\//, /^\/media\//, /^\/static\//],
+          // Authenticated API responses can contain HR, payroll and project
+          // data. Keep them network-only instead of persisting them in a
+          // device-level service-worker cache.
+          runtimeCaching: []
         },
         devOptions: {
-          enabled: false, // Avoid stale cached application code during development
+          // localhost is a secure PWA context, so keep installability testable
+          // during local development. Set VITE_PWA_DEV_ENABLED=false to opt out.
+          enabled: env.VITE_PWA_DEV_ENABLED !== 'false',
           type: 'module',
           navigateFallback: 'index.html',
           navigateFallbackAllowlist: [/.*/] // Allow all paths in dev mode
         }
       })
     ],
+    worker: { format: 'es' },
     resolve: {
       alias: {
+        ...officePreviewAliases,
         '@': path.resolve(__dirname, './src'),
       },
       // Force a single instance of emotion so all chunks share the
@@ -173,7 +186,21 @@ export default defineConfig(({ mode }) => {
       port: 5173, // Use port 5173 for local development
       watch: {
         usePolling: true, // Required for Docker on Windows (no native FS events through bind mounts)
-        interval: 1000,
+        // Leave worker-pool capacity for API hostname resolution and source
+        // transforms on Windows bind mounts. A one-second poll across this
+        // application can saturate the pool even when no files change.
+        interval: watchInterval,
+        binaryInterval: watchInterval,
+        // Polling generated reports competes with proxy DNS lookups for Node's
+        // filesystem worker pool. Keep those outputs out of the watcher so API
+        // requests stay responsive as local test artifacts accumulate.
+        ignored: [
+          '**/artifacts/**',
+          '**/coverage/**',
+          '**/dev-dist/**',
+          '**/playwright-report/**',
+          '**/test-results*/**',
+        ],
       },
       proxy: {
         // Local signed procurement documents use Django's MEDIA_URL. Proxy
@@ -182,6 +209,16 @@ export default defineConfig(({ mode }) => {
           target: apiUrl,
           changeOrigin: true,
           secure: false,
+          ...(proxyAgent ? { agent: proxyAgent } : {}),
+        },
+        // Default legend symbol pictures (repo static files, served under
+        // Django's STATIC_URL) — same relative-URL-from-a-different-origin
+        // problem as /media above.
+        '/static': {
+          target: apiUrl,
+          changeOrigin: true,
+          secure: false,
+          ...(proxyAgent ? { agent: proxyAgent } : {}),
         },
         '/api': {
           target: apiUrl,
@@ -192,8 +229,7 @@ export default defineConfig(({ mode }) => {
           // 504 rather than hanging the browser request indefinitely.
           timeout: PROXY_TIMEOUT_MS,
           proxyTimeout: PROXY_UPSTREAM_TIMEOUT_MS,
-          // Optional fresh-DNS agent — only enabled when explicitly requested.
-          ...(PROXY_AGENT ? { agent: PROXY_AGENT } : {}),
+          ...(proxyAgent ? { agent: proxyAgent } : {}),
           configure: (proxy, options) => {
             proxy.on('error', (err, req, res) => {
               // SOFT-CODED: send a proper JSON 503 instead of a silent empty 500
@@ -216,7 +252,9 @@ export default defineConfig(({ mode }) => {
               proxyReq.setHeader('X-Forwarded-For', req.socket.remoteAddress)
               // SOFT-CODED: Host derives from target URL — works for both localhost and Railway
               proxyReq.setHeader('Host', targetHost)
-              console.log('📤 Proxy request:', req.method, req.url, '→', apiUrl + req.url)
+              // Search text, message cursors and OAuth codes stay out of diagnostics.
+              const requestPath = (req.url || '').split('?')[0]
+              console.log('📤 Proxy request:', req.method, requestPath, '→', apiUrl + requestPath)
             })
           }
         },
@@ -224,7 +262,19 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       outDir: 'dist',
-      sourcemap: true,
+      rollupOptions: {
+        output: {
+          // Keep the module worker bytes unchanged, but use the JS extension
+          // covered by nginx MIME rules and the existing PWA precache glob.
+          assetFileNames: asset => asset.name === 'pdf.worker.min.mjs'
+            ? 'assets/pdf.worker.min-[hash].js'
+            : 'assets/[name]-[hash][extname]',
+        },
+      },
+      // Production source maps more than doubled peak build memory for this
+      // large application and exhausted Node's default 4 GB heap. Enable them
+      // explicitly only in CI environments that upload maps to secure storage.
+      sourcemap: env.VITE_BUILD_SOURCEMAP === 'true',
       // Soft-coded: Increase chunk size warning limit to 2 MB
       // Production bundles are large due to comprehensive feature set
       // Relying on Vite's automatic chunking to avoid circular dependencies
@@ -241,6 +291,7 @@ export default defineConfig(({ mode }) => {
       // node_modules/.vite bundle can never survive a branch pull/restart.
       force: true,
       include: [
+        ...officePreviewDependencies,
         '@emotion/styled',
         '@emotion/react',
         '@mui/styled-engine',
@@ -249,6 +300,11 @@ export default defineConfig(({ mode }) => {
         '@mui/system/createTheme',
         '@mui/material',
         '@mui/material/styles',
+        // @mui/x-data-grid pulls in @emotion/styled for its own theming —
+        // same "styled_default is not a function" failure mode as the MUI
+        // packages above if it's left out of pre-bundling (see QHSE
+        // DetailedView.jsx, the only current consumer).
+        '@mui/x-data-grid',
       ],
     },
   }

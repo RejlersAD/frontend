@@ -1,3 +1,4 @@
+import { radaiAlert } from '../../services/radaiDialog'
 import React, { useState, useEffect } from 'react';
 import analyticsService from '../../services/analyticsService';
 import qhseService from '../../services/qhse.service';
@@ -106,7 +107,7 @@ const PredictionsTab = ({ predictions: initialPredictions, onRefresh }) => {
       onRefresh();
     } catch (error) {
       console.error('Failed to acknowledge insight:', error);
-      alert('Failed to acknowledge insight');
+      await radaiAlert('Failed to acknowledge insight');
     } finally {
       setAcknowledging(false);
     }

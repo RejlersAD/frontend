@@ -1,3 +1,4 @@
+import { radaiAlert } from '../../services/radaiDialog'
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { PREDICTIVE_MODELS, AI_INSIGHTS } from '../../config/reportGenerator.config';
@@ -376,21 +377,21 @@ const PredictiveInsights = () => {
                   
                   <button
                     className="w-full py-2 px-4 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all text-sm font-semibold"
-                    onClick={() => alert('Viewing detailed analysis...')}
+                    onClick={async () => (await radaiAlert('Viewing detailed analysis...'))}
                   >
                     📊 Detailed Analysis
                   </button>
                   
                   <button
                     className="w-full py-2 px-4 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-all text-sm font-semibold"
-                    onClick={() => alert('Creating action plan...')}
+                    onClick={async () => (await radaiAlert('Creating action plan...'))}
                   >
                     📋 Create Action Plan
                   </button>
                   
                   <button
                     className="w-full py-2 px-4 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all text-sm font-semibold"
-                    onClick={() => alert('Exporting prediction...')}
+                    onClick={async () => (await radaiAlert('Exporting prediction...'))}
                   >
                     📤 Export Report
                   </button>

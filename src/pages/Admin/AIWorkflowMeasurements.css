@@ -1,0 +1,17 @@
+.aw-measurements { display: grid; gap: 16px; min-width: 0; }
+.aw-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 16px; }
+.aw-toolbar > div:first-child, .aw-toolbar > h2:first-child, .aw-toolbar > span:first-child { margin-right: auto; }
+.aw-toolbar h2 { margin: 0; font-size: 18px; line-height: 24px; font-weight: 600; }
+.aw-toolbar p { margin: 4px 0 0; }
+.aw-measurements button, .ai-outcomes button, .aw-toolbar select, .aw-toolbar input { border: 1px solid #d6e0ef; border-radius: 6px; padding: 8px 12px; min-height: 36px; background: #fff; color: #172033; font: inherit; }
+.aw-measurements button, .ai-outcomes button { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.aw-measurements button:disabled, .ai-outcomes button:disabled { opacity: .5; cursor: default; }
+.aw-measurements button:focus-visible, .aw-measurements input:focus-visible, .aw-measurements select:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
+.aw-measurements button svg { width: 16px; height: 16px; }
+.aw-measurements td small { display: block; font-size: 12px; color: #718096; overflow-wrap: anywhere; }
+.aw-measurements td { max-width: 330px; }
+.aw-method { padding: 16px; }
+.aw-method details { padding: 8px 0; }
+.aw-measurements summary { cursor: pointer; }
+.dark .aw-measurements button, .dark .ai-outcomes button, .dark .aw-toolbar input, .dark .aw-toolbar select { background: #132039; color: #e2e8f0; border-color: #334155; }
+@media (max-width: 700px) { .aw-toolbar { align-items: stretch; } .aw-toolbar > div:first-child { width: 100%; } .aw-toolbar input { max-width: 100%; } }

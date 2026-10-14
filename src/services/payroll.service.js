@@ -4,6 +4,7 @@
  * Base path: /api/v1/payroll/
  */
 import apiClient from './api.service'
+import { loadAttendanceOverrides } from '../utils/attendanceOverrides'
 
 const BASE = '/payroll'
 const FINANCE = '/finance'
@@ -69,6 +70,10 @@ const payrollService = {
   getLeaveRecord: (id) =>
     unwrap(apiClient.get(`${BASE}/leave-records/${id}/`)),
 
+  // HR/Admin only — backend restricts every other field to read-only.
+  updateLeaveRecordCarryforward: (id, carryforward) =>
+    unwrap(apiClient.patch(`${BASE}/leave-records/${id}/`, { carryforward })),
+
   // ── Leave Types (master list) ──────────────────────────────────────────────
   getLeaveTypes: () =>
     unwrap(apiClient.get(`${BASE}/leave-types/`)),
@@ -79,6 +84,9 @@ const payrollService = {
 
   getLeaveRequest: (id) =>
     unwrap(apiClient.get(`${BASE}/leave-requests/${id}/`)),
+
+  getPendingLeaveApprovals: () =>
+    unwrap(apiClient.get(`${BASE}/leave-requests/pending-for-me/`)),
 
   createLeaveRequest: (data) =>
     unwrap(apiClient.post(`${BASE}/leave-requests/`, data)),
@@ -133,10 +141,12 @@ const payrollService = {
     unwrap(apiClient.delete(`${BASE}/public-holidays/${id}/`)),
 
   // ── Attendance Overrides (HR Manager manual cell corrections) ─────────────
-  // Returns active overrides for a given year+month.
+  // Returns all active overrides for a given year+month across DRF pages.
   // Backend enforces HR Manager permission for write operations.
   getAttendanceOverrides: (year, month, params = {}) =>
-    unwrap(apiClient.get(`${BASE}/attendance-overrides/`, { params: { year, month, ...params } })),
+    loadAttendanceOverrides(page => unwrap(apiClient.get(`${BASE}/attendance-overrides/`, {
+      params: { year, month, ...params, page },
+    }))),
 
   createAttendanceOverride: (data) =>
     unwrap(apiClient.post(`${BASE}/attendance-overrides/`, data)),

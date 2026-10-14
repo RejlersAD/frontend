@@ -1,3 +1,4 @@
+import { radaiAlert } from '../services/radaiDialog'
 /**
  * CRS Multi-Revision Management Component
  * Allows creating chains and uploading multiple revisions with automatic extraction
@@ -149,7 +150,7 @@ const CRSMultiRevision = () => {
           project_name: '',
           description: ''
         });
-        alert('Revision chain created successfully!');
+        await radaiAlert('Revision chain created successfully!');
       } else {
         const error = await response.json();
         setError(error.detail || 'Failed to create chain');

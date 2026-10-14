@@ -1,0 +1,41 @@
+.portfolio-workbook-upload {
+  --pwu-surface:var(--pl-card,#fff); --pwu-text:var(--pl-text,#18253b);
+  --pwu-muted:var(--pl-muted,#607087); --pwu-line:var(--pl-line,#e0e6ee);
+  --pwu-blue:var(--pl-blue,#245cc3); --pwu-soft:var(--pl-soft,#f7f9fc);
+  --pwu-error:#9c3038; --pwu-success:#226748; --pwu-warning:#925706;
+  border:1px solid var(--pwu-line); border-radius:8px; background:var(--pwu-surface);
+  padding:16px; min-width:0; max-width:100%; color:var(--pwu-text); font:12px/1.5 'Inter','Segoe UI',sans-serif;
+}
+.portfolio-workbook-upload *, .portfolio-workbook-upload *::before, .portfolio-workbook-upload *::after { box-sizing:border-box; }
+.portfolio-workbook-upload :is(h3,p) { margin:0; }
+.pwu-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.pwu-heading strong { font-size:14px; }
+.portfolio-workbook-upload .pwu-heading p { margin:4px 0 0; color:var(--pwu-muted); }
+.portfolio-workbook-upload .pwu-button { display:inline-flex; align-items:center; justify-content:center; gap:7px; min-height:36px; border:1px solid var(--pwu-line); border-radius:6px; background:var(--pwu-surface); padding:8px 12px; color:var(--pwu-text); font:600 12px/18px 'Inter','Segoe UI',sans-serif; cursor:pointer; }
+.portfolio-workbook-upload .pwu-button--primary { background:var(--pwu-blue); border-color:var(--pwu-blue); color:#fff; }
+.portfolio-workbook-upload .pwu-button:hover:not(:disabled) { filter:brightness(.95); }
+.portfolio-workbook-upload .pwu-button:disabled { opacity:.55; cursor:not-allowed; }
+.pwu-button svg { width:16px; height:16px; flex-shrink:0; }
+.portfolio-workbook-upload form { margin-top:14px; padding-top:14px; border-top:1px solid var(--pwu-line); }
+.pwu-file { display:flex; flex-direction:column; align-items:flex-start; gap:6px; font-weight:600; }
+.pwu-file input { max-width:100%; min-width:0; border:1px solid var(--pwu-line); border-radius:4px; padding:6px; background:var(--pwu-surface); color:var(--pwu-text); font:inherit; }
+.pwu-file input::file-selector-button { border:1px solid var(--pwu-line); border-radius:3px; padding:5px 8px; margin-right:8px; background:var(--pwu-soft); color:var(--pwu-text); }
+.portfolio-workbook-upload .pwu-note { margin:8px 0; color:var(--pwu-muted); font-size:11px; }
+.pwu-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+.portfolio-workbook-upload .pwu-error { margin:10px 0; color:var(--pwu-error); border-left:3px solid currentColor; padding-left:8px; overflow-wrap:anywhere; }
+.portfolio-workbook-upload .pwu-success { margin:10px 0; color:var(--pwu-success); overflow-wrap:anywhere; }
+.pwu-preview { margin-top:14px; padding:12px; border:1px solid var(--pwu-line); border-radius:6px; }
+.portfolio-workbook-upload .pwu-preview h3 { margin:0 0 10px; font-size:13px; font-weight:600; }
+.pwu-preview dl { display:flex; flex-wrap:wrap; gap:12px 24px; margin:0 0 10px; }
+.pwu-preview dl>div { min-width:0; max-width:100%; }
+.pwu-preview dt { color:var(--pwu-muted); font-size:11px; }
+.pwu-preview dd { margin:0; font-size:12px; font-weight:600; overflow-wrap:anywhere; }
+.pwu-preview-warnings { margin:8px 0; }
+.pwu-preview-warnings>summary { cursor:pointer; color:var(--pwu-warning); }
+.pwu-preview-warnings ul { max-height:180px; overflow:auto; margin:8px 0; padding-left:20px; overflow-wrap:anywhere; }
+.pwu-preview-warnings li { margin-bottom:4px; }
+.portfolio-workbook-upload :is(summary,input,button):focus-visible { outline:2px solid var(--pwu-blue); outline-offset:3px; }
+.dark .portfolio-workbook-upload,[data-theme=dark] .portfolio-workbook-upload { --pwu-surface:var(--pl-card,#17263c); --pwu-text:var(--pl-text,#e2ebfa); --pwu-muted:var(--pl-muted,#acbcd1); --pwu-line:var(--pl-line,#354862); --pwu-blue:var(--pl-blue,#8bb7ff); --pwu-soft:var(--pl-soft,#1c2e47); --pwu-error:#ffafb5; --pwu-success:#88d9b8; --pwu-warning:#ebc482; }
+.dark .portfolio-workbook-upload .pwu-button--primary,[data-theme=dark] .portfolio-workbook-upload .pwu-button--primary { color:#102645; }
+@media(max-width:600px) { .pwu-heading { align-items:stretch; flex-direction:column; } }
+@media print { .portfolio-workbook-upload { display:none !important; } }

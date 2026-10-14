@@ -22,6 +22,7 @@ export const LOGO_CONFIG = {
     default: '/assets/images/rejlers-logo.png',
     svg: '/assets/images/rejlers-logo.svg',
     horizontal: '/assets/images/rejlers-logo-horizontal.svg',
+    inverse: '/assets/radai-logo-white-transparent.png',
     alt: 'Rejlers Engineering Solutions'
   },
   

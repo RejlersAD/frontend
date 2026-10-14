@@ -1,0 +1,132 @@
+/*
+ * Shared screen typography for business tables. Keep geometry in each workspace:
+ * no padding, row heights, column widths, line heights or icon sizes are changed.
+ * The named layer makes these typography-only important rules independent of
+ * lazy-loaded page CSS (some older pages also use important font declarations).
+ */
+@layer radai-table-typography {
+  @media screen {
+    :where(.main-content, [role="dialog"]) :where(table, [role="table"], .MuiDataGrid-root):not(:where(.wh-calendar-grid, .wh-calendar-grid *, .gr-paper *, .gr-print-document *, .po-print-document *, .po-template-page *, [data-table-typography="preserve"], [data-table-typography="preserve"] *)) {
+      font-family: var(--font-sans, "Segoe UI Variable", "Segoe UI", sans-serif) !important;
+      font-size: 13px !important;
+      font-weight: 500 !important;
+      color: var(--app-text, #0f172a);
+    }
+
+    :where(.main-content, [role="dialog"]) :where(table, [role="table"], .MuiDataGrid-root)
+    :where(td, th, [role="cell"], [role="gridcell"], [role="columnheader"], [role="rowheader"]):not(:where(.wh-calendar-grid, .wh-calendar-grid *, .gr-paper *, .gr-print-document *, .po-print-document *, .po-template-page *, [data-table-typography="preserve"], [data-table-typography="preserve"] *)) {
+      font-size: 13px !important;
+      font-weight: 500 !important;
+    }
+
+    /* Older tables put their small font directly on the text wrapper. */
+    :where(.main-content, [role="dialog"]) :where(td, [role="cell"], [role="gridcell"])
+    > :where(div, span, p, label, time, code):not(:where(.wh-calendar-grid, .wh-calendar-grid *, .gr-paper *, .gr-print-document *, .po-print-document *, .po-template-page *, [data-table-typography="preserve"], [data-table-typography="preserve"] *)),
+    :where(.main-content, [role="dialog"]) :where(td, [role="cell"], [role="gridcell"])
+    :where(.text-xs, .text-sm, [class*="text-["], .incoming-supplier > span, .cc-pulse-metric > strong):not(:where(.wh-calendar-grid, .wh-calendar-grid *, .gr-paper *, .gr-print-document *, .po-print-document *, .po-template-page *, [data-table-typography="preserve"], [data-table-typography="preserve"] *)) {
+      font-size: 13px !important;
+      font-weight: 500 !important;
+    }
+
+    :where(.main-content, [role="dialog"]) :where(td, [role="cell"], [role="gridcell"])
+    :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea):not(:where(.wh-calendar-grid, .wh-calendar-grid *, .gr-paper *, .gr-print-document *, .po-print-document *, .po-template-page *, [data-table-typography="preserve"], [data-table-typography="preserve"] *)) {
+      font-size: 13px !important;
+      font-weight: 500 !important;
+    }
+
+    /* Actions stay compact; reference buttons are promoted below. */
+    :where(.main-content, [role="dialog"]) :where(td, [role="cell"], [role="gridcell"])
+    :where(button, [role="button"], .cc-link, .cc-text-link, .cc-table-action,
+      .apc-review-button, .eop-open, .wh-work-action, .finance-command-row-action,
+      .incoming-row-action, .oc-row-button, .grw-row-action, [data-table-text="action"]):not(:where(.wh-calendar-grid, .wh-calendar-grid *, .gr-paper *, .gr-print-document *, .po-print-document *, .po-template-page *, [data-table-typography="preserve"], [data-table-typography="preserve"] *)) {
+      font-size: 11px !important;
+      font-weight: 600 !important;
+    }
+
+    :where(.main-content, [role="dialog"]) :where(thead th, thead td, [role="columnheader"]):not(:where(.wh-calendar-grid, .wh-calendar-grid *, .gr-paper *, .gr-print-document *, .po-print-document *, .po-template-page *, [data-table-typography="preserve"], [data-table-typography="preserve"] *)),
+    :where(.main-content, [role="dialog"]) :where(thead th, thead td, [role="columnheader"])
+    :where(button, a, span, div, strong, label, input):not(:where(.wh-calendar-grid, .wh-calendar-grid *, .gr-paper *, .gr-print-document *, .po-print-document *, .po-template-page *, [data-table-typography="preserve"], [data-table-typography="preserve"] *)) {
+      font-size: 13px !important;
+      font-weight: 600 !important;
+    }
+
+    :where(.main-content, [role="dialog"]) :where(thead th, thead td, [role="columnheader"]):not(:where(.wh-calendar-grid, .wh-calendar-grid *, .gr-paper *, .gr-print-document *, .po-print-document *, .po-template-page *, [data-table-typography="preserve"], [data-table-typography="preserve"] *)) {
+      color: var(--app-text, #0f172a) !important;
+    }
+
+    /* Some engineering tables deliberately use white headings on dark fills. */
+    :where(.main-content, [role="dialog"]) :where(table.text-white th, thead.text-white th, thead .text-white, thead .text-white th):not(:where(.wh-calendar-grid, .wh-calendar-grid *, .gr-paper *, .gr-print-document *, .po-print-document *, .po-template-page *, [data-table-typography="preserve"], [data-table-typography="preserve"] *)) {
+      color: #fff !important;
+    }
+
+    :where(.main-content, [role="dialog"]) :where(tbody th, tbody th button, [role="rowheader"], td[data-table-text="primary"], [role="cell"][data-table-text="primary"], [role="gridcell"][data-table-text="primary"]):not(:where(.wh-calendar-grid, .wh-calendar-grid *, .gr-paper *, .gr-print-document *, .po-print-document *, .po-template-page *, [data-table-typography="preserve"], [data-table-typography="preserve"] *)),
+    :where(.main-content, [role="dialog"]) :where(td, th, [role="cell"], [role="gridcell"], [role="rowheader"])
+    :where(strong, b, a:not([role="button"]), .cc-cell-button, .cc-project-name, .cc-risk-name,
+      .fp-control-name, .rc-measure-name, .apc-reference-button, .eop-reference, .eop-request-title,
+      .incoming-invoice-id > button, .oc-invoice-link, .oc-customer,
+      .grw-reference, .grw-po, [data-table-text="primary"]):not(:where(.wh-calendar-grid, .wh-calendar-grid *, .gr-paper *, .gr-print-document *, .po-print-document *, .po-template-page *, [data-table-typography="preserve"], [data-table-typography="preserve"] *)) {
+      font-size: 13px !important;
+      font-weight: 600 !important;
+    }
+
+    /* Preserve the normal size of numeric values; only prose/details are secondary. */
+    :where(.main-content, [role="dialog"]) :where(td, th, [role="cell"], [role="gridcell"], [role="rowheader"])
+    :where(small, .cc-cell-detail, .cc-muted, .cc-pulse-metric > span,
+      .apc-muted, .eop-muted, .finance-command-muted, .oc-project, .oc-muted,
+      .grw-supplier, .ua-muted, .text-gray-400, .text-gray-500, .text-slate-400, .text-slate-500,
+      [data-table-text="secondary"]):not(:where(.wh-calendar-grid, .wh-calendar-grid *, .gr-paper *, .gr-print-document *, .po-print-document *, .po-template-page *, [data-table-typography="preserve"], [data-table-typography="preserve"] *)) {
+      font-size: 11px !important;
+      font-weight: 400 !important;
+    }
+
+    :where(.main-content, [role="dialog"]) :where(td, th, [role="cell"], [role="gridcell"])
+    :where(.badge, [class*="-badge"], [class*="-chip"], .MuiChip-root, .MuiChip-label, .rounded-full,
+      .cc-status, .fp-priority, .pp-health-badge, .cp-priority, .cp-health,
+      .wf-neutral-state, .rc-followup-status, .apc-row-priority, .eop-priority,
+      .eop-status, .wh-status, .finance-command-priority, .finance-command-health-status,
+      .incoming-status, .oc-badge, .grw-badge, .grw-documents, .grw-age, .ua-role,
+      [data-table-text="status"]):not(:where(.wh-calendar-grid, .wh-calendar-grid *, .gr-paper *, .gr-print-document *, .po-print-document *, .po-template-page *, [data-table-typography="preserve"], [data-table-typography="preserve"] *)) {
+      font-size: 11px !important;
+      font-weight: 600 !important;
+    }
+
+    /* Nested badge labels and action links must not become primary text. */
+    :where(.main-content, [role="dialog"]) :where(td, th, [role="cell"], [role="gridcell"])
+    :where(.badge, [class*="-badge"], .rounded-full, .cc-status, .apc-row-priority,
+      .grw-age, [data-table-text="status"]) :where(span, strong, b):not(:where(.wh-calendar-grid, .wh-calendar-grid *, .gr-paper *, .gr-print-document *, .po-print-document *, .po-template-page *, [data-table-typography="preserve"], [data-table-typography="preserve"] *)),
+    :where(.main-content, [role="dialog"]) :where(td, [role="cell"], [role="gridcell"])
+    :where(a.cc-link, a.cc-text-link, a.cc-table-action, a.wh-work-action,
+      a.incoming-row-action, a.oc-row-button, a.grw-row-action, a[data-table-text="action"]):not(:where(.wh-calendar-grid, .wh-calendar-grid *, .gr-paper *, .gr-print-document *, .po-print-document *, .po-template-page *, [data-table-typography="preserve"], [data-table-typography="preserve"] *)) {
+      font-size: 11px !important;
+      font-weight: 600 !important;
+    }
+
+    /* Read-only declarations and supporting labels retain their muted color. */
+    :where(.main-content, [role="dialog"]) :where(td, th)
+    :where(.cc-cell-detail, .grw-supplier, .oc-project, [data-table-text="secondary"]):not(:where(.wh-calendar-grid, .wh-calendar-grid *, .gr-paper *, .gr-print-document *, .po-print-document *, .po-template-page *, [data-table-typography="preserve"], [data-table-typography="preserve"] *)) {
+      color: var(--app-text-muted, #475569);
+    }
+
+    /* Role assignments use an aligned list rather than a native table. */
+    :where(.main-content) :where(.ra-users-columns, .ra-users-columns > span):not(:where(.wh-calendar-grid, .wh-calendar-grid *, .gr-paper *, .gr-print-document *, .po-print-document *, .po-template-page *, [data-table-typography="preserve"], [data-table-typography="preserve"] *)) {
+      font-size: 13px !important;
+      font-weight: 600 !important;
+    }
+    :where(.main-content) :where(.ra-assignment-row, .ra-assignment-row > div):not(:where(.wh-calendar-grid, .wh-calendar-grid *, .gr-paper *, .gr-print-document *, .po-print-document *, .po-template-page *, [data-table-typography="preserve"], [data-table-typography="preserve"] *)) {
+      font-size: 13px !important;
+      font-weight: 500 !important;
+    }
+    :where(.main-content) .ra-assignment-row :where(strong, [data-table-text="primary"]):not(:where(.wh-calendar-grid, .wh-calendar-grid *, .gr-paper *, .gr-print-document *, .po-print-document *, .po-template-page *, [data-table-typography="preserve"], [data-table-typography="preserve"] *)) {
+      font-size: 13px !important;
+      font-weight: 600 !important;
+    }
+    :where(.main-content) .ra-assignment-row :where(small, [data-table-text="secondary"]):not(:where(.wh-calendar-grid, .wh-calendar-grid *, .gr-paper *, .gr-print-document *, .po-print-document *, .po-template-page *, [data-table-typography="preserve"], [data-table-typography="preserve"] *)) {
+      font-size: 11px !important;
+      font-weight: 400 !important;
+    }
+    :where(.main-content) .ra-assignment-row :where(button, .ra-chip):not(:where(.wh-calendar-grid, .wh-calendar-grid *, .gr-paper *, .gr-print-document *, .po-print-document *, .po-template-page *, [data-table-typography="preserve"], [data-table-typography="preserve"] *)) {
+      font-size: 11px !important;
+      font-weight: 600 !important;
+    }
+  }
+}

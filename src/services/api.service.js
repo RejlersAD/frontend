@@ -2,6 +2,8 @@ import axios from 'axios'
 import { API_BASE_URL, API_TIMEOUT, API_TIMEOUT_LONG, API_TIMEOUT_REFRESH } from '../config/api.config'
 import { STORAGE_KEYS } from '../config/app.config'
 import { toast } from 'react-toastify'
+import { clearDevicePushSession } from './pushDeviceSession'
+import { REDIRECT_AFTER_LOGIN_KEY } from '../config/solutions.config'
 
 /**
  * Enhanced Axios instance with CORS error handling and retry logic
@@ -23,6 +25,7 @@ const AUTH_RESILIENCE_CONFIG = {
     '/notifications/categories',
     '/usage_tracking/',
     '/activity/heartbeat',
+    '/users/employees/my-profile-photo/',
     '/rbac/ai-champion/champion/current/',
     '/admin/',
     '/rbac/users/me/',
@@ -39,6 +42,7 @@ const AUTH_RESILIENCE_CONFIG = {
     '/notifications/categories',
     '/usage_tracking/',
     '/activity/heartbeat',
+    '/users/employees/my-profile-photo/',
     '/spec-customization/paper-spec/',  // job-status polling
     '/health/',                          // warmup ping — caller treats failure as non-fatal
     '/process-datasheet/mov-job-status/', // MOV async job poller — server may be briefly busy with extraction
@@ -76,10 +80,12 @@ const _isRefreshBlacklisted = (url = '') =>
   AUTH_RESILIENCE_CONFIG.REFRESH_BLACKLIST.some((s) => url.includes(s))
 
 const _clearAuthAndRedirect = (showToast = true) => {
+  void clearDevicePushSession().catch(() => {})
   localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN)
   localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN)
   localStorage.removeItem(STORAGE_KEYS.USER_DATA)
   if (!window.location.pathname.includes('/login')) {
+    sessionStorage.setItem(REDIRECT_AFTER_LOGIN_KEY, `${window.location.pathname}${window.location.search}${window.location.hash}`)
     if (showToast) toast.error('Session expired. Please login again.')
     setTimeout(() => { window.location.href = '/login' }, 1000)
   }
@@ -205,7 +211,8 @@ apiClient.interceptors.request.use(
     return config
   },
   (error) => {
-    console.error('[API] ❌ Request interceptor error:', error);
+    if (error.config?.sensitiveRequest) console.error('[API] Sensitive request could not be prepared');
+    else console.error('[API] ❌ Request interceptor error:', error);
     return Promise.reject(error)
   }
 )
@@ -237,11 +244,15 @@ apiClient.interceptors.response.use(
     // silentTimeout: per-request opt-in (not URL-wide) — lets one caller of a
     // shared endpoint suppress the toast while another caller of that same
     // endpoint still surfaces errors normally.
-    const _silent = _isSilentTimeoutEndpoint(error.config?.url || '') || error.config?.silentTimeout === true
+    const _silent = _isSilentTimeoutEndpoint(error.config?.url || '') ||
+      error.config?.silentTimeout === true ||
+      error.config?.suppressErrorToast === true || error.config?.sensitiveRequest === true
     
     // Enhanced error logging for debugging — but stay quiet for background
     // pollers so DevTools doesn't drown in red on a slow worker.
-    if (_silent) {
+    if (error.config?.sensitiveRequest) {
+      console.warn('[API] Sensitive request failed', error.response?.status || 'network');
+    } else if (_silent) {
       console.warn('[API] Silent endpoint error:', error.config?.url, '→', error.message)
     } else {
       console.group('[API Error] ❌ Detailed Error Information');
@@ -378,7 +389,7 @@ apiClient.interceptors.response.use(
     // Enhanced error messages for different error types
     if (error.response?.status !== 401 || originalRequest._retry) {
       // Suppress toasts for background/polling endpoints — they should fail silently
-      const silent = _isSilentAuthEndpoint(originalRequest?.url || '')
+      const silent = _silent || _isSilentAuthEndpoint(originalRequest?.url || '')
       if (silent) {
         return Promise.reject(error)
       }

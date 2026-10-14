@@ -1,13 +1,13 @@
 import React from 'react'
 
 const TONE_BG = {
-  blue:   'bg-blue-50    text-blue-700    ring-blue-100',
-  indigo: 'bg-indigo-50  text-indigo-700  ring-indigo-100',
-  green:  'bg-emerald-50 text-emerald-700 ring-emerald-100',
-  amber:  'bg-amber-50   text-amber-700   ring-amber-100',
-  rose:   'bg-rose-50    text-rose-700    ring-rose-100',
-  violet: 'bg-violet-50  text-violet-700  ring-violet-100',
-  slate:  'bg-slate-50   text-slate-700   ring-slate-200',
+  blue:   'border-blue-200 bg-gradient-to-br from-white to-blue-50/70 text-blue-800',
+  indigo: 'border-indigo-200 bg-gradient-to-br from-white to-indigo-50/70 text-indigo-800',
+  green:  'border-emerald-200 bg-gradient-to-br from-white to-emerald-50/70 text-emerald-800',
+  amber:  'border-amber-200 bg-gradient-to-br from-white to-amber-50/80 text-amber-800',
+  rose:   'border-rose-200 bg-gradient-to-br from-white to-rose-50/80 text-rose-800',
+  violet: 'border-violet-200 bg-gradient-to-br from-white to-violet-50/70 text-violet-800',
+  slate:  'border-slate-200 bg-gradient-to-br from-white to-slate-50 text-slate-800',
 }
 
 function formatCurrency(value, currency = 'AED') {
@@ -29,7 +29,7 @@ export default function KpiCard({ label, value, tone = 'slate', isCurrency = fal
   else if (isPercent)  display = `${Number(value).toFixed(1)}%`
 
   return (
-    <div className={`rounded-xl ring-1 p-4 ${TONE_BG[tone] || TONE_BG.slate}`}>
+    <div className={`rounded-xl border p-4 ${TONE_BG[tone] || TONE_BG.slate}`}>
       <div className="text-xs uppercase tracking-wider opacity-80">{label}</div>
       <div className="mt-2 text-2xl font-semibold">{display}</div>
       {sublabel && <div className="mt-1 text-xs opacity-70">{sublabel}</div>}

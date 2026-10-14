@@ -1,3 +1,4 @@
+import { radaiAlert } from '../../services/radaiDialog'
 /**
  * Invoice Detail Page
  * View invoice details, PDF preview, and approval workflow
@@ -35,7 +36,7 @@ const InvoiceDetail = () => {
       await financeService.processInvoice(id);
       await fetchInvoice();
     } catch (error) {
-      alert('Failed to process invoice');
+      await radaiAlert('Failed to process invoice');
     } finally {
       setProcessing(false);
     }
@@ -163,7 +164,7 @@ const InvoiceDetail = () => {
         <div className="bg-white rounded-lg shadow-md p-6">
           <h3 className="text-xl font-bold mb-4">Invoice Preview</h3>
           <iframe
-            src={financeService.getInvoicePreviewUrl(id)}
+            src={financeService.getInvoicePreviewUrl(invoice)}
             className="w-full h-[800px] border border-gray-300 rounded"
             title="Invoice PDF"
           />

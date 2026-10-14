@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../../../../services/radaiDialog'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'react-toastify'
 import {
@@ -22,8 +23,9 @@ const THEME_BG_SOFT = '#f8fafc'
  * Props:
  *   activeLineList     — currently-active LL (or null)
  *   onChange()         — called after activate / delete / refresh so parent can refetch
+ *   projectId          — active project's UUID, scopes the listed history to it
  */
-export default function LineListHistoryPopover({ activeLineList, onChange }) {
+export default function LineListHistoryPopover({ activeLineList, onChange, projectId }) {
   const [open, setOpen] = useState(false)
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(false)
@@ -32,14 +34,14 @@ export default function LineListHistoryPopover({ activeLineList, onChange }) {
   const refresh = useCallback(async () => {
     setLoading(true)
     try {
-      const rows = await listLineLists()
+      const rows = await listLineLists(projectId)
       setHistory(Array.isArray(rows) ? rows : (rows?.results || []))
     } catch (err) {
       console.warn('[LineListHistoryPopover] refresh failed', err)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [projectId])
 
   useEffect(() => { if (open) refresh() }, [open, refresh])
 
@@ -64,7 +66,7 @@ export default function LineListHistoryPopover({ activeLineList, onChange }) {
   }
 
   const onDelete = async (id) => {
-    if (!window.confirm('Delete this uploaded Line List?')) return
+    if (!(await radaiConfirm('Delete this uploaded Line List?'))) return
     try {
       await deleteLineList(id)
       await refresh()

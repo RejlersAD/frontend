@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../../services/radaiDialog'
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import {
@@ -154,7 +155,7 @@ const WorkExperienceSection = () => {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Delete this experience entry?')) return;
+    if (!(await radaiConfirm('Delete this experience entry?'))) return;
     
     setIsLoading(true);
     try {

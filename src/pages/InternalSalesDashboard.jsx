@@ -88,10 +88,11 @@ const CONFIG = {
     'Other':                '#cbd5e1',
   },
 
-  // Auto-refresh timers (ms)
-  refreshIntervalMs:  60_000,
-  activeNowRefreshMs: 15_000,
-  sessionsRefreshMs:  30_000,
+  // Auto-refresh timers (ms) — widened from 60s/15s/30s, part of the fix for
+  // production Gunicorn worker-pool exhaustion from too many dashboards polling
+  refreshIntervalMs:  300_000,
+  activeNowRefreshMs: 300_000,
+  sessionsRefreshMs:  300_000,
   topUsersLimit:      10,
 };
 

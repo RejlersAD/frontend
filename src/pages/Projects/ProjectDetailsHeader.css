@@ -1,0 +1,205 @@
+.project-performance-workspace.pp-details-workspace {
+  background: #f3f8ff;
+  color: #071846;
+  font-family: 'IBM Plex Sans', 'Segoe UI', Arial, sans-serif;
+}
+.project-performance-workspace.pp-details-workspace .pp-body { padding: 0; }
+.pp-details-workspace .pp-dialog[aria-label="Project activity"] .pp-table { min-width: 800px; }
+#application-content:has(.pp-details-workspace) > header { height: 48px; box-shadow: 0 1px 3px rgb(18 49 99 / 4%); }
+#application-content:has(.pp-details-workspace) > main.main-content { padding-top: 0; background: #f3f8ff; }
+#application-content:has(.pp-details-workspace) > footer { display: none; }
+.pd-header { color: #071846; font-family: inherit; background: linear-gradient(110deg, #f7faff, #f0f7ff 60%, #f9fbff); }
+.pd-header *, .pd-header *::before, .pd-header *::after { box-sizing: border-box; }
+.pd-header :is(button, input) { font-family: inherit; }
+.pd-header button { cursor: pointer; }
+.pd-header button:disabled { cursor: not-allowed; opacity: .5; }
+.pd-header :is(button, summary, input):focus-visible { outline: 2px solid #0063ff; outline-offset: 3px; }
+.pd-heading-content { position: relative; min-height: 118px; padding: 8px 16px 10px; }
+.pd-location { display: flex; align-items: center; gap: 15px; min-height: 18px; padding-right: 535px; color: #49649a; font-size: 12px; }
+.pd-location > button, .pd-location nav > button { display: inline-flex; align-items: center; gap: 7px; padding: 0; border: 0; background: none; color: #0055d9; font-size: inherit; white-space: nowrap; }
+.pd-location > button { font-weight: 500; }
+.pd-location-divider { width: 1px; height: 12px; background: #c9dbf5; flex-shrink: 0; }
+.pd-location nav { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.pd-header h1 { margin: 7px 535px 8px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 28px; line-height: 34px; font-weight: 700; letter-spacing: -.5px; }
+.pd-header-actions { position: absolute; right: 16px; top: 16px; display: flex; align-items: center; gap: 9px; }
+.pd-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; padding: 8px 15px; border: 1px solid #cbdcf7; border-radius: 5px; background: white; color: #071e59; font: 500 13px/20px 'IBM Plex Sans', 'Segoe UI', sans-serif; white-space: nowrap; }
+.pd-button:hover:not(:disabled) { background: #edf4ff; border-color: #96b8ee; }
+.pd-button.pd-primary { background: #0063ff; border-color: #0063ff; color: white; }
+.pd-button.pd-primary:hover:not(:disabled) { background: #0053dc; }
+.pd-icon-button { width: 48px; padding-inline: 10px; }
+.pd-project-facts { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 0; min-height: 35px; font-size: 12px; }
+.pd-project-facts > div { display: flex; align-items: center; gap: 12px; min-width: 0; min-height: 32px; padding: 0 22px; border-left: 1px solid #cbdcf4; }
+.pd-project-facts > div:first-child { padding-left: 0; border-left: 0; font-weight: 600; }
+.pd-project-facts strong { display: block; font-weight: 400; line-height: 17px; }
+.pd-project-facts small { display: block; font-size: 11px; line-height: 15px; color: #48679d; }
+.pd-project-facts svg { flex-shrink: 0; color: #254f9d; }
+.pd-project-facts .pd-client { display: block; line-height: 32px; white-space: nowrap; color: #466398; }
+.pd-client strong { display: inline; color: #18366d; }
+.pd-project-facts .pd-manager { gap: 9px; }
+.pd-manager strong { font-weight: 500; white-space: nowrap; }
+.pd-person-avatar { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 32px; height: 32px; border: 1px solid #d3e1f4; border-radius: 50%; background: #dde8f7; color: #264b83; font-size: 11px; font-weight: 600; }
+.pd-project-facts .pd-status, .pd-project-facts .pd-health { display: block; }
+.pd-pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 11px; border-radius: 7px; background: #e0ecff; color: #0053dc; font-size: 12px; line-height: 18px; white-space: nowrap; }
+.pd-pill svg { color: inherit; }
+.pd-health-warning, .pd-health-danger { background: #fff0d8; color: #a34b00; }
+.pd-health-success, .pd-status-completed { background: #ddf8ec; color: #00714c; }
+.pd-health-neutral, .pd-status-cancelled { background: #e7edf6; color: #476087; }
+.pd-project-facts .pd-unavailable { color: #a04d00; font-size: 11px; white-space: nowrap; }
+.pd-report-date, .pd-baseline { white-space: nowrap; }
+.pd-project-facts .pd-agreement-action { flex-direction: column; align-items: flex-end; flex-shrink: 0; gap: 3px; margin-left: auto; padding: 0 0 0 12px; border-left: 0; }
+.pd-agreement-action .pd-button { min-height: 33px; padding: 6px 11px; font-size: 12px; }
+.pd-project-facts .pd-agreement-action .pd-button svg { color: inherit; }
+.pd-tabs { border-top: 1px solid #dce8f7; border-bottom: 1px solid #d6e5f8; padding: 0 16px; background: #ffffffc9; overflow-x: auto; scrollbar-width: thin; }
+.pd-tabs ul { display: flex; justify-content: space-between; gap: 7px; list-style: none; margin: 0; padding: 0; min-width: 990px; }
+.pd-tabs li { display: flex; }
+.pd-tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 12px; min-height: 39px; padding: 8px 20px; border: 0; border-bottom: 2px solid transparent; background: none; color: #081e57; font-size: 13px; font-weight: 500; white-space: nowrap; }
+.pd-tabs button[aria-current=page] { color: #0063ff; border-bottom-color: #0063ff; }
+.pd-tabs button:hover { background: #f0f6ff; }
+.pd-menu { position: relative; }
+.pd-menu summary { list-style: none; cursor: pointer; }
+.pd-menu summary::-webkit-details-marker { display: none; }
+.pd-menu-content { position: absolute; z-index: 80; right: 0; top: calc(100% + 6px); width: 300px; max-height: calc(100dvh - 135px); overflow-y: auto; padding: 6px; background: white; border: 1px solid #c9dcf7; border-radius: 6px; box-shadow: 0 8px 30px #122d5929; }
+.pd-menu-content > button { display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 10px; border: 0; border-radius: 3px; background: transparent; color: #25467b; font-size: 12px; text-align: left; }
+.pd-menu-content > button:hover { background: #edf4ff; }
+.pd-menu-content > .pd-danger-action { color: #b32940; }
+.pd-menu-note { padding: 8px 10px; margin: 0; color: #50678d; font-size: 11px; }
+.pd-add-menu summary[aria-disabled=true] { opacity: .5; cursor: not-allowed; }
+.pd-add-menu .pd-menu-content { left: 0; right: auto; }
+.pd-switch-project { padding: 7px 6px 11px; margin-bottom: 4px; border-bottom: 1px solid #dbe6f7; }
+.dark .project-performance-workspace.pp-details-workspace, .dark #application-content:has(.pp-details-workspace) > main.main-content { background: #101d30; color: #e0ebff; }
+.dark .pd-header { color: #e0ebff; background: linear-gradient(110deg, #14233a, #182b46); }
+.dark .pd-location, .dark .pd-project-facts small, .dark .pd-project-facts .pd-client { color: #adc4e9; }
+.dark .pd-location button, .dark .pd-project-facts svg { color: #9cc5ff; }
+.dark .pd-project-facts > div { border-color: #385277; }
+.dark .pd-client strong { color: #d1e2ff; }
+.dark .pd-person-avatar { background: #304463; border-color: #517197; color: #d7e7ff; }
+.dark .pd-button { background: #1c2e49; border-color: #4b6891; color: #deebff; }
+.dark .pd-button.pd-primary { background: #0063ff; border-color: #4387ff; color: white; }
+.dark .pd-button:hover:not(:disabled) { background: #294a74; }
+.dark .pd-pill { background: #294572; color: #c6ddff; }
+.dark .pd-health-warning, .dark .pd-health-danger { background: #493921; color: #ffdc9c; }
+.dark .pd-health-success, .dark .pd-status-completed { background: #174331; color: #b4edcb; }
+.dark .pd-health-neutral, .dark .pd-status-cancelled { background: #30415d; color: #cbdaf1; }
+.dark .pd-project-facts .pd-unavailable { color: #ffdaa0; }
+.dark .pd-tabs { background: #16253b; border-color: #334c70; }
+.dark .pd-tabs button { color: #d0e0fb; }
+.dark .pd-tabs button[aria-current=page] { color: #9dc6ff; border-bottom-color: #77aaff; }
+.dark .pd-tabs button:hover { background: #213b5d; }
+.dark .pd-menu-content { background: #1a2b44; border-color: #4b6891; }
+.dark .pd-menu-content > button { color: #d3e4ff; }
+.dark .pd-menu-content > button:hover { background: #284469; }
+.dark .pd-menu-content > .pd-danger-action { color: #ffb7c2; }
+.dark .pd-menu-note { color: #b3c7e7; }
+@media (max-width: 1450px) {
+  .pd-project-facts > div { padding-inline: 14px; gap: 8px; }
+  .pd-tabs button { padding-inline: 10px; gap: 8px; }
+  .pd-location { padding-right: 490px; gap: 8px; }
+  .pd-header h1 { margin-right: 490px; }
+  .pd-header-actions { gap: 6px; }
+  .pd-button { padding-inline: 11px; }
+}
+@media (max-width: 1200px) {
+  .pd-project-facts { flex-wrap: wrap; row-gap: 10px; }
+  .pd-project-facts > div { padding-inline: 12px; }
+  .pd-heading-content { padding-bottom: 14px; }
+  .pd-location { padding-right: 0; }
+  .pd-header h1 { margin-right: 0; }
+  .pd-header-actions { position: static; margin: 10px 0 14px; }
+}
+@media (max-width: 600px) {
+  .pd-heading-content { padding: 10px; }
+  .pd-location { flex-wrap: wrap; gap: 6px 10px; font-size: 11px; }
+  .pd-location nav { min-width: 0; white-space: normal; flex-wrap: wrap; }
+  .pd-location-divider { display: none; }
+  .pd-header h1 { margin-block: 8px; font-size: 24px; line-height: 29px; white-space: normal; overflow-wrap: anywhere; }
+  .pd-header-actions { flex-wrap: wrap; gap: 7px; }
+  .pd-button { font-size: 12px; gap: 6px; padding-inline: 10px; }
+  .pd-icon-button { width: 38px; }
+  .pd-project-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 0; }
+  .pd-project-facts > div { padding: 0 10px; }
+  .pd-project-facts > div:nth-child(odd) { border-left: 0; padding-left: 0; }
+  .pd-project-facts strong, .pd-project-facts .pd-client { overflow: hidden; text-overflow: ellipsis; }
+  .pd-project-facts .pd-baseline, .pd-project-facts .pd-report-date { white-space: normal; }
+  .pd-project-facts .pd-unavailable { white-space: normal; }
+  .pd-project-facts .pd-agreement-action { grid-column: 1 / -1; align-items: flex-start; margin-left: 0; padding: 0; }
+  .pd-tabs { padding-inline: 10px; }
+  .pd-menu-content { position: fixed; top: 160px; left: 10px; right: 10px; width: auto; max-height: calc(100dvh - 180px); }
+  .pd-add-menu .pd-menu-content { left: 10px; right: 10px; }
+}
+@media print {
+  .pd-header-actions, .pd-location, .pd-tabs, .pd-project-facts .pd-agreement-action { display: none; }
+  .pd-header h1 { margin-right: 0; white-space: normal; }
+}
+
+/* Schedule uses its own compact project header; other project work areas keep
+   their existing information layout and actions. */
+.pd-schedule-header { background: #f7faff; color: #132c50; }
+.pd-schedule-header .pd-heading-content { min-height: 110px; padding: 8px 20px 10px; }
+.pd-schedule-header .pd-location { min-height: 18px; gap: 9px; padding-right: 430px; color: #526487; font-size: 12px; line-height: 18px; }
+.pd-schedule-header .pd-location > button { width: 16px; flex: 0 0 16px; color: #3267b4; }
+.pd-schedule-header .pd-location nav { gap: 7px; }
+.pd-schedule-header .pd-location nav > button { color: #536d91; }
+.pd-schedule-header .pd-location [aria-current="page"] { color: #344d6b; }
+.pd-schedule-header h1 { margin: 4px 430px 2px 0; color: #061640; font-size: 22px; line-height: 28px; font-weight: 700; letter-spacing: -.25px; }
+.pd-schedule-header .pd-header-actions { position: absolute; top: 16px; right: 20px; gap: 8px; margin: 0; }
+.pd-schedule-header .pd-button { min-height: 35px; height: 35px; gap: 7px; padding: 6px 10px; border-color: #d7e1ee; border-radius: 5px; color: #28435f; font-size: 12px; font-weight: 500; line-height: 21px; }
+.pd-schedule-header .pd-resolve-action { width: 140px; background: #005bff; border-color: #005bff; color: #fff; }
+.pd-schedule-header .pd-resolve-action:hover:not(:disabled) { background: #1954d4; border-color: #1954d4; }
+.pd-schedule-header .pd-save-action { width: 107px; }
+.pd-schedule-header .pd-export-action { width: 93px; }
+.pd-schedule-header .pd-icon-button { width: 46px; }
+.pd-schedule-header .pd-schedule-facts-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; min-width: 0; }
+.pd-schedule-header .pd-schedule-facts-row > .pd-project-facts { flex: 0 1 auto; min-width: 0; max-width: 100%; }
+.pd-schedule-header .pd-schedule-controls-host { flex: 0 0 auto; min-width: 0; max-width: 100%; border-left: 1px solid #dce5f0; padding-left: 12px; }
+.pd-schedule-header .pd-schedule-controls-host:empty { display: none; }
+.pd-schedule-header .pd-project-facts { display: flex; flex-wrap: nowrap; align-items: center; gap: 0; min-height: 24px; overflow-x: auto; scrollbar-width: thin; font-size: 12px; line-height: 20px; }
+.pd-schedule-header .pd-project-facts:focus-visible { outline: 2px solid #2463eb; outline-offset: 2px; }
+.pd-schedule-header .pd-project-facts > div { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 5px; min-height: 24px; padding: 0 12px; border-color: #dce5f0; white-space: nowrap; }
+.pd-schedule-header .pd-project-facts > div:first-child { padding-left: 0; font-weight: 600; }
+.pd-schedule-header .pd-project-facts > div:last-child { padding-right: 0; }
+.pd-schedule-header .pd-project-facts :is(.pd-status, .pd-health, .pd-baseline, .pd-report-date) { flex-direction: column; align-items: flex-start; gap: 0; padding-inline: 20px; }
+.pd-schedule-header .pd-project-facts :is(.pd-status, .pd-health, .pd-baseline, .pd-report-date) > .pd-fact-label { font-size: 11px; line-height: 14px; }
+.pd-schedule-header .pd-project-facts strong { display: inline; color: #253e5c; font-weight: 500; line-height: 20px; }
+.pd-schedule-header .pd-project-facts .pd-client { line-height: 20px; }
+.pd-schedule-header .pd-fact-label { color: #526487; }
+.pd-schedule-header .pd-pill { gap: 4px; padding: 2px 8px; border-radius: 5px; font-size: 11px; line-height: 18px; }
+.pd-schedule-header .pd-status-active { background: #e9f1ff; color: #3765a4; }
+.pd-schedule-header .pd-health-warning, .pd-schedule-header .pd-health-danger { background: #fff2dc; color: #865300; }
+.pd-schedule-header .pd-baseline-unavailable { background: #fcebf0; color: #b44861; }
+.pd-schedule-header .pd-baseline-approved { background: #e8f6ef; color: #297454; }
+.pd-schedule-header .pd-data-date { background: #edf1f6; color: #4f637d; }
+.pd-schedule-header .pd-data-date svg { color: inherit; }
+.pd-schedule-header .pd-tabs { height: 40px; padding: 0 20px; border-color: #dbe5f0; background: #fff; }
+.pd-schedule-header .pd-tabs ul { min-width: 990px; height: 39px; gap: 0; }
+.pd-schedule-header .pd-tabs li { flex: 1 0 auto; }
+.pd-schedule-header .pd-tabs button { width: 100%; min-height: 39px; height: 39px; gap: 9px; padding: 8px 10px; color: #112959; font-size: 12.5px; font-weight: 500; }
+.pd-schedule-header .pd-tabs button[aria-current="page"] { color: #2463eb; border-bottom-color: #2463eb; font-weight: 500; }
+@media (max-width: 1350px) {
+  .pd-schedule-header .pd-project-facts { overflow-x: auto; scrollbar-width: thin; }
+  .pd-schedule-header .pd-project-facts > div { padding-inline: 9px; }
+}
+@media (max-width: 900px) {
+  .pd-schedule-header .pd-heading-content { min-height: 0; padding: 10px 12px 12px; }
+  .pd-schedule-header .pd-location { padding-right: 0; }
+  .pd-schedule-header h1 { margin-right: 0; }
+  .pd-schedule-header .pd-header-actions { position: static; flex-wrap: nowrap; gap: 6px; margin: 0 0 10px; }
+  .pd-schedule-header .pd-resolve-action { flex: 1 1 140px; }
+  .pd-schedule-header .pd-save-action { flex: 1 1 107px; }
+  .pd-schedule-header .pd-export-action { flex: 1 1 93px; }
+  .pd-schedule-header .pd-header-actions > .pd-menu { flex: 0 0 36px; }
+  .pd-schedule-header .pd-icon-button { width: 36px; }
+  .pd-schedule-header .pd-project-facts { display: flex; gap: 0; }
+  .pd-schedule-header .pd-schedule-controls-host { border-left: 0; padding-left: 0; }
+  .pd-schedule-header .pd-project-facts > div:nth-child(odd) { padding-left: 9px; border-left: 1px solid #dce5f0; }
+  .pd-schedule-header .pd-project-facts > div:first-child { padding-left: 0; border-left: 0; }
+  .pd-schedule-header .pd-tabs { padding-inline: 12px; }
+}
+@media (max-width: 560px) {
+  .pd-schedule-header .pd-location { flex-wrap: nowrap; gap: 7px; font-size: 11px; }
+  .pd-schedule-header .pd-location nav { gap: 4px; }
+  .pd-schedule-header h1 { margin-block: 4px 10px; font-size: 20px; line-height: 26px; white-space: nowrap; }
+  .pd-schedule-header .pd-header-actions { gap: 5px; }
+  .pd-schedule-header .pd-button { gap: 5px; padding-inline: 7px; font-size: 11px; }
+  .pd-schedule-header .pd-header-actions > .pd-button { width: auto; }
+  .pd-schedule-header .pd-project-facts { font-size: 11px; }
+}

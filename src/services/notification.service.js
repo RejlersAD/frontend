@@ -13,6 +13,7 @@ const NOTIFICATION_BASE_URL = '/notifications'
 // Override at runtime via window.__NOTIFICATION_POLL_TIMEOUT_MS = 5000 if needed.
 const NOTIFICATION_POLL_TIMEOUT_MS =
   (typeof window !== 'undefined' && window.__NOTIFICATION_POLL_TIMEOUT_MS) || 10000
+const NOTIFICATION_ACTION_TIMEOUT_MS = 20000
 
 export const notificationService = {
   /**
@@ -51,13 +52,20 @@ export const notificationService = {
       console.log('[Notification Service] Response:', response.data)
       return response.data.unread_count || 0
     } catch (error) {
-      // Silent failure for background poll — UI keeps the last known count.
-      // Toast suppression is handled in api.service.js via SILENT_TIMEOUT_ENDPOINTS.
-      console.warn('[Notification Service] Unread count poll failed (silent):', error.message)
-      if (error.response?.status === 401) {
-        console.error('[Notification Service] ⚠️ Unauthorized - User may need to login')
+      // Canceled polls are expected on effect cleanup / StrictMode remounts —
+      // keep those truly silent instead of logging a stack trace.
+      const isCanceled = error?.code === 'ERR_CANCELED'
+        || error?.name === 'CanceledError'
+        || error?.message === 'canceled';
+      if (!isCanceled) {
+        // Silent failure for background poll — UI keeps the last known count.
+        // Toast suppression is handled in api.service.js via SILENT_TIMEOUT_ENDPOINTS.
+        console.warn('[Notification Service] Unread count poll failed (silent):', error.message)
+        if (error.response?.status === 401) {
+          console.error('[Notification Service] ⚠️ Unauthorized - User may need to login')
+        }
       }
-      return 0
+      throw error
     }
   },
 
@@ -71,7 +79,7 @@ export const notificationService = {
       const ids = Array.isArray(notificationIds) ? notificationIds : [notificationIds]
       const response = await apiClient.post(`${NOTIFICATION_BASE_URL}/mark_as_read/`, {
         notification_ids: ids
-      })
+      }, { timeout: NOTIFICATION_ACTION_TIMEOUT_MS })
       return response.data
     } catch (error) {
       console.error('[Notification Service] Error marking as read:', error)
@@ -85,7 +93,9 @@ export const notificationService = {
    */
   markAllAsRead: async () => {
     try {
-      const response = await apiClient.post(`${NOTIFICATION_BASE_URL}/mark_all_as_read/`)
+      const response = await apiClient.post(`${NOTIFICATION_BASE_URL}/mark_all_as_read/`, {}, {
+        timeout: NOTIFICATION_ACTION_TIMEOUT_MS,
+      })
       return response.data
     } catch (error) {
       console.error('[Notification Service] Error marking all as read:', error)
@@ -97,12 +107,18 @@ export const notificationService = {
    * Get notification statistics
    * @returns {Promise}
    */
-  getStats: async () => {
+  getStats: async (options = {}) => {
     try {
-      const response = await apiClient.get(`${NOTIFICATION_BASE_URL}/stats/`)
+      const response = await apiClient.get(`${NOTIFICATION_BASE_URL}/stats/`, {
+        timeout: NOTIFICATION_POLL_TIMEOUT_MS,
+        silentTimeout: true,
+        ...options,
+      })
       return response.data
     } catch (error) {
-      console.error('[Notification Service] Error fetching stats:', error)
+      if (error.code !== 'ERR_CANCELED') {
+        console.warn('[Notification Service] Notification statistics unavailable:', error.message)
+      }
       throw error
     }
   },
@@ -157,12 +173,19 @@ export const notificationService = {
    */
   deleteNotification: async (notificationId) => {
     try {
-      const response = await apiClient.delete(`${NOTIFICATION_BASE_URL}/${notificationId}/`)
+      const response = await apiClient.delete(`${NOTIFICATION_BASE_URL}/${notificationId}/`, {
+        timeout: NOTIFICATION_ACTION_TIMEOUT_MS,
+      })
       return response.data
     } catch (error) {
       console.error('[Notification Service] Error deleting notification:', error)
       throw error
     }
+  },
+
+  getOffboardingReview: async (offboardingId) => {
+    const response = await apiClient.get(`/onboarding/offboarding/${offboardingId}/`)
+    return response.data
   },
 
   decideOffboarding: async (offboardingId, decision, note = '') => {

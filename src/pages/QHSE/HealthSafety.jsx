@@ -1,19 +1,8 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { 
-  Shield, 
-  AlertCircle, 
-  UserCheck, 
-  Activity,
-  TrendingUp,
-  Calendar,
-  AlertTriangle,
-  FileText,
-  BarChart3,
-  RefreshCw,
-  Download,
-  Target
+import {
+  AlertCircle, TrendingUp, Calendar, AlertTriangle, FileText,
+  BarChart3, RefreshCw, Download, Target
 } from 'lucide-react';
-import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, Legend, Line, LineChart, ComposedChart, PieChart, Pie, Cell } from 'recharts';
 import { MainHeader } from './components/Common/MainHeader';
 import { LoadingState } from './components/Common/LoadingState';
 import { ErrorState } from './components/Common/ErrorState';
@@ -23,110 +12,41 @@ import { PageControlButtons } from '../../components/PageControlButtons';
 import { QHSE_MODULE_LABELS } from '../../config/qhseModules.config';
 import {
   calculateHealthSafetyMetrics,
-  getSafetyPerformance,
-  generateIncidentTrend,
-  generateSafetyKPIDistribution,
-  getHighRiskProjects,
-  generateSafetyByManager,
-  generateSafetyChecklist,
-  generateMonthlySafetyTrend,
-  HEALTH_SAFETY_FEATURES
+  HEALTH_SAFETY_FEATURES,
+  HEALTH_SAFETY_UNAVAILABLE_REASONS as UNAVAILABLE
 } from './utils/healthSafetyMetrics';
 import {
-  SafetyMetricCard,
-  RiskLevelBadge,
-  SafetyScoreDisplay,
-  HighRiskProjectCard,
-  SafetyChecklistItem,
-  ManagerSafetyCard,
-  SafetyEmptyState
+  SafetyMetricCard, SafetyScoreDisplay, SafetyEmptyState
 } from './components/HealthSafety/SafetyComponents';
 
 const HealthSafety = ({ pageControls }) => {
-  const { data: projectsData, loading, error, refetch, isRefreshing } = useQHSERunningProjects();
-  const [selectedView, setSelectedView] = useState('overview'); // overview, incidents, risk, performance
+  const { data: projectsData, loading, error, refetch, isRefreshing } = useQHSERunningProjects({
+    preserveMissingQualityCounts: true
+  });
+  const [selectedView, setSelectedView] = useState('overview');
+  const safetyMetrics = useMemo(() => calculateHealthSafetyMetrics(projectsData), [projectsData]);
 
-  // Calculate all health and safety metrics
-  const safetyMetrics = useMemo(() => {
-    if (!projectsData || projectsData.length === 0) return null;
-    return calculateHealthSafetyMetrics(projectsData);
-  }, [projectsData]);
-
-  const incidentTrend = useMemo(() => {
-    if (!projectsData || projectsData.length === 0) return [];
-    return generateIncidentTrend(projectsData);
-  }, [projectsData]);
-
-  const safetyKPIDistribution = useMemo(() => {
-    if (!projectsData || projectsData.length === 0) return [];
-    return generateSafetyKPIDistribution(projectsData);
-  }, [projectsData]);
-
-  const highRiskProjects = useMemo(() => {
-    if (!projectsData || projectsData.length === 0) return [];
-    return getHighRiskProjects(projectsData, 5);
-  }, [projectsData]);
-
-  const managerSafety = useMemo(() => {
-    if (!projectsData || projectsData.length === 0) return [];
-    return generateSafetyByManager(projectsData);
-  }, [projectsData]);
-
-  const safetyChecklist = useMemo(() => {
-    if (!projectsData || projectsData.length === 0) return [];
-    return generateSafetyChecklist(projectsData);
-  }, [projectsData]);
-
-  const monthlySafetyTrend = useMemo(() => {
-    if (!projectsData || projectsData.length === 0) return [];
-    return generateMonthlySafetyTrend(projectsData);
-  }, [projectsData]);
-
-  if (loading) {
+  if (loading || error || !projectsData?.length) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-slate-50 p-6">
-        <MainHeader 
+        <MainHeader
           title={QHSE_MODULE_LABELS.healthSafety.shortTitle}
           subtitle={QHSE_MODULE_LABELS.healthSafety.description}
+          showLiveStatus={false}
         />
-        <LoadingState message="Loading occupational health and safety data..." />
+        {loading ? <LoadingState message="Loading occupational health and safety data..." />
+          : error ? <ErrorState error={error} onRetry={refetch} />
+            : <SafetyEmptyState title="Unavailable" message="No project quality records were returned. Safety measures also require incident, injury and exposure evidence; an empty source does not establish zero incidents." />}
       </div>
     );
   }
-
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-slate-50 p-6">
-        <MainHeader 
-          title={QHSE_MODULE_LABELS.healthSafety.shortTitle}
-          subtitle={QHSE_MODULE_LABELS.healthSafety.description}
-        />
-        <ErrorState error={error} onRetry={refetch} />
-      </div>
-    );
-  }
-
-  if (!projectsData || projectsData.length === 0) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-slate-50 p-6">
-        <MainHeader 
-          title={QHSE_MODULE_LABELS.healthSafety.shortTitle}
-          subtitle={QHSE_MODULE_LABELS.healthSafety.description}
-        />
-        <SafetyEmptyState message="No safety data available. Start by adding projects to the system." />
-      </div>
-    );
-  }
-
-  const safetyPerformance = safetyMetrics.safetyPerformance;
-  const CHART_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6'];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-slate-50 p-4 sm:p-6 lg:p-8">
-      {/* Header */}
-      <MainHeader 
+      <MainHeader
         title={QHSE_MODULE_LABELS.healthSafety.shortTitle}
-        subtitle={`${projectsData.length} projects • ${safetyMetrics.totalIncidents} incidents • ${safetyMetrics.daysWithoutIncident} days incident-free`}
+        subtitle={`${projectsData.length} project quality records • Safety metrics unavailable`}
+        showLiveStatus={false}
       >
         <div className="flex items-center gap-3">
           <PageControlButtons controls={pageControls} />
@@ -145,7 +65,6 @@ const HealthSafety = ({ pageControls }) => {
         </div>
       </MainHeader>
 
-      {/* View Selector */}
       <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
         {[
           { id: 'overview', label: 'Overview', icon: BarChart3 },
@@ -168,315 +87,153 @@ const HealthSafety = ({ pageControls }) => {
         ))}
       </div>
 
-      {/* Key Metrics */}
       <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 ${
         HEALTH_SAFETY_FEATURES.enableHighRiskProjects ? 'lg:grid-cols-5' : 'lg:grid-cols-4'
       }`}>
         <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200 flex items-center justify-center">
-          <SafetyScoreDisplay score={safetyMetrics.safetyScore} size="md" />
+          <SafetyScoreDisplay size="md" />
         </div>
-        <SafetyMetricCard
-          title="Incident Rate"
-          value={safetyMetrics.incidentRate.toFixed(2)}
-          subtitle="per 200k work hours"
-          icon={AlertCircle}
-          color={safetyMetrics.incidentRate < 1 ? 'green' : safetyMetrics.incidentRate < 3 ? 'orange' : 'red'}
-          description="OSHA recordable rate"
-        />
-        <SafetyMetricCard
-          title="Open Incidents"
-          value={safetyMetrics.totalIncidents}
-          subtitle={`${safetyMetrics.nearMissCount} near misses`}
-          icon={AlertTriangle}
-          color={safetyMetrics.totalIncidents === 0 ? 'green' : safetyMetrics.totalIncidents < 5 ? 'orange' : 'red'}
-          description="Requiring attention"
-        />
-        <SafetyMetricCard
-          title="Days Without Incident"
-          value={safetyMetrics.daysWithoutIncident}
-          subtitle="Incident-free days"
-          icon={Calendar}
-          color="green"
-          badge="🏆"
-          description={`${safetyMetrics.projectsIncidentFree} projects incident-free`}
-        />
-        {/* High Risk Projects Card - Soft-coded feature flag */}
+        <SafetyMetricCard title="Incident Rate" value={safetyMetrics.incidentRate}
+          icon={AlertCircle} color="slate" description={UNAVAILABLE.incidentRate} />
+        <SafetyMetricCard title="Open Incidents" value={safetyMetrics.totalIncidents}
+          icon={AlertTriangle} color="slate" description={UNAVAILABLE.totalIncidents}
+          subtitle="Near misses: Unavailable (records not connected)" />
+        <SafetyMetricCard title="Days Without Incident" value={safetyMetrics.daysWithoutIncident}
+          icon={Calendar} color="slate" description={UNAVAILABLE.daysWithoutIncident} />
         {HEALTH_SAFETY_FEATURES.enableHighRiskProjects && (
-          <SafetyMetricCard
-            title="High Risk Projects"
-            value={highRiskProjects.length}
-            subtitle="Need immediate attention"
-            icon={Target}
-            color={highRiskProjects.length === 0 ? 'green' : highRiskProjects.length < 3 ? 'orange' : 'red'}
-            description="Priority monitoring"
-          />
+          <SafetyMetricCard title="High Risk Projects" value={null}
+            icon={Target} color="slate" description={UNAVAILABLE.highRiskProjects} />
         )}
       </div>
 
-      {/* Dynamic Content Based on Selected View */}
-      {selectedView === 'overview' && (
-        <OverviewView 
-          safetyMetrics={safetyMetrics}
-          highRiskProjects={highRiskProjects}
-          incidentTrend={incidentTrend}
-          safetyChecklist={safetyChecklist}
-          monthlySafetyTrend={monthlySafetyTrend}
-        />
-      )}
-
-      {selectedView === 'incidents' && (
-        <IncidentsView 
-          incidentTrend={incidentTrend}
-          safetyMetrics={safetyMetrics}
-          highRiskProjects={highRiskProjects}
-        />
-      )}
-
-      {selectedView === 'risk' && (
-        <RiskAssessmentView 
-          highRiskProjects={highRiskProjects}
-          safetyChecklist={safetyChecklist}
-          safetyMetrics={safetyMetrics}
-        />
-      )}
-
-      {selectedView === 'performance' && (
-        <PerformanceView 
-          managerSafety={managerSafety}
-          safetyKPIDistribution={safetyKPIDistribution}
-          monthlySafetyTrend={monthlySafetyTrend}
-          safetyMetrics={safetyMetrics}
-        />
-      )}
+      {selectedView === 'overview' && <OverviewView safetyMetrics={safetyMetrics} />}
+      {selectedView === 'incidents' && <IncidentsView />}
+      {selectedView === 'risk' && <RiskAssessmentView />}
+      {selectedView === 'performance' && <PerformanceView />}
     </div>
   );
 };
 
-// Overview View Component
-const OverviewView = ({ safetyMetrics, highRiskProjects, incidentTrend, safetyChecklist, monthlySafetyTrend }) => {
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* Left Column - High Risk Projects (Soft-coded: Only show if enabled) */}
+// Current sources cannot populate safety charts. Keep the panels explicit rather
+// than plotting null as zero, or presenting an empty series as a clean record.
+const UnavailablePanel = ({ title, reason, icon: Icon, className = '' }) => (
+  <section aria-label={title} className={`bg-white rounded-xl shadow-sm p-6 border border-gray-200 ${className}`}>
+    <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+      {Icon && <Icon className="text-slate-500" size={20} />}
+      {title}
+    </h3>
+    <SafetyEmptyState title="Unavailable" message={reason} />
+  </section>
+);
+
+const QualityCounts = ({ safetyMetrics }) => (
+  <section aria-label="Recorded quality counts" className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
+    <h3 className="text-lg font-semibold text-gray-900 mb-2 flex items-center gap-2">
+      <BarChart3 className="text-blue-500" size={20} />
+      Recorded quality counts
+    </h3>
+    <p className="text-sm text-gray-600 mb-4">
+      Totals from the {safetyMetrics.totalProjects} loaded project quality records. Corrective actions and observations are not incidents, near misses or injuries. Recorded counts do not certify historical completeness.
+    </p>
+    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      {[
+        ['openCARs', 'Open corrective actions'],
+        ['closedCARs', 'Closed corrective actions'],
+        ['openObservations', 'Open observations'],
+        ['closedObservations', 'Closed observations']
+      ].map(([key, title]) => {
+        const value = safetyMetrics.qualityCounts[key];
+        const { knownRecords, totalRecords } = safetyMetrics.qualityCoverage[key];
+        return (
+          <SafetyMetricCard key={key} title={title} value={value} icon={FileText} color="blue"
+            description={value === null
+              ? `A complete total is unavailable. Valid counts: ${knownRecords} of ${totalRecords} records.`
+              : `Recorded count supplied by ${knownRecords} of ${totalRecords} records.`} />
+        );
+      })}
+    </div>
+  </section>
+);
+
+const OverviewView = ({ safetyMetrics }) => (
+  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    {HEALTH_SAFETY_FEATURES.enableHighRiskProjects && (
+      <UnavailablePanel title="High Risk Projects" reason={UNAVAILABLE.highRiskProjects} icon={AlertTriangle} className="lg:col-span-1" />
+    )}
+    <div className={`space-y-6 ${HEALTH_SAFETY_FEATURES.enableHighRiskProjects ? 'lg:col-span-2' : 'lg:col-span-3'}`}>
+      <UnavailablePanel title="Monthly Safety Trend" reason={UNAVAILABLE.monthlyTrend} icon={TrendingUp} />
+      <QualityCounts safetyMetrics={safetyMetrics} />
+      <UnavailablePanel title="Safety Compliance Checklist" reason={UNAVAILABLE.checklist} icon={FileText} />
+    </div>
+  </div>
+);
+
+const IncidentsView = () => (
+  <div className="space-y-6">
+    <div className={`grid grid-cols-1 gap-6 ${HEALTH_SAFETY_FEATURES.enableHighRiskProjects ? 'lg:grid-cols-2' : ''}`}>
+      <UnavailablePanel title="Incident Trend Analysis" reason={UNAVAILABLE.incidentTrend} />
       {HEALTH_SAFETY_FEATURES.enableHighRiskProjects && (
-        <div className="lg:col-span-1">
-          <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200 mb-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <AlertTriangle className="text-orange-500" size={20} />
-              High Risk Projects
-            </h3>
-            {highRiskProjects.length > 0 ? (
-              <div className="space-y-3">
-                {highRiskProjects.map((project, idx) => (
-                  <HighRiskProjectCard key={project.projectNo} project={project} rank={idx + 1} />
-                ))}
-              </div>
-            ) : (
-              <SafetyEmptyState message="No high-risk projects identified" icon={Shield} />
-            )}
-          </div>
-        </div>
+        <UnavailablePanel title="Projects Requiring Investigation" reason={UNAVAILABLE.highRiskProjects} />
       )}
+    </div>
+  </div>
+);
 
-      {/* Middle & Right Columns */}
-      <div className={`space-y-6 ${
-        HEALTH_SAFETY_FEATURES.enableHighRiskProjects ? 'lg:col-span-2' : 'lg:col-span-3'
-      }`}>
-        {/* Monthly Safety Trend */}
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <TrendingUp className="text-green-500" size={20} />
-            Monthly Safety Trend
-          </h3>
-          {monthlySafetyTrend.length > 0 ? (
-            <ResponsiveContainer width="100%" height={300}>
-              <ComposedChart data={monthlySafetyTrend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis dataKey="name" fontSize={12} />
-                <YAxis yAxisId="left" fontSize={12} />
-                <YAxis yAxisId="right" orientation="right" fontSize={12} />
-                <Tooltip />
-                <Legend />
-                <Bar yAxisId="left" dataKey="Incidents" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                <Bar yAxisId="left" dataKey="Near Misses" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-                <Line yAxisId="right" type="monotone" dataKey="Safety Score" stroke="#10b981" strokeWidth={2} />
-              </ComposedChart>
-            </ResponsiveContainer>
-          ) : (
-            <SafetyEmptyState message="No monthly trend data available" />
-          )}
-        </div>
+const RiskAssessmentView = () => (
+  <div className="space-y-6">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {HEALTH_SAFETY_FEATURES.enableHighRiskProjects && (
+        <UnavailablePanel title="High Risk Projects" reason={UNAVAILABLE.highRiskProjects} />
+      )}
+      <UnavailablePanel title="Risk Mitigation Checklist" reason={UNAVAILABLE.checklist}
+        className={HEALTH_SAFETY_FEATURES.enableHighRiskProjects ? '' : 'lg:col-span-2'} />
+    </div>
+  </div>
+);
 
-        {/* Incident Distribution */}
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <BarChart3 className="text-blue-500" size={20} />
-            Incident Distribution by Project Phase
-          </h3>
-          {incidentTrend.length > 0 ? (
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={incidentTrend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis dataKey="name" fontSize={12} />
-                <YAxis fontSize={12} />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="Open Incidents" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Near Misses" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Resolved" fill="#10b981" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <SafetyEmptyState message="No incident data available" />
-          )}
-        </div>
-
-        {/* Safety Checklist */}
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <FileText className="text-purple-500" size={20} />
-            Safety Compliance Checklist
-          </h3>
-          <div className="space-y-3">
-            {safetyChecklist.map((item, idx) => (
-              <SafetyChecklistItem key={idx} item={item} />
-            ))}
+const PerformanceView = () => (
+  <div className="space-y-6">
+    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8">
+      <div className="relative grid grid-cols-1 lg:grid-cols-3 gap-8 items-center">
+        <div className="flex justify-center lg:justify-start">
+          <div className="bg-white/95 rounded-2xl p-4 shadow-2xl w-full max-w-[280px] min-h-[280px] flex items-center justify-center">
+            <SafetyScoreDisplay size="lg" />
           </div>
         </div>
-      </div>
-    </div>
-  );
-};
-
-// Incidents View Component
-const IncidentsView = ({ incidentTrend, safetyMetrics, highRiskProjects }) => {
-  return (
-    <div className="space-y-6">
-      <div className={`grid grid-cols-1 gap-6 ${
-        HEALTH_SAFETY_FEATURES.enableHighRiskProjects ? 'lg:grid-cols-2' : ''
-      }`}>
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Incident Trend Analysis</h3>
-          <ResponsiveContainer width="100%" height={350}>
-            <LineChart data={incidentTrend}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis dataKey="name" fontSize={12} />
-              <YAxis fontSize={12} />
-              <Tooltip />
-              <Legend />
-              <Line type="monotone" dataKey="Open Incidents" stroke="#ef4444" strokeWidth={2} />
-              <Line type="monotone" dataKey="Near Misses" stroke="#f59e0b" strokeWidth={2} />
-              <Line type="monotone" dataKey="Resolved" stroke="#10b981" strokeWidth={2} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* High Risk Projects - Soft-coded: Only show if enabled */}
-        {HEALTH_SAFETY_FEATURES.enableHighRiskProjects && (
-          <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Projects Requiring Investigation</h3>
-            <div className="space-y-3">
-              {highRiskProjects.length > 0 ? (
-                highRiskProjects.map((project, idx) => (
-                  <HighRiskProjectCard key={project.projectNo} project={project} rank={idx + 1} />
-                ))
-              ) : (
-                <SafetyEmptyState message="No projects require investigation" icon={Shield} />
-              )}
+        <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          {[
+            ['Incident Rate', UNAVAILABLE.incidentRate],
+            ['Open Incidents', `${UNAVAILABLE.totalIncidents} Near misses: Unavailable.`],
+            ['Days Incident-Free', UNAVAILABLE.daysWithoutIncident],
+            ['Avg Project Safety', UNAVAILABLE.avgProjectSafety]
+          ].map(([label, reason]) => (
+            <div key={label} className="min-w-0 rounded-xl bg-white/5 border border-white/10 p-4 backdrop-blur-sm">
+              <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-300">{label}</div>
+              <div className="text-base font-bold mt-1 text-slate-100 break-words">Unavailable</div>
+              <div className="text-xs text-slate-300 mt-1 break-words">{reason}</div>
             </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-// Risk Assessment View Component
-const RiskAssessmentView = ({ highRiskProjects, safetyChecklist, safetyMetrics }) => {
-  return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* High Risk Projects - Soft-coded: Only show if enabled */}
-        {HEALTH_SAFETY_FEATURES.enableHighRiskProjects && (
-          <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">High Risk Projects</h3>
-            <div className="space-y-3">
-              {highRiskProjects.map((project, idx) => (
-                <HighRiskProjectCard key={project.projectNo} project={project} rank={idx + 1} />
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className={`bg-white rounded-xl shadow-sm p-6 border border-gray-200 ${
-          HEALTH_SAFETY_FEATURES.enableHighRiskProjects ? '' : 'lg:col-span-2'
-        }`}>
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Risk Mitigation Checklist</h3>
-          <div className="space-y-3">
-            {safetyChecklist.map((item, idx) => (
-              <SafetyChecklistItem key={idx} item={item} />
-            ))}
-          </div>
+          ))}
         </div>
       </div>
     </div>
-  );
-};
 
-// Performance View Component
-const PerformanceView = ({ managerSafety, safetyKPIDistribution, monthlySafetyTrend, safetyMetrics }) => {
-  const CHART_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6'];
-
-  return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Manager Safety Performance</h3>
-          <div className="space-y-3">
-            {managerSafety.map((manager, idx) => (
-              <ManagerSafetyCard key={manager.name} manager={manager} rank={idx + 1} />
-            ))}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Safety KPI Distribution</h3>
-          <ResponsiveContainer width="100%" height={350}>
-            <PieChart>
-              <Pie
-                data={safetyKPIDistribution}
-                cx="50%"
-                cy="50%"
-                labelLine={false}
-                label={(entry) => `${entry.name}: ${entry.value}`}
-                outerRadius={120}
-                fill="#8884d8"
-                dataKey="value"
-              >
-                {safetyKPIDistribution.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
+    <div className={`grid grid-cols-1 gap-6 ${HEALTH_SAFETY_FEATURES.enableManagerSafetyPerformance ? 'lg:grid-cols-2' : ''}`}>
+      {HEALTH_SAFETY_FEATURES.enableManagerSafetyPerformance && (
+        <UnavailablePanel title="Manager Safety Performance" reason={UNAVAILABLE.managerPerformance} />
+      )}
+      <UnavailablePanel title="Safety KPI Distribution" reason={UNAVAILABLE.safetyKPIDistribution} />
+      <UnavailablePanel title="Safety Score Trend" reason={UNAVAILABLE.safetyScore} />
     </div>
-  );
-};
+  </div>
+);
 
-// Wrapper component to provide refetch functionality
 const HealthSafetyWithRefresh = (props) => {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
-  
-  const refetch = useCallback(() => {
-    setRefreshTrigger(prev => prev + 1);
-  }, []);
-  
+  const refetch = useCallback(() => setRefreshTrigger(prev => prev + 1), []);
   return <HealthSafety {...props} refetch={refetch} key={refreshTrigger} />;
 };
 
 export default withDashboardControls(HealthSafetyWithRefresh, {
-  autoRefreshInterval: 30000, // 30 seconds
+  autoRefreshInterval: 30000,
   storageKey: 'qhseHealthSafetyPageControls',
 });

@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../../../services/radaiDialog'
 /**
  * Non-TEFF Metadata Extractor
  * Route:  /engineering/digitization/non-teff-metadata
@@ -593,7 +594,7 @@ const HistoryPanel = ({ onOpen }) => {
 
   // Soft-coded action dispatcher — switch on action.id
   const runAction = async (action, item) => {
-    if (action.confirm && !window.confirm(action.confirm)) return;
+    if (action.confirm && !(await radaiConfirm(action.confirm))) return;
     setBusyId(item.job_id); setBusyAct(action.id); setError(null);
     try {
       if (action.id === 'open') {

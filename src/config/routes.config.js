@@ -47,6 +47,18 @@ export const ROUTES = {
    * PFD Quality Checker
    */
   PFD_QUALITY_CHECKER: '/engineering/process/pfd-quality',
+
+  /**
+   * HMB Stream Table Consolidator
+   * Cross-case HYSYS workbook comparison with optional project archive
+   */
+  HMB_STREAM_TABLE_CONSOLIDATOR: '/engineering/process/hmb-stream-table-consolidator',
+
+  /**
+   * Manage Projects
+   * Standalone, shared cross-tool project registry (no nav entry yet)
+   */
+  PROJECTS: '/projects',
   
   // ═══════════════════════════════════════════════════════════════════════
   // HOME & DASHBOARD
@@ -64,6 +76,11 @@ export const ROUTES = {
   CRITICAL_LINE_LIST: '/engineering/piping/critical-line-list',
   VALVE_MTO: '/engineering/piping/valve-mto',
   NON_TEFF_METADATA: '/engineering/digitization/non-teff-metadata',
+  SMART_PLANT_3D: '/engineering/digitization/smart-plant-3d',
+  VALVE_STANDARDS: '/engineering/digitization/valve-standards',
+  DOCUMENT_VALIDATION: '/engineering/process/pid-checker-v2',
+  // 1.8 Legend Manager — central legend-sheet library
+  LEGEND_MANAGER: '/engineering/legends',
 };
 
 /**

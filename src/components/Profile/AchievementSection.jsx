@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../../services/radaiDialog'
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import {
@@ -141,7 +142,7 @@ const AchievementSection = () => {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Delete this achievement?')) return;
+    if (!(await radaiConfirm('Delete this achievement?'))) return;
     
     setIsLoading(true);
     try {

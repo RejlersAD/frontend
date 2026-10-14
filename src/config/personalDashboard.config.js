@@ -8,7 +8,7 @@ import { FEATURE_FLAGS } from './features.config'
 
 // Polling & timing
 export const PERSONAL_DASHBOARD_CONFIG = {
-  pollIntervalMs:   60000,
+  pollIntervalMs:   300000, // was 60s
   insightPollMs:    0,
   staggerMs:        60,
   fadeInMs:         480,
@@ -100,7 +100,7 @@ export const MODULE_META = {
   designiq:              { icon: '🧠', label: 'DesignIQ',            route: '/designiq',                                 category: 'ai',          accent: 'from-purple-600 to-pink-600' },
   crs_documents:         { icon: '📋', label: 'CRS Documents',       route: '/crs',                                      category: 'ai',          accent: 'from-indigo-500 to-purple-600' },
 
-  project_control:       { icon: '📊', label: 'Projects',            route: '/project-control',                          category: 'operations',  accent: 'from-blue-600 to-indigo-700' },
+  project_control:       { icon: '📊', label: 'Project Control',     route: '/projects',                                 category: 'operations',  accent: 'from-blue-600 to-indigo-700' },
   qhse:                  { icon: '🛡️', label: 'QHSE',                route: '/qhse',                                     category: 'operations',  accent: 'from-emerald-500 to-green-700' },
   timesheet:             { icon: '⏱️', label: 'Timesheet',           route: '/timesheet',                                category: 'operations',  accent: 'from-orange-500 to-red-600' },
   wrench_integration:    { icon: '🔗', label: 'Wrench',              route: '/wrench-integration',                       category: 'operations',  accent: 'from-teal-500 to-cyan-600' },

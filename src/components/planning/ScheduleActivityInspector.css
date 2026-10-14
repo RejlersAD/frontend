@@ -1,0 +1,86 @@
+.schedule-activity-inspector {
+  display: flex;
+  flex: 0 0 304px;
+  flex-direction: column;
+  width: 304px;
+  min-width: 0;
+  max-height: var(--p6-viewport-height, 70dvh);
+  border-left: 1px solid #d8e3f2;
+  background: #fff;
+  color: #152c55;
+  font-family: inherit;
+  font-size: 12px;
+}
+.schedule-activity-inspector:focus { outline: none; }
+.schedule-activity-inspector button { font: inherit; cursor: pointer; }
+.schedule-activity-inspector button:disabled { cursor: not-allowed; opacity: .5; }
+.schedule-activity-inspector :is(button, summary, [tabindex]):focus-visible { outline: 2px solid #0751ff; outline-offset: -2px; }
+.sai-header { display: flex; align-items: flex-start; gap: 10px; min-height: 59px; padding: 12px 12px 10px 16px; }
+.sai-header > div { min-width: 0; flex: 1; }
+.sai-header h4 { margin: 0; color: #0b2555; font-size: 14px; font-weight: 650; line-height: 1.32; overflow-wrap: anywhere; }
+.sai-activity-icon { flex-shrink: 0; margin-top: 2px; color: #0751ff; }
+.sai-activity-icon.is-milestone { fill: #0751ff; }
+.sai-close { display: grid; place-items: center; flex-shrink: 0; width: 22px; height: 24px; margin-top: -3px; border: 0; border-radius: 4px; background: transparent; color: #253c5f; }
+.sai-close:hover { background: #f0f5fb; }
+.sai-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.sai-tabs { display: flex; flex-shrink: 0; height: 40px; padding: 0 12px; border-bottom: 1px solid #e0e8f3; }
+.sai-tabs > button { flex: 1; min-width: 0; min-height: 40px; padding: 9px 4px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: #4c6184; font-size: 12px; }
+.sai-tabs > button[aria-selected="true"] { border-bottom-color: #0751ff; color: #0751ff; font-weight: 600; }
+.sai-tabs > button:hover { background: #f7faff; }
+.sai-content { flex: 1; min-height: 0; padding: 10px 15px 12px; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.sai-fields { margin: 0; }
+.sai-fields > div { display: grid; grid-template-columns: 94px minmax(0, 1fr); align-items: start; gap: 9px; padding: 4px 0; line-height: 1.4; }
+.sai-fields dt { color: #657b9b; font-size: 12px; }
+.sai-fields dd { margin: 0; color: #172d54; font-size: 12px; overflow-wrap: anywhere; }
+.sai-fields dd > small { display: block; margin-top: 2px; color: #647995; font-size: 10px; }
+.sai-fields .sai-proposed { color: #73581d; }
+.sai-owner { display: inline-flex; align-items: center; gap: 7px; }
+.sai-owner > svg { flex-shrink: 0; }
+.sai-milestone-type > svg { color: #0751ff; }
+.sai-date-value { display: flex; align-items: center; justify-content: space-between; gap: 5px; }
+.sai-date-value svg { flex-shrink: 0; color: #284d82; }
+.sai-fields .wbd-owner, .sai-employee-history .wbd-owner { max-width: 100%; padding: 0; color: #172d54; font-size: 12px; text-align: left; }
+.sai-fields .sai-owner .wbd-person-avatar { display: none; }
+.sai-notice { display: flex; align-items: flex-start; gap: 10px; margin: 12px 0 13px; padding: 11px; border: 1px solid #ffd594; border-radius: 5px; background: #fffaf1; }
+.sai-notice > svg { flex-shrink: 0; margin-top: 1px; color: #b76507; }
+.sai-notice strong { display: block; color: #985108; font-size: 12px; line-height: 1.45; }
+.sai-notice p { margin: 5px 0 9px; color: #193258; font-size: 12px; line-height: 1.45; }
+.sai-notice button { min-height: 33px; min-width: 143px; padding: 6px 12px; border: 1px solid #0751ff; border-radius: 4px; background: #0751ff; color: #fff; font-size: 12px; font-weight: 600; }
+.sai-notice button:hover:not(:disabled) { background: #0646d8; }
+.sai-content h5 { margin: 10px 0 7px; color: #355071; font-size: 11px; font-weight: 600; }
+.sai-muted, .sai-source-note p, .sai-evidence p { margin: 5px 0 12px; color: #5d7190; font-size: 11px; line-height: 1.6; }
+.sai-source-note { margin: 13px 0; padding: 1px 10px 0; border-left: 2px solid #bdcfea; background: #f8faff; }
+.sai-source-note p { padding-bottom: 9px; }
+.sai-evidence { border-top: 1px solid #e8eef5; }
+.sai-evidence > summary { padding: 10px 0; color: #405b7d; cursor: pointer; font-size: 11px; }
+.sai-evidence > section { padding: 0 0 7px; }
+.sai-evidence > .pde-activity { padding-bottom: 12px; }
+.sai-comparison-scroll { overflow: auto; margin-bottom: 12px; }
+.sai-comparison-scroll .psl-comparison { min-width: 360px; font-size: 10px; }
+.sai-action, .sai-text-action { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 34px; border: 1px solid #cbdaf0; border-radius: 4px; background: #fff; color: #173766; font-size: 12px; }
+.sai-action { width: 100%; margin-top: 13px; padding: 6px 10px; }
+.sai-text-action { justify-content: flex-start; margin-top: 6px; padding: 6px 0; border: 0; color: #0751ff; }
+.sai-action:hover:not(:disabled) { background: #f4f8ff; border-color: #9fb9e4; }
+.sai-text-action:hover { text-decoration: underline; }
+.sai-footer { flex-shrink: 0; padding: 10px 15px 12px; border-top: 1px solid #e3eaf4; }
+.sai-footer .sai-action { margin-top: 0; font-weight: 600; }
+.sai-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 0 8px; }
+.sai-section-heading h5 { margin: 0; }
+.sai-logic-timing { margin-bottom: 13px; }
+.sai-section-heading > span { min-width: 22px; padding: 2px 5px; border-radius: 4px; background: #f0f5fc; color: #536d91; text-align: center; font-size: 10px; }
+.sai-relationships { margin: 8px 0 17px; padding: 0; list-style: none; }
+.sai-relationships > li { display: flex; flex-direction: column; gap: 4px; padding: 10px 0; border-bottom: 1px solid #e5edf7; font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
+.sai-relationships > li > strong { color: #164780; font-size: 10px; }
+.sai-relationship-type { margin-top: 3px; color: #5e7290; }
+.sai-relationships details { margin-top: 4px; color: #566f90; }
+.sai-relationships summary { cursor: pointer; }
+.sai-relationships details > p { margin: 8px 0; }
+.sai-references { margin: 8px 0 12px; padding: 0; list-style: none; color: #536c8f; font-size: 11px; }
+.sai-references > li { margin-bottom: 10px; overflow-wrap: anywhere; line-height: 1.6; }
+.sai-references q { display: block; margin-top: 4px; padding-left: 8px; border-left: 2px solid #dce5f2; color: #6b7f9b; }
+.sai-employee-history { margin-top: 18px; border-top: 1px solid #e3eaf4; }
+@media (max-width: 700px) {
+  .schedule-activity-inspector { flex-basis: auto; width: 100%; max-height: 480px; border-left: 0; border-top: 1px solid #d5e1ef; }
+  .sai-header { padding-top: 12px; }
+  .sai-fields > div { grid-template-columns: 105px minmax(0, 1fr); }
+}

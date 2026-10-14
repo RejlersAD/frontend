@@ -58,6 +58,9 @@ const DEFAULTS = {
 }
 
 export default function AdjustmentModal({ open, adjustment, onClose, onSaved }) {
+  const currentDate = new Date()
+  const currentYear = currentDate.getFullYear()
+  const currentMonth = currentDate.getMonth() + 1
   const isEdit = !!adjustment?.id
   const [form, setForm] = useState({})
   const [catalog, setCatalog] = useState(null)
@@ -80,7 +83,7 @@ export default function AdjustmentModal({ open, adjustment, onClose, onSaved }) 
     setError(null)
     setTouched(false)
     setEmpSearch(adjustment?.employee_name || '')
-    setEmpSelected(false)
+    setEmpSelected(Boolean(adjustment?.employee))
   }, [open, adjustment])
 
   // Load /catalog/ once for select options
@@ -107,6 +110,7 @@ export default function AdjustmentModal({ open, adjustment, onClose, onSaved }) 
       const next = { ...prev, [key]: value }
       // When kind changes, clear the dependent component_code so the user
       // is forced to re-pick from the right list.
+      if (key === 'target_year' && Number(value) === currentYear && Number(prev.target_month) < currentMonth) next.target_month = currentMonth
       if (key === 'kind' && value !== prev.kind) next.component_code = ''
       return next
     })
@@ -114,7 +118,7 @@ export default function AdjustmentModal({ open, adjustment, onClose, onSaved }) 
   }
 
   const resolveOptions = (field) => {
-    if (field.optionsFrom === 'months') return MONTHS
+    if (field.optionsFrom === 'months') return MONTHS.filter(month => Number(form.target_year) > currentYear || (Number(form.target_year) === currentYear && month.value >= currentMonth))
     if (field.optionsFrom && catalog?.[field.optionsFrom]) {
       return catalog[field.optionsFrom].map((o) => ({
         value: o.code ?? o.value ?? o,
@@ -168,6 +172,7 @@ export default function AdjustmentModal({ open, adjustment, onClose, onSaved }) 
         return
       }
     }
+    if (Number(form.target_year) < currentYear || (Number(form.target_year) === currentYear && Number(form.target_month) < currentMonth)) { setError('Select the current month or a future month.'); return }
     setSaving(true); setError(null)
     try {
       const payload = {}
@@ -209,7 +214,13 @@ export default function AdjustmentModal({ open, adjustment, onClose, onSaved }) 
             type="text"
             placeholder="Search by name or emp #…"
             value={empSearch}
-            onChange={(e) => { setEmpSearch(e.target.value); setEmpSelected(false) }}
+            onChange={(e) => {
+              setEmpSearch(e.target.value)
+              setEmpSelected(false)
+              // Search text is not a selection. Clear the previous employee so
+              // validation and the submitted payload cannot use a stale ID.
+              if (form[field.key]) handleChange(field.key, '')
+            }}
             className={baseCls}
           />
           {!empSelected && (
@@ -227,7 +238,10 @@ export default function AdjustmentModal({ open, adjustment, onClose, onSaved }) 
             className={baseCls}
             size={Math.min(6, Math.max(3, filteredEmployees.length))}
           >
-            {selected && !filteredEmployees.some((e) => e.id === selected.id) && (
+            <option value="" disabled>
+              Select an employee from the results
+            </option>
+            {selected && !filteredEmployees.some((e) => String(e.id) === String(selected.id)) && (
               <option value={selected.id}>
                 {selected.employee_no} · {selected.full_name}
               </option>
@@ -295,6 +309,7 @@ export default function AdjustmentModal({ open, adjustment, onClose, onSaved }) 
           id={id}
           type={field.type || 'text'}
           step={field.type === 'number' ? (field.step || '0.01') : undefined}
+          min={field.key === 'target_year' ? currentYear : undefined}
           maxLength={field.maxLength}
           value={value ?? ''}
           onChange={(e) => handleChange(field.key, e.target.value)}

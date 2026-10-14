@@ -1,3 +1,4 @@
+import { radaiAlert } from '../../../../services/radaiDialog'
 import React, { useState, useMemo, useCallback } from "react";
 import { useQHSERunningProjects } from '../../hooks/useQHSEProjects'; // Add this import
 import {
@@ -237,7 +238,7 @@ const DetailedView = ({ pageControls }) => {
         ? 'Project permanently deleted from database'
         : 'Project marked as inactive (can be restored)');
       console.log('✅ ' + message);
-      alert(message);
+      await radaiAlert(message);
     } catch (error) {
       console.error('❌ Error deleting project:', error);
       console.error('❌ Error details:', {
@@ -245,7 +246,7 @@ const DetailedView = ({ pageControls }) => {
         stack: error.stack
       });
       const errorMsg = error.message || 'Failed to delete project. Please try again.';
-      alert(errorMsg);
+      await radaiAlert(errorMsg);
     } finally {
       setIsDeleting(false);
     }

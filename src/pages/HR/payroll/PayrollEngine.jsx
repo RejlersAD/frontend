@@ -14,7 +14,7 @@ import * as HeroIcons from '@heroicons/react/24/outline'
 
 import {
   ENGINE_TABS, DEFAULT_ENGINE_TAB,
-  CANVAS_MODES, DEFAULT_CANVAS_MODE, getCanvasMode,
+  CANVAS_MODES, DEFAULT_CANVAS_MODE,
   PAYROLL_ENGINE_CANVAS_STORAGE_KEY,
 } from '../../../config/payrollEngine.config'
 
@@ -41,10 +41,11 @@ const readStoredCanvas = () => {
   return DEFAULT_CANVAS_MODE
 }
 
-export default function PayrollEngine({ activeRunId, onSelectRun, onSwitchTab }) {
-  const [tab, setTab] = useState(DEFAULT_ENGINE_TAB)
+export default function PayrollEngine({ activeRunId, initialTab, onSelectRun, onSwitchTab }) {
+  const [tab, setTab] = useState(initialTab || DEFAULT_ENGINE_TAB)
   const [selectedRunId, setSelectedRunId] = useState(activeRunId || null)
-  const [canvasModeKey, setCanvasModeKey] = useState(readStoredCanvas)
+  const [canvasModeKey] = useState(readStoredCanvas)
+  const [employeeActionsTarget, setEmployeeActionsTarget] = useState(null)
 
   // Deep-link contract: parent supplies ?run=<id> → jump into detail view
   useEffect(() => {
@@ -53,6 +54,13 @@ export default function PayrollEngine({ activeRunId, onSelectRun, onSwitchTab })
       setTab('runs')
     }
   }, [activeRunId])
+
+  useEffect(() => {
+    if (initialTab && ENGINE_TABS.some((item) => item.key === initialTab)) {
+      setTab(initialTab)
+      setSelectedRunId(null)
+    }
+  }, [initialTab])
 
   // Persist canvas mode across reloads
   useEffect(() => {
@@ -71,20 +79,11 @@ export default function PayrollEngine({ activeRunId, onSelectRun, onSwitchTab })
     onSelectRun?.(null)
   }
 
-  const cycleCanvasMode = () => {
-    const idx = CANVAS_MODES.findIndex((m) => m.key === canvasModeKey)
-    const next = CANVAS_MODES[(idx + 1) % CANVAS_MODES.length]
-    setCanvasModeKey(next.key)
-  }
-
-  const canvasMode = getCanvasMode(canvasModeKey)
-  const CanvasIcon = HeroIcons[canvasMode.icon] || HeroIcons.ArrowsPointingOutIcon
-
   return (
-    <div className={`${canvasMode.containerClass} mx-auto ${canvasMode.paddingClass} space-y-4 transition-[max-width] duration-200`}>
-      {/* Sub-tab nav with canvas-mode cycler */}
-      <div className="bg-white border border-slate-200 rounded-xl px-3 pt-2 flex items-end justify-between gap-2">
-        <div className="flex gap-1 overflow-x-auto scrollbar-hide">
+    <div className="w-full min-w-0 space-y-4">
+      {/* Sub-tab navigation and actions */}
+      <div className="bg-white border border-slate-200 rounded-xl p-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap gap-1">
           {ENGINE_TABS.map((t) => {
             const Icon = HeroIcons[TAB_ICONS[t.key]] || HeroIcons.RectangleStackIcon
             const isActive = tab === t.key
@@ -97,9 +96,9 @@ export default function PayrollEngine({ activeRunId, onSelectRun, onSwitchTab })
                   if (t.key !== 'runs') setSelectedRunId(null)
                 }}
                 title={t.description}
-                className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium rounded-t-md border-b-2 whitespace-nowrap ${
+                className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium rounded-lg border whitespace-nowrap ${
                   isActive
-                    ? 'border-indigo-600 text-indigo-700 bg-indigo-50/40'
+                    ? 'border-indigo-200 text-indigo-700 bg-indigo-50'
                     : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                 }`}
               >
@@ -109,24 +108,7 @@ export default function PayrollEngine({ activeRunId, onSelectRun, onSwitchTab })
             )
           })}
         </div>
-        <button
-          type="button"
-          onClick={cycleCanvasMode}
-          title={`Canvas: ${canvasMode.label}. Click to cycle.\n${canvasMode.description}\n\n💡 Tip: Use 'Full Screen' or 'Ultra Wide' modes to see all columns at once!`}
-          className={`mb-1 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border transition-all ${
-            canvasMode.key === 'full' || canvasMode.key === 'ultra'
-              ? 'border-indigo-300 bg-indigo-100 text-indigo-800 shadow-sm'
-              : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-700'
-          } whitespace-nowrap`}
-        >
-          <CanvasIcon className="w-4 h-4" />
-          <span className="font-semibold">{canvasMode.label}</span>
-          {canvasMode.key === 'ultra' && (
-            <span className="ml-1 px-1 py-0.5 text-[9px] font-bold uppercase bg-purple-500 text-white rounded">
-              Max
-            </span>
-          )}
-        </button>
+        <div ref={setEmployeeActionsTarget} />
       </div>
 
       {/* Sub-tab content */}
@@ -139,7 +121,7 @@ export default function PayrollEngine({ activeRunId, onSelectRun, onSwitchTab })
             />
           : <RunsList onSelectRun={handleSelectRun} />
       )}
-      {tab === 'employees'   && <EmployeesTable />}
+      {tab === 'employees'   && <EmployeesTable actionsTarget={employeeActionsTarget} />}
       {tab === 'adjustments' && <AdjustmentsList />}
       {tab === 'comparison'  && <ComparisonsHub />}
       {tab === 'excel'       && (

@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../../../services/radaiDialog'
 /**
  * Leave Dashboard — HR Leave Management
  * ======================================
@@ -8,6 +9,9 @@
  * All config (thresholds, colours, columns) → hrLeave.config.js
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import OvertimeManagement from '../OvertimeManagement'
+import { createPortal } from 'react-dom'
 import { useSelector } from 'react-redux'
 import * as HeroIcons from '@heroicons/react/24/outline'
 import {
@@ -83,8 +87,10 @@ const VIEWS = [
   { id: 'encashment',  label: 'Encashment', icon: 'BanknotesIcon' },
 ]
 
-export default function LeaveDashboard() {
-  const [view,        setView]        = useState('overview')
+export default function LeaveDashboard({ headerActions = null }) {
+  const [params] = useSearchParams()
+  const [view,        setView]        = useState(() => params.get('view') === 'encashment' ? 'encashment' : 'overview')
+  useEffect(() => { if (params.get('view') === 'encashment') setView('encashment') }, [params])
   const [records,     setRecords]     = useState([])    // full unfiltered list for counts
   const [loading,     setLoading]     = useState(false)
   const [branch,      setBranch]      = useState(null)  // null = All | 'RAD' | 'RIN'
@@ -96,6 +102,10 @@ export default function LeaveDashboard() {
   const [page,        setPage]        = useState(1)
   const [sortCol,     setSortCol]     = useState('name')
   const [sortAsc,     setSortAsc]     = useState(true)
+  const [cfEditing,   setCfEditing]   = useState(false)  // carry-forward inline edit mode
+  const [cfValue,     setCfValue]     = useState('')
+  const [cfSaving,    setCfSaving]    = useState(false)
+  const [cfMsg,       setCfMsg]       = useState(null)   // { type: 'ok'|'err', text }
 
   // ── Requests view state ────────────────────────────────────────────────────
   // 'rm_pending'  → PENDING requests (awaiting Reporting Manager)
@@ -127,15 +137,17 @@ export default function LeaveDashboard() {
   const [encConfirm, setEncConfirm] = useState(false)  // show confirm modal
 
   // ── Fetch all records ──────────────────────────────────────────────────────
-  useEffect(() => {
+  const loadRecords = useCallback(() => {
     setLoading(true)
     const params = { year: YEAR, page_size: 500 }
     if (branch) params.branch = branch
-    payrollService.getLeaveRecords(params)
+    return payrollService.getLeaveRecords(params)
       .then(d => setRecords(Array.isArray(d) ? d : (d?.results ?? [])))
       .catch(() => setRecords([]))
       .finally(() => setLoading(false))
   }, [branch])
+
+  useEffect(() => { loadRecords() }, [loadRecords])
 
   // ── Departments list ───────────────────────────────────────────────────────
   const departments = useMemo(() =>
@@ -173,14 +185,52 @@ export default function LeaveDashboard() {
   }
 
   // ── Load detail ────────────────────────────────────────────────────────────
-  const loadDetail = useCallback((rec) => {
+  const loadDetail = useCallback((rec, { preserveCfMsg = false } = {}) => {
     setDetailLoading(true)
     setView('detail')
+    if (!preserveCfMsg) { setCfEditing(false); setCfMsg(null) }
     payrollService.getLeaveRecord(rec.id)
       .then(d => setSelected(d))
       .catch(() => setSelected(rec))
       .finally(() => setDetailLoading(false))
   }, [])
+
+  // ── Edit carry forward (HR/Admin only) ─────────────────────────────────────
+  const startEditCarryforward = () => {
+    setCfValue(String(selected?.carryforward ?? 0))
+    setCfMsg(null)
+    setCfEditing(true)
+  }
+
+  const cancelEditCarryforward = () => {
+    setCfEditing(false)
+    setCfMsg(null)
+  }
+
+  const saveCarryforward = async () => {
+    const parsed = Number(cfValue)
+    if (Number.isNaN(parsed)) {
+      setCfMsg({ type: 'err', text: 'Enter a valid number.' })
+      return
+    }
+    setCfSaving(true)
+    setCfMsg(null)
+    try {
+      await payrollService.updateLeaveRecordCarryforward(selected.id, parsed)
+      setCfEditing(false)
+      setCfMsg({ type: 'ok', text: 'Carry forward updated.' })
+      loadDetail(selected, { preserveCfMsg: true })
+      // Refresh the records list too — Avg Balance KPI, dept chart, and the
+      // Employees-tab list all derive from it via useMemo, so this is the
+      // one call needed to bring every other Leave Balance view up to date.
+      loadRecords()
+    } catch (e) {
+      const msg = e?.response?.data?.error || e?.response?.data?.detail || e?.message || 'Failed to update carry forward.'
+      setCfMsg({ type: 'err', text: msg })
+    } finally {
+      setCfSaving(false)
+    }
+  }
 
   // ── Load leave types (once) ────────────────────────────────────────────────
   useEffect(() => {
@@ -198,7 +248,7 @@ export default function LeaveDashboard() {
     authUser?.user?.is_staff ||
     authUser?.user?.is_superuser ||
     rbacUser?.roles?.some(r =>
-      r.code?.startsWith('hr') || r.code === 'admin' || r.code === 'super_admin'
+      r.code?.startsWith('hr') || ['admin', 'superadmin', 'super_admin'].includes(r.code)
     )
   ) ?? false
   // Reporting Manager: any staff user can action Stage-1
@@ -287,7 +337,9 @@ export default function LeaveDashboard() {
     try {
       await payrollService.cancelLeaveRequest(id)
       setRequests(prev => prev.filter(r => r.id !== id))
-    } catch {}
+    } catch {
+      // The list remains unchanged when cancellation fails.
+    }
     finally { setReviewBusy(null) }
   }
 
@@ -296,11 +348,11 @@ export default function LeaveDashboard() {
   const [initMsg, setInitMsg] = useState(null)  // { type: 'ok'|'err', text }
   
   const initializeCurrentMonthLeave = async () => {
-    if (!window.confirm(
+    if (!(await radaiConfirm(
       `Initialize current month leave balance to 1.83 days for all employees?\n\n` +
       `This will set the earned value for ${new Date().toLocaleString('default', { month: 'long' })} ${YEAR} ` +
       `to the standard monthly accrual (1.83 days = 22 days/year ÷ 12 months).`
-    )) return
+    ))) return
     
     setInitBusy(true)
     setInitMsg(null)
@@ -393,12 +445,12 @@ export default function LeaveDashboard() {
         ].map(k => {
           const Icon = HeroIcons[k.icon] || HeroIcons.ChartBarIcon
           return (
-            <div key={k.label} className={`${k.bg} rounded-xl p-4 border border-white/80 shadow-sm`}>
+            <div key={k.label} className={`${k.bg} rounded-xl p-4 border border-slate-200 bg-gradient-to-br to-white`}>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-medium text-slate-600">{k.label}</span>
                 <Icon className={`w-4 h-4 ${k.text}`} />
               </div>
-              <div className={`text-2xl font-bold ${k.text}`}>{loading ? '…' : k.value}</div>
+              <div className={`text-2xl font-semibold tabular-nums ${k.text}`}>{loading ? '…' : k.value}</div>
             </div>
           )
         })}
@@ -481,13 +533,13 @@ export default function LeaveDashboard() {
             <HeroIcons.MagnifyingGlassIcon className="w-4 h-4 absolute left-2.5 top-2.5 text-slate-400" />
             <input value={search} onChange={e => { setSearch(e.target.value); setPage(1) }}
               placeholder="Name, code, or title…"
-              className="w-full pl-8 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+              className="w-full pl-8 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500" />
           </div>
         </div>
         <div className="min-w-44">
           <label className="block text-xs text-slate-500 mb-1">Department</label>
           <select value={deptFilter} onChange={e => { setDeptFilter(e.target.value); setPage(1) }}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
             <option value={ALL_DEPTS}>All Departments</option>
             {departments.map(d => <option key={d} value={d}>{d}</option>)}
           </select>
@@ -652,6 +704,44 @@ export default function LeaveDashboard() {
               </div>
             ))}
           </div>
+
+          {/* Carry forward row */}
+          <div className="mt-3 bg-slate-50 rounded-lg p-3 border border-slate-200 flex items-center justify-between flex-wrap gap-2">
+            <div className="text-xs text-slate-500">Carry Forward</div>
+            {cfEditing ? (
+              <div className="flex items-center gap-2">
+                <input
+                  type="number" step="0.01" value={cfValue}
+                  onChange={e => setCfValue(e.target.value)}
+                  className="w-24 px-2 py-1 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  autoFocus
+                />
+                <button type="button" onClick={saveCarryforward} disabled={cfSaving}
+                  className="p-1.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 disabled:opacity-50">
+                  {cfSaving ? <Spinner /> : <HeroIcons.CheckIcon className="w-3.5 h-3.5" />}
+                </button>
+                <button type="button" onClick={cancelEditCarryforward} disabled={cfSaving}
+                  className="p-1.5 rounded bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 disabled:opacity-50">
+                  <HeroIcons.XMarkIcon className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <div className="text-lg font-bold text-slate-700">{Number(selected.carryforward || 0).toFixed(2)} d</div>
+                {isHRManager && (
+                  <button type="button" onClick={startEditCarryforward} title="Edit carry forward"
+                    className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50">
+                    <HeroIcons.PencilSquareIcon className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+          {cfMsg && (
+            <div className={`mt-2 px-3 py-2 rounded-lg text-xs ${cfMsg.type === 'ok' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
+              {cfMsg.text}
+            </div>
+          )}
         </div>
 
         {/* Monthly chart */}
@@ -730,13 +820,15 @@ export default function LeaveDashboard() {
   const MONTH_NAMES = ['January','February','March','April','May','June',
     'July','August','September','October','November','December']
 
+  const [annualEncashmentOpen, setAnnualEncashmentOpen] = useState(false)
+
   const loadEncashmentStatus = (yr, mo) => {
     setEncLoading(true)
     setEncStatus(null)
     setEncPreview(null)
     payrollService.getLeaveEncashmentStatus({ year: yr, month: mo })
-      .then(d => setEncStatus(d))
-      .catch(() => setEncStatus('not_run'))
+      .then(d => setEncStatus(d?.status === 'not_run' ? 'not_run' : d))
+      .catch(() => setEncMsg({ type: 'err', text: 'Unable to load encashment status. Please try again.' }))
       .finally(() => setEncLoading(false))
   }
 
@@ -776,12 +868,14 @@ export default function LeaveDashboard() {
 
   // Load status when encashment view becomes active or period changes
   useEffect(() => {
-    if (view !== 'encashment') return
+    if (view !== 'encashment' || !annualEncashmentOpen) return
     loadEncashmentStatus(encYear, encMonth)
-  }, [view, encYear, encMonth]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [view, encYear, encMonth, annualEncashmentOpen]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const renderEncashment = () => {
-    const alreadyRun = encStatus && encStatus !== 'not_run' && encStatus?.status === 'success'
+    // Partial runs have already changed employee leave ledgers, so they are
+    // completed periods too and cannot be posted a second time.
+    const alreadyRun = encStatus && encStatus !== 'not_run' && ['success', 'partial'].includes(encStatus?.status)
     const periodLabel = `${MONTH_NAMES[encMonth - 1]} ${encYear}`
 
     return (
@@ -791,14 +885,14 @@ export default function LeaveDashboard() {
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1">Year</label>
             <select value={encYear} onChange={e => setEncYear(Number(e.target.value))}
-              className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+              className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
               {[encYear - 1, encYear, encYear + 1].map(y => <option key={y} value={y}>{y}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1">Month</label>
             <select value={encMonth} onChange={e => setEncMonth(Number(e.target.value))}
-              className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+              className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
               {MONTH_NAMES.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
             </select>
           </div>
@@ -866,7 +960,7 @@ export default function LeaveDashboard() {
               className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
                 alreadyRun
                   ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                  : 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm'
+                  : 'bg-indigo-700 hover:bg-indigo-800 text-white shadow-sm'
               }`}>
               <HeroIcons.BanknotesIcon className="w-4 h-4" />
               {encRunning ? 'Running…' : alreadyRun ? `Already run for ${periodLabel}` : `Run Encashment for ${periodLabel}`}
@@ -898,7 +992,7 @@ export default function LeaveDashboard() {
                   Cancel
                 </button>
                 <button type="button" onClick={handleRunEncashment}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-colors">
+                  className="px-4 py-2 bg-indigo-700 hover:bg-indigo-800 text-white rounded-lg text-sm font-semibold transition-colors">
                   Yes, Run Encashment
                 </button>
               </div>
@@ -982,7 +1076,7 @@ export default function LeaveDashboard() {
           return (
             <button key={t.id} type="button" onClick={() => setReqTab(t.id)}
               className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-                reqTab === t.id ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                reqTab === t.id ? 'bg-indigo-50 text-indigo-700 ring-1 ring-inset ring-indigo-200' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
               }`}>
               <Icon className="w-4 h-4" />{t.label}
             </button>
@@ -1027,7 +1121,7 @@ export default function LeaveDashboard() {
                   }))
                 }}
                 placeholder="Search or type employee name…"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
               />
               <datalist id="leave-emp-list">
                 {records.map(r => <option key={r.id} value={r.employee_name} />)}
@@ -1038,20 +1132,20 @@ export default function LeaveDashboard() {
               <input value={formState.employee_code}
                 onChange={e => setFormState(s => ({ ...s, employee_code: e.target.value }))}
                 placeholder="e.g. EMP-001"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500" />
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Department</label>
               <input value={formState.department}
                 onChange={e => setFormState(s => ({ ...s, department: e.target.value }))}
                 placeholder="e.g. Engineering"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500" />
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Leave Type <span className="text-rose-500">*</span></label>
               <select value={formState.leave_type}
                 onChange={e => setFormState(s => ({ ...s, leave_type: e.target.value }))}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
                 <option value="">— Select leave type —</option>
                 {leaveTypes.map(lt => (
                   <option key={lt.id} value={lt.id}>{lt.code} — {lt.name}</option>
@@ -1069,20 +1163,20 @@ export default function LeaveDashboard() {
               <label className="block text-xs font-medium text-slate-600 mb-1">Start Date <span className="text-rose-500">*</span></label>
               <input type="date" value={formState.start_date}
                 onChange={e => setFormState(s => ({ ...s, start_date: e.target.value }))}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500" />
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">End Date <span className="text-rose-500">*</span></label>
               <input type="date" value={formState.end_date} min={formState.start_date}
                 onChange={e => setFormState(s => ({ ...s, end_date: e.target.value }))}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500" />
             </div>
             <div className="sm:col-span-2">
               <label className="block text-xs font-medium text-slate-600 mb-1">Reason</label>
               <textarea rows={3} value={formState.reason}
                 onChange={e => setFormState(s => ({ ...s, reason: e.target.value }))}
                 placeholder="Optional reason / notes…"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm resize-none focus:ring-2 focus:ring-blue-500" />
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm resize-none focus:ring-2 focus:ring-indigo-500" />
             </div>
           </div>
           {formMsg && (
@@ -1229,50 +1323,20 @@ export default function LeaveDashboard() {
     return m
   }, [records])
 
+  const branchSelector = (
+    <select aria-label="Branch" value={branch || ''} onChange={event => { setBranch(event.target.value || null); setPage(1) }}
+      className="max-w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100">
+      <option value="">All branches{loading ? '' : ` (${branchCounts.ALL})`}</option>
+      {BRANCHES.map(item => <option key={item.id} value={item.id}>{item.label}{loading ? '' : ` (${branchCounts[item.id] ?? 0})`}</option>)}
+    </select>
+  )
+
   const activeBranchMeta  = branch ? getBranch(branch) : null
   const activeBranchLabel = activeBranchMeta ? activeBranchMeta.fullName : 'All Branches (RAD + RIN)'
 
   return (
     <div className="space-y-4">
-      {/* Branch selector toolbar */}
-      <div className="bg-white rounded-xl border border-slate-200 px-4 py-3 flex flex-wrap gap-2 items-center">
-        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide mr-1">Branch</span>
-
-        {/* All pill */}
-        <button type="button" onClick={() => { setBranch(null); setPage(1) }}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
-            branch === null
-              ? 'bg-slate-700 text-white border-slate-700'
-              : 'bg-slate-50 text-slate-600 border-slate-300 hover:bg-slate-100'
-          }`}>
-          All
-          <span className={`text-[10px] font-bold ${branch === null ? 'text-slate-300' : 'text-slate-400'}`}>
-            {loading ? '' : branchCounts.ALL}
-          </span>
-        </button>
-
-        {/* Per-branch pills */}
-        {BRANCHES.map(b => (
-          <button key={b.id} type="button" onClick={() => { setBranch(b.id); setPage(1) }}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
-              branch === b.id
-                ? `${b.activeBg} ${b.activeText} border-transparent shadow-sm`
-                : `${b.badgeBg} ${b.badgeText} ${b.badgeBorder} hover:opacity-80`
-            }`}>
-            {b.label}
-            <span className="text-[10px] font-bold opacity-60">
-              {loading ? '' : (branchCounts[b.id] ?? 0)}
-            </span>
-          </button>
-        ))}
-
-        <div className="ml-auto text-xs text-slate-500 font-medium">
-          {loading
-            ? <span className="animate-pulse text-slate-400">Loading…</span>
-            : activeBranchLabel
-          }
-        </div>
-      </div>
+      {headerActions ? createPortal(branchSelector, headerActions) : <div className="flex justify-end">{branchSelector}</div>}
 
       {/* View tabs */}
       <div className="bg-white rounded-xl border border-slate-200 px-4 py-2 flex gap-1 items-center flex-wrap">
@@ -1282,7 +1346,7 @@ export default function LeaveDashboard() {
           return (
             <button key={v.id} type="button" onClick={() => setView(v.id)}
               className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-                active ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                active ? 'bg-indigo-50 text-indigo-700 ring-1 ring-inset ring-indigo-200' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
               }`}>
               <Icon className="w-4 h-4" />
               {v.label}
@@ -1291,7 +1355,7 @@ export default function LeaveDashboard() {
         })}
         <div className="ml-auto flex items-center gap-2 text-xs text-slate-400 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5">
           <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />
-          {records.length} employees · {YEAR} · {activeBranchLabel}
+          {records.length} employees · {YEAR} · {activeBranchLabel}
         </div>
       </div>
 
@@ -1299,7 +1363,7 @@ export default function LeaveDashboard() {
       {view === 'list'       && renderList()}
       {view === 'detail'     && renderDetail()}
       {view === 'requests'   && renderRequests()}
-      {view === 'encashment' && renderEncashment()}
+      {view === 'encashment' && <div className="space-y-4"><OvertimeManagement reviewOnly /><details onToggle={event => setAnnualEncashmentOpen(event.currentTarget.open)} className="rounded-xl border border-slate-200 bg-white p-4"><summary className="cursor-pointer text-sm font-medium">Annual leave encashment</summary><div className="mt-4">{renderEncashment()}</div></details></div>}
     </div>
   )
 }

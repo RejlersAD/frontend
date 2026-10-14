@@ -1,3 +1,4 @@
+import { radaiAlert } from '../services/radaiDialog'
 /**
  * S3 PFD Browser Component
  * Browse and manage PFD/PID files from the existing S3 bucket structure
@@ -132,7 +133,7 @@ const S3PFDBrowser = () => {
       );
       
       if (response.data.success) {
-        alert('Conversion completed successfully!');
+        await radaiAlert('Conversion completed successfully!');
         fetchPIDFiles();
         fetchPFDFiles(); // Refresh to update has_pid_conversion status
       } else {
@@ -171,7 +172,7 @@ const S3PFDBrowser = () => {
       );
       
       if (response.data.success) {
-        alert('PFD uploaded successfully!');
+        await radaiAlert('PFD uploaded successfully!');
         fetchPFDFiles();
       } else {
         setError(response.data.error || 'Upload failed');

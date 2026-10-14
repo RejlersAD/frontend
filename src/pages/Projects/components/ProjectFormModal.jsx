@@ -5,6 +5,9 @@ import {
   PROJECT_FORM_API_FIELDS,
   PROJECT_COPY,
 } from '../../../config/projectControl.config'
+import useModalAccessibility from '../../../hooks/useModalAccessibility'
+import SharedRecordTargetSelector from './SharedRecordTargetSelector'
+import '../SharedRecordsWorkspace.css'
 
 const buildInitial = (project) => {
   const base = {}
@@ -17,6 +20,8 @@ const buildInitial = (project) => {
     PROJECT_FORM_API_FIELDS.forEach((k) => {
       if (project[k] !== undefined && project[k] !== null) base[k] = project[k]
     })
+    base.project_type = project.custom_fields?.project_type || 'engineering'
+    base.department = project.custom_fields?.department || ''
   }
   return base
 }
@@ -43,18 +48,24 @@ export default function ProjectFormModal({
   const [submitting, setSubmitting] = useState(false)
   const [serverError, setServerError] = useState(null)
   const [fieldErrors, setFieldErrors] = useState({})
+  const [selectedClient, setSelectedClient] = useState(null)
+  const dialogRef = useModalAccessibility(open, onClose, submitting)
 
   useEffect(() => {
     if (open) {
       setValues(initial)
       setServerError(null)
       setFieldErrors({})
+      setSelectedClient(null)
     }
   }, [open, initial])
 
   if (!open) return null
 
-  const setField = (name, value) => setValues((prev) => ({ ...prev, [name]: value }))
+  const setField = (name, value) => setValues((prev) => ({
+    ...prev, [name]: value,
+    ...(mode === 'create' && name === 'project_type' && value !== 'engineering' && !prev.scope_type ? { scope_type: 'other' } : {}),
+  }))
 
   const validate = () => {
     const errs = {}
@@ -78,7 +89,15 @@ export default function ProjectFormModal({
     setSubmitting(true)
     setServerError(null)
     try {
-      await onSubmit(stripBlanks(values))
+      await onSubmit({
+        ...stripBlanks(values),
+        ...(mode === 'create' && selectedClient ? { client_id: selectedClient.id } : {}),
+        custom_fields: {
+          ...project?.custom_fields,
+          project_type: values.project_type,
+          department: String(values.department || '').trim(),
+        },
+      })
       onClose?.()
     } catch (err) {
       // DRF field-level error dict support
@@ -100,9 +119,9 @@ export default function ProjectFormModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+      <div ref={dialogRef} tabIndex="-1" role="dialog" aria-modal="true" aria-labelledby="project-form-title" className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
-          <h2 className="text-lg font-semibold text-slate-900">
+          <h2 id="project-form-title" className="text-lg font-semibold text-slate-900">
             {mode === 'edit' ? PROJECT_COPY.editTitle : PROJECT_COPY.createTitle}
           </h2>
           <button
@@ -118,7 +137,7 @@ export default function ProjectFormModal({
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
           <div className="px-6 py-5 space-y-6">
             {serverError && (
-              <div className="rounded border border-rose-200 bg-rose-50 text-rose-700 px-3 py-2 text-sm">
+              <div role="alert" className="rounded border border-rose-200 bg-rose-50 text-rose-700 px-3 py-2 text-sm">
                 {serverError}
               </div>
             )}
@@ -127,6 +146,7 @@ export default function ProjectFormModal({
               <fieldset key={section.id} className="border-t border-slate-100 pt-4 first:border-0 first:pt-0">
                 <legend className="text-sm font-semibold text-slate-700 mb-3">{section.title}</legend>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {mode === 'create' && section.fields.some(field => field.name === 'client_name') && <div className="sm:col-span-3"><SharedRecordTargetSelector kind="client" value={selectedClient} disabled={submitting} onChange={client => { setSelectedClient(client); if (client) setField('client_name', client.label) }} /></div>}
                   {section.fields.map((f) => (
                     <div
                       key={f.name}
@@ -135,12 +155,21 @@ export default function ProjectFormModal({
                       <label className="block text-xs font-medium text-slate-600 mb-1">
                         {f.label} {f.required && <span className="text-rose-500">*</span>}
                       </label>
-                      <FieldInput field={f} value={values[f.name]} onChange={(v) => setField(f.name, v)} />
+                      <FieldInput
+                        field={f}
+                        value={values[f.name]}
+                        onChange={(v) => setField(f.name, v)}
+                        aria-label={f.label}
+                        aria-required={f.required || undefined}
+                        aria-invalid={Boolean(fieldErrors[f.name])}
+                        aria-describedby={(f.help || fieldErrors[f.name]) ? `project-field-${f.name}-description` : undefined}
+                        disabled={submitting || Boolean(f.name === 'client_name' && selectedClient)}
+                      />
                       {f.help && !fieldErrors[f.name] && (
-                        <p className="mt-1 text-[11px] text-slate-400">{f.help}</p>
+                        <p id={`project-field-${f.name}-description`} className="mt-1 text-xs text-slate-500">{f.help}</p>
                       )}
                       {fieldErrors[f.name] && (
-                        <p className="mt-1 text-[11px] text-rose-600">{fieldErrors[f.name]}</p>
+                        <p id={`project-field-${f.name}-description`} className="mt-1 text-xs text-rose-700">{fieldErrors[f.name]}</p>
                       )}
                     </div>
                   ))}
@@ -172,13 +201,14 @@ export default function ProjectFormModal({
   )
 }
 
-function FieldInput({ field, value, onChange }) {
+function FieldInput({ field, value, onChange, ...accessibilityProps }) {
   const common = 'w-full rounded border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500'
   const v = value ?? ''
   switch (field.type) {
     case 'textarea':
       return (
         <textarea
+          {...accessibilityProps}
           className={common}
           rows={field.rows || 3}
           placeholder={field.placeholder || ''}
@@ -188,7 +218,7 @@ function FieldInput({ field, value, onChange }) {
       )
     case 'select':
       return (
-        <select className={common} value={v} onChange={(e) => onChange(e.target.value)}>
+        <select {...accessibilityProps} className={common} value={v} onChange={(e) => onChange(e.target.value)}>
           <option value="">— select —</option>
           {field.options?.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
@@ -198,6 +228,7 @@ function FieldInput({ field, value, onChange }) {
     case 'date':
       return (
         <input
+          {...accessibilityProps}
           type="date"
           className={common}
           value={v}
@@ -207,6 +238,7 @@ function FieldInput({ field, value, onChange }) {
     case 'number':
       return (
         <input
+          {...accessibilityProps}
           type="number"
           className={common}
           min={field.min}
@@ -219,6 +251,7 @@ function FieldInput({ field, value, onChange }) {
     case 'currency':
       return (
         <input
+          {...accessibilityProps}
           type="number"
           className={common}
           min={0}
@@ -231,6 +264,7 @@ function FieldInput({ field, value, onChange }) {
     default:
       return (
         <input
+          {...accessibilityProps}
           type="text"
           className={common}
           placeholder={field.placeholder || ''}

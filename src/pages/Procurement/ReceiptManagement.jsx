@@ -1,28 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import PropTypes from 'prop-types';
-import {
-  ArchiveBoxIcon,
-  MagnifyingGlassIcon,
-  CheckCircleIcon,
-  XCircleIcon,
-  ClockIcon,
-  SparklesIcon,
-  BeakerIcon,
-  ShieldCheckIcon,
-  DocumentCheckIcon,
-  CalendarIcon,
-  UserGroupIcon,
-  ArrowPathIcon,
-  ExclamationTriangleIcon,
-  PrinterIcon
-} from '@heroicons/react/24/outline';
+import { XCircleIcon, PrinterIcon } from '@heroicons/react/24/outline';
 import apiClient from '../../services/api.service';
-import { PageControlButtons } from '../../components/Common/PageControlButtons';
-import { usePageControls } from '../../hooks/usePageControls';
-import { getStatusConfig } from '../../config/procurement.config';
+import goodsReceiptsService from '../../services/goodsReceipts.service';
 import { BRANDING_CONFIG } from '../../config/branding.config';
+import GoodsReceiptWorkspace from '../../components/Procurement/GoodsReceiptWorkspace';
+import GoodsReceiptDeleteDialog from '../../components/Procurement/GoodsReceiptDeleteDialog';
+import { receiptConfirmationBlock, receiptDeletionBlock } from '../../components/Procurement/GoodsReceiptActions';
 import AIReceiptCreator from './AIReceiptCreator';
+import { handoffError } from '../../components/Procurement/PurchaseOrderHandoff';
+import { receiptDisplayItems, receiptReviewAttachment, receiptReviewDate as receiptDate, receiptReviewStatus, receiptReviewText } from '../../components/Procurement/goodsReceiptReviewPresentation';
 
 class ReceiptCreatorErrorBoundary extends React.Component {
   constructor(props) {
@@ -76,28 +64,33 @@ const receiptText = (value) => (
   value === null || value === undefined || value === '' ? '—' : String(value)
 );
 
-const receiptDate = (value) => {
-  if (!value) return '—';
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleDateString('en-GB');
-};
-
 const listText = (value) => {
   if (Array.isArray(value)) return value.length ? value.join(', ') : '—';
   return receiptText(value);
 };
 
-const inspectionResult = (value) => value === true ? 'PASS' : value === false ? 'FAIL' : 'PENDING';
+const inspectionResult = value => value === false ? 'RECORDED FAIL' : 'NOT VERIFIED';
+
+const receiptItems = receiptDisplayItems;
+const DELIVERY_CONDITIONS = new Map([['good', 'Accepted with no damage'], ['damaged', 'Damage observed'], ['not_inspected', 'Not inspected']]);
+const DELIVERY_STATUSES = new Map([['full', 'Full'], ['partial', 'Partial'], ['rejected', 'Rejected']]);
+const deliveryFields = receipt => [
+  ['Delivery location', receiptReviewText(receipt?.delivery_location)],
+  ['Supplier reference', receiptReviewText(receipt?.supplier_reference)],
+  ['Condition (delivery)', DELIVERY_CONDITIONS.get(receiptReviewText(receipt?.condition)) || receiptReviewText(receipt?.condition)],
+  ['Delivery status (declared)', DELIVERY_STATUSES.get(receiptReviewText(receipt?.delivery_status)) || receiptReviewText(receipt?.delivery_status)],
+  ['Exception reason', receiptReviewText(receipt?.exception_reason)],
+].filter(([, value]) => value);
 
 const ReceiptPrintContent = ({ receipt, printDate }) => {
-  const items = Array.isArray(receipt?.items_received) ? receipt.items_received : [];
-  const status = (receipt?.status_display || receipt?.status || '—').toUpperCase();
+  const items = receiptItems(receipt);
+  const status = receiptReviewStatus(receipt).label.toUpperCase();
 
   return (
     <div className="gr-paper bg-white text-gray-950">
       <header className="flex items-start justify-between gap-6 border-b-2 border-gray-900 pb-3">
         <div>
-          <img src={BRANDING_CONFIG.logo.primary.path} alt={BRANDING_CONFIG.logo.primary.alt} className="h-10 w-auto object-contain" />
+          <img src="/assets/procurement/rejlers-pr-po-logo.png" alt={BRANDING_CONFIG.logo.primary.alt} className="h-10 w-auto object-contain" />
           <p className="mt-2 max-w-[360px] text-[8px] leading-3 text-gray-600">
             {BRANDING_CONFIG.brand.companyFull}<br />
             {BRANDING_CONFIG.contact.address.full}<br />
@@ -105,7 +98,7 @@ const ReceiptPrintContent = ({ receipt, printDate }) => {
           </p>
         </div>
         <div className="text-right">
-          <h1 className="text-[21px] font-bold tracking-[0.12em]">GOODS RECEIPT NOTE</h1>
+          <h1 className="text-[21px] font-bold tracking-[0.12em]">{items.some(item => item.basis === 'service_value') ? 'SERVICE ACCEPTANCE' : 'GOODS RECEIPT NOTE'}</h1>
           <p className="mt-1 text-[9px] font-semibold text-gray-600">Receiving & Quality Inspection Record</p>
           <p className="mt-2 text-[11px] font-bold">{receiptText(receipt?.receipt_number)}</p>
         </div>
@@ -125,6 +118,10 @@ const ReceiptPrintContent = ({ receipt, printDate }) => {
             <th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">Delivery Note</th>
             <td className="border border-gray-400 px-2 py-1.5">{receiptText(receipt?.delivery_note_number)}</td>
           </tr>
+          {deliveryFields(receipt).map(([label, value]) => <tr key={label}>
+            <th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">{label}</th>
+            <td colSpan={3} className="whitespace-pre-wrap break-words border border-gray-400 px-2 py-1.5">{value}</td>
+          </tr>)}
           <tr>
             <th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">Received By</th>
             <td className="border border-gray-400 px-2 py-1.5">{receiptText(receipt?.received_by_name)}</td>
@@ -132,7 +129,13 @@ const ReceiptPrintContent = ({ receipt, printDate }) => {
             <td className="border border-gray-400 px-2 py-1.5 font-bold">{status}</td>
           </tr>
           <tr>
-            <th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">Inspector</th>
+            <th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">Confirmation By</th>
+            <td className="border border-gray-400 px-2 py-1.5">{receiptText(receipt?.confirmation?.responsible_user_name)}</td>
+            <th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">Confirmed At</th>
+            <td className="border border-gray-400 px-2 py-1.5">{receiptDate(receipt?.confirmation?.confirmed_at, true)}</td>
+          </tr>
+          <tr>
+            <th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">Technical Inspector</th>
             <td className="border border-gray-400 px-2 py-1.5">{receiptText(receipt?.inspector_name)}</td>
             <th className="border border-gray-400 bg-gray-100 px-2 py-1.5 text-left">Inspection Agency</th>
             <td className="border border-gray-400 px-2 py-1.5">{receiptText(receipt?.inspection_agency)}</td>
@@ -147,7 +150,7 @@ const ReceiptPrintContent = ({ receipt, printDate }) => {
       </table>
 
       <section className="gr-print-block mt-3">
-        <h2 className="bg-gray-900 px-2 py-1.5 text-[9px] font-bold uppercase tracking-wide text-white">Items Received</h2>
+        <h2 className="bg-gray-900 px-2 py-1.5 text-[9px] font-bold uppercase tracking-wide text-white">{items.some(item => item.basis === 'service_value') ? 'Service acceptance value' : 'Items Received'}</h2>
         <table className="w-full border-collapse text-[8px]">
           <thead>
             <tr className="bg-gray-100">
@@ -162,8 +165,8 @@ const ReceiptPrintContent = ({ receipt, printDate }) => {
           </thead>
           <tbody>
             {items.length ? items.map((item, index) => (
-              <tr key={item.po_line_id || index}>
-                <td className="border border-gray-400 px-1 py-2 text-center align-top">{item.line_number || index + 1}</td>
+              <tr key={`${receiptText(item.po_line_id)}-${index}`}>
+                <td className="border border-gray-400 px-1 py-2 text-center align-top">{receiptText(item.line_number || index + 1)}</td>
                 <td className="border border-gray-400 px-2 py-2 align-top">{receiptText(item.item || item.description)}</td>
                 <td className="border border-gray-400 px-1 py-2 text-center align-top">{receiptText(item.uom || item.unit)}</td>
                 <td className="border border-gray-400 px-1 py-2 text-right align-top">{receiptText(item.ordered_qty)}</td>
@@ -183,11 +186,11 @@ const ReceiptPrintContent = ({ receipt, printDate }) => {
         <table className="w-full border-collapse text-[8.5px]">
           <thead><tr className="bg-gray-100"><th className="border border-gray-400 px-2 py-1.5 text-left">Inspection</th><th className="border border-gray-400 px-2 py-1.5 text-center">Result</th><th className="border border-gray-400 px-2 py-1.5 text-left">Reference / Remarks</th></tr></thead>
           <tbody>
-            <tr><td className="border border-gray-400 px-2 py-1.5">Visual inspection</td><td className="border border-gray-400 px-2 py-1.5 text-center font-bold">{inspectionResult(receipt?.visual_inspection_passed)}</td><td className="border border-gray-400 px-2 py-1.5">{receiptText(receipt?.inspection_report_number)}</td></tr>
-            <tr><td className="border border-gray-400 px-2 py-1.5">Dimensional inspection</td><td className="border border-gray-400 px-2 py-1.5 text-center font-bold">{inspectionResult(receipt?.dimensional_check_passed)}</td><td className="border border-gray-400 px-2 py-1.5">—</td></tr>
-            <tr><td className="border border-gray-400 px-2 py-1.5">Material verification / PMI</td><td className="border border-gray-400 px-2 py-1.5 text-center font-bold">{inspectionResult(receipt?.material_verification_passed)}</td><td className="border border-gray-400 px-2 py-1.5">Heat No(s): {listText(receipt?.heat_numbers)}</td></tr>
+            <tr><td className="border border-gray-400 px-2 py-1.5">Visual inspection</td><td className="border border-gray-400 px-2 py-1.5 text-center font-bold">{inspectionResult(receipt?.visual_inspection_passed, receipt)}</td><td className="border border-gray-400 px-2 py-1.5">{receiptText(receipt?.inspection_report_number)}</td></tr>
+            <tr><td className="border border-gray-400 px-2 py-1.5">Dimensional inspection</td><td className="border border-gray-400 px-2 py-1.5 text-center font-bold">{inspectionResult(receipt?.dimensional_check_passed, receipt)}</td><td className="border border-gray-400 px-2 py-1.5">—</td></tr>
+            <tr><td className="border border-gray-400 px-2 py-1.5">Material verification / PMI</td><td className="border border-gray-400 px-2 py-1.5 text-center font-bold">{inspectionResult(receipt?.material_verification_passed, receipt)}</td><td className="border border-gray-400 px-2 py-1.5">Heat No(s): {listText(receipt?.heat_numbers)}</td></tr>
             <tr><td className="border border-gray-400 px-2 py-1.5">Non-destructive testing (NDT)</td><td className="border border-gray-400 px-2 py-1.5 text-center font-bold">{receipt?.ndt_performed ? 'PERFORMED' : 'NOT PERFORMED'}</td><td className="border border-gray-400 px-2 py-1.5">{receiptText(receipt?.ndt_results)}</td></tr>
-            <tr><td className="border border-gray-400 px-2 py-1.5">Overall quality disposition</td><td className="border border-gray-400 px-2 py-1.5 text-center font-bold">{inspectionResult(receipt?.quality_check_passed)}</td><td className="border border-gray-400 px-2 py-1.5">{receiptText(receipt?.inspection_notes)}</td></tr>
+            <tr><td className="border border-gray-400 px-2 py-1.5">Overall quality disposition</td><td className="border border-gray-400 px-2 py-1.5 text-center font-bold">{inspectionResult(receipt?.quality_check_passed, receipt)}</td><td className="border border-gray-400 px-2 py-1.5">{receiptText(receipt?.inspection_notes)}</td></tr>
           </tbody>
         </table>
       </section>
@@ -209,8 +212,8 @@ const ReceiptPrintContent = ({ receipt, printDate }) => {
 
       <section className="gr-print-block mt-7 grid grid-cols-3 gap-6 text-[8.5px]">
         <div className="border-t border-gray-600 pt-2"><p className="font-bold">Received By</p><p>{receiptText(receipt?.received_by_name)}</p><p className="mt-3">Date: {receiptDate(receipt?.receipt_date)}</p></div>
-        <div className="border-t border-gray-600 pt-2"><p className="font-bold">Inspected By</p><p>{receiptText(receipt?.inspector_name)}</p><p>{receiptText(receipt?.inspection_agency)}</p><p className="mt-3">Signature / Date:</p></div>
-        <div className="border-t border-gray-600 pt-2"><p className="font-bold">Approved By</p><p>Procurement / Project Representative</p><p className="mt-3">Signature / Date:</p></div>
+        <div className="border-t border-gray-600 pt-2"><p className="font-bold">Delivery Confirmed By</p><p>{receiptText(receipt?.confirmation?.confirmed_by_name)}</p><p className="mt-3">Date: {receiptDate(receipt?.confirmation?.confirmed_at, true)}</p></div>
+        <div className="border-t border-gray-600 pt-2"><p className="font-bold">Technical Inspector</p><p>{receiptText(receipt?.inspector_name)}</p><p>{receiptText(receipt?.inspection_agency)}</p></div>
       </section>
 
       <footer className="gr-print-footer mt-6 flex justify-between border-t border-gray-400 pt-1 text-[7px] text-gray-500">
@@ -227,436 +230,124 @@ ReceiptPrintContent.propTypes = {
 };
 
 const ReceiptManagement = () => {
-  const [receipts, setReceipts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [filterQuality, setFilterQuality] = useState('all');
+  const [reloadKey, setReloadKey] = useState(0);
   const [showAICreator, setShowAICreator] = useState(false);
-  const [orders, setOrders] = useState([]);
-  const [aiInsights, setAiInsights] = useState(null);
+  const [initialOrder, setInitialOrder] = useState(null);
+  const [reconciliation, setReconciliation] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
+  const [confirmationNotes, setConfirmationNotes] = useState('');
+  const [decisionFields, setDecisionFields] = useState({});
+  const [decisionStale, setDecisionStale] = useState(false);
+  const actionBusy = useRef(false);
+  const [creatorError, setCreatorError] = useState('');
   const [selectedReceipt, setSelectedReceipt] = useState(null);
+  const [deletingReceipt, setDeletingReceipt] = useState(null);
+  const [receiptMessage, setReceiptMessage] = useState('');
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState('');
+  const [actionError, setActionError] = useState('');
   const [acceptingId, setAcceptingId] = useState(null);
   const [showPrintPreview, setShowPrintPreview] = useState(false);
   const [printDate, setPrintDate] = useState(() => new Date().toISOString());
-
-  const pageControls = usePageControls({
-    autoRefreshInterval: 60,
-    features: { autoRefresh: true, fullscreen: true, sidebar: true }
-  });
-
-  const fetchReceipts = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const response = await apiClient.get('/procurement/receipts/');
-      const data = response.data;
-      
-      // Soft-coded data normalization - ensure array
-      let normalizedData = [];
-      if (Array.isArray(data)) {
-        normalizedData = data;
-      } else if (data && Array.isArray(data.results)) {
-        normalizedData = data.results;
-      } else if (data && typeof data === 'object') {
-        normalizedData = [data];
-      }
-      
-      setReceipts(normalizedData);
-      
-      // AI-powered receipt analytics
-      generateAIInsights(normalizedData);
-    } catch (error) {
-      console.error('Error fetching receipts:', error);
-      setError({ 
-        type: 'network', 
-        message: `Failed to load goods receipts: ${error.message}`,
-        action: () => fetchReceipts()
-      });
-      setReceipts([]); // Ensure array even on error
-    } finally {
-      setLoading(false);
-    }
+  const detailSequence = useRef(0);
+  const detailRef = useRef(null);
+  const printRef = useRef(null);
+  const trapDialog = event => {
+    if (event.key === 'Escape') { event.preventDefault(); if (acceptingId) return; if (showPrintPreview) setShowPrintPreview(false); else setSelectedReceipt(null); }
+    if (event.key !== 'Tab') return;
+    const elements = [...event.currentTarget.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href],[tabindex="0"]')].filter(element => element.getClientRects().length);
+    if (event.shiftKey && document.activeElement === elements[0]) { event.preventDefault(); elements.at(-1)?.focus(); }
+    else if (!event.shiftKey && document.activeElement === elements.at(-1)) { event.preventDefault(); elements[0]?.focus(); }
   };
-
-  const fetchOrders = async () => {
-    try {
-      const response = await apiClient.get('/procurement/orders/');
-      const data = response.data;
-      // Filter only sent/acknowledged orders (ready for receipt)
-      const readyOrders = (Array.isArray(data.results) ? data.results : [])
-        .filter(o => o.status === 'sent' || o.status === 'acknowledged');
-      setOrders(readyOrders);
-    } catch (error) {
-      console.error('Error fetching orders:', error);
-    }
-  };
-
+  const selectedReceiptId = selectedReceipt?.id;
+  const hasTechnicalChanges = Object.keys(decisionFields).length > 0 || Boolean(rejectReason.trim());
   useEffect(() => {
-    fetchReceipts();
-    fetchOrders();
-  }, [pageControls.isRefreshing]);
-
-  /**
-   * AI Feature: Generate receipt insights and quality alerts
-   */
-  const generateAIInsights = (receiptList) => {
-    if (!Array.isArray(receiptList) || receiptList.length === 0) return;
-
-    // Soft-coded AI analytics
-    const insights = [];
-    
-    // Quality inspection alerts
-    const pendingInspection = receiptList.filter(r => 
-      r.status === 'pending' || !r.quality_check_passed
-    );
-    
-    if (pendingInspection.length > 0) {
-      insights.push({
-        type: 'quality_pending',
-        title: '🔍 Quality Inspections Pending',
-        count: pendingInspection.length,
-        message: `${pendingInspection.length} receipt${pendingInspection.length > 1 ? 's' : ''} awaiting quality inspection`,
-        priority: 'high'
-      });
-    }
-
-    // Failed quality checks
-    const qualityFailed = receiptList.filter(r => 
-      r.dimensional_check_passed === false || 
-      r.visual_inspection_passed === false || 
-      r.material_verification_passed === false
-    );
-    
-    if (qualityFailed.length > 0) {
-      insights.push({
-        type: 'quality_failed',
-        title: '❌ Quality Issues Detected',
-        count: qualityFailed.length,
-        message: `${qualityFailed.length} receipt${qualityFailed.length > 1 ? 's' : ''} failed quality checks - immediate action required`,
-        priority: 'urgent'
-      });
-    }
-
-    // NDT requirements
-    const ndtPending = receiptList.filter(r => 
-      r.ndt_required && (!r.ndt_performed || !r.ndt_results)
-    );
-    
-    if (ndtPending.length > 0) {
-      insights.push({
-        type: 'ndt_pending',
-        title: '🧪 NDT Testing Required',
-        count: ndtPending.length,
-        message: `${ndtPending.length} item${ndtPending.length > 1 ? 's' : ''} pending Non-Destructive Testing`,
-        priority: 'high'
-      });
-    }
-
-    // Certification compliance
-    const certMissing = receiptList.filter(r => 
-      !r.certificates_received || (r.certificates_received && r.certificates_received.length === 0)
-    );
-    
-    if (certMissing.length > 0) {
-      insights.push({
-        type: 'cert_missing',
-        title: '📋 Certifications Missing',
-        count: certMissing.length,
-        message: `${certMissing.length} receipt${certMissing.length > 1 ? 's' : ''} missing required material certificates`,
-        priority: 'high'
-      });
-    }
-
-    // Material traceability
-    const traceabilityIssues = receiptList.filter(r => 
-      !r.heat_numbers || (Array.isArray(r.heat_numbers) && r.heat_numbers.length === 0)
-    );
-    
-    if (traceabilityIssues.length > 0) {
-      insights.push({
-        type: 'traceability',
-        title: '🔢 Material Traceability Gaps',
-        count: traceabilityIssues.length,
-        message: `${traceabilityIssues.length} item${traceabilityIssues.length > 1 ? 's' : ''} missing heat numbers for traceability`,
-        priority: 'medium'
-      });
-    }
-
-    // Acceptance rate
-    const accepted = receiptList.filter(r => r.status === 'accepted').length;
-    const acceptanceRate = receiptList.length > 0 ? ((accepted / receiptList.length) * 100).toFixed(1) : 0;
-    
-    insights.push({
-      type: 'acceptance_rate',
-      title: '✅ Acceptance Rate',
-      percentage: acceptanceRate,
-      message: `${acceptanceRate}% of receipts accepted (${accepted} out of ${receiptList.length})`,
-      priority: acceptanceRate < 80 ? 'medium' : 'info'
-    });
-
-    setAiInsights(insights);
+    const modal = deletingReceipt ? null : showPrintPreview ? printRef.current : selectedReceiptId ? detailRef.current : null;
+    if (!modal) return undefined;
+    const previous = document.activeElement;
+    modal.querySelector('button:not(:disabled)')?.focus();
+    return () => previous?.focus();
+  }, [showPrintPreview, selectedReceiptId, deletingReceipt]);
+  useEffect(() => () => { detailSequence.current += 1; }, []);
+  const openReceiptDetails = async (receipt, preserveInput = false) => {
+    const sequence = ++detailSequence.current;
+    setShowPrintPreview(false); setSelectedReceipt(receipt); setDetailLoading(true); setDetailError(''); setActionError('');
+    if (!preserveInput) { setRejectReason(''); setDecisionFields({}); setConfirmationNotes(''); }
+    setDecisionStale(false);
+    try {
+      const data = await goodsReceiptsService.retrieve(receipt.id);
+      if (sequence !== detailSequence.current) return;
+      if (String(data?.id) !== String(receipt.id)) throw new Error('The requested receipt could not be verified.');
+      setSelectedReceipt(current => current?.id === receipt.id ? data : current);
+    } catch (error) { if (sequence === detailSequence.current) setDetailError(error.response?.status === 403 ? 'You do not have access to this receipt.' : 'Receipt details could not be loaded.'); }
+    finally { if (sequence === detailSequence.current) setDetailLoading(false); }
   };
-
-  // Soft-coded filter logic with safe array handling
-  const filteredReceipts = Array.isArray(receipts) ? receipts.filter(receipt => {
-    // Soft-coded field access with fallbacks
-    const grNumber = receipt?.receipt_number || receipt?.gr_number || '';
-    const poNumber = receipt?.po_number || '';
-    const status = receipt?.status || '';
-    const qualityPassed = receipt?.quality_check_passed;
-    
-    const matchesSearch = grNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         poNumber.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = filterStatus === 'all' || status === filterStatus;
-    const matchesQuality = filterQuality === 'all' || 
-                          (filterQuality === 'passed' && qualityPassed === true) ||
-                          (filterQuality === 'failed' && qualityPassed === false) ||
-                          (filterQuality === 'pending' && qualityPassed === null);
-    return matchesSearch && matchesStatus && matchesQuality;
-  }) : [];
-
-  const handleReceiptCreated = async (receiptData) => {
-    console.log('Creating receipt with AI data:', receiptData);
-    // After successful creation, refresh receipt list
-    await fetchReceipts();
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('receipt');
+    if (id) openReceiptDetails({ id });
+  }, []);
+  const recordReceipt = (capabilities, order = null, reconcile = false) => {
+    setCreatorError('');
+    if (capabilities?.create !== true && !(order && ((reconcile ? order.receiving?.can_reconcile : order.receiving?.can_record) || order.receiving?.can_review_basis === true))) { setCreatorError('You do not have access to record this receipt.'); return; }
+    if (!order && capabilities?.read_purchase_orders !== true) { setCreatorError('Purchase order access is required to select an order.'); return; }
+    setInitialOrder(order); setReconciliation(reconcile); setShowAICreator(true);
   };
-
-  const openReceiptDetails = async (receipt) => {
+  const handleReceiptCreated = () => { setReloadKey(value => value + 1); };
+  const openDelete = receipt => { if (!actionBusy.current) setDeletingReceipt(receipt); };
+  const removedReceipt = (receipt, deleted = true) => {
+    detailSequence.current += 1;
+    setDeletingReceipt(null);
+    setSelectedReceipt(current => current?.id === receipt.id ? null : current);
     setShowPrintPreview(false);
-    setSelectedReceipt(receipt);
-    setDetailLoading(true);
-    try {
-      const response = await apiClient.get(`/procurement/receipts/${receipt.id}/`);
-      setSelectedReceipt(response.data);
-    } catch (detailError) {
-      console.error('Error fetching receipt details:', detailError);
-      setError({ type: 'network', message: 'Failed to load the receipt details.' });
-    } finally {
-      setDetailLoading(false);
-    }
+    setReloadKey(value => value + 1);
+    setReceiptMessage(deleted ? `Receipt ${receipt.receipt_number || ''} deleted.` : 'Receipt no longer available. The register has been refreshed.');
   };
-
-  const acceptReceipt = async (receipt) => {
-    setAcceptingId(receipt.id);
+  const confirmDelivery = async receipt => {
+    if (receipt.confirmation?.can_confirm !== true || actionBusy.current || decisionStale || hasTechnicalChanges || detailLoading || detailError || receipt.status !== 'pending') return;
+    actionBusy.current = true;
+    setAcceptingId(receipt.id); setActionError('');
     try {
-      const response = await apiClient.post(`/procurement/receipts/${receipt.id}/accept/`);
-      setReceipts(current => current.map(item => (
-        item.id === receipt.id ? { ...item, ...response.data } : item
-      )));
-      setSelectedReceipt(current => current?.id === receipt.id ? response.data : current);
-    } catch (acceptError) {
-      console.error('Error accepting receipt:', acceptError);
-      setError({
-        type: 'network',
-        message: acceptError.response?.data?.error || 'Failed to accept the goods receipt.'
+      const data = await goodsReceiptsService.confirmDelivery(receipt.id, { expected_updated_at: receipt.updated_at, ...(confirmationNotes.trim() ? { notes: confirmationNotes.trim() } : {}) });
+      if (String(data?.id) !== String(receipt.id) || !data.confirmation?.confirmed_at) throw new Error('Delivery confirmation could not be verified. Refresh the receipt details.');
+      setSelectedReceipt(current => current?.id === receipt.id ? data : current);
+      setReloadKey(value => value + 1);
+      window.requestAnimationFrame(() => {
+        if (detailRef.current?.dataset.receiptId === String(receipt.id)) detailRef.current.querySelector('button[aria-label="Close"]')?.focus();
       });
-    } finally {
-      setAcceptingId(null);
-    }
+    } catch (error) {
+      setActionError(error.response?.status === 403 ? (typeof error.response.data?.detail === 'string' ? error.response.data.detail : 'You do not have access to confirm this delivery.') : handoffError(error));
+      if (error.response?.status === 409) setDecisionStale(true);
+    } finally { actionBusy.current = false; setAcceptingId(null); }
   };
-
-  const openPrintPreview = () => {
-    setPrintDate(new Date().toISOString());
-    setShowPrintPreview(true);
+  const acceptReceipt = async (receipt, reject = false) => {
+    if ((reject ? receipt.capabilities?.reject !== true : receipt.capabilities?.accept !== true) || actionBusy.current || decisionStale || receipt.status !== 'pending') return;
+    if (reject && !rejectReason.trim()) { setActionError('Enter a rejection reason.'); return; }
+    actionBusy.current = true;
+    setAcceptingId(receipt.id); setActionError('');
+    try {
+      const response = await apiClient.post(`/procurement/receipts/${receipt.id}/${reject ? 'reject_delivery' : 'accept'}/`, { expected_updated_at: receipt.updated_at, ...Object.fromEntries(Object.entries(decisionFields).map(([key, value]) => [key, value === '' ? null : value === 'true'])), ...(reject ? { reason: rejectReason.trim() } : {}) });
+      if (String(response.data?.id) !== String(receipt.id)) throw new Error('The receipt response could not be verified.');
+      setSelectedReceipt(current => current?.id === receipt.id ? response.data : current);
+      setReloadKey(value => value + 1);
+      window.requestAnimationFrame(() => {
+        if (detailRef.current?.dataset.receiptId === String(receipt.id)) detailRef.current.querySelector('button[aria-label="Close"]')?.focus();
+      });
+    } catch (error) { setActionError(handoffError(error)); if (error.response?.status === 409) setDecisionStale(true); }
+    finally { actionBusy.current = false; setAcceptingId(null); }
   };
-
+  const openPrintPreview = () => { if (selectedReceipt?.capabilities?.export !== true) return; setPrintDate(new Date().toISOString()); setShowPrintPreview(true); };
+  const reviewPrint = receipt => { if (receipt.capabilities?.export !== true) return; setSelectedReceipt(receipt); setDetailLoading(false); setDetailError(''); setPrintDate(new Date().toISOString()); setShowPrintPreview(true); };
   const printReceipt = () => {
     const originalTitle = document.title;
-    const poNumber = String(selectedReceipt?.po_number || 'PO-Not-Recorded')
-      .replace(/[^a-zA-Z0-9_-]+/g, '-');
-    const printedOn = new Date(printDate);
-    const datePart = Number.isNaN(printedOn.getTime())
-      ? new Date().toISOString().slice(0, 10)
-      : printedOn.toISOString().slice(0, 10);
-    document.title = `${poNumber}_Procurement-Goods-Receipt_${datePart}`;
-
-    const restoreTitle = () => {
-      document.title = originalTitle;
-      window.removeEventListener('afterprint', restoreTitle);
-    };
-    window.addEventListener('afterprint', restoreTitle);
-    window.print();
-    // Fallback for browsers that do not emit afterprint.
-    window.setTimeout(restoreTitle, 60000);
+    document.title = `${String(selectedReceipt?.po_number || 'Goods-Receipt').replace(/[^a-zA-Z0-9_-]+/g, '-')}_Goods-Receipt_${printDate.slice(0, 10)}`;
+    const restoreTitle = () => { document.title = originalTitle; window.removeEventListener('afterprint', restoreTitle); };
+    window.addEventListener('afterprint', restoreTitle); window.print(); window.setTimeout(restoreTitle, 60000);
   };
-
-  const getStatusBadge = (status) => {
-    const config = getStatusConfig('receipt', status);
-    const colorClasses = {
-      green: 'bg-green-100 text-green-800 border-green-200',
-      red: 'bg-red-100 text-red-800 border-red-200',
-      yellow: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-      blue: 'bg-blue-100 text-blue-800 border-blue-200',
-      gray: 'bg-gray-100 text-gray-800 border-gray-200'
-    };
-    return (
-      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${colorClasses[config.color]}`}>
-        {config.label}
-      </span>
-    );
-  };
-
-  const getQualityBadge = (receipt) => {
-    if (receipt?.quality_check_passed === true) {
-      return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 border border-green-300">
-          <CheckCircleIcon className="h-3 w-3 mr-1" />
-          Quality Passed
-        </span>
-      );
-    } else if (receipt?.quality_check_passed === false) {
-      return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800 border border-red-300">
-          <XCircleIcon className="h-3 w-3 mr-1" />
-          Quality Failed
-        </span>
-      );
-    } else {
-      return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-300">
-          <ClockIcon className="h-3 w-3 mr-1" />
-          Inspection Pending
-        </span>
-      );
-    }
-  };
-
-  const ReceiptStats = () => {
-    // Soft-coded stats calculation with safe array handling
-    const safeReceipts = Array.isArray(receipts) ? receipts : [];
-    const stats = {
-      total: safeReceipts.length,
-      pending: safeReceipts.filter(r => r?.status === 'pending').length,
-      accepted: safeReceipts.filter(r => r?.status === 'accepted').length,
-      rejected: safeReceipts.filter(r => r?.status === 'rejected').length,
-      qualityPassed: safeReceipts.filter(r => r?.quality_check_passed === true).length,
-      qualityFailed: safeReceipts.filter(r => r?.quality_check_passed === false).length,
-      ndtPending: safeReceipts.filter(r => r?.ndt_required && !r?.ndt_performed).length
-    };
-
-    return (
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 mb-6">
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0 bg-indigo-500 rounded-md p-3">
-                <ArchiveBoxIcon className="h-6 w-6 text-white" />
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">Total GRs</dt>
-                  <dd className="text-2xl font-semibold text-gray-900">{stats.total}</dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0 bg-yellow-500 rounded-md p-3">
-                <ClockIcon className="h-6 w-6 text-white" />
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">Pending</dt>
-                  <dd className="text-2xl font-semibold text-gray-900">{stats.pending}</dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0 bg-green-500 rounded-md p-3">
-                <CheckCircleIcon className="h-6 w-6 text-white" />
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">Accepted</dt>
-                  <dd className="text-2xl font-semibold text-gray-900">{stats.accepted}</dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0 bg-red-500 rounded-md p-3">
-                <XCircleIcon className="h-6 w-6 text-white" />
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">Rejected</dt>
-                  <dd className="text-2xl font-semibold text-gray-900">{stats.rejected}</dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0 bg-[#00a896] rounded-md p-3">
-                <ShieldCheckIcon className="h-6 w-6 text-white" />
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">QC Passed</dt>
-                  <dd className="text-2xl font-semibold text-gray-900">{stats.qualityPassed}</dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0 bg-orange-500 rounded-md p-3">
-                <ExclamationTriangleIcon className="h-6 w-6 text-white" />
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">QC Failed</dt>
-                  <dd className="text-2xl font-semibold text-gray-900">{stats.qualityFailed}</dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0 bg-purple-500 rounded-md p-3">
-                <BeakerIcon className="h-6 w-6 text-white" />
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">NDT Pending</dt>
-                  <dd className="text-2xl font-semibold text-gray-900">{stats.ndtPending}</dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  return (
-    <div className="min-h-screen bg-gray-50" style={pageControls.styles.container}>
+  return <>
+    <div aria-hidden={Boolean(selectedReceipt || deletingReceipt)} inert={selectedReceipt || deletingReceipt ? '' : undefined}><GoodsReceiptWorkspace onRecord={recordReceipt} onOpen={openReceiptDetails} onDelete={openDelete} onPrint={reviewPrint} reloadKey={reloadKey} /></div>
+    {receiptMessage && <div role="status" className="fixed bottom-5 left-1/2 z-50 max-w-lg -translate-x-1/2 rounded-lg border border-blue-200 bg-white p-4 text-sm text-blue-900 shadow-xl">{receiptMessage}<button type="button" aria-label="Dismiss receipt update" onClick={() => setReceiptMessage('')} className="ml-3 font-semibold">Close</button></div>}
+    {deletingReceipt && <GoodsReceiptDeleteDialog receipt={deletingReceipt} onClose={() => setDeletingReceipt(null)} onDeleted={removedReceipt} onUnavailable={receipt => removedReceipt(receipt, false)} />}
+    {creatorError && <div role="alert" className="fixed bottom-5 left-1/2 z-50 max-w-lg -translate-x-1/2 rounded-lg border border-blue-200 bg-white p-4 text-sm text-blue-900 shadow-xl">{creatorError}{creatorError && <button type="button" aria-label="Dismiss receipt message" onClick={() => setCreatorError('')} className="ml-3 font-semibold">Close</button>}</div>}
       {selectedReceipt && createPortal(
         <>
           <style>{`
@@ -694,341 +385,24 @@ const ReceiptManagement = () => {
         </>,
         document.body
       )}
-      <div className="py-6" style={pageControls.styles.content}>
-        {/* Header */}
-        <div className="w-full px-3 sm:px-4">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 flex items-center">
-                <ArchiveBoxIcon className="h-8 w-8 mr-3 text-indigo-600" />
-                Goods Receipts
-              </h1>
-              <p className="mt-2 text-sm text-gray-600 flex items-center">
-                <SparklesIcon className="h-4 w-4 mr-1 text-purple-500" />
-                AI-powered receipt management with quality inspection and material traceability
-              </p>
-            </div>
-            
-            <PageControlButtons 
-              isFullscreen={pageControls.isFullscreen}
-              toggleFullscreen={pageControls.toggleFullscreen}
-              sidebarVisible={pageControls.sidebarVisible}
-              toggleSidebar={pageControls.toggleSidebar}
-              autoRefreshEnabled={pageControls.autoRefreshEnabled}
-              toggleAutoRefresh={pageControls.toggleAutoRefresh}
-              isRefreshing={pageControls.isRefreshing}
-              manualRefresh={pageControls.manualRefresh}
-            />
-          </div>
-        </div>
-
-        {/* Statistics */}
-        <div className="w-full px-3 sm:px-4 mt-8">
-          <ReceiptStats />
-        </div>
-
-        {/* AI Insights */}
-        {aiInsights && aiInsights.length > 0 && (
-          <div className="w-full px-3 sm:px-4 mt-6">
-            <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg p-6 border-2 border-purple-200">
-              <div className="flex items-center space-x-2 mb-4">
-                <SparklesIcon className="h-6 w-6 text-purple-600" />
-                <h3 className="text-lg font-semibold text-gray-900">AI Quality Insights & Alerts</h3>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {aiInsights.map((insight, idx) => (
-                  <div key={idx} className={`bg-white rounded-lg p-4 border-2 hover:shadow-md transition-shadow ${
-                    insight.priority === 'urgent' ? 'border-red-300' : 
-                    insight.priority === 'high' ? 'border-yellow-300' : 
-                    insight.priority === 'medium' ? 'border-orange-300' :
-                    'border-purple-200'
-                  }`}>
-                    <h4 className="text-sm font-semibold text-gray-900 mb-2">{insight.title}</h4>
-                    <p className="text-sm text-gray-600">{insight.message}</p>
-                    {insight.percentage && (
-                      <div className="mt-2">
-                        <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                          <span>Target: 90%</span>
-                          <span className="font-semibold text-indigo-600">{insight.percentage}%</span>
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div 
-                            className={`h-2 rounded-full ${parseFloat(insight.percentage) >= 90 ? 'bg-green-500' : parseFloat(insight.percentage) >= 80 ? 'bg-yellow-500' : 'bg-red-500'}`}
-                            style={{ width: `${Math.min(parseFloat(insight.percentage), 100)}%` }}
-                          ></div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Error Message */}
-        {error && (
-          <div className="w-full px-3 sm:px-4 mt-6">
-            <div className={`rounded-md p-4 ${error.type === 'auth' ? 'bg-yellow-50 border-l-4 border-yellow-400' : 'bg-red-50 border-l-4 border-red-400'}`}>
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  {error.type === 'auth' ? (
-                    <ExclamationTriangleIcon className="h-5 w-5 text-yellow-400" />
-                  ) : (
-                    <XCircleIcon className="h-5 w-5 text-red-400" />
-                  )}
-                </div>
-                <div className="ml-3 flex-1">
-                  <p className={`text-sm font-medium ${error.type === 'auth' ? 'text-yellow-800' : 'text-red-800'}`}>
-                    {error.message}
-                  </p>
-                </div>
-                <div className="ml-auto pl-3">
-                  <div className="-mx-1.5 -my-1.5 flex">
-                    {error.action && (
-                      <button
-                        type="button"
-                        onClick={error.action}
-                        className={`inline-flex rounded-md p-1.5 ${error.type === 'auth' ? 'text-yellow-800 hover:bg-yellow-100' : 'text-red-800 hover:bg-red-100'} focus:outline-none`}
-                      >
-                        <ArrowPathIcon className="h-5 w-5" />
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setError(null)}
-                      className={`inline-flex rounded-md p-1.5 ml-2 ${error.type === 'auth' ? 'text-yellow-800 hover:bg-yellow-100' : 'text-red-800 hover:bg-red-100'} focus:outline-none`}
-                    >
-                      <XCircleIcon className="h-5 w-5" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Filters and Search */}
-        <div className="w-full px-3 sm:px-4 mt-8">
-          <div className="bg-white shadow rounded-lg p-6">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-              {/* Search */}
-              <div className="md:col-span-2">
-                <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-2">
-                  Search Goods Receipts
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <MagnifyingGlassIcon className="h-5 w-5 text-gray-400" />
-                  </div>
-                  <input
-                    type="text"
-                    id="search"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                    placeholder="Search by GR or PO number..."
-                  />
-                </div>
-              </div>
-
-              {/* Status Filter */}
-              <div>
-                <label htmlFor="status" className="block text-sm font-medium text-gray-700 mb-2">
-                  Status
-                </label>
-                <select
-                  id="status"
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
-                  className="block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                >
-                  <option value="all">All Statuses</option>
-                  <option value="pending">Pending</option>
-                  <option value="accepted">Accepted</option>
-                  <option value="rejected">Rejected</option>
-                  <option value="partial">Partial</option>
-                </select>
-              </div>
-
-              {/* Quality Filter */}
-              <div>
-                <label htmlFor="quality" className="block text-sm font-medium text-gray-700 mb-2">
-                  Quality Check
-                </label>
-                <select
-                  id="quality"
-                  value={filterQuality}
-                  onChange={(e) => setFilterQuality(e.target.value)}
-                  className="block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                >
-                  <option value="all">All Quality</option>
-                  <option value="passed">✓ Passed</option>
-                  <option value="failed">✗ Failed</option>
-                  <option value="pending">⏱ Pending</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="mt-4 flex justify-between items-center">
-              <p className="text-sm text-gray-500">
-                Showing {filteredReceipts.length} of {Array.isArray(receipts) ? receipts.length : 0} goods receipts
-              </p>
-              <button
-                type="button"
-                onClick={() => setShowAICreator(true)}
-                className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-              >
-                <SparklesIcon className="-ml-1 mr-2 h-5 w-5" aria-hidden="true" />
-                Record with AI Quality Check
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Receipts List */}
-        <div className="w-full px-3 sm:px-4 mt-8">
-          {loading ? (
-            <div className="text-center py-12">
-              <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-              <p className="mt-4 text-sm text-gray-500">Loading goods receipts...</p>
-            </div>
-          ) : filteredReceipts.length === 0 ? (
-            <div className="text-center py-12 bg-white rounded-lg shadow">
-              <ArchiveBoxIcon className="mx-auto h-12 w-12 text-gray-400" />
-              <h3 className="mt-2 text-sm font-medium text-gray-900">No goods receipts found</h3>
-              <p className="mt-1 text-sm text-gray-500">
-                {searchTerm || filterStatus !== 'all' || filterQuality !== 'all'
-                  ? 'Try adjusting your search or filter criteria.'
-                  : 'Get started by recording a new goods receipt.'}
-              </p>
-              <div className="mt-6">
-                <button
-                  type="button"
-                  onClick={() => setShowAICreator(true)}
-                  className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
-                >
-                  <SparklesIcon className="-ml-1 mr-2 h-5 w-5" />
-                  Record with AI Quality Check
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredReceipts.map((receipt) => (
-                <div key={receipt.id} className="bg-white overflow-hidden shadow-lg rounded-lg hover:shadow-xl transition-shadow duration-200 border-2 border-transparent hover:border-indigo-500">
-                  <div className="p-6">
-                    {/* Receipt Header */}
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-2">
-                          <ArchiveBoxIcon className="h-5 w-5 text-indigo-600" />
-                          <h3 className="text-lg font-semibold text-gray-900">
-                            {receipt.receipt_number || receipt.gr_number || `GR-${receipt.id}`}
-                          </h3>
-                        </div>
-                        <p className="mt-1 text-sm text-gray-500">
-                          PO: {receipt.po_number || 'N/A'}
-                        </p>
-                      </div>
-                      {getStatusBadge(receipt.status)}
-                    </div>
-
-                    {/* Quality Badge */}
-                    <div className="mb-4">
-                      {getQualityBadge(receipt)}
-                    </div>
-
-                    {/* Receipt Details */}
-                    <div className="space-y-3">
-                      {(receipt.receipt_date || receipt.received_date) && (
-                        <div className="flex items-center text-sm text-gray-600">
-                          <CalendarIcon className="h-4 w-4 mr-2 text-gray-400" />
-                          <span>Received: {new Date(receipt.receipt_date || receipt.received_date).toLocaleDateString()}</span>
-                        </div>
-                      )}
-                      {receipt.inspector_name && (
-                        <div className="flex items-center text-sm text-gray-600">
-                          <UserGroupIcon className="h-4 w-4 mr-2 text-gray-400" />
-                          <span>Inspector: {receipt.inspector_name}</span>
-                        </div>
-                      )}
-                      {receipt.certificates_received && receipt.certificates_received.length > 0 && (
-                        <div className="flex items-start text-sm text-gray-600">
-                          <DocumentCheckIcon className="h-4 w-4 mr-2 text-gray-400 mt-0.5" />
-                          <span className="text-xs">
-                            {receipt.certificates_received.length} Certificate{receipt.certificates_received.length > 1 ? 's' : ''}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Quality Indicators */}
-                    <div className="mt-4 pt-4 border-t border-gray-200">
-                      <div className="grid grid-cols-3 gap-2 text-xs">
-                        <div className={`text-center p-2 rounded ${receipt.dimensional_check_passed ? 'bg-green-50 text-green-700' : receipt.dimensional_check_passed === false ? 'bg-red-50 text-red-700' : 'bg-gray-50 text-gray-600'}`}>
-                          <div className="font-medium">Dimensional</div>
-                          <div>{receipt.dimensional_check_passed === true ? '✓' : receipt.dimensional_check_passed === false ? '✗' : '—'}</div>
-                        </div>
-                        <div className={`text-center p-2 rounded ${receipt.visual_inspection_passed ? 'bg-green-50 text-green-700' : receipt.visual_inspection_passed === false ? 'bg-red-50 text-red-700' : 'bg-gray-50 text-gray-600'}`}>
-                          <div className="font-medium">Visual</div>
-                          <div>{receipt.visual_inspection_passed === true ? '✓' : receipt.visual_inspection_passed === false ? '✗' : '—'}</div>
-                        </div>
-                        <div className={`text-center p-2 rounded ${receipt.material_verification_passed ? 'bg-green-50 text-green-700' : receipt.material_verification_passed === false ? 'bg-red-50 text-red-700' : 'bg-gray-50 text-gray-600'}`}>
-                          <div className="font-medium">Material</div>
-                          <div>{receipt.material_verification_passed === true ? '✓' : receipt.material_verification_passed === false ? '✗' : '—'}</div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="mt-6 flex space-x-3">
-                      <button
-                        type="button"
-                        onClick={() => openReceiptDetails(receipt)}
-                        className="flex-1 inline-flex justify-center items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                      >
-                        View Details
-                      </button>
-                      {receipt.status === 'pending' && (
-                        <button
-                          type="button"
-                          onClick={() => acceptReceipt(receipt)}
-                          disabled={acceptingId === receipt.id}
-                          className="flex-1 inline-flex justify-center items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
-                        >
-                          <CheckCircleIcon className="h-4 w-4 mr-1" />
-                          {acceptingId === receipt.id ? 'Accepting...' : 'Accept'}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Receipt Detail Modal */}
-      {selectedReceipt && (
-        <div className="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="receipt-detail-title">
+      {selectedReceipt && !showPrintPreview && !deletingReceipt && (
+        <div ref={detailRef} data-receipt-id={selectedReceipt.id} onKeyDown={trapDialog} className="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="receipt-detail-title">
           <div className="flex min-h-screen items-center justify-center p-4">
             <button
               type="button"
               aria-label="Close receipt details"
               className="fixed inset-0 bg-gray-900/60"
-              onClick={() => { setShowPrintPreview(false); setSelectedReceipt(null); }}
+              disabled={!!acceptingId} onClick={() => { if (!acceptingId) { setShowPrintPreview(false); setSelectedReceipt(null); } }}
             />
-            <div className="relative w-full max-w-4xl overflow-hidden rounded-xl bg-white shadow-2xl">
-              <div className="flex items-center justify-between bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-4 text-white">
+            <div className="relative flex max-h-[calc(100dvh-2rem)] w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+              <div className="flex items-center justify-between bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 text-white">
                 <div>
-                  <h2 id="receipt-detail-title" className="text-xl font-semibold">Goods Receipt Details</h2>
+                  <h2 id="receipt-detail-title" className="text-xl font-semibold">{receiptItems(selectedReceipt).some(item => item.basis === 'service_value') ? 'Service Acceptance Details' : 'Goods Receipt Details'}</h2>
                   <p className="mt-1 text-sm text-indigo-100">
                     {selectedReceipt.receipt_number || `GR-${selectedReceipt.id}`}
                   </p>
                 </div>
-                <button type="button" onClick={() => { setShowPrintPreview(false); setSelectedReceipt(null); }} className="rounded-lg p-1 hover:bg-white/20" aria-label="Close">
+                <button type="button" disabled={!!acceptingId} onClick={() => { if (!acceptingId) { setShowPrintPreview(false); setSelectedReceipt(null); } }} className="rounded-lg p-1 hover:bg-white/20" aria-label="Close">
                   <XCircleIcon className="h-7 w-7" />
                 </button>
               </div>
@@ -1038,18 +412,21 @@ const ReceiptManagement = () => {
                   <div className="inline-block h-10 w-10 animate-spin rounded-full border-b-2 border-indigo-600" />
                   <p className="mt-3 text-sm text-gray-500">Loading receipt details...</p>
                 </div>
-              ) : (
-                <div className="max-h-[75vh] overflow-y-auto p-6">
+              ) : detailError ? <div role="alert" className="p-8 text-red-700"><p>{detailError}</p><button type="button" onClick={() => openReceiptDetails(selectedReceipt)} className="mt-3 rounded border px-3 py-2">Retry receipt details</button></div> : (
+                <div role="region" aria-label="Receipt details and evidence" tabIndex={0} className="min-h-0 flex-1 overflow-y-auto p-6 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600">
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     {[
                       ['PO Number', selectedReceipt.po_number],
-                      ['Receipt Date', selectedReceipt.receipt_date ? new Date(selectedReceipt.receipt_date).toLocaleDateString() : null],
+                      ['Receipt Date', receiptDate(selectedReceipt.receipt_date)],
                       ['Received By', selectedReceipt.received_by_name],
                       ['Delivery Note', selectedReceipt.delivery_note_number],
-                      ['Inspector', selectedReceipt.inspector_name],
+                      ...deliveryFields(selectedReceipt),
+                      ['Delivery Confirmation By', selectedReceipt.confirmation?.responsible_user_name],
+                      ...(selectedReceipt.confirmation?.confirmed_at ? [['Confirmed By', selectedReceipt.confirmation.confirmed_by_name], ['Confirmed At', receiptDate(selectedReceipt.confirmation.confirmed_at, true)]] : []),
+                      ['Technical Inspector', selectedReceipt.inspector_name],
                       ['Inspection Agency', selectedReceipt.inspection_agency],
                       ['Inspection Report', selectedReceipt.inspection_report_number],
-                      ['Status', selectedReceipt.status_display || selectedReceipt.status],
+                      ['Status', receiptReviewStatus(selectedReceipt).label],
                     ].map(([label, value]) => (
                       <div key={label} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
                         <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
@@ -1057,6 +434,18 @@ const ReceiptManagement = () => {
                       </div>
                     ))}
                   </div>
+
+                {selectedReceipt.status === 'pending' && <section className="mt-6 w-full rounded-lg border border-blue-200 bg-blue-50 p-4" aria-label="Delivery confirmation">
+                  <h3 className="text-sm font-semibold text-gray-900">Delivery confirmation</h3>
+                  <p className="mt-1 text-sm text-gray-700">{selectedReceipt.confirmation?.responsible_user_name ? `${selectedReceipt.confirmation.responsible_user_name} recorded this receipt and is responsible for confirming delivery.` : 'The person who recorded this receipt is responsible for confirming delivery.'}</p>
+                  {selectedReceipt.confirmation?.can_confirm === true ? <>
+                    <label className="mt-3 block text-sm">Confirmation notes (optional)<textarea maxLength={4000} rows={2} value={confirmationNotes} onChange={event => setConfirmationNotes(event.target.value)} disabled={!!acceptingId} className="mt-1 w-full rounded border border-gray-300 p-2" /></label>
+                    <p className="mt-2 text-xs text-gray-600">Confirms the recorded quantities or service value and locks this receipt. Technical checks remain unverified unless separately evidenced.</p>
+                    {hasTechnicalChanges && <p className="mt-2 text-sm text-amber-900">Technical review entries are unsaved. Complete that review or <button type="button" disabled={!!acceptingId} onClick={() => { setDecisionFields({}); setRejectReason(''); }} className="underline">clear technical review entries</button> before confirming delivery.</p>}
+
+                  </> : <p className="mt-2 text-sm text-amber-900">{selectedReceipt.confirmation?.blocked_reason || 'Delivery confirmation availability could not be verified. Refresh the receipt details.'}</p>}
+                  {selectedReceipt.purchase_order && <a href={`/procurement/orders/${encodeURIComponent(selectedReceipt.purchase_order)}`} className="mt-3 inline-block text-sm text-blue-700 underline">Open purchase order{selectedReceipt.po_number ? ` ${selectedReceipt.po_number}` : ''}</a>}
+                </section>}
 
                   <div className="mt-6">
                     <h3 className="text-sm font-semibold text-gray-900">Quality inspection</h3>
@@ -1067,9 +456,9 @@ const ReceiptManagement = () => {
                         ['Visual', selectedReceipt.visual_inspection_passed],
                         ['Material', selectedReceipt.material_verification_passed],
                       ].map(([label, passed]) => (
-                        <div key={label} className={`rounded-lg border p-3 text-center ${passed ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-200 bg-red-50 text-red-800'}`}>
+                        <div key={label} className={`rounded-lg border p-3 text-center ${passed === false ? 'border-red-200 bg-red-50 text-red-800' : 'border-gray-200 bg-gray-50 text-gray-700'}`}>
                           <p className="text-xs font-medium">{label}</p>
-                          <p className="mt-1 font-semibold">{passed ? 'Passed' : 'Failed'}</p>
+                          <p className="mt-1 font-semibold">{inspectionResult(passed, selectedReceipt)}</p>
                         </div>
                       ))}
                     </div>
@@ -1077,13 +466,13 @@ const ReceiptManagement = () => {
 
                   <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div className="rounded-lg border border-gray-200 p-4">
-                      <h3 className="text-sm font-semibold text-gray-900">Items received</h3>
-                      {Array.isArray(selectedReceipt.items_received) && selectedReceipt.items_received.length > 0 ? (
+                      <h3 className="text-sm font-semibold text-gray-900">{receiptItems(selectedReceipt).some(item => item.basis === 'service_value') ? 'Service acceptance value' : 'Items received'}</h3>
+                      {receiptItems(selectedReceipt).length > 0 ? (
                         <div className="mt-3 space-y-2">
-                          {selectedReceipt.items_received.map((item, index) => (
+                          {receiptItems(selectedReceipt).map((item, index) => (
                             <div key={index} className="rounded bg-gray-50 p-3 text-sm text-gray-700">
-                              <p className="font-medium text-gray-900">{item.item || item.description || `Item ${index + 1}`}</p>
-                              <p className="mt-1">Ordered: {item.ordered_qty ?? '—'} · Received: {item.received_qty ?? item.quantity ?? '—'} · Accepted: {item.accepted_qty ?? '—'}</p>
+                              <p className="font-medium text-gray-900">{receiptText(item.item || item.description || `Item ${index + 1}`)}</p>
+                              <p className="mt-1">Ordered: {receiptText(item.ordered_qty)} · Received: {receiptText(item.received_qty ?? item.quantity)} · Accepted: {receiptText(item.accepted_qty)} {receiptText(item.uom)}</p>
                             </div>
                           ))}
                         </div>
@@ -1092,34 +481,53 @@ const ReceiptManagement = () => {
                     <div className="rounded-lg border border-gray-200 p-4">
                       <h3 className="text-sm font-semibold text-gray-900">Compliance and traceability</h3>
                       <dl className="mt-3 space-y-2 text-sm">
-                        <div><dt className="font-medium text-gray-700">Certificates</dt><dd className="text-gray-600">{Array.isArray(selectedReceipt.certificates_received) && selectedReceipt.certificates_received.length ? selectedReceipt.certificates_received.join(', ') : 'Not recorded'}</dd></div>
-                        <div><dt className="font-medium text-gray-700">Heat numbers</dt><dd className="text-gray-600">{Array.isArray(selectedReceipt.heat_numbers) && selectedReceipt.heat_numbers.length ? selectedReceipt.heat_numbers.join(', ') : (selectedReceipt.heat_numbers || 'Not recorded')}</dd></div>
+                        <div><dt className="font-medium text-gray-700">Certificates</dt><dd className="text-gray-600">{listText(selectedReceipt.certificates_received)}</dd></div>
+                        <div><dt className="font-medium text-gray-700">Heat numbers</dt><dd className="text-gray-600">{listText(selectedReceipt.heat_numbers)}</dd></div>
                         <div><dt className="font-medium text-gray-700">NDT performed</dt><dd className="text-gray-600">{selectedReceipt.ndt_performed ? 'Yes' : 'No'}</dd></div>
-                        {selectedReceipt.ndt_results && <div><dt className="font-medium text-gray-700">NDT results</dt><dd className="text-gray-600">{selectedReceipt.ndt_results}</dd></div>}
+                        {selectedReceipt.ndt_results && <div><dt className="font-medium text-gray-700">NDT results</dt><dd className="text-gray-600">{receiptText(selectedReceipt.ndt_results)}</dd></div>}
                       </dl>
                     </div>
                   </div>
 
+                  <div className="mt-6 space-y-3">
+                {selectedReceipt.status === 'pending' && (selectedReceipt.capabilities?.accept === true || selectedReceipt.capabilities?.reject === true) && <div className="grid w-full gap-3 sm:grid-cols-2"><h3 className="text-sm font-semibold sm:col-span-2">Technical inspection review</h3>{[['quality_check_passed', 'Overall quality'], ['dimensional_check_passed', 'Dimensional check'], ['visual_inspection_passed', 'Visual inspection'], ['material_verification_passed', 'Material verification']].map(([key, label]) => <label key={key} className="text-sm">{label}<select value={decisionFields[key] ?? (selectedReceipt[key] === true ? 'true' : selectedReceipt[key] === false ? 'false' : '')} onChange={event => setDecisionFields(current => ({ ...current, [key]: event.target.value }))} disabled={!!acceptingId} className="mt-1 w-full rounded border p-2"><option value="">Not assessed</option><option value="true">Passed</option><option value="false">Failed</option></select></label>)}</div>}
+                {selectedReceipt.status === 'pending' && selectedReceipt.capabilities?.reject === true && <div className="w-full"><label className="block text-sm">Rejection reason<textarea value={rejectReason} onChange={event => setRejectReason(event.target.value)} disabled={!!acceptingId} className="mt-1 w-full rounded border border-gray-300 p-2" /></label><button type="button" disabled={!!acceptingId || decisionStale || !rejectReason.trim() || detailLoading || !!detailError} onClick={() => acceptReceipt(selectedReceipt, true)} className="mt-2 rounded border border-red-300 px-3 py-2 text-red-700">Reject receipt</button></div>}
+                  </div>
+
+                  <section className="mt-6 rounded-lg border border-gray-200 p-4" aria-label="Receipt attachments">
+                    <h3 className="text-sm font-semibold text-gray-900">Attachments</h3>
+                    <ul className="mt-3 space-y-2">{(Array.isArray(selectedReceipt.attachments) ? selectedReceipt.attachments : []).map(receiptReviewAttachment).filter(Boolean).map((attachment, index) => <li key={index} className="break-all text-sm">{attachment.url ? <a href={attachment.url} target="_blank" rel="noopener noreferrer" className="text-blue-700 underline">{attachment.name}</a> : <span>{attachment.name} · Document link unavailable</span>}</li>)}</ul>
+                    {(!Array.isArray(selectedReceipt.attachments) || !selectedReceipt.attachments.length) && <p className="mt-2 text-sm text-gray-600">No attachments recorded.</p>}
+                  </section>
+
                   {(selectedReceipt.inspection_notes || selectedReceipt.notes) && (
                     <div className="mt-6 rounded-lg border border-gray-200 p-4">
                       <h3 className="text-sm font-semibold text-gray-900">Notes</h3>
-                      <p className="mt-2 whitespace-pre-wrap text-sm text-gray-600">{selectedReceipt.inspection_notes || selectedReceipt.notes}</p>
+                      <p className="mt-2 whitespace-pre-wrap text-sm text-gray-600">{receiptText(selectedReceipt.inspection_notes || selectedReceipt.notes)}</p>
                     </div>
                   )}
                 </div>
               )}
 
-              <div className="flex justify-end gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4">
-                <button type="button" onClick={openPrintPreview} className="inline-flex items-center rounded-md border border-indigo-300 bg-white px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4">
+                {actionError && <p role="alert" className="w-full text-sm text-red-700">{actionError}</p>}
+                {decisionStale && <button type="button" disabled={!!acceptingId} onClick={() => openReceiptDetails(selectedReceipt, true)} className="rounded border px-3 py-2">Refresh receipt details</button>}
+                {!detailLoading && !detailError && <>
+                  <button type="button" onClick={() => confirmDelivery(selectedReceipt)} disabled={!!acceptingId || decisionStale || hasTechnicalChanges || !!receiptConfirmationBlock(selectedReceipt)} aria-describedby={receiptConfirmationBlock(selectedReceipt) ? 'receipt-confirm-block' : undefined} className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50">{acceptingId ? 'Confirming...' : 'Confirm delivery'}</button>
+                  <button type="button" onClick={() => openDelete(selectedReceipt)} disabled={!!acceptingId || decisionStale || !!receiptDeletionBlock(selectedReceipt)} aria-describedby={receiptDeletionBlock(selectedReceipt) ? 'receipt-delete-block' : undefined} className="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50">Delete receipt</button>
+                  {receiptConfirmationBlock(selectedReceipt) && <p id="receipt-confirm-block" className="w-full text-sm text-amber-900">{receiptConfirmationBlock(selectedReceipt)}</p>}
+                  {receiptDeletionBlock(selectedReceipt) && <p id="receipt-delete-block" className="w-full text-sm text-amber-900">{receiptDeletionBlock(selectedReceipt)}</p>}
+                </>}
+                <button type="button" onClick={openPrintPreview} disabled={!!acceptingId || detailLoading || !!detailError || selectedReceipt.capabilities?.export !== true} className="inline-flex items-center rounded-md border border-indigo-300 bg-white px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">
                   <PrinterIcon className="mr-2 h-4 w-4" />
                   Print Preview
                 </button>
-                {selectedReceipt.status === 'pending' && (
-                  <button type="button" onClick={() => acceptReceipt(selectedReceipt)} disabled={acceptingId === selectedReceipt.id} className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50">
-                    {acceptingId === selectedReceipt.id ? 'Accepting...' : 'Accept Receipt'}
+                {selectedReceipt.status === 'pending' && selectedReceipt.capabilities?.accept === true && !detailError && !detailLoading && (
+                  <button type="button" onClick={() => acceptReceipt(selectedReceipt)} disabled={acceptingId === selectedReceipt.id || decisionStale} className="rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50">
+                    {acceptingId === selectedReceipt.id ? 'Accepting...' : 'Accept receipt'}
                   </button>
                 )}
-                <button type="button" onClick={() => { setShowPrintPreview(false); setSelectedReceipt(null); }} className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Close</button>
+                <button type="button" disabled={!!acceptingId} onClick={() => { if (!acceptingId) { setShowPrintPreview(false); setSelectedReceipt(null); } }} className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Close</button>
               </div>
             </div>
           </div>
@@ -1128,7 +536,7 @@ const ReceiptManagement = () => {
 
       {/* A4 Print Preview */}
       {selectedReceipt && showPrintPreview && (
-        <div className="fixed inset-0 z-[60] overflow-y-auto bg-gray-900/80" role="dialog" aria-modal="true" aria-labelledby="gr-print-preview-title">
+        <div ref={printRef} onKeyDown={trapDialog} className="fixed inset-0 z-[60] overflow-y-auto bg-gray-900/80" role="dialog" aria-modal="true" aria-labelledby="gr-print-preview-title">
           <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-700 bg-gray-900 px-4 py-3 text-white shadow-lg sm:px-6">
             <div>
               <h2 id="gr-print-preview-title" className="font-semibold">Print Preview · Goods Receipt Note</h2>
@@ -1148,17 +556,10 @@ const ReceiptManagement = () => {
         </div>
       )}
 
-      {/* AI Receipt Creator Modal */}
-      <ReceiptCreatorErrorBoundary isOpen={showAICreator} onClose={() => setShowAICreator(false)}>
-        <AIReceiptCreator
-          isOpen={showAICreator}
-          onClose={() => setShowAICreator(false)}
-          onReceiptCreated={handleReceiptCreated}
-          orders={orders}
-        />
-      </ReceiptCreatorErrorBoundary>
-    </div>
-  );
-};
 
+    <ReceiptCreatorErrorBoundary isOpen={showAICreator} onClose={() => setShowAICreator(false)}>
+      <AIReceiptCreator isOpen={showAICreator} onClose={() => setShowAICreator(false)} onReceiptCreated={handleReceiptCreated} initialOrder={initialOrder} reconciliation={reconciliation} />
+    </ReceiptCreatorErrorBoundary>
+  </>;
+};
 export default ReceiptManagement;

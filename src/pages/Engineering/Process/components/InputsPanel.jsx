@@ -1,9 +1,11 @@
+import useAIProviderStatus from '../../../../hooks/useAIProviderStatus'
+import PlatformAIStatus from '../../../../components/ai/PlatformAIStatus'
 import React from 'react'
 import {
   Upload, FileText, Sparkles, Key, Eye, EyeOff, Loader2, BookOpen, FileSpreadsheet, Zap, Boxes, Gauge,
 } from 'lucide-react'
 
-import { MODE_OCR, MODE_VISION, VISION_PROVIDERS } from '../../../../services/pidCheckerV2API'
+import { MODE_OCR, MODE_VISION, VISION_PROVIDERS, CLAUDE_VISION_MODELS } from '../../../../services/pidCheckerV2API'
 import LineListDropzone from './LineListDropzone'
 import EquipmentListDropzone from './EquipmentListDropzone'
 import InstrumentIndexDropzone from './InstrumentIndexDropzone'
@@ -27,6 +29,15 @@ const ACCEPTED_EXTENSIONS = '.pdf'
 export default function InputsPanel({
   // PDF
   fileInputRef, file, onPickFile,
+  // Active project — passed through to the upload calls below, but note:
+  // the Master Line List / Equipment List / Instrument Index are
+  // DELIBERATELY global, one per user account, not scoped by project (see
+  // PIDCheckerV2.jsx's own top-of-file comment for the full trace —
+  // confirmed against the actual backend models/views and a previously-
+  // pending migration that formalized this). This prop does NOT scope
+  // reference-data uploads to a project; it exists for other genuinely
+  // project-scoped things this panel/its children may use.
+  projectId,
   // Excel / Line List
   activeLineList, onLineListUploaded,
   // Excel / Equipment List
@@ -37,15 +48,18 @@ export default function InputsPanel({
   mode, setMode, forceOcr, setForceOcr,
   // BYOK
   visionProvider, setVisionProvider,
+  visionClaudeModel, setVisionClaudeModel,
   apiKey, setApiKey, showKey, setShowKey,
   rememberKey, setRememberKey,
+  onTestConnection, testingConnection, connectionTestResult,
   // Analyse action
   onSubmit, loading, uploadPct,
   // Read-only status
   activeLegend, effectiveLegend,
 }) {
+  const centralAI = useAIProviderStatus(visionProvider)
   const canSubmit = Boolean(file) && !loading
-    && (mode !== MODE_VISION || (visionProvider && apiKey))
+    && (mode !== MODE_VISION || centralAI.canUseAI)
 
   return (
     <div style={{
@@ -129,6 +143,7 @@ export default function InputsPanel({
           activeLineList={activeLineList}
           onUploaded={onLineListUploaded}
           disabled={loading}
+          projectId={projectId}
         />
       </div>
 
@@ -137,6 +152,7 @@ export default function InputsPanel({
         activeEquipmentList={activeEquipmentList}
         onUploaded={onEquipmentListUploaded}
         disabled={loading}
+        projectId={projectId}
       />
 
       {/* Instrument Index card (full width) */}
@@ -144,6 +160,7 @@ export default function InputsPanel({
         activeInstrumentIndex={activeInstrumentIndex}
         onUploaded={onInstrumentIndexUploaded}
         disabled={loading}
+        projectId={projectId}
       />
 
       {/* Mode selector */}
@@ -154,7 +171,7 @@ export default function InputsPanel({
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {[
             { id: MODE_OCR,    label: 'OCR (offline)',    icon: <FileText size={13} /> },
-            { id: MODE_VISION, label: 'AI Vision (BYOK)', icon: <Sparkles size={13} /> },
+            { id: MODE_VISION, label: 'AI Vision', icon: <Sparkles size={13} /> },
           ].map((m) => {
             const active = mode === m.id
             return (
@@ -197,10 +214,10 @@ export default function InputsPanel({
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
             <Sparkles size={13} color={THEME_PRIMARY} />
             <span style={{ fontWeight: 600, color: THEME_TEXT, fontSize: 12 }}>
-              Bring Your Own Key
+              AI provider
             </span>
             <span style={{ marginLeft: 'auto', fontSize: 10, color: THEME_MUTED }}>
-              per-request only
+              Managed on the server
             </span>
           </div>
           <div style={{ display: 'grid', gap: 8 }}>
@@ -218,46 +235,23 @@ export default function InputsPanel({
               ))}
             </select>
 
-            <div style={{ position: 'relative' }}>
-              <Key size={12} style={{
-                position: 'absolute', top: '50%', left: 10, transform: 'translateY(-50%)',
-                color: THEME_MUTED,
-              }} />
-              <input
-                type={showKey ? 'text' : 'password'}
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder={`${VISION_PROVIDERS.find(p => p.id === visionProvider)?.keyPrefix || ''}...`}
+            {visionProvider === 'claude' && (
+              <select
+                value={visionClaudeModel}
+                onChange={(e) => setVisionClaudeModel(e.target.value)}
                 disabled={loading}
-                autoComplete="off"
                 style={{
-                  width: '100%', padding: '8px 36px 8px 30px',
-                  borderRadius: 8, fontSize: 12, boxSizing: 'border-box',
-                  border: `1px solid ${THEME_BORDER}`, color: THEME_TEXT,
-                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                  padding: '8px 10px', borderRadius: 8, fontSize: 12,
+                  border: `1px solid ${THEME_BORDER}`, background: '#fff', color: THEME_TEXT,
                 }}
-              />
-              <button
-                type="button" onClick={() => setShowKey(v => !v)}
-                style={{
-                  position: 'absolute', top: '50%', right: 8, transform: 'translateY(-50%)',
-                  background: 'none', border: 'none', cursor: 'pointer', color: THEME_MUTED,
-                  display: 'flex', alignItems: 'center', padding: 4,
-                }}
-                aria-label={showKey ? 'Hide key' : 'Show key'}
               >
-                {showKey ? <EyeOff size={12} /> : <Eye size={12} />}
-              </button>
-            </div>
+                {CLAUDE_VISION_MODELS.map((m) => (
+                  <option key={m.id} value={m.id}>{m.label}</option>
+                ))}
+              </select>
+            )}
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: THEME_MUTED }}>
-              <input
-                type="checkbox" checked={rememberKey}
-                onChange={(e) => setRememberKey(e.target.checked)}
-                disabled={loading}
-              />
-              Remember for this session
-            </label>
+            <PlatformAIStatus provider={visionProvider} />
           </div>
         </div>
       )}

@@ -39,7 +39,7 @@ const OVERVIEW_PILLARS = [
   {
     icon: '🧠',
     title: 'Understand',
-    text: 'A deterministic rule engine (Document Intelligence) extracts scope, disciplines, deliverables and milestones — no external calls unless BYOK Claude is on.',
+    text: 'A rule engine extracts scope, disciplines, deliverables and milestones. The selected AI provider adds reviewable suggestions using the administrator-managed connection or an existing project connection.',
     accent: 'from-violet-500 to-purple-600',
   },
   {
@@ -68,7 +68,7 @@ const TIPS = [
 const FAQ = [
   {
     q: 'Does any of my data leave the platform?',
-    a: 'No. The default Document Intelligence engine is 100% deterministic and runs on your tenant. Only if you explicitly enable BYOK Claude in AI Settings will the schedule-narrative and enhanced intelligence stages call Anthropic with the API key you provide.',
+    a: 'AI analysis sends authorized source content to the selected provider. Administrators can configure shared provider credentials; users do not need to enter a key when that connection is available. Saved credentials are encrypted and never returned by the API.',
   },
   {
     q: 'Can I edit the WBS or activities after generation?',

@@ -1,0 +1,87 @@
+.ar-chart {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  color: var(--ar-ink, #101b48);
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+}
+
+.ar-chart > svg {
+  display: block;
+  width: 100%;
+  height: var(--ar-chart-height, 186px);
+  overflow: visible;
+}
+
+.ar-chart-ageing > svg,
+.ar-chart-trend > svg { height: var(--ar-chart-height, 125px); }
+.ar-chart-payments > svg { height: var(--ar-chart-height, 75px); }
+.ar-chart svg text { fill: var(--ar-ink, #101b48); font-family: inherit; font-size: 11.5px; }
+.ar-chart .ar-chart-grid line,
+.ar-chart .ar-chart-vertical-grid { stroke: var(--ar-grid, #edf2f7); stroke-width: 1; }
+.ar-chart .ar-chart-grid text { font-size: 11px; }
+.ar-chart .ar-chart-baseline { stroke: #aab4c7; stroke-width: 1; }
+.ar-chart .ar-chart-customer-label { font-size: 11.5px; }
+.ar-chart .ar-chart-value { font-size: 11.5px; }
+.ar-chart .ar-chart-axis-label { font-size: 11px; }
+.ar-chart .ar-chart-bar-label { fill: #075478; font-size: 11px; font-weight: 600; }
+.ar-chart-unit { position: absolute; top: 0; left: 11px; color: var(--ar-muted, #3f517b); font-size: 11px; }
+
+.ar-chart-legend {
+  position: absolute;
+  z-index: 1;
+  top: -1px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 19px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 11px;
+}
+.ar-chart-legend li { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.ar-chart-legend i { display: inline-block; width: 15px; height: 10px; border-radius: 1.5px; background: var(--ar-series); }
+.ar-chart-legend-lines i { position: relative; width: 23px; height: 1px; }
+.ar-chart-legend-lines i::after { position: absolute; top: -3px; left: 10px; width: 7px; height: 7px; border-radius: 50%; background: var(--ar-series); content: ''; }
+.ar-chart-payments .ar-chart-legend { right: auto; left: 28%; gap: 12px; }
+.ar-chart-payments .ar-chart-legend i { width: 12px; }
+
+.ar-chart-donut-layout { display: grid; grid-template-columns: minmax(180px, 54%) minmax(0, 1fr); align-items: center; height: var(--ar-chart-height, 186px); }
+.ar-chart-donut { display: block; width: 100%; height: var(--ar-chart-height, 186px); overflow: visible; }
+.ar-chart .ar-chart-donut-total { font-size: 12px; font-weight: 700; }
+.ar-chart .ar-chart-donut-caption { font-size: 11px; }
+.ar-chart .ar-chart-donut-share { font-size: 11px; font-weight: 500; pointer-events: none; }
+.ar-chart .ar-chart-donut-share-light { fill: #fff; }
+.ar-chart-exposure-legend { display: grid; gap: 10px; margin: 0; padding: 0 14px 0 0; list-style: none; font-size: 11.5px; }
+.ar-chart-exposure-legend li { display: grid; grid-template-columns: 15px minmax(0, 1fr) auto; align-items: center; gap: 7px; border-radius: 3px; }
+.ar-chart-exposure-legend i { width: 15px; height: 15px; border-radius: 50%; }
+.ar-chart-exposure-legend span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ar-chart-exposure-legend strong { font-weight: 500; }
+.ar-chart .ar-chart-endpoint text { fill: white; font-size: 11px; font-weight: 600; }
+
+.ar-chart-mark { outline: none; transition: opacity 100ms ease; }
+.ar-chart-mark:hover { opacity: 0.8; }
+.ar-chart-mark:focus-visible { outline: 2px solid #064fe0; outline-offset: 3px; }
+.ar-chart-exposure-legend li:focus-visible { outline: 2px solid #064fe0; outline-offset: 3px; }
+.ar-chart-tooltip { position: absolute; z-index: 5; left: 50%; top: 3px; width: max-content; max-width: min(340px, 92%); padding: 7px 10px; transform: translateX(-50%); border: 1px solid var(--ar-border, #c3ddf0); border-radius: 4px; background: var(--ar-panel, #fff); box-shadow: 0 3px 12px #132b4824; color: var(--ar-ink, #101b48); font-size: 11px; text-align: center; pointer-events: none; }
+.ar-chart-recorded { position: absolute; right: 5px; bottom: 0; padding: 1px 4px; border-radius: 2px; background: var(--ar-panel, #fff); color: var(--ar-muted, #526483); font-size: 9px; }
+.ar-chart-empty { display: flex; min-height: var(--ar-chart-height, 186px); flex-direction: column; align-items: center; justify-content: center; gap: 7px; padding: 8px 18px; color: var(--ar-muted, #526483); text-align: center; font-size: 11px; }
+.ar-chart-empty svg { width: 28px; height: 28px; color: #6a9cbd; }
+.ar-chart-ageing .ar-chart-empty,
+.ar-chart-trend .ar-chart-empty { min-height: var(--ar-chart-height, 125px); }
+.ar-chart-payments .ar-chart-empty { min-height: var(--ar-chart-height, 75px); flex-direction: row; }
+
+@media (max-width: 600px) {
+  .ar-chart-donut-layout { grid-template-columns: minmax(145px, 48%) minmax(0, 1fr); }
+  .ar-chart-exposure-legend { padding-right: 2px; gap: 9px; font-size: 11px; }
+  .ar-chart-exposure-legend li { grid-template-columns: 11px minmax(0, 1fr) auto; gap: 5px; }
+  .ar-chart-exposure-legend i { width: 11px; height: 11px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ar-chart-mark { transition: none; }
+}

@@ -1,9 +1,10 @@
-﻿import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import axios from 'axios';
 import { API_BASE_URL } from '../../../config/api.config';
 import { ROUTES } from '../../../config/routes.config';
 import CrossRecommendationPanel from '../../../components/recommendations/CrossRecommendationPanel';
 import WrenchAiDocAssist from '../../../components/Engineering/WrenchAiDocAssist';
+import PFDWorkflowDocs from './components/PFDWorkflowDocs';
 import {
   Upload as UploadIcon, FileText, CheckCircle, AlertTriangle,
   Loader, X, Download, Activity, Shield, GitBranch, Cpu, Clock,
@@ -106,8 +107,8 @@ const KEYFRAMES = `
 
   /* ── PFD-specific: node glow pulse for project cards ── */
   @keyframes nodeGlow {
-    0%,100% { box-shadow: 0 0 0 0 rgba(13,148,136,0); transform:scale(1); }
-    50%     { box-shadow: 0 0 18px 4px rgba(13,148,136,0.35); transform:scale(1.04); }
+    0%,100% { box-shadow: 0 0 0 0 rgba(59,130,246,0); transform:scale(1); }
+    50%     { box-shadow: 0 0 18px 4px rgba(59,130,246,0.35); transform:scale(1.04); }
   }
 
   /* ── PFD-specific: progress bar fill wave ── */
@@ -152,51 +153,78 @@ const KEYFRAMES = `
 `;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Theme constants — teal/cyan palette with deep-ocean accent
+// Theme constants — ALIGNED with P&ID Verification V1 (PIDVerification.jsx)
+// Blue/indigo/violet palette so both pages share one visual identity.
 // SOFT-CODED: all visual values live here; JSX references T.xxx only.
+// To restore the legacy teal/cyan "deep-ocean" look, flip PFDQ_THEME_MODE
+// below to 'teal' — no JSX changes needed.
 // ─────────────────────────────────────────────────────────────────────────────
-const T = {
-  // Page background — subtle deep-sea gradient
-  bg: 'linear-gradient(145deg, #f0fdfa 0%, #ecfeff 30%, #f0f9ff 65%, #f0fdfa 100%)',
 
-  // Ambient blob colours & positions
-  blobs: [
-    { color:'rgba(20,184,166,0.10)',  size:'580px', top:'-100px',   left:'15%',    anim:'floatA 14s ease-in-out infinite'    },
-    { color:'rgba(6,182,212,0.08)',   size:'460px', top:'25%',      right:'-80px', anim:'floatB 17s ease-in-out infinite'    },
-    { color:'rgba(16,185,129,0.08)',  size:'400px', bottom:'-80px', left:'30%',    anim:'floatC 12s ease-in-out infinite'    },
-    { color:'rgba(14,165,233,0.07)',  size:'320px', top:'60%',      left:'-60px',  anim:'floatA 10s ease-in-out infinite 3s' },
-    { color:'rgba(20,184,166,0.05)',  size:'260px', top:'40%',      right:'20%',   anim:'floatB  9s ease-in-out infinite 2s' },
-  ],
+// SOFT-CODED theme mode: 'pid' (aligned w/ P&ID Verification V1) | 'teal' (legacy)
+const PFDQ_THEME_MODE = 'pid';
 
-  // Card & panel surfaces
-  card:  { background:'#ffffff', border:'1px solid #e2e8f0', boxShadow:'0 1px 3px rgba(0,0,0,0.06),0 4px 16px rgba(0,0,0,0.04)' },
-  cardH: { boxShadow:'0 12px 40px rgba(13,148,136,0.14),0 2px 8px rgba(0,0,0,0.05)', borderColor:'#5eead4', transform:'translateY(-2px)' },
-  panel: { background:'rgba(255,255,255,0.90)', border:'1px solid #ccfbf1', backdropFilter:'blur(16px)', boxShadow:'0 1px 3px rgba(0,0,0,0.04)' },
-  modal: { background:'#ffffff', border:'1px solid #e2e8f0', boxShadow:'0 24px 70px rgba(0,0,0,0.16)' },
-  input: { background:'#f8fafc', border:'1px solid #e2e8f0' },
-
-  // Accent colours
-  accent:       'linear-gradient(135deg,#0d9488,#0891b2)',
-  accentDeep:   'linear-gradient(135deg,#0f766e,#0e7490)',
-  accentHex:    '#0d9488',
-  accentShadow: '0 4px 18px rgba(8,145,178,0.38)',
-  accentShadowLg:'0 8px 28px rgba(8,145,178,0.42)',
-
-  // Top gradient bar (animated)
-  gradBar: 'linear-gradient(90deg,#14b8a6,#0891b2,#06b6d4,#10b981,#14b8a6)',
-
-  // Grid dot overlay
-  gridDot: 'radial-gradient(circle, rgba(20,184,166,0.07) 1px, transparent 1px)',
-
-  // Scan beam sweep colour
-  scanBeam: 'linear-gradient(180deg,transparent,rgba(20,184,166,0.18),rgba(6,182,212,0.22),rgba(20,184,166,0.18),transparent)',
-
-  // Circuit trace colour
-  trace: 'rgba(20,184,166,0.6)',
-
-  // Stream dot colours for the pipe‑flow illustration
-  streamColors: ['#14b8a6','#0891b2','#06b6d4','#10b981'],
+const _PFDQ_THEMES = {
+  // ── Aligned with P&ID Verification V1 (PIDVerification.jsx T block) ──────────
+  pid: {
+    bg:    'linear-gradient(135deg, #f8faff 0%, #eef2ff 45%, #f0f9ff 75%, #fffbeb 100%)',
+    blobs: [
+      { color:'rgba(59,130,246,0.09)',  size:'520px', top:'-80px',   left:'18%',    anim:'floatA 14s ease-in-out infinite'    },
+      { color:'rgba(168,85,247,0.07)',  size:'430px', top:'28%',     right:'-60px', anim:'floatB 17s ease-in-out infinite'    },
+      { color:'rgba(245,158,11,0.07)',  size:'380px', bottom:'-60px',left:'32%',    anim:'floatC 12s ease-in-out infinite'    },
+      { color:'rgba(99,102,241,0.06)',   size:'300px', top:'62%',     left:'-40px',  anim:'floatA 10s ease-in-out infinite 3s' },
+      { color:'rgba(99,102,241,0.05)',  size:'260px', top:'40%',     right:'20%',   anim:'floatB  9s ease-in-out infinite 2s' },
+    ],
+    card:  { background:'#ffffff', border:'1px solid #e2e8f0', boxShadow:'0 1px 3px rgba(0,0,0,0.06),0 4px 12px rgba(0,0,0,0.04)' },
+    cardH: { boxShadow:'0 10px 30px rgba(0,0,0,0.10),0 2px 8px rgba(0,0,0,0.05)', borderColor:'#93c5fd', transform:'translateY(-2px)' },
+    panel: { background:'rgba(255,255,255,0.85)', border:'1px solid #e8edf5', backdropFilter:'blur(12px)', boxShadow:'0 1px 3px rgba(0,0,0,0.04)' },
+    modal: { background:'#ffffff', border:'1px solid #e2e8f0', boxShadow:'0 20px 60px rgba(0,0,0,0.15)' },
+    input: { background:'#f8fafc', border:'1px solid #e2e8f0' },
+    // Accent colours (blue → indigo, same family as V1's BUTTON_PRIMARY_*)
+    accent:        'linear-gradient(135deg,#3b82f6,#6366f1)',
+    accentDeep:    'linear-gradient(135deg,#2563eb,#4f46e5)',
+    accentHex:     '#3b82f6',
+    accentShadow:  '0 4px 18px rgba(99,102,241,0.38)',
+    accentShadowLg:'0 8px 28px rgba(99,102,241,0.42)',
+    // Top gradient bar (animated) — identical to V1
+    gradBar: 'linear-gradient(90deg,#3b82f6,#6366f1,#f59e0b,#3b82f6)',
+    // Grid dot overlay — identical to V1
+    gridDot: 'radial-gradient(circle, rgba(99,102,241,0.055) 1px, transparent 1px)',
+    // Scan beam sweep colour (blue tint)
+    scanBeam: 'linear-gradient(180deg,transparent,rgba(59,130,246,0.16),rgba(99,102,241,0.20),rgba(59,130,246,0.16),transparent)',
+    // Circuit trace colour (indigo)
+    trace: 'rgba(99,102,241,0.6)',
+    // Stream dot colours for the pipe-flow illustration
+    streamColors: ['#3b82f6','#6366f1','#06b6d4','#f59e0b'],
+  },
+  // ── Legacy teal/cyan palette (kept for easy rollback) ────────────────────────
+  teal: {
+    bg: 'linear-gradient(145deg, #eef2ff 0%, #e0e7ff 30%, #f0f9ff 65%, #eef2ff 100%)',
+    blobs: [
+      { color:'rgba(59,130,246,0.10)',  size:'580px', top:'-100px',   left:'15%',    anim:'floatA 14s ease-in-out infinite'    },
+      { color:'rgba(99,102,241,0.08)',   size:'460px', top:'25%',      right:'-80px', anim:'floatB 17s ease-in-out infinite'    },
+      { color:'rgba(245,158,11,0.08)',  size:'400px', bottom:'-80px', left:'30%',    anim:'floatC 12s ease-in-out infinite'    },
+      { color:'rgba(6,182,212,0.07)',  size:'320px', top:'60%',      left:'-60px',  anim:'floatA 10s ease-in-out infinite 3s' },
+      { color:'rgba(59,130,246,0.05)',  size:'260px', top:'40%',      right:'20%',   anim:'floatB  9s ease-in-out infinite 2s' },
+    ],
+    card:  { background:'#ffffff', border:'1px solid #e2e8f0', boxShadow:'0 1px 3px rgba(0,0,0,0.06),0 4px 16px rgba(0,0,0,0.04)' },
+    cardH: { boxShadow:'0 12px 40px rgba(59,130,246,0.14),0 2px 8px rgba(0,0,0,0.05)', borderColor:'#93c5fd', transform:'translateY(-2px)' },
+    panel: { background:'rgba(255,255,255,0.90)', border:'1px solid #dbeafe', backdropFilter:'blur(16px)', boxShadow:'0 1px 3px rgba(0,0,0,0.04)' },
+    modal: { background:'#ffffff', border:'1px solid #e2e8f0', boxShadow:'0 24px 70px rgba(0,0,0,0.16)' },
+    input: { background:'#f8fafc', border:'1px solid #e2e8f0' },
+    accent:        'linear-gradient(135deg,#3b82f6,#6366f1)',
+    accentDeep:    'linear-gradient(135deg,#2563eb,#4f46e5)',
+    accentHex:     '#3b82f6',
+    accentShadow:  '0 4px 18px rgba(99,102,241,0.38)',
+    accentShadowLg:'0 8px 28px rgba(99,102,241,0.42)',
+    gradBar: 'linear-gradient(90deg,#3b82f6,#6366f1,#06b6d4,#10b981,#3b82f6)',
+    gridDot: 'radial-gradient(circle, rgba(59,130,246,0.07) 1px, transparent 1px)',
+    scanBeam: 'linear-gradient(180deg,transparent,rgba(59,130,246,0.18),rgba(99,102,241,0.22),rgba(59,130,246,0.18),transparent)',
+    trace: 'rgba(59,130,246,0.6)',
+    streamColors: ['#3b82f6','#6366f1','#06b6d4','#10b981'],
+  },
 };
+
+const T = _PFDQ_THEMES[PFDQ_THEME_MODE] || _PFDQ_THEMES.pid;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DarkBg — full-page animated background
@@ -207,12 +235,12 @@ const T = {
 
 // Soft-coded stream dot positions and delays for background pipe decoration
 const STREAM_DOTS = [
-  { top:'23%', delay:'0s',    dur:'3.2s', color:'#14b8a6' },
-  { top:'23%', delay:'1.1s',  dur:'3.2s', color:'#0891b2' },
+  { top:'23%', delay:'0s',    dur:'3.2s', color:'#3b82f6' },
+  { top:'23%', delay:'1.1s',  dur:'3.2s', color:'#6366f1' },
   { top:'23%', delay:'2.2s',  dur:'3.2s', color:'#06b6d4' },
   { top:'67%', delay:'0.4s',  dur:'2.8s', color:'#10b981' },
-  { top:'67%', delay:'1.6s',  dur:'2.8s', color:'#14b8a6' },
-  { top:'67%', delay:'2.4s',  dur:'2.8s', color:'#0891b2' },
+  { top:'67%', delay:'1.6s',  dur:'2.8s', color:'#3b82f6' },
+  { top:'67%', delay:'2.4s',  dur:'2.8s', color:'#6366f1' },
 ];
 
 const DarkBg = ({ children }) => (
@@ -235,25 +263,25 @@ const DarkBg = ({ children }) => (
       <svg width="256" height="100%" viewBox="0 0 256 800" preserveAspectRatio="none"
         fill="none" xmlns="http://www.w3.org/2000/svg">
         {/* Horizontal pipe at 23% */}
-        <line x1="0" y1="184" x2="256" y2="184" stroke="#14b8a6" strokeWidth="2.5"
+        <line x1="0" y1="184" x2="256" y2="184" stroke="#3b82f6" strokeWidth="2.5"
           strokeDasharray="12 8" style={{ animation:'pipeFlow 2.4s linear infinite' }} />
         {/* Horizontal pipe at 67% */}
-        <line x1="0" y1="536" x2="256" y2="536" stroke="#0891b2" strokeWidth="2.5"
+        <line x1="0" y1="536" x2="256" y2="536" stroke="#6366f1" strokeWidth="2.5"
           strokeDasharray="12 8" style={{ animation:'pipeFlow 2.8s linear infinite 0.4s' }} />
         {/* Vertical connector */}
         <line x1="128" y1="184" x2="128" y2="536" stroke="#06b6d4" strokeWidth="1.5"
           strokeDasharray="8 10" style={{ animation:'pipeFlow 3.2s linear infinite 0.8s' }} />
         {/* Equipment boxes */}
-        <rect x="44"  y="162" width="40" height="44" rx="5" fill="rgba(20,184,166,0.14)" stroke="#14b8a6" strokeWidth="1.5"/>
-        <rect x="172" y="162" width="40" height="44" rx="5" fill="rgba(8,145,178,0.12)"  stroke="#0891b2" strokeWidth="1.5"/>
-        <rect x="108" y="514" width="40" height="44" rx="5" fill="rgba(6,182,212,0.12)"  stroke="#06b6d4" strokeWidth="1.5"/>
+        <rect x="44"  y="162" width="40" height="44" rx="5" fill="rgba(59,130,246,0.14)" stroke="#3b82f6" strokeWidth="1.5"/>
+        <rect x="172" y="162" width="40" height="44" rx="5" fill="rgba(99,102,241,0.12)"  stroke="#6366f1" strokeWidth="1.5"/>
+        <rect x="108" y="514" width="40" height="44" rx="5" fill="rgba(99,102,241,0.12)"  stroke="#06b6d4" strokeWidth="1.5"/>
         {/* Stream number labels */}
-        <text x="58"  y="190" fill="#0d9488" fontSize="9" fontFamily="monospace" fontWeight="700">E-101</text>
-        <text x="184" y="190" fill="#0d9488" fontSize="9" fontFamily="monospace" fontWeight="700">V-201</text>
-        <text x="118" y="542" fill="#0d9488" fontSize="9" fontFamily="monospace" fontWeight="700">P-301</text>
+        <text x="58"  y="190" fill="#3b82f6" fontSize="9" fontFamily="monospace" fontWeight="700">E-101</text>
+        <text x="184" y="190" fill="#3b82f6" fontSize="9" fontFamily="monospace" fontWeight="700">V-201</text>
+        <text x="118" y="542" fill="#3b82f6" fontSize="9" fontFamily="monospace" fontWeight="700">P-301</text>
         {/* Stream numbers */}
-        <text x="6"   y="178" fill="#0891b2" fontSize="8" fontFamily="monospace" opacity="0.7">S-01</text>
-        <text x="6"   y="530" fill="#0891b2" fontSize="8" fontFamily="monospace" opacity="0.7">S-03</text>
+        <text x="6"   y="178" fill="#6366f1" fontSize="8" fontFamily="monospace" opacity="0.7">S-01</text>
+        <text x="6"   y="530" fill="#6366f1" fontSize="8" fontFamily="monospace" opacity="0.7">S-03</text>
       </svg>
       {/* Flowing data dots on pipe lines */}
       {STREAM_DOTS.map((d, i) => (
@@ -306,7 +334,8 @@ const SEVERITY_STYLES = {
   critical: 'bg-red-100 text-red-800 border-red-300',
   major:    'bg-orange-100 text-orange-800 border-orange-300',
   minor:    'bg-yellow-100 text-yellow-800 border-yellow-300',
-  info:     'bg-teal-100 text-teal-800 border-teal-300',
+  // Aligned with P&ID Verification V1 (green info pill)
+  info:     'bg-green-100 text-green-800 border-green-300',
 };
 
 // Soft-coded: category display labels
@@ -364,11 +393,11 @@ const PFD_PERF_TOP_CATS_COUNT       = 6;
 // Extend this array to add new capability chips — no JSX changes needed.
 // ─────────────────────────────────────────────────────────────────────────────
 const HERO_BADGES = [
-  { icon:'🔧', label:'Equipment Tagging',  cls:'bg-teal-50 border-teal-200 text-teal-700'          },
-  { icon:'🌊', label:'Stream Numbers',      cls:'bg-cyan-50 border-cyan-200 text-cyan-700'          },
+  { icon:'🔧', label:'Equipment Tagging',  cls:'bg-blue-50 border-blue-200 text-blue-700'          },
+  { icon:'🌊', label:'Stream Numbers',      cls:'bg-indigo-50 border-indigo-200 text-indigo-700'          },
   { icon:'📋', label:'Title Block',         cls:'bg-sky-50 border-sky-200 text-sky-700'             },
   { icon:'🛡️', label:'Safety Devices',     cls:'bg-emerald-50 border-emerald-200 text-emerald-700' },
-  { icon:'⚙️', label:'Control Elements',   cls:'bg-teal-50 border-teal-200 text-teal-700'          },
+  { icon:'⚙️', label:'Control Elements',   cls:'bg-blue-50 border-blue-200 text-blue-700'          },
   { icon:'📌', label:'ISO 10628',           cls:'bg-indigo-50 border-indigo-200 text-indigo-700'    },
 ];
 
@@ -384,20 +413,20 @@ const HOW_IT_WORKS = [
     title: 'Upload PFD Drawing',
     desc: 'Drop a PDF, PNG or TIFF of your Process Flow Diagram. Multi-page documents supported.',
     icon: UploadIcon,
-    accent: '#0d9488',
-    glow: 'rgba(13,148,136,0.20)',
-    bg: 'linear-gradient(135deg,#f0fdfa,#ccfbf1)',
-    border: '#99f6e4',
+    accent: '#3b82f6',
+    glow: 'rgba(59,130,246,0.20)',
+    bg: 'linear-gradient(135deg,#eef2ff,#dbeafe)',
+    border: '#bfdbfe',
   },
   {
     step: '02',
     title: 'AI + Rule Engine Scan',
     desc: '12 deterministic rules run against OCR text, equipment tags, stream numbers, title block and safety devices.',
     icon: Brain,
-    accent: '#0891b2',
-    glow: 'rgba(8,145,178,0.20)',
-    bg: 'linear-gradient(135deg,#ecfeff,#cffafe)',
-    border: '#a5f3fc',
+    accent: '#6366f1',
+    glow: 'rgba(99,102,241,0.20)',
+    bg: 'linear-gradient(135deg,#e0e7ff,#cffafe)',
+    border: '#c7d2fe',
   },
   {
     step: '03',
@@ -405,7 +434,7 @@ const HOW_IT_WORKS = [
     desc: 'Receive a ranked findings list with severity, rule reference and one-click overlay markers on the drawing.',
     icon: CheckCircle,
     accent: '#10b981',
-    glow: 'rgba(16,185,129,0.20)',
+    glow: 'rgba(245,158,11,0.20)',
     bg: 'linear-gradient(135deg,#f0fdf4,#dcfce7)',
     border: '#86efac',
   },
@@ -415,14 +444,14 @@ const HOW_IT_WORKS = [
 // SOFT-CODED: Rule coverage grid shown below "How It Works" (8 categories)
 // ─────────────────────────────────────────────────────────────────────────────
 const RULE_COVERAGE = [
-  { icon:'🔧', label:'Equipment Tags',   sub:'Naming & sequence',          color:'#0d9488' },
-  { icon:'🌊', label:'Stream Numbers',   sub:'Continuity & coverage',       color:'#0891b2' },
+  { icon:'🔧', label:'Equipment Tags',   sub:'Naming & sequence',          color:'#3b82f6' },
+  { icon:'🌊', label:'Stream Numbers',   sub:'Continuity & coverage',       color:'#6366f1' },
   { icon:'📋', label:'Title Block',      sub:'Rev, scale, approval',        color:'#0284c7' },
   { icon:'🛡️', label:'Safety Devices',  sub:'PRV, BDV placement',          color:'#dc2626' },
   { icon:'⚙️', label:'Control Elements',sub:'Valves, instruments',          color:'#7c3aed' },
-  { icon:'🔁', label:'Utility Lines',    sub:'Utility & service headers',   color:'#0891b2' },
+  { icon:'🔁', label:'Utility Lines',    sub:'Utility & service headers',   color:'#6366f1' },
   { icon:'📌', label:'HOLD Notations',   sub:'Pending decisions flagged',   color:'#d97706' },
-  { icon:'⚡', label:'ISO 10628',        sub:'Standard compliance check',   color:'#0d9488' },
+  { icon:'⚡', label:'ISO 10628',        sub:'Standard compliance check',   color:'#3b82f6' },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -497,15 +526,15 @@ const AnalysisLoader = ({ elapsedSec, fileName }) => {
 
   return (
     <div className="mt-5 rounded-2xl overflow-hidden"
-      style={{ border:'1px solid #99f6e4', background:'linear-gradient(145deg,#f0fdfa,#ecfeff 50%,#f0f9ff)', animation:'fadeUp 0.45s ease-out both' }}>
+      style={{ border:'1px solid #bfdbfe', background:'linear-gradient(145deg,#eef2ff,#e0e7ff 50%,#f0f9ff)', animation:'fadeUp 0.45s ease-out both' }}>
 
       {/* ── Header bar ── */}
       <div className="px-5 pt-4 pb-3 flex items-center justify-between gap-3 flex-wrap"
         style={{ borderBottom:'1px solid rgba(153,246,228,0.5)' }}>
         <div className="flex items-center gap-2.5">
           <div className="relative w-5 h-5">
-            <div className="absolute inset-0 rounded-full border-2 border-teal-200" />
-            <div className="absolute inset-0 rounded-full border-2 border-teal-500 border-t-transparent"
+            <div className="absolute inset-0 rounded-full border-2 border-blue-200" />
+            <div className="absolute inset-0 rounded-full border-2 border-blue-500 border-t-transparent"
               style={{ animation:'spinSlow 1s linear infinite' }} />
           </div>
           <span className="text-sm font-bold text-slate-800">Analysing PFD Drawing</span>
@@ -514,9 +543,9 @@ const AnalysisLoader = ({ elapsedSec, fileName }) => {
           )}
         </div>
         <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-mono tabular-nums"
-          style={{ background:'rgba(255,255,255,0.8)', border:'1px solid #99f6e4' }}>
-          <Clock className="w-3.5 h-3.5 text-teal-500" />
-          <span className="text-sm font-bold text-teal-700">{mins}:{secs}</span>
+          style={{ background:'rgba(255,255,255,0.8)', border:'1px solid #bfdbfe' }}>
+          <Clock className="w-3.5 h-3.5 text-blue-500" />
+          <span className="text-sm font-bold text-blue-700">{mins}:{secs}</span>
         </div>
       </div>
 
@@ -527,12 +556,12 @@ const AnalysisLoader = ({ elapsedSec, fileName }) => {
 
           {/* Scan-beam box — mimics a drawing being scanned */}
           <div className="relative w-full rounded-xl overflow-hidden flex items-center justify-center"
-            style={{ background:'rgba(255,255,255,0.6)', border:'1px solid #99f6e4',
-                     height:'140px', boxShadow:'inset 0 2px 8px rgba(13,148,136,0.06)' }}>
+            style={{ background:'rgba(255,255,255,0.6)', border:'1px solid #bfdbfe',
+                     height:'140px', boxShadow:'inset 0 2px 8px rgba(59,130,246,0.06)' }}>
 
             {/* Faint PFD grid lines */}
             <div className="absolute inset-0 pointer-events-none opacity-20"
-              style={{ backgroundImage:'linear-gradient(rgba(13,148,136,0.4) 1px,transparent 1px),linear-gradient(90deg,rgba(13,148,136,0.4) 1px,transparent 1px)',
+              style={{ backgroundImage:'linear-gradient(rgba(59,130,246,0.4) 1px,transparent 1px),linear-gradient(90deg,rgba(59,130,246,0.4) 1px,transparent 1px)',
                        backgroundSize:'28px 28px' }} />
 
             {/* Tiny equipment boxes decoration */}
@@ -543,20 +572,20 @@ const AnalysisLoader = ({ elapsedSec, fileName }) => {
             ].map((b, i) => (
               <div key={i} className="absolute rounded flex items-center justify-center"
                 style={{ left:b.left, top:b.top, width:b.w, height:b.h,
-                         background:'rgba(13,148,136,0.08)', border:'1px solid rgba(13,148,136,0.3)' }}>
-                <span style={{ fontSize:7, color:'#0d9488', fontFamily:'monospace', fontWeight:700 }}>{b.label}</span>
+                         background:'rgba(59,130,246,0.08)', border:'1px solid rgba(59,130,246,0.3)' }}>
+                <span style={{ fontSize:7, color:'#3b82f6', fontFamily:'monospace', fontWeight:700 }}>{b.label}</span>
               </div>
             ))}
 
             {/* AI brain orb */}
             <div className="relative w-14 h-14 z-10">
               <div className="absolute inset-0 rounded-full flex items-center justify-center"
-                style={{ background:'linear-gradient(135deg,#0d9488,#0891b2)', boxShadow:'0 0 28px rgba(13,148,136,0.5)' }}>
+                style={{ background:'linear-gradient(135deg,#3b82f6,#6366f1)', boxShadow:'0 0 28px rgba(59,130,246,0.5)' }}>
                 <Cpu className="w-6 h-6 text-white" />
               </div>
               {[
-                { color:'#14b8a6', anim:'orbitA 2.2s linear infinite' },
-                { color:'#0891b2', anim:'orbitB 2.2s linear infinite' },
+                { color:'#3b82f6', anim:'orbitA 2.2s linear infinite' },
+                { color:'#6366f1', anim:'orbitB 2.2s linear infinite' },
                 { color:'#10b981', anim:'orbitC 2.2s linear infinite' },
               ].map((o, i) => (
                 <span key={i} className="absolute w-2.5 h-2.5 rounded-full"
@@ -577,7 +606,7 @@ const AnalysisLoader = ({ elapsedSec, fileName }) => {
               'bottom-2 right-2 border-b-2 border-r-2',
             ].map((cls, i) => (
               <div key={i} className={`absolute w-5 h-5 pointer-events-none ${cls}`}
-                style={{ borderColor:'rgba(13,148,136,0.5)', borderRadius:2 }} />
+                style={{ borderColor:'rgba(59,130,246,0.5)', borderRadius:2 }} />
             ))}
           </div>
 
@@ -587,15 +616,15 @@ const AnalysisLoader = ({ elapsedSec, fileName }) => {
               <span className="text-xs font-semibold text-slate-600">
                 {PFD_STAGES[activeIdx]?.label || 'Processing…'}
               </span>
-              <span className="text-xs font-bold text-teal-600 tabular-nums">{progressPct}%</span>
+              <span className="text-xs font-bold text-blue-600 tabular-nums">{progressPct}%</span>
             </div>
             <div className="relative w-full h-3 rounded-full overflow-hidden"
-              style={{ background:'rgba(255,255,255,0.7)', border:'1px solid #99f6e4' }}>
+              style={{ background:'rgba(255,255,255,0.7)', border:'1px solid #bfdbfe' }}>
               <div className="absolute inset-y-0 left-0 rounded-full transition-all duration-[2000ms] ease-out overflow-hidden"
                 style={{
                   width:`${progressPct}%`,
-                  background:'linear-gradient(90deg,#0d9488,#0891b2,#06b6d4)',
-                  boxShadow:'0 0 10px rgba(13,148,136,0.5)',
+                  background:'linear-gradient(90deg,#3b82f6,#6366f1,#06b6d4)',
+                  boxShadow:'0 0 10px rgba(59,130,246,0.5)',
                 }}>
                 {/* Shimmer wave overlay */}
                 <div className="absolute inset-0"
@@ -622,21 +651,21 @@ const AnalysisLoader = ({ elapsedSec, fileName }) => {
               <div key={stage.id}
                 className="flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all duration-500"
                 style={
-                  done    ? { background:'rgba(16,185,129,0.07)', border:'1px solid rgba(16,185,129,0.2)'  }
-                : running ? { background:'rgba(13,148,136,0.09)', border:'1px solid rgba(13,148,136,0.3)', boxShadow:'0 0 10px rgba(13,148,136,0.1)' }
+                  done    ? { background:'rgba(245,158,11,0.07)', border:'1px solid rgba(245,158,11,0.2)'  }
+                : running ? { background:'rgba(59,130,246,0.09)', border:'1px solid rgba(59,130,246,0.3)', boxShadow:'0 0 10px rgba(59,130,246,0.1)' }
                 :           { background:'transparent',           border:'1px solid transparent' }
                 }>
                 {done
                   ? <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0" style={{ animation:'checkPop 0.35s ease-out both' }} />
                   : running
-                    ? <Loader className="w-4 h-4 text-teal-500 flex-shrink-0 animate-spin" />
+                    ? <Loader className="w-4 h-4 text-blue-500 flex-shrink-0 animate-spin" />
                     : <Icon className="w-4 h-4 text-slate-300 flex-shrink-0" />}
-                <span className={`text-xs font-medium flex-1 ${done ? 'text-emerald-700' : running ? 'text-teal-700 font-semibold' : 'text-slate-400'}`}>
+                <span className={`text-xs font-medium flex-1 ${done ? 'text-emerald-700' : running ? 'text-blue-700 font-semibold' : 'text-slate-400'}`}>
                   {stage.label}
                 </span>
                 {done    && <span className="text-[10px] text-emerald-500 font-bold">✓</span>}
                 {running && (
-                  <span className="text-[10px] text-teal-500 font-bold tabular-nums"
+                  <span className="text-[10px] text-blue-500 font-bold tabular-nums"
                     style={{ animation:'pulse2 1s ease-in-out infinite' }}>running</span>
                 )}
               </div>
@@ -648,7 +677,7 @@ const AnalysisLoader = ({ elapsedSec, fileName }) => {
       {/* ── Fact card ── */}
       <div className="px-5 pb-5">
         <div className="rounded-xl px-4 py-3 min-h-[52px] flex items-start gap-2.5"
-          style={{ background:'rgba(255,255,255,0.65)', border:'1px solid #99f6e4' }}>
+          style={{ background:'rgba(255,255,255,0.65)', border:'1px solid #bfdbfe' }}>
           <Zap className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" style={{ animation:'pulse2 2s ease-in-out infinite' }} />
           <p key={factKey} className="text-xs text-slate-600 leading-relaxed"
             style={{ animation:'factSlide 5s ease-in-out forwards' }}>
@@ -1263,9 +1292,9 @@ const PFDQualityChecker = () => {
   // ─────────────────────────────────────────────────────────────────────────
   const FlashBanner = () => message.text ? (
     <div className={`mb-5 p-4 rounded-xl border flex items-center gap-3 ${
-      message.type === 'success' ? 'bg-teal-50 border-teal-200 text-teal-700'
+      message.type === 'success' ? 'bg-blue-50 border-blue-200 text-blue-700'
       : message.type === 'error' ? 'bg-red-50 border-red-200 text-red-700'
-      : 'bg-cyan-50 border-cyan-200 text-cyan-700'
+      : 'bg-indigo-50 border-indigo-200 text-indigo-700'
     }`}>
       {message.type === 'success' ? <CheckCircle className="w-4 h-4 flex-shrink-0" /> : <AlertTriangle className="w-4 h-4 flex-shrink-0" />}
       <span className="text-sm">{message.text}</span>
@@ -1278,7 +1307,7 @@ const PFDQualityChecker = () => {
   if (!selectedProject) {
     return (
       <DarkBg>
-        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        <div className="w-full px-2 sm:px-4 lg:px-6 py-10">
 
           {/* ── VIEW 1 hero ── */}
           <div className="mb-10 flex flex-col lg:flex-row lg:items-center gap-8" style={{ animation:'fadeUp 0.6s ease-out both' }}>
@@ -1286,12 +1315,12 @@ const PFDQualityChecker = () => {
             {/* Left: text + badges */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 mb-2">
-                <div className="w-1 h-7 rounded-full" style={{ background:'linear-gradient(180deg,#0d9488,#0891b2)' }} />
-                <span className="text-teal-600 text-xs font-bold tracking-[0.3em] uppercase">AIFlow · Engineering Suite</span>
+                <div className="w-1 h-7 rounded-full" style={{ background:'linear-gradient(180deg,#3b82f6,#6366f1)' }} />
+                <span className="text-blue-600 text-xs font-bold tracking-[0.3em] uppercase">AIFlow · Engineering Suite</span>
               </div>
               <h1 className="text-4xl sm:text-5xl font-black text-slate-900 tracking-tight leading-tight mb-3">
                 PFD Quality
-                <span className="block" style={{ background:'linear-gradient(90deg,#0d9488,#0891b2)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', backgroundClip:'text' }}>
+                <span className="block" style={{ background:'linear-gradient(90deg,#3b82f6,#6366f1)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', backgroundClip:'text' }}>
                   Rule Engine
                 </span>
               </h1>
@@ -1327,33 +1356,40 @@ const PFDQualityChecker = () => {
               {/* Outer ring — slow CW */}
               <svg className="absolute inset-0" width="176" height="176" viewBox="0 0 176 176"
                 style={{ animation:'spinSlow 22s linear infinite' }}>
-                <circle cx="88" cy="88" r="80" fill="none" stroke="rgba(20,184,166,0.18)" strokeWidth="1.5" strokeDasharray="4 6" />
+                <circle cx="88" cy="88" r="80" fill="none" stroke="rgba(59,130,246,0.18)" strokeWidth="1.5" strokeDasharray="4 6" />
                 {RULE_RING_TICKS.map(deg => {
                   const rad = (deg - 90) * Math.PI / 180;
                   const x1 = 88 + 80 * Math.cos(rad), y1 = 88 + 80 * Math.sin(rad);
                   const x2 = 88 + 72 * Math.cos(rad), y2 = 88 + 72 * Math.sin(rad);
-                  return <line key={deg} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#0d9488" strokeWidth="1.5" strokeLinecap="round" />;
+                  return <line key={deg} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" />;
                 })}
               </svg>
               {/* Inner ring — slow CCW */}
               <svg className="absolute inset-0" width="176" height="176" viewBox="0 0 176 176"
                 style={{ animation:'spinSlowRev 16s linear infinite' }}>
-                <circle cx="88" cy="88" r="58" fill="none" stroke="rgba(8,145,178,0.20)" strokeWidth="1.5" strokeDasharray="3 9" />
+                <circle cx="88" cy="88" r="58" fill="none" stroke="rgba(99,102,241,0.20)" strokeWidth="1.5" strokeDasharray="3 9" />
                 {RULE_RING_TICKS.filter((_, j) => j % 3 === 0).map(deg => {
                   const rad = (deg - 90) * Math.PI / 180;
                   const x1 = 88 + 58 * Math.cos(rad), y1 = 88 + 58 * Math.sin(rad);
                   const x2 = 88 + 50 * Math.cos(rad), y2 = 88 + 50 * Math.sin(rad);
-                  return <line key={deg} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#0891b2" strokeWidth="1.5" strokeLinecap="round" />;
+                  return <line key={deg} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#6366f1" strokeWidth="1.5" strokeLinecap="round" />;
                 })}
               </svg>
               {/* Centre badge */}
               <div className="relative z-10 w-20 h-20 rounded-2xl flex flex-col items-center justify-center"
                 style={{ background: T.accent, boxShadow: T.accentShadowLg }}>
                 <span className="text-2xl font-black text-white leading-none" style={{ animation:'countUp 0.6s ease-out 0.4s both' }}>12</span>
-                <span className="text-[10px] font-semibold text-teal-100 tracking-wider uppercase mt-0.5">Rules</span>
+                <span className="text-[10px] font-semibold text-blue-100 tracking-wider uppercase mt-0.5">Rules</span>
               </div>
             </div>
           </div>
+
+          {/* ══════════════════════════════════════════════════════════════════
+              PFD VERIFICATION WORKFLOW + SMART DOCUMENTATION — split-screen,
+              placed exactly like P&ID Verification V1 (header → split-screen
+              → project workspace). Soft-coded: components/PFDWorkflowDocs.jsx
+          ══════════════════════════════════════════════════════════════════ */}
+          <PFDWorkflowDocs projectCount={projects.length} />
 
           <FlashBanner />
 
@@ -1373,15 +1409,15 @@ const PFDQualityChecker = () => {
           {loadingProjects ? (
             <div className="flex flex-col items-center justify-center py-20 gap-4">
               <div className="relative w-14 h-14">
-                <div className="absolute inset-0 border-2 border-teal-100 rounded-full" />
-                <div className="absolute inset-0 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
+                <div className="absolute inset-0 border-2 border-blue-100 rounded-full" />
+                <div className="absolute inset-0 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
               </div>
               <p className="text-slate-400 text-sm">Loading projects…</p>
             </div>
           ) : projects.length === 0 ? (
             <div className="rounded-2xl p-16 text-center" style={T.card}>
-              <div className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-5 bg-teal-50 border border-teal-100">
-                <Package className="w-10 h-10 text-teal-400" />
+              <div className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-5 bg-blue-50 border border-blue-100">
+                <Package className="w-10 h-10 text-blue-400" />
               </div>
               <h3 className="text-lg font-bold text-slate-900 mb-2">No Projects Yet</h3>
               <p className="text-slate-500 text-sm mb-6">Create a project to start uploading and checking PFD drawings</p>
@@ -1408,14 +1444,14 @@ const PFDQualityChecker = () => {
 
                   <div className="flex items-start justify-between mb-4">
                     {/* nodeGlow icon — pulses gently on hover */}
-                    <div className="w-11 h-11 bg-teal-50 border border-teal-100 rounded-xl flex items-center justify-center transition-colors group-hover:bg-teal-100"
+                    <div className="w-11 h-11 bg-blue-50 border border-blue-100 rounded-xl flex items-center justify-center transition-colors group-hover:bg-blue-100"
                       style={{ animation:'nodeGlow 3s ease-in-out infinite' }}>
-                      <Layers className="w-5 h-5 text-teal-600" />
+                      <Layers className="w-5 h-5 text-blue-600" />
                     </div>
-                    <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-teal-500 group-hover:translate-x-1 transition-all duration-300" />
+                    <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-blue-500 group-hover:translate-x-1 transition-all duration-300" />
                   </div>
 
-                  <h3 className="text-base font-bold text-slate-900 mb-1 group-hover:text-teal-700 transition-colors line-clamp-1">{p.project_name}</h3>
+                  <h3 className="text-base font-bold text-slate-900 mb-1 group-hover:text-blue-700 transition-colors line-clamp-1">{p.project_name}</h3>
                   {p.description && <p className="text-xs text-slate-400 line-clamp-2 mb-4">{p.description}</p>}
                   <div className="flex items-center justify-between text-xs text-slate-400 pt-3 border-t border-slate-100 mb-4">
                     <span className="flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" />{p.document_count ?? 0} drawings</span>
@@ -1442,12 +1478,12 @@ const PFDQualityChecker = () => {
 
           {/* Divider with centred label */}
           <div className="relative flex items-center my-12">
-            <div className="flex-1 h-px" style={{ background:'linear-gradient(90deg,transparent,#99f6e4,transparent)' }} />
-            <span className="mx-4 text-xs font-bold text-teal-600 tracking-[0.25em] uppercase px-3 py-1.5 rounded-full"
-              style={{ background:'rgba(240,253,250,0.9)', border:'1px solid #99f6e4' }}>
+            <div className="flex-1 h-px" style={{ background:'linear-gradient(90deg,transparent,#bfdbfe,transparent)' }} />
+            <span className="mx-4 text-xs font-bold text-blue-600 tracking-[0.25em] uppercase px-3 py-1.5 rounded-full"
+              style={{ background:'rgba(239,246,255,0.9)', border:'1px solid #bfdbfe' }}>
               How the Engine Works
             </span>
-            <div className="flex-1 h-px" style={{ background:'linear-gradient(90deg,transparent,#99f6e4,transparent)' }} />
+            <div className="flex-1 h-px" style={{ background:'linear-gradient(90deg,transparent,#bfdbfe,transparent)' }} />
           </div>
 
           {/* ── How It Works — 3 animated step cards ── */}
@@ -1485,7 +1521,7 @@ const PFDQualityChecker = () => {
                   {/* Connector arrow (not on last) */}
                   {i < HOW_IT_WORKS.length - 1 && (
                     <div className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 hidden md:flex items-center justify-center z-10">
-                      <ChevronRight className="w-5 h-5 text-teal-500" />
+                      <ChevronRight className="w-5 h-5 text-blue-500" />
                     </div>
                   )}
                 </div>
@@ -1501,11 +1537,11 @@ const PFDQualityChecker = () => {
             {/* Header */}
             <div className="px-5 py-3.5 border-b border-slate-100 flex items-center gap-3">
               <div className="w-7 h-7 rounded-lg flex items-center justify-center"
-                style={{ background: T.accent, boxShadow:'0 3px 10px rgba(13,148,136,0.28)' }}>
+                style={{ background: T.accent, boxShadow:'0 3px 10px rgba(59,130,246,0.28)' }}>
                 <Shield className="w-4 h-4 text-white" />
               </div>
               <h2 className="text-sm font-black text-slate-900">Quality Rules Coverage</h2>
-              <span className="ml-auto text-[10px] font-bold text-teal-600 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-full">
+              <span className="ml-auto text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
                 12 Rules · ISO 10628
               </span>
             </div>
@@ -1514,7 +1550,7 @@ const PFDQualityChecker = () => {
             <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-y divide-slate-100">
               {RULE_COVERAGE.map((rule, i) => (
                 <div key={rule.label}
-                  className="flex items-start gap-3 px-4 py-4 hover:bg-teal-50/40 transition-colors"
+                  className="flex items-start gap-3 px-4 py-4 hover:bg-blue-50/40 transition-colors"
                   style={{ animation:`fadeUp 0.45s ease-out ${0.05 + i * 0.06}s both` }}>
                   <span className="text-xl flex-shrink-0 mt-0.5">{rule.icon}</span>
                   <div className="min-w-0">
@@ -1528,11 +1564,11 @@ const PFDQualityChecker = () => {
 
           {/* ── Bottom standards strip ── */}
           <div className="rounded-2xl px-6 py-4 flex flex-wrap items-center justify-between gap-3 mb-2"
-            style={{ background:'linear-gradient(135deg,rgba(240,253,250,0.8),rgba(236,254,255,0.8))',
-              border:'1px solid #99f6e4' }}>
+            style={{ background:'linear-gradient(135deg,rgba(239,246,255,0.8),rgba(238,242,255,0.8))',
+              border:'1px solid #bfdbfe' }}>
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg flex items-center justify-center"
-                style={{ background: T.accent, boxShadow:'0 3px 10px rgba(13,148,136,0.30)' }}>
+                style={{ background: T.accent, boxShadow:'0 3px 10px rgba(59,130,246,0.30)' }}>
                 <Activity className="w-4 h-4 text-white" style={{ animation:'pulse2 2s ease-in-out infinite' }} />
               </div>
               <div>
@@ -1542,7 +1578,7 @@ const PFDQualityChecker = () => {
             </div>
             <div className="flex gap-2 flex-wrap">
               {['PDF Export','Excel Export','Drawing Overlay','Cross-Ref P&ID'].map((tag, i) => (
-                <span key={tag} className="text-[10px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 px-2.5 py-1 rounded-full"
+                <span key={tag} className="text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-full"
                   style={{ animation:`chipPop 0.4s ease-out ${0.1 + i * 0.07}s both` }}>
                   {tag}
                 </span>
@@ -1552,17 +1588,17 @@ const PFDQualityChecker = () => {
 
           <DarkModal show={showCreateModal} onClose={() => { setShowCreateModal(false); setNewProjectName(''); setNewProjectDesc(''); }}
             title="Create New Project" subtitle="Set up a folder for your PFD quality drawings"
-            iconEl={<div className="w-9 h-9 bg-teal-50 border border-teal-200 rounded-lg flex items-center justify-center"><FolderPlus className="w-4 h-4 text-teal-600" /></div>}>
+            iconEl={<div className="w-9 h-9 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-center"><FolderPlus className="w-4 h-4 text-blue-600" /></div>}>
             <form onSubmit={handleCreateProject} className="space-y-4 flex-1">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1.5 uppercase tracking-wide">Project Name *</label>
                 <input type="text" value={newProjectName} onChange={e => setNewProjectName(e.target.value)} placeholder="e.g., ADNOC Trunkline PFD Review"
-                  className="w-full px-4 py-2.5 rounded-lg focus:ring-2 focus:ring-teal-400/40 text-slate-900 placeholder-slate-400 text-sm outline-none transition-all" style={T.input} required autoFocus />
+                  className="w-full px-4 py-2.5 rounded-lg focus:ring-2 focus:ring-blue-400/40 text-slate-900 placeholder-slate-400 text-sm outline-none transition-all" style={T.input} required autoFocus />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1.5 uppercase tracking-wide">Description (Optional)</label>
                 <textarea value={newProjectDesc} onChange={e => setNewProjectDesc(e.target.value)} placeholder="Brief project description…" rows="3"
-                  className="w-full px-4 py-2.5 rounded-lg focus:ring-2 focus:ring-teal-400/40 text-slate-900 placeholder-slate-400 text-sm resize-none outline-none transition-all" style={T.input} />
+                  className="w-full px-4 py-2.5 rounded-lg focus:ring-2 focus:ring-blue-400/40 text-slate-900 placeholder-slate-400 text-sm resize-none outline-none transition-all" style={T.input} />
               </div>
               <div className="flex gap-3 pt-1">
                 <button type="button" onClick={() => { setShowCreateModal(false); setNewProjectName(''); setNewProjectDesc(''); }}
@@ -1577,17 +1613,17 @@ const PFDQualityChecker = () => {
           </DarkModal>
 
           <DarkModal show={showEditModal} onClose={() => setShowEditModal(false)} title="Edit Project"
-            iconEl={<div className="w-9 h-9 bg-cyan-50 border border-cyan-200 rounded-lg flex items-center justify-center"><Edit className="w-4 h-4 text-cyan-600" /></div>}>
+            iconEl={<div className="w-9 h-9 bg-indigo-50 border border-indigo-200 rounded-lg flex items-center justify-center"><Edit className="w-4 h-4 text-indigo-600" /></div>}>
             <form onSubmit={handleUpdateProject} className="space-y-4 flex-1">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1.5 uppercase tracking-wide">Project Name *</label>
                 <input type="text" value={editName} onChange={e => setEditName(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-lg focus:ring-2 focus:ring-teal-400/40 text-slate-900 text-sm outline-none transition-all" style={T.input} required />
+                  className="w-full px-4 py-2.5 rounded-lg focus:ring-2 focus:ring-blue-400/40 text-slate-900 text-sm outline-none transition-all" style={T.input} required />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1.5 uppercase tracking-wide">Description</label>
                 <textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} rows="3"
-                  className="w-full px-4 py-2.5 rounded-lg focus:ring-2 focus:ring-teal-400/40 text-slate-900 text-sm resize-none outline-none transition-all" style={T.input} />
+                  className="w-full px-4 py-2.5 rounded-lg focus:ring-2 focus:ring-blue-400/40 text-slate-900 text-sm resize-none outline-none transition-all" style={T.input} />
               </div>
               <div className="flex gap-3 pt-1">
                 <button type="button" onClick={() => setShowEditModal(false)}
@@ -1628,31 +1664,31 @@ const PFDQualityChecker = () => {
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <DarkBg>
-      <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 pb-14 pt-6">
+      <div className="w-full px-2 sm:px-4 lg:px-6 pb-14 pt-6">
 
         {/* ── Dashboard hero header (aligned with PIDVerification) ────────── */}
         <div className="rounded-2xl mb-6 overflow-hidden"
-          style={{ background:'linear-gradient(135deg,rgba(240,253,250,0.98),rgba(236,254,255,0.98))',
-                   border:'1px solid #99f6e4', backdropFilter:'blur(16px)',
+          style={{ background:'linear-gradient(135deg,rgba(239,246,255,0.98),rgba(238,242,255,0.98))',
+                   border:'1px solid #bfdbfe', backdropFilter:'blur(16px)',
                    boxShadow:'0 1px 3px rgba(0,0,0,0.04)', animation:'fadeUp 0.4s ease-out both' }}>
           <div className="px-5 py-4 flex items-center gap-4 flex-wrap">
             <button onClick={handleBackToProjects}
               className="flex items-center gap-2 px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 rounded-xl transition-all text-sm shadow-sm flex-shrink-0">
               <ArrowLeft className="w-4 h-4" />Projects
             </button>
-            <div className="w-px h-8 bg-teal-200 flex-shrink-0 hidden sm:block" />
+            <div className="w-px h-8 bg-blue-200 flex-shrink-0 hidden sm:block" />
             <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-              style={{ background: T.accent, boxShadow:'0 4px 12px rgba(13,148,136,0.3)' }}>
+              style={{ background: T.accent, boxShadow:'0 4px 12px rgba(59,130,246,0.3)' }}>
               <Layers className="w-5 h-5 text-white" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-teal-600 font-bold tracking-widest uppercase leading-none mb-0.5">PFD Quality Review · Engineering Suite</p>
+              <p className="text-xs text-blue-600 font-bold tracking-widest uppercase leading-none mb-0.5">PFD Quality Review · Engineering Suite</p>
               <h1 className="text-xl font-black text-slate-900 truncate leading-tight">{selectedProject.project_name}</h1>
             </div>
             <div className="hidden lg:flex items-center gap-2 flex-shrink-0">
               {[
-                { label:'12 Rules',   cls:'text-teal-700 bg-teal-50 border-teal-200'           },
-                { label:'ISO 10628',  cls:'text-cyan-700 bg-cyan-50 border-cyan-200'           },
+                { label:'12 Rules',   cls:'text-blue-700 bg-blue-50 border-blue-200'           },
+                { label:'ISO 10628',  cls:'text-indigo-700 bg-indigo-50 border-indigo-200'           },
                 { label:'AI Engine',  cls:'text-emerald-700 bg-emerald-50 border-emerald-200'  },
               ].map(p => (
                 <span key={p.label} className={`text-xs font-semibold border px-2.5 py-1 rounded-full ${p.cls}`}>{p.label}</span>
@@ -1733,9 +1769,9 @@ const PFDQualityChecker = () => {
               ))}
 
               <div className={`border-2 border-dashed rounded-xl p-10 text-center transition-all duration-300 cursor-pointer ${
-                dragOver ? 'border-cyan-400 bg-cyan-50 shadow-lg shadow-cyan-200/60'
-                : file    ? 'border-teal-400 bg-teal-50'
-                :           'border-slate-300 hover:border-teal-400 bg-white hover:bg-teal-50/40'
+                dragOver ? 'border-indigo-400 bg-indigo-50 shadow-lg shadow-indigo-200/60'
+                : file    ? 'border-blue-400 bg-blue-50'
+                :           'border-slate-300 hover:border-blue-400 bg-white hover:bg-blue-50/40'
               }`}>
                 {/* Scan beam overlay when file is loaded */}
                 {file && (
@@ -1746,11 +1782,11 @@ const PFDQualityChecker = () => {
                 )}
 
                 <div className={`w-14 h-14 mx-auto mb-3 rounded-xl flex items-center justify-center transition-all ${
-                  dragOver ? 'bg-cyan-100 animate-bounce' : file ? 'bg-teal-50 border border-teal-200' : 'bg-teal-50 border border-teal-200'
+                  dragOver ? 'bg-indigo-100 animate-bounce' : file ? 'bg-blue-50 border border-blue-200' : 'bg-blue-50 border border-blue-200'
                 }`}>
                   {file
-                    ? <FileText className="w-7 h-7 text-teal-500" />
-                    : <UploadIcon className={`w-7 h-7 ${dragOver ? 'text-cyan-500' : 'text-teal-500'}`} />}
+                    ? <FileText className="w-7 h-7 text-blue-500" />
+                    : <UploadIcon className={`w-7 h-7 ${dragOver ? 'text-indigo-500' : 'text-blue-500'}`} />}
                 </div>
                 <p className="text-sm font-semibold text-slate-700 mb-1">
                   {file ? file.name : dragOver ? 'Drop your PFD here' : 'Drag & drop or click to upload'}
@@ -1761,7 +1797,7 @@ const PFDQualityChecker = () => {
             </div>
 
             {file && (
-              <div className="mt-3 flex items-center gap-2 bg-white border border-teal-200 rounded-xl px-4 py-2.5">
+              <div className="mt-3 flex items-center gap-2 bg-white border border-blue-200 rounded-xl px-4 py-2.5">
                 <FileText className="w-4 h-4 text-red-500 flex-shrink-0" />
                 <span className="text-sm font-medium text-slate-800 truncate flex-1">{file.name}</span>
                 <button onClick={e => { e.stopPropagation(); setFile(null); }} className="p-1 hover:bg-red-50 rounded-lg text-slate-400 hover:text-red-500 transition-colors">
@@ -1802,11 +1838,11 @@ const PFDQualityChecker = () => {
             {/* Header row */}
             <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-3">
               <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{ background: T.accent, boxShadow:'0 3px 10px rgba(13,148,136,0.28)' }}>
+                style={{ background: T.accent, boxShadow:'0 3px 10px rgba(59,130,246,0.28)' }}>
                 <Shield className="w-3.5 h-3.5 text-white" />
               </div>
               <h2 className="text-xs font-black text-slate-700 uppercase tracking-wider">What Gets Checked</h2>
-              <span className="ml-auto text-[10px] font-bold text-teal-600 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-full">
+              <span className="ml-auto text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
                 12 Deterministic Rules
               </span>
             </div>
@@ -1816,11 +1852,11 @@ const PFDQualityChecker = () => {
               {CHECKS_PREVIEW.map((check, i) => {
                 const Icon = check.icon;
                 return (
-                  <div key={check.label} className="flex items-center gap-3 px-4 py-3.5 hover:bg-teal-50/30 transition-colors"
+                  <div key={check.label} className="flex items-center gap-3 px-4 py-3.5 hover:bg-blue-50/30 transition-colors"
                     style={{ animation:`fadeUp 0.4s ease-out ${0.05 + i * 0.07}s both` }}>
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                      style={{ background:'rgba(240,253,250,0.9)', border:'1px solid #ccfbf1' }}>
-                      <Icon className="w-4 h-4 text-teal-600" />
+                      style={{ background:'rgba(239,246,255,0.9)', border:'1px solid #dbeafe' }}>
+                      <Icon className="w-4 h-4 text-blue-600" />
                     </div>
                     <div className="min-w-0">
                       <p className="text-xs font-bold text-slate-800 leading-none">{check.label}</p>
@@ -1835,10 +1871,10 @@ const PFDQualityChecker = () => {
 
             {/* Mini standards strip */}
             <div className="px-5 py-2.5 border-t border-slate-100 flex items-center gap-2 flex-wrap"
-              style={{ background:'rgba(240,253,250,0.5)' }}>
+              style={{ background:'rgba(239,246,255,0.5)' }}>
               <span className="text-[10px] text-slate-500 font-medium">Standards:</span>
               {['ISO 10628-1','ISO 10628-2','ISA-S5.1','IEC 61511'].map(s => (
-                <span key={s} className="text-[10px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-full">{s}</span>
+                <span key={s} className="text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">{s}</span>
               ))}
             </div>
           </div>
@@ -1871,7 +1907,7 @@ const PFDQualityChecker = () => {
             critical: { bg:'#dc2626', border:'#991b1b', glow:'rgba(220,38,38,0.5)' },
             major:    { bg:'#f97316', border:'#c2410c', glow:'rgba(249,115,22,0.5)' },
             minor:    { bg:'#fbbf24', border:'#d97706', glow:'rgba(251,191,36,0.4)' },
-            info:     { bg:'#0d9488', border:'#0f766e', glow:'rgba(13,148,136,0.4)' },
+            info:     { bg:'#3b82f6', border:'#2563eb', glow:'rgba(59,130,246,0.4)' },
           };
 
           const PANELS = [
@@ -1880,9 +1916,9 @@ const PFDQualityChecker = () => {
               label: 'Drawing',
               icon: ({ cls }) => <Eye className={cls} />,
               badge: visibleNodes.length || null,
-              badgeCls: 'bg-teal-600 text-white',
-              accent: '#0d9488',
-              glow:   'rgba(13,148,136,0.25)',
+              badgeCls: 'bg-blue-600 text-white',
+              accent: '#3b82f6',
+              glow:   'rgba(59,130,246,0.25)',
             },
             {
               id: 'findings',
@@ -1898,9 +1934,9 @@ const PFDQualityChecker = () => {
               label: 'Summary',
               icon: ({ cls }) => <BarChart2 className={cls} />,
               badge: results.drawings?.length || null,
-              badgeCls: 'bg-teal-500 text-white',
-              accent: '#0d9488',
-              glow:   'rgba(13,148,136,0.25)',
+              badgeCls: 'bg-blue-500 text-white',
+              accent: '#3b82f6',
+              glow:   'rgba(59,130,246,0.25)',
             },
             {
               id: 'cross',
@@ -1924,8 +1960,8 @@ const PFDQualityChecker = () => {
               label: 'Accuracy',
               icon: ({ cls }) => <Zap className={cls} />,
               badge: null,
-              accent: '#0d9488',
-              glow:   'rgba(13,148,136,0.28)',
+              accent: '#3b82f6',
+              glow:   'rgba(59,130,246,0.28)',
             },
           ];
 
@@ -1935,7 +1971,7 @@ const PFDQualityChecker = () => {
             {/* ── ICON RAIL — left sidebar navigation ──────────────────────── */}
             <div className="flex flex-col gap-1 py-3 px-2 rounded-2xl sticky top-6 flex-shrink-0"
               style={{ background:'rgba(255,255,255,0.9)', border:'1px solid #d1fae5',
-                       backdropFilter:'blur(12px)', boxShadow:'0 2px 12px rgba(13,148,136,0.08)',
+                       backdropFilter:'blur(12px)', boxShadow:'0 2px 12px rgba(59,130,246,0.08)',
                        animation:'railIn 0.3s ease-out both', width:`${PFD_NAV_RAIL_WIDTH}px` }}>
               {PANELS.map((p, pIdx) => {
                 const Icon     = p.icon;
@@ -1968,7 +2004,7 @@ const PFDQualityChecker = () => {
                     {/* Badge — absolute so it never steals label space */}
                     {p.badge !== null && p.badge !== undefined && (
                       <span className={`absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-[9px] font-black px-1 ${
-                        isActive ? 'bg-white text-slate-700' : (p.badgeCls || 'bg-teal-500 text-white')
+                        isActive ? 'bg-white text-slate-700' : (p.badgeCls || 'bg-blue-500 text-white')
                       }`}>
                         {p.badge > 99 ? '99+' : p.badge}
                       </span>
@@ -1984,7 +2020,7 @@ const PFDQualityChecker = () => {
               {/* ── Results hero banner ── */}
               <div className="relative rounded-2xl overflow-hidden" style={{ animation:'fadeUp 0.35s ease-out both' }}>
                 <div className="px-5 py-4 flex items-center gap-4 flex-wrap"
-                  style={{ background:'linear-gradient(135deg,#f0fdfa,#ecfeff,#f0f9ff)', border:'1px solid #99f6e4' }}>
+                  style={{ background:'linear-gradient(135deg,#eef2ff,#e0e7ff,#f0f9ff)', border:'1px solid #bfdbfe' }}>
                   {/* Status icon */}
                   <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
                     style={{ background: totalIssues > 0 ? 'linear-gradient(135deg,#fef2f2,#fee2e2)' : 'linear-gradient(135deg,#f0fdf4,#dcfce7)',
@@ -1999,7 +2035,7 @@ const PFDQualityChecker = () => {
                   <div className="flex items-center gap-2 flex-wrap">
                     {[
                       { v: results.drawings?.length ?? 0, label:'Drawings',
-                        color:'text-teal-700', bg:'rgba(20,184,166,0.10)', border:'rgba(20,184,166,0.22)', glow:'' },
+                        color:'text-blue-700', bg:'rgba(59,130,246,0.10)', border:'rgba(59,130,246,0.22)', glow:'' },
                       { v: totalIssues, label:'Issues',
                         color: totalIssues > 0 ? 'text-red-700' : 'text-green-700',
                         bg: totalIssues > 0 ? 'rgba(239,68,68,0.08)' : 'rgba(34,197,94,0.08)',
@@ -2025,7 +2061,7 @@ const PFDQualityChecker = () => {
                   <div className="flex items-center gap-2 flex-wrap ml-auto">
                     <button onClick={downloadExcel} disabled={downloadingXlsx}
                       className="flex items-center gap-1.5 text-xs font-bold text-white px-3 py-2 rounded-xl transition-all hover:-translate-y-px disabled:opacity-60"
-                      style={{ background:'linear-gradient(135deg,#059669,#10b981)', boxShadow:'0 3px 10px rgba(16,185,129,0.25)' }}>
+                      style={{ background:'linear-gradient(135deg,#059669,#10b981)', boxShadow:'0 3px 10px rgba(245,158,11,0.25)' }}>
                       {downloadingXlsx ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}Excel
                     </button>
                     <button onClick={downloadPDF} disabled={downloadingPdf}
@@ -2049,11 +2085,11 @@ const PFDQualityChecker = () => {
                   {results.drawings.map(d => (
                     <button key={d.drawing_id} onClick={() => setActiveDrawing(d.drawing_id)}
                       className={`text-sm px-4 py-1.5 rounded-full border font-medium transition-all ${
-                        activeDrawing === d.drawing_id ? 'text-white border-transparent' : 'bg-white text-slate-600 border-slate-200 hover:border-teal-400'
+                        activeDrawing === d.drawing_id ? 'text-white border-transparent' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-400'
                       }`}
                       style={activeDrawing === d.drawing_id ? { background: T.accent } : undefined}>
                       {d.drawing_id}
-                      <span className={`ml-1.5 text-xs font-semibold ${activeDrawing === d.drawing_id ? 'text-teal-100' : 'text-slate-400'}`}>({d.issue_count})</span>
+                      <span className={`ml-1.5 text-xs font-semibold ${activeDrawing === d.drawing_id ? 'text-blue-100' : 'text-slate-400'}`}>({d.issue_count})</span>
                     </button>
                   ))}
                 </div>
@@ -2067,8 +2103,8 @@ const PFDQualityChecker = () => {
               <div className="rounded-2xl overflow-hidden" style={T.card}>
                 <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between gap-3 flex-wrap">
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-teal-50 border border-teal-200 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <Eye className="w-4 h-4 text-teal-600" />
+                    <div className="w-8 h-8 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Eye className="w-4 h-4 text-blue-600" />
                     </div>
                     <div>
                       <h2 className="text-sm font-bold text-slate-900">{activeDrawing} — Drawing Overlay</h2>
@@ -2079,7 +2115,7 @@ const PFDQualityChecker = () => {
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="hidden sm:flex items-center gap-3 text-[10px] text-slate-500">
-                      {[['critical','#dc2626'],['major','#f97316'],['minor','#fbbf24'],['info','#0d9488']].map(([sev, col]) => (
+                      {[['critical','#dc2626'],['major','#f97316'],['minor','#fbbf24'],['info','#3b82f6']].map(([sev, col]) => (
                         <span key={sev} className="flex items-center gap-1">
                           <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background:col }} />
                           {sev[0].toUpperCase()+sev.slice(1)}
@@ -2092,17 +2128,17 @@ const PFDQualityChecker = () => {
                     </div>
                     <label className="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer select-none">
                       <input type="checkbox" checked={showHeuristic} onChange={e => setShowHeuristic(e.target.checked)}
-                        className="w-3.5 h-3.5 accent-teal-500" />
+                        className="w-3.5 h-3.5 accent-blue-500" />
                       Show heuristic
                     </label>
                     <button onClick={reextractPositions} disabled={reextracting}
                       title="Re-run OCR extraction to place markers at exact locations"
-                      className="flex items-center gap-1 text-xs font-medium text-teal-700 bg-teal-50 border border-teal-200 px-2.5 py-1.5 rounded-lg hover:bg-teal-100 transition-colors disabled:opacity-50">
+                      className="flex items-center gap-1 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-1.5 rounded-lg hover:bg-blue-100 transition-colors disabled:opacity-50">
                       {reextracting ? <Loader className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
                       {reextracting ? 'Scanning…' : 'Refresh Markers'}
                     </button>
                     <button onClick={() => setActivePanel('findings')}
-                      className="text-xs text-teal-600 hover:text-teal-800 underline underline-offset-2 transition-colors">
+                      className="text-xs text-blue-600 hover:text-blue-800 underline underline-offset-2 transition-colors">
                       View table
                     </button>
                     {/* Correction mode — pin exact marker location */}
@@ -2123,7 +2159,7 @@ const PFDQualityChecker = () => {
                     <button
                       onClick={exportCalibrationData}
                       title="Export correction records and tier stats as JSON"
-                      className="text-[10px] px-2 py-1 rounded border font-semibold bg-white text-slate-600 border-slate-300 hover:border-teal-400 hover:text-teal-600 transition-colors"
+                      className="text-[10px] px-2 py-1 rounded border font-semibold bg-white text-slate-600 border-slate-300 hover:border-blue-400 hover:text-blue-600 transition-colors"
                     >
                       ↓ Export Data
                     </button>
@@ -2268,7 +2304,7 @@ const PFDQualityChecker = () => {
                         <button key={f.id} id={`pfd-drawing-finding-${f.id}`}
                           onClick={() => setFocusedFindingId(prev => prev === f.id ? null : f.id)}
                           className={`w-full text-left px-4 py-2.5 flex items-start gap-3 transition-colors ${
-                            isFocused ? 'bg-teal-50 border-l-2 border-teal-400' : 'hover:bg-slate-50'
+                            isFocused ? 'bg-blue-50 border-l-2 border-blue-400' : 'hover:bg-slate-50'
                           }`}>
                           <span className="w-3 h-3 rounded-full flex-shrink-0 mt-0.5" style={{ background:col.bg }} />
                           <span className="flex-1 min-w-0">
@@ -2290,8 +2326,8 @@ const PFDQualityChecker = () => {
               <div className="rounded-2xl overflow-hidden" style={T.card}>
                 <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-3 flex-wrap">
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-teal-50 border border-teal-200 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <GitBranch className="w-4 h-4 text-teal-600" />
+                    <div className="w-8 h-8 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <GitBranch className="w-4 h-4 text-blue-600" />
                     </div>
                     <div>
                       <h2 className="text-sm font-bold text-slate-900">{activeDrawing}</h2>
@@ -2300,22 +2336,22 @@ const PFDQualityChecker = () => {
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <select value={filterSeverity} onChange={e => setFilterSeverity(e.target.value)}
-                      className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 outline-none cursor-pointer hover:border-teal-400">
+                      className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 outline-none cursor-pointer hover:border-blue-400">
                       <option value="all">All Severity</option>
                       {['critical','major','minor','info'].map(s => <option key={s} value={s}>{s[0].toUpperCase()+s.slice(1)}</option>)}
                     </select>
                     <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)}
-                      className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 outline-none cursor-pointer hover:border-teal-400">
+                      className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 outline-none cursor-pointer hover:border-blue-400">
                       <option value="all">All Categories</option>
                       {Object.entries(CATEGORY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                     </select>
                     <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
-                      className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 outline-none cursor-pointer hover:border-teal-400">
+                      className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 outline-none cursor-pointer hover:border-blue-400">
                       <option value="all">All Status</option>
                       {['open','in_review','resolved','wont_fix'].map(s => <option key={s} value={s}>{s.replace('_',' ')}</option>)}
                     </select>
                     {overridesSaved && pendingCount === 0 && (
-                      <span className="text-xs text-teal-600 flex items-center gap-1.5"><CheckCircle className="w-3.5 h-3.5" />Saved</span>
+                      <span className="text-xs text-blue-600 flex items-center gap-1.5"><CheckCircle className="w-3.5 h-3.5" />Saved</span>
                     )}
                     {pendingCount > 0 && (
                       <>
@@ -2344,7 +2380,7 @@ const PFDQualityChecker = () => {
                       {filteredIssues.length === 0 ? (
                         <tr><td colSpan="7" className="px-4 py-10 text-center">
                           <div className="flex flex-col items-center gap-2">
-                            <CheckCircle className="w-8 h-8 text-teal-400" />
+                            <CheckCircle className="w-8 h-8 text-blue-400" />
                             <p className="text-sm font-semibold text-slate-700">
                               {(activeDrawingData.issues?.length ?? 0) === 0 ? 'No issues detected' : 'No issues match filters'}
                             </p>
@@ -2354,12 +2390,12 @@ const PFDQualityChecker = () => {
                         <tr key={f.id} id={`pfd-finding-row-${f.id}`}
                           onClick={() => setFocusedFindingId(prev => prev === f.id ? null : f.id)}
                           className={`transition-colors cursor-pointer ${
-                            focusedFindingId === f.id ? 'bg-teal-50 ring-1 ring-teal-300'
+                            focusedFindingId === f.id ? 'bg-blue-50 ring-1 ring-blue-300'
                             : i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
-                          } hover:bg-teal-50/30`}>
+                          } hover:bg-blue-50/30`}>
                           <td className="px-4 py-3 text-xs text-slate-400 font-mono">{f.sl_no}</td>
                           <td className="px-4 py-3">
-                            <span className="inline-block text-xs bg-teal-50 text-teal-700 border border-teal-100 px-2 py-0.5 rounded-full font-medium">
+                            <span className="inline-block text-xs bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full font-medium">
                               {CATEGORY_LABELS[f.category] ?? f.category}
                             </span>
                           </td>
@@ -2402,7 +2438,7 @@ const PFDQualityChecker = () => {
               {activePanel === 'summary' && (() => {
                 // ── Soft-coded: severity config ──────────────────────────
                 const SUMM_SEV_ORDER  = ['critical','major','minor','info'];
-                const SUMM_SEV_COLOR  = { critical:'#dc2626', major:'#f97316', minor:'#fbbf24', info:'#0d9488' };
+                const SUMM_SEV_COLOR  = { critical:'#dc2626', major:'#f97316', minor:'#fbbf24', info:'#3b82f6' };
                 const SUMM_SEV_LABEL  = { critical:'Critical',  major:'Major',   minor:'Minor',  info:'Info'   };
                 const SUMM_SEV_ICON   = { critical:'🔴',         major:'🟠',       minor:'🟡',      info:'🟢'     };
 
@@ -2458,10 +2494,10 @@ const PFDQualityChecker = () => {
                     {/* ── KPI strip ── */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                       {[
-                        { label:'Total Issues',    val:totalIssues,         icon:'🔍', col:'#0d9488', bg:'rgba(13,148,136,0.07)',  border:'rgba(13,148,136,0.18)' },
+                        { label:'Total Issues',    val:totalIssues,         icon:'🔍', col:'#3b82f6', bg:'rgba(59,130,246,0.07)',  border:'rgba(59,130,246,0.18)' },
                         { label:'Critical',        val:sevTotals.critical,  icon:'🔴', col:'#dc2626', bg:'rgba(220,38,38,0.07)',   border:'rgba(220,38,38,0.18)'  },
                         { label:'Major',           val:sevTotals.major,     icon:'🟠', col:'#f97316', bg:'rgba(249,115,22,0.07)',  border:'rgba(249,115,22,0.18)' },
-                        { label:'Drawings Passed', val:`${passD}/${totalD}`,icon:'✅', col:'#10b981', bg:'rgba(16,185,129,0.07)', border:'rgba(16,185,129,0.18)' },
+                        { label:'Drawings Passed', val:`${passD}/${totalD}`,icon:'✅', col:'#10b981', bg:'rgba(245,158,11,0.07)', border:'rgba(245,158,11,0.18)' },
                       ].map((k, i) => (
                         <div key={k.label} className="rounded-2xl p-4 flex flex-col gap-2"
                           style={{ background:k.bg, border:`1px solid ${k.border}`, animation:`countUp 0.5s ease-out ${i*0.07}s both` }}>
@@ -2480,9 +2516,9 @@ const PFDQualityChecker = () => {
                       {/* Quality Score */}
                       <div className="rounded-2xl overflow-hidden" style={T.card}>
                         <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-3"
-                          style={{ background:'linear-gradient(135deg,#f0fdfa,#ecfeff)' }}>
+                          style={{ background:'linear-gradient(135deg,#eef2ff,#e0e7ff)' }}>
                           <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                            style={{ background:'linear-gradient(135deg,#0d9488,#0891b2)', boxShadow:'0 3px 10px rgba(13,148,136,0.28)' }}>
+                            style={{ background:'linear-gradient(135deg,#3b82f6,#6366f1)', boxShadow:'0 3px 10px rgba(59,130,246,0.28)' }}>
                             <Activity className="w-4 h-4 text-white" />
                           </div>
                           <div>
@@ -2569,14 +2605,14 @@ const PFDQualityChecker = () => {
                       <div className="rounded-2xl overflow-hidden" style={T.card}>
                         <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-3">
                           <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                            style={{ background:'linear-gradient(135deg,#f0fdfa,#ccfbf1)', border:'1px solid #99f6e4' }}>
-                            <BarChart2 className="w-4 h-4 text-teal-600" />
+                            style={{ background:'linear-gradient(135deg,#eef2ff,#dbeafe)', border:'1px solid #bfdbfe' }}>
+                            <BarChart2 className="w-4 h-4 text-blue-600" />
                           </div>
                           <div className="flex-1 min-w-0">
                             <h3 className="text-sm font-bold text-slate-900">Category Breakdown</h3>
                             <p className="text-xs text-slate-500">{catSorted.length} rule categories · segmented by severity</p>
                           </div>
-                          <span className="text-[10px] font-bold text-teal-600 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-full flex-shrink-0">ISO 10628</span>
+                          <span className="text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full flex-shrink-0">ISO 10628</span>
                         </div>
                         <div className="p-5 space-y-4">
                           {catSorted.map(([cat, counts], i) => {
@@ -2612,7 +2648,7 @@ const PFDQualityChecker = () => {
                                   {critPct > 0 && <div className="h-full transition-all duration-700" style={{ width:`${critPct}%`, background:'#dc2626' }} />}
                                   {majPct  > 0 && <div className="h-full transition-all duration-700" style={{ width:`${majPct}%`,  background:'#f97316' }} />}
                                   {minPct  > 0 && <div className="h-full transition-all duration-700" style={{ width:`${minPct}%`,  background:'#fbbf24' }} />}
-                                  {infPct  > 0 && <div className="h-full transition-all duration-700" style={{ width:`${infPct}%`,  background:'#0d9488' }} />}
+                                  {infPct  > 0 && <div className="h-full transition-all duration-700" style={{ width:`${infPct}%`,  background:'#3b82f6' }} />}
                                 </div>
                               </div>
                             );
@@ -2620,8 +2656,8 @@ const PFDQualityChecker = () => {
                         </div>
                         {/* Legend */}
                         <div className="px-5 py-3 border-t border-slate-100 flex items-center gap-5 flex-wrap"
-                          style={{ background:'rgba(240,253,250,0.5)' }}>
-                          {[['Critical','#dc2626'],['Major','#f97316'],['Minor','#fbbf24'],['Info','#0d9488']].map(([lbl, col]) => (
+                          style={{ background:'rgba(239,246,255,0.5)' }}>
+                          {[['Critical','#dc2626'],['Major','#f97316'],['Minor','#fbbf24'],['Info','#3b82f6']].map(([lbl, col]) => (
                             <span key={lbl} className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-500">
                               <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background:col }} />{lbl}
                             </span>
@@ -2635,8 +2671,8 @@ const PFDQualityChecker = () => {
                       <div className="rounded-2xl overflow-hidden" style={T.card}>
                         <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-3">
                           <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                            style={{ background:'linear-gradient(135deg,#f0fdfa,#ccfbf1)', border:'1px solid #99f6e4' }}>
-                            <Layers className="w-4 h-4 text-teal-600" />
+                            style={{ background:'linear-gradient(135deg,#eef2ff,#dbeafe)', border:'1px solid #bfdbfe' }}>
+                            <Layers className="w-4 h-4 text-blue-600" />
                           </div>
                           <div className="flex-1 min-w-0">
                             <h3 className="text-sm font-bold text-slate-900">Drawings Health</h3>
@@ -2664,7 +2700,7 @@ const PFDQualityChecker = () => {
                                 style={{
                                   background: cnt === 0 ? 'linear-gradient(135deg,#f0fdf4,#dcfce7)' : '#ffffff',
                                   borderColor: cnt === 0 ? '#86efac' : `${sevCol}55`,
-                                  boxShadow: cnt === 0 ? '0 2px 12px rgba(16,185,129,0.10)' : '0 1px 4px rgba(0,0,0,0.05)',
+                                  boxShadow: cnt === 0 ? '0 2px 12px rgba(245,158,11,0.10)' : '0 1px 4px rgba(0,0,0,0.05)',
                                   animation:`cardIn 0.35s ease-out ${i * 0.05}s both`,
                                 }}
                                 onClick={() => { setActiveDrawing(d.drawing_id); setActivePanel('findings'); }}>
@@ -2675,7 +2711,7 @@ const PFDQualityChecker = () => {
                                 <div className="flex items-center justify-between gap-2">
                                   <div className="flex items-center gap-2 min-w-0">
                                     <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                                      style={{ background: cnt === 0 ? 'rgba(16,185,129,0.12)' : `${sevCol}14`, border:`1px solid ${cnt === 0 ? '#86efac' : sevCol+'44'}` }}>
+                                      style={{ background: cnt === 0 ? 'rgba(245,158,11,0.12)' : `${sevCol}14`, border:`1px solid ${cnt === 0 ? '#86efac' : sevCol+'44'}` }}>
                                       {cnt === 0
                                         ? <CheckCircle className="w-4 h-4 text-emerald-500" />
                                         : <AlertTriangle className="w-4 h-4" style={{ color:sevCol }} />}
@@ -2713,7 +2749,7 @@ const PFDQualityChecker = () => {
                                 </div>
                                 {/* CTA */}
                                 <div className="w-full py-1.5 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-all group-hover:opacity-90"
-                                  style={{ background: cnt === 0 ? 'rgba(16,185,129,0.10)' : 'rgba(13,148,136,0.08)', color: cnt === 0 ? '#10b981' : '#0d9488', border:`1px solid ${cnt === 0 ? '#86efac' : '#99f6e4'}` }}>
+                                  style={{ background: cnt === 0 ? 'rgba(245,158,11,0.10)' : 'rgba(59,130,246,0.08)', color: cnt === 0 ? '#10b981' : '#3b82f6', border:`1px solid ${cnt === 0 ? '#86efac' : '#bfdbfe'}` }}>
                                   {cnt === 0 ? '✓ All Clear' : <><ScanLine className="w-3 h-3" /> Inspect Findings</>}
                                 </div>
                               </div>
@@ -2791,7 +2827,7 @@ const PFDQualityChecker = () => {
                 ) : (
                   <div className="divide-y divide-slate-50">
                     {history.map(doc => (
-                      <div key={doc.document_id} className="px-5 py-3 flex items-center gap-3 hover:bg-teal-50/30 transition-colors">
+                      <div key={doc.document_id} className="px-5 py-3 flex items-center gap-3 hover:bg-blue-50/30 transition-colors">
                         <FileText className="w-4 h-4 text-red-400 flex-shrink-0" />
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium text-slate-800 truncate">{doc.file_name}</p>
@@ -2799,7 +2835,7 @@ const PFDQualityChecker = () => {
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${
-                            doc.status === 'completed' ? 'bg-teal-50 text-teal-700 border-teal-200'
+                            doc.status === 'completed' ? 'bg-blue-50 text-blue-700 border-blue-200'
                             : doc.status === 'failed'  ? 'bg-red-50 text-red-600 border-red-200'
                             : 'bg-amber-50 text-amber-600 border-amber-200'
                           }`}>{doc.status}</span>
@@ -2923,10 +2959,10 @@ const PFDQualityChecker = () => {
                     {/* ── Hero: Document Accuracy Rate ── */}
                     <div className="rounded-2xl overflow-hidden" style={T.card}>
                       <div className="px-5 pt-5 pb-4"
-                        style={{ background:'linear-gradient(135deg,#f0fdfa,#ecfeff,#f0f9ff)', borderBottom:'1px solid #99f6e4' }}>
+                        style={{ background:'linear-gradient(135deg,#eef2ff,#e0e7ff,#f0f9ff)', borderBottom:'1px solid #bfdbfe' }}>
                         <div className="flex items-center gap-3 mb-4">
                           <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                            style={{ background:'linear-gradient(135deg,#0d9488,#0891b2)', boxShadow:'0 4px 12px rgba(13,148,136,0.3)' }}>
+                            style={{ background:'linear-gradient(135deg,#3b82f6,#6366f1)', boxShadow:'0 4px 12px rgba(59,130,246,0.3)' }}>
                             <Zap className="w-4 h-4 text-white" />
                           </div>
                           <div>
@@ -2955,8 +2991,8 @@ const PFDQualityChecker = () => {
                           {/* Sub-score pills */}
                           <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
                             {[
-                              { label:'OCR Quality',  val:ocrScore,       weight:`${Math.round(PFD_PERF_DOC_ACCURACY_WEIGHTS.ocr*100)}%`,       color:'#0d9488' },
-                              { label:'Placement',    val:placementScore, weight:`${Math.round(PFD_PERF_DOC_ACCURACY_WEIGHTS.placement*100)}%`,  color:'#0891b2' },
+                              { label:'OCR Quality',  val:ocrScore,       weight:`${Math.round(PFD_PERF_DOC_ACCURACY_WEIGHTS.ocr*100)}%`,       color:'#3b82f6' },
+                              { label:'Placement',    val:placementScore, weight:`${Math.round(PFD_PERF_DOC_ACCURACY_WEIGHTS.placement*100)}%`,  color:'#6366f1' },
                               { label:'Anchor Rate',  val:anchorRate,     weight:`${Math.round(PFD_PERF_DOC_ACCURACY_WEIGHTS.anchor*100)}%`,     color:'#06b6d4' },
                             ].map(sub => (
                               <div key={sub.label} className="rounded-xl p-3 flex flex-col gap-1"
@@ -2980,7 +3016,7 @@ const PFDQualityChecker = () => {
                             <span className="text-[10px] text-slate-400 font-medium flex items-center">Extracted:</span>
                             {entityCounts.map(e => (
                               <span key={e.label} className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg"
-                                style={{ background:'rgba(255,255,255,0.8)', border:'1px solid #99f6e4', color:'#0d9488' }}>
+                                style={{ background:'rgba(255,255,255,0.8)', border:'1px solid #bfdbfe', color:'#3b82f6' }}>
                                 {e.icon} {e.val} {e.label}
                               </span>
                             ))}
@@ -2994,7 +3030,7 @@ const PFDQualityChecker = () => {
                       {[
                         { label:'Placement Confidence', val:placementScore, q:confQuality,   maxLabel:true,  icon:<Activity className="w-4 h-4" /> },
                         { label:'Anchor Rate',          val:anchorRate,     q:anchorQuality, maxLabel:true,  icon:<MapPin className="w-4 h-4" /> },
-                        { label:'Total Findings',       val:totalFindingsAll, q:{ color:'#0d9488', label:'' }, maxLabel:false, icon:<GitBranch className="w-4 h-4" /> },
+                        { label:'Total Findings',       val:totalFindingsAll, q:{ color:'#3b82f6', label:'' }, maxLabel:false, icon:<GitBranch className="w-4 h-4" /> },
                       ].map(g => (
                         <div key={g.label} className="rounded-2xl p-5 flex flex-col items-center gap-3" style={T.card}>
                           <div className="w-9 h-9 rounded-xl flex items-center justify-center"
@@ -3020,8 +3056,8 @@ const PFDQualityChecker = () => {
                       <div className="rounded-2xl overflow-hidden" style={T.card}>
                         <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-3">
                           <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                            style={{ background:'linear-gradient(135deg,#f0fdfa,#ccfbf1)', border:'1px solid #99f6e4' }}>
-                            <CircleDot className="w-4 h-4 text-teal-600" />
+                            style={{ background:'linear-gradient(135deg,#eef2ff,#dbeafe)', border:'1px solid #bfdbfe' }}>
+                            <CircleDot className="w-4 h-4 text-blue-600" />
                           </div>
                           <div>
                             <h3 className="text-sm font-bold text-slate-900">Marker Resolution Tiers</h3>
@@ -3101,8 +3137,8 @@ const PFDQualityChecker = () => {
                             ? <p className="text-center text-xs text-slate-400 py-4">No findings</p>
                             : catListP.map(([cat, cnt], i) => {
                                 const pct = totalFindingsAll > 0 ? Math.round((cnt / totalFindingsAll) * 100) : 0;
-                                const tealHues = ['#0d9488','#0891b2','#06b6d4','#14b8a6','#10b981','#059669'];
-                                const col = tealHues[i % tealHues.length];
+                                const accentHues = ['#3b82f6','#6366f1','#06b6d4','#3b82f6','#10b981','#059669'];
+                                const col = accentHues[i % accentHues.length];
                                 return (
                                   <div key={cat}>
                                     <div className="flex items-center justify-between mb-1">
@@ -3128,8 +3164,8 @@ const PFDQualityChecker = () => {
                       <div className="rounded-2xl overflow-hidden" style={T.card}>
                         <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-3">
                           <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                            style={{ background:'linear-gradient(135deg,#f0fdfa,#ccfbf1)', border:'1px solid #99f6e4' }}>
-                            <Shield className="w-4 h-4 text-teal-600" />
+                            style={{ background:'linear-gradient(135deg,#eef2ff,#dbeafe)', border:'1px solid #bfdbfe' }}>
+                            <Shield className="w-4 h-4 text-blue-600" />
                           </div>
                           <div>
                             <h3 className="text-sm font-bold text-slate-900">Top Triggered Rules</h3>
@@ -3141,18 +3177,18 @@ const PFDQualityChecker = () => {
                             const pct  = totalFindingsAll > 0 ? Math.round((cnt / totalFindingsAll) * 100) : 0;
                             const barW = ruleListP[0]?.[1] > 0 ? Math.round((cnt / ruleListP[0][1]) * 100) : 0;
                             return (
-                              <div key={rule} className="px-5 py-2.5 flex items-center gap-3 hover:bg-teal-50/20 transition-colors">
+                              <div key={rule} className="px-5 py-2.5 flex items-center gap-3 hover:bg-blue-50/20 transition-colors">
                                 <span className="w-5 h-5 rounded-lg flex items-center justify-center text-[10px] font-black flex-shrink-0"
-                                  style={{ background: i < 3 ? 'linear-gradient(135deg,#0d9488,#0891b2)' : '#f1f5f9', color: i < 3 ? '#fff' : '#64748b' }}>
+                                  style={{ background: i < 3 ? 'linear-gradient(135deg,#3b82f6,#6366f1)' : '#f1f5f9', color: i < 3 ? '#fff' : '#64748b' }}>
                                   {i+1}
                                 </span>
-                                <code className="text-xs font-mono font-bold text-teal-700 flex-shrink-0 w-24 truncate">{rule}</code>
+                                <code className="text-xs font-mono font-bold text-blue-700 flex-shrink-0 w-24 truncate">{rule}</code>
                                 <div className="flex-1 min-w-0">
                                   <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                    <div className="h-full rounded-full" style={{ width:`${barW}%`, background:'linear-gradient(90deg,#0d9488,#0891b2)', transition:'width 0.8s ease-out' }} />
+                                    <div className="h-full rounded-full" style={{ width:`${barW}%`, background:'linear-gradient(90deg,#3b82f6,#6366f1)', transition:'width 0.8s ease-out' }} />
                                   </div>
                                 </div>
-                                <span className="text-xs font-black text-teal-700 flex-shrink-0 w-6 text-right">{cnt}</span>
+                                <span className="text-xs font-black text-blue-700 flex-shrink-0 w-6 text-right">{cnt}</span>
                                 <span className="text-[10px] text-slate-400 flex-shrink-0 w-8 text-right">{pct}%</span>
                               </div>
                             );
@@ -3179,9 +3215,9 @@ const PFDQualityChecker = () => {
                             </thead>
                             <tbody className="divide-y divide-slate-50">
                               {drawingSummaryP.map(d => (
-                                <tr key={d.id} className="hover:bg-teal-50/20 transition-colors cursor-pointer"
+                                <tr key={d.id} className="hover:bg-blue-50/20 transition-colors cursor-pointer"
                                   onClick={() => { setActiveDrawing(d.id); setActivePanel('findings'); }}>
-                                  <td className="px-4 py-2.5"><code className="text-xs font-mono font-bold text-teal-700">{d.id}</code></td>
+                                  <td className="px-4 py-2.5"><code className="text-xs font-mono font-bold text-blue-700">{d.id}</code></td>
                                   <td className="px-4 py-2.5">
                                     <span className={`text-xs font-black ${d.count > 0 ? 'text-red-600' : 'text-emerald-600'}`}>{d.count}</span>
                                   </td>
@@ -3192,7 +3228,7 @@ const PFDQualityChecker = () => {
                                     }
                                   </td>
                                   <td className="px-4 py-2.5">
-                                    <button className="text-[10px] font-semibold text-teal-600 hover:text-teal-800 underline underline-offset-2">View →</button>
+                                    <button className="text-[10px] font-semibold text-blue-600 hover:text-blue-800 underline underline-offset-2">View →</button>
                                   </td>
                                 </tr>
                               ))}

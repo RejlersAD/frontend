@@ -1,0 +1,9 @@
+.planning-context-drawer { position: fixed; inset: 0 0 0 auto; margin: 0; width: min(660px, 95vw); max-width: none; height: 100dvh; max-height: 100dvh; padding: 0; border: 0; border-left: 1px solid #ccdaed; background: #fff; color: #153464; box-shadow: -10px 0 35px #15346422; font: 13px/1.5 "Segoe UI", Arial, sans-serif; }
+.planning-context-drawer[open] { display: flex; flex-direction: column; }
+.planning-context-drawer::backdrop { background: #14335a33; }
+.planning-context-drawer > header { display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; gap: 12px; border-bottom: 1px solid #dce6f3; padding: 16px 20px; }
+.planning-context-drawer h2 { margin: 0; color: #0b2252; font-size: 18px; }
+.planning-context-drawer > header button { display: grid; place-items: center; min-height: 32px; min-width: 32px; border: 1px solid #ccdaed; border-radius: 4px; color: #254776; background: #fff; cursor: pointer; }
+.planning-context-drawer .pcd-content { min-height: 0; overflow: auto; padding: 18px; overscroll-behavior: contain; }
+.planning-context-drawer :focus-visible { outline: 2px solid #0751ff; outline-offset: 2px; }
+.planning-context-drawer button:disabled { opacity: .55; cursor: not-allowed; }

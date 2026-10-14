@@ -126,10 +126,10 @@
 
     "production": {
       "name": "Production (Railway)",
-      "description": "Production environment on Railway — frontend on Vercel (www.radai.ae) calls backend directly at aiflowbackend-production.up.railway.app",
+      "description": "Production environment on Railway — frontend on Vercel (www.radai.ae) calls backend directly at backend-production-3883.up.railway.app",
       "backend": {
-        "url": "https://aiflowbackend-production.up.railway.app",
-        "api_url": "https://aiflowbackend-production.up.railway.app/api/v1",
+        "url": "https://backend-production-3883.up.railway.app",
+        "api_url": "https://backend-production-3883.up.railway.app/api/v1",
         "host": "0.0.0.0",
         "port": 8000,
         "debug": false,
@@ -137,7 +137,7 @@
       },
       "frontend": {
         "url": "https://radai.ae",
-        "api_proxy": "https://aiflowbackend-production.up.railway.app/api/v1",
+        "api_proxy": "https://backend-production-3883.up.railway.app/api/v1",
         "port": 3000,
         "host": "0.0.0.0"
       },
@@ -213,8 +213,8 @@
     "timeout_refresh": 90000,
     "_timeout_refresh_note": "Token refresh timeout — must survive Railway cold-start to avoid premature logout",
     "timeout_poll": 10000,
-    "timeout_extraction_poll": 3600000,
-    "_timeout_extraction_poll_note": "Max time (ms) the frontend will poll for OCR extraction results. 60 min — Railway OCR on dense multi-page P&IDs can take 30-45 min. Increase here if users still see timeout before extraction completes.",
+    "timeout_extraction_poll": 6000000,
+    "_timeout_extraction_poll_note": "Max time (ms) the frontend will poll for OCR extraction results. 100 min — dense/scanned multi-page P&IDs (25+ pages) can exceed 60 min. Keep >= backend Celery DESIGNIQ_TASK_HARD_LIMIT (6000 s).",
     "broker_connect_timeout": 5,
     "retry_attempts": 3,
     "retry_delay": 3000,

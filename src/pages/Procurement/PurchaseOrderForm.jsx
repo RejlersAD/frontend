@@ -1,3 +1,4 @@
+import PurchaseOrderNarrativeEditor from './PurchaseOrderNarrativeEditor';
 /**
  * Purchase Order Form Component
  * Aligned with RAD-PRJ-PUR-0014 Template (7-page format)
@@ -11,20 +12,31 @@
  * - Vendor confirmation tracking
  */
 
-import React, { useState, useEffect, useRef } from 'react';
-import { useSelector } from 'react-redux';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import PropTypes from 'prop-types';
+import { toast } from 'react-toastify';
 import apiClient from '../../services/api.service';
-import PurchaseOrderLivePreview from './PurchaseOrderLivePreview';
+import { createPurchaseOrderDraftRecovery, purchaseOrderRecoveryKey, currentPurchaseOrderDraftUser } from '../../services/purchaseOrderDraftRecovery';
+import PurchaseOrderPreviewPane from './PurchaseOrderPreviewPane';
+import { PurchaseOrderNumberCorrection } from './PurchaseOrderNumberEditor';
+import './PurchaseOrderForm.css';
+import { Save as SaveIcon, ArrowRight, ArrowLeft, AlertCircle, FolderOpen, RefreshCw, X } from 'lucide-react';
+import PurchaseOrderPriceSpreadsheet from './PurchaseOrderPriceSpreadsheet';
+import { employeeDisplayName } from '../../utils/employeeDisplayName';
+import { canConfigurePurchaseOrderRoute } from './purchaseOrderApprovalRouting';
+import { PROCUREMENT_VAT_OPTIONS, sumProcurementMoney } from '../../utils/procurementVat';
+import { purchaseOrderLineNet, purchaseOrderVat } from './purchaseOrderVat';
+import { purchaseOrderProjectSelections, withPurchaseOrderProjects, requisitionProjectNumbers, requisitionProjectReference } from './purchaseOrderProjects';
+import { purchaseOrderLifecycleBlockReason, purchaseOrderCommercialLockReason } from '../../utils/procurementApproval';
+import { defaultPurchaseOrderIntroduction, purchaseOrderIntroductionVisible, ORDER_INTRODUCTION_MAX_LENGTH } from './purchaseOrderIntroduction';
+import { mergeSavedPurchaseOrder, mergeSavedPurchaseOrderAttachments, purchaseOrderAttachmentKey, purchaseOrderAttachmentSlots, purchaseOrderSavedValues } from './purchaseOrderSaveState';
 import {
   DocumentTextIcon,
   PaperClipIcon,
   CheckCircleIcon,
-  XCircleIcon,
   CloudArrowUpIcon,
   InformationCircleIcon,
-  BuildingOfficeIcon,
   UserGroupIcon,
-  CurrencyDollarIcon,
   CalendarIcon,
   DocumentCheckIcon,
 } from '@heroicons/react/24/outline';
@@ -41,28 +53,56 @@ const TERMS_TEMPLATES = {
   custom: '',
 };
 
-const PROJECT_FINAL_APPROVER = 'Jarmo Suominen (CEO, Rejlers Abu Dhabi)';
-
-const defaultApprovalLog = (requisitionType) => [
-  { stage: 'Technical Approval', user_id: '', approver: '', approver_email: '', status: 'Pending', date: '', comments: '' },
-  { stage: 'Financial Approval', user_id: '', approver: '', approver_email: '', status: 'Pending', date: '', comments: '' },
-  {
-    stage: 'Final Management Sign-off',
-    user_id: '',
-    approver: requisitionType === 'project' ? PROJECT_FINAL_APPROVER : '',
-    approver_email: '',
-    status: 'Pending',
-    date: '',
-    comments: '',
-  },
+const PROJECT_FINAL_APPROVER = 'Jarmo Suominen';
+const FINAL_APPROVER_TITLE = 'Sr. Vice President, Middle East\nCEO, Rejlers Abu Dhabi';
+const DEFAULT_INVOICE_CONTACT = 'Mr. Aneef Thadikkarantavida';
+const DEFAULT_INVOICE_EMAIL = 'aneef.thadikkarantavida@rejlers.ae';
+const DEFAULT_INVOICE_EMAILS = [
+  DEFAULT_INVOICE_EMAIL,
+  'uae.finance@rejlers.ae',
+  'uae.procurement@rejlers.ae',
 ];
+const DEFAULT_BUYER_REFERENCE = 'Richa Hannah Thomas';
+const DEFAULT_ITEMS_TABLE_HEADERS = {
+  line_code: 'Line Code',
+  description: 'Item Description',
+  specification: 'Specification / API/ASME Standard Tag',
+  comment: 'Comment',
+  quantity: 'Qty',
+  uom: 'UOM',
+  unit_price: 'Unit Price',
+  discount: 'Discount',
+  total_price: 'Total Price',
+};
 
-const mergeApprovalLog = (approvalLog, requisitionType) => defaultApprovalLog(requisitionType).map((defaultEntry) => ({
-  ...defaultEntry,
-  ...(Array.isArray(approvalLog)
-    ? approvalLog.find((entry) => entry.stage === defaultEntry.stage)
-    : null),
-}));
+const employeeDesignation = (employee) => {
+  if (String(employee?.full_name || '').trim().toLowerCase() === PROJECT_FINAL_APPROVER.toLowerCase()) {
+    return FINAL_APPROVER_TITLE;
+  }
+  return employee?.designation
+    || employee?.job_title
+    || employee?.title
+    || employee?.position
+    || '';
+};
+const buyerEmployeeDesignation = (employee) => (
+  employee?.designation
+  || employee?.job_title
+  || employee?.title
+  || employee?.position
+  || ''
+);
+
+const defaultApprovalLog = () => [{
+  level: 0,
+  stage: 'Final Management Sign-off',
+  user_id: '',
+  approver: '',
+  approver_email: '',
+  status: 'Pending',
+  date: '',
+  comments: '',
+}];
 
 const normalizeApiErrors = (data) => {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return {};
@@ -113,22 +153,29 @@ const READ_ONLY_PO_FIELDS = new Set([
   'pr_number',
   'project_name',
   'project_display',
+  'price_amount',
+  'summary',
 ]);
+
+const contactPersonsWithSummary = (formData, includeSummary) => ({
+  ...(formData.contact_persons || {}),
+  ...(includeSummary ? { purchase_summary: formData.summary || '' } : {}),
+});
 
 const buildPurchaseOrderPayload = (formData, status) => Object.fromEntries(
   Object.entries({ ...formData, status }).filter(([key, value]) => (
     !READ_ONLY_PO_FIELDS.has(key)
     && value !== null
     && value !== undefined
-    && value !== ''
+    && (value !== '' || key === 'description' || key === 'scope_of_services')
   ))
 );
 
 const normalizeRequisitionItems = (requisition) => {
   const title = requisition?.product_service || requisition?.title || requisition?.price_description || 'Purchase requisition item';
   const requisitionAmount = Number(
-    requisition?.total_price
-    || requisition?.net_total_excl_vat
+    (requisition?.vat_basis === 'exclusive' ? requisition?.net_total_excl_vat : requisition?.total_price)
+    || requisition?.total_price || requisition?.net_total_excl_vat
     || requisition?.estimated_budget
     || 0
   );
@@ -168,30 +215,35 @@ const normalizeRequisitionItems = (requisition) => {
   });
 };
 
-const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prReference = null }) => {
-  const authUser = useSelector((state) => state.auth?.user);
-  const sessionUser = authUser?.user || authUser || {};
-  const sessionUserName = String(
-    sessionUser.full_name
-      || sessionUser.name
-      || [sessionUser.first_name, sessionUser.last_name].filter(Boolean).join(' ')
-      || sessionUser.username
-      || '',
-  ).trim();
-  const sessionUserEmail = String(sessionUser.email || '').trim();
+const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editData: suppliedEditData = null, prReference = null, initialProject = null }) => {
+  const [savedOrder, setSavedOrder] = useState(null);
+  const editData = savedOrder || suppliedEditData;
+  const [draftRecovery] = useState(() => createPurchaseOrderDraftRecovery({ key: purchaseOrderRecoveryKey({
+    userId: currentPurchaseOrderDraftUser(), orderId: editData?.id,
+    requisitionId: prReference?.id, projectId: initialProject?.id,
+  }) }));
+  const [recoveryReady, setRecoveryReady] = useState(false);
+  const [recoveryError, setRecoveryError] = useState('');
+  const [recoveryAttempt, setRecoveryAttempt] = useState(0);
+  const approvalRouteEditable = canConfigurePurchaseOrderRoute(editData);
+  const approvalSelectionEditedRef = useRef(false);
+  const [projectPreset, setProjectPreset] = useState(!editData && initialProject?.id ? initialProject : null);
   const savedInvoiceEmails = Array.isArray(editData?.invoicing_emails)
     ? editData.invoicing_emails
-    : ['aneef.thadikkarantavida@rejlers.ae', 'uae.procurement@rejlers.ae'];
+    : DEFAULT_INVOICE_EMAILS;
   const [loading, setLoading] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
+  const [pricingConfirmed, setPricingConfirmed] = useState(false);
+  const [pricingEdited, setPricingEdited] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [vendors, setVendors] = useState([]);
   const [selectedVendor, setSelectedVendor] = useState(null);
   const [projects, setProjects] = useState([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [projectLoadError, setProjectLoadError] = useState('');
-  const [projectSearch, setProjectSearch] = useState(editData?.project_number || '');
+  const [projectSearch, setProjectSearch] = useState('');
   const [showProjectChoices, setShowProjectChoices] = useState(false);
+  const [activeProjectIndex, setActiveProjectIndex] = useState(-1);
   const [showNewProjectForm, setShowNewProjectForm] = useState(false);
   const [newProject, setNewProject] = useState({ project_number: '', project_name: '' });
   const [projectCreating, setProjectCreating] = useState(false);
@@ -201,6 +253,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
   const [selectedRequisition, setSelectedRequisition] = useState(prReference || null);
   const [prSearch, setPrSearch] = useState(prReference?.pr_number || editData?.pr_number || '');
   const [showPRChoices, setShowPRChoices] = useState(false);
+  const [activePRIndex, setActivePRIndex] = useState(-1);
   const [requisitionsLoading, setRequisitionsLoading] = useState(false);
   const [requisitionLoadError, setRequisitionLoadError] = useState('');
   const [poNumberLoading, setPONumberLoading] = useState(false);
@@ -227,12 +280,13 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     seller_license_no: editData?.seller_license_no || '',
     
     // Buyer/Invoicing Information
-    invoicing_attn: sessionUserName ? `Attn. ${sessionUserName}` : editData?.invoicing_attn || 'Attn. Mr. Aneef Thadikkarantavida',
-    invoicing_emails: sessionUserEmail ? [sessionUserEmail, ...savedInvoiceEmails.slice(1)] : savedInvoiceEmails,
+    invoicing_attn: editData?.invoicing_attn || DEFAULT_INVOICE_CONTACT,
+    invoicing_emails: savedInvoiceEmails,
     company_fax: editData?.company_fax || '+971 2 639 7448',
     
     // Buyer Reference
-    buyer_reference_pm: editData?.buyer_reference_pm || '',
+    buyer_reference_pm: editData?.buyer_reference_pm || DEFAULT_BUYER_REFERENCE,
+    buyer_reference_email: editData?.buyer_reference_email || '',
     buyer_reference_pe: editData?.buyer_reference_pe || '',
     
     // Purchase Details
@@ -242,8 +296,11 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     
     // Financial
     total_amount: prReference?.total_price || editData?.total_amount || '',
+    net_amount: editData?.net_amount ?? '',
+    price_amount: editData ? purchaseOrderVat(editData).subtotal ?? sumProcurementMoney([editData.total_amount || 0, editData.discount_amount || 0]) : 0,
+    vat_basis: editData?.vat_basis || 'unconfirmed',
     currency: prReference?.currency || editData?.currency || 'USD',
-    vat_percentage: editData?.vat_percentage || 5.00,
+    vat_percentage: editData?.vat_percentage ?? '',
     tax_amount: editData?.tax_amount || 0,
     discount_amount: editData?.discount_amount || 0,
     
@@ -256,8 +313,9 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     workshop_rates: editData?.workshop_rates || {},
     
     // Project Information
-    project: editData?.project || '',
-    project_number: editData?.project_number || '',
+    project: editData?.project || projectPreset?.procurement_project_id || '',
+    enterprise_project: editData?.enterprise_project ?? projectPreset?.id ?? null,
+    project_number: editData?.project_number || (!editData && requisitionProjectReference(prReference)) || projectPreset?.code || '',
     project_manager: editData?.project_manager || '',
     end_client: editData?.end_client || '',
     contractor: editData?.contractor || 'Rejlers International Engineering Solutions AB',
@@ -272,11 +330,16 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     
     // Pricing Items
     items: prReference ? normalizeRequisitionItems(prReference) : (editData?.items || []),
+    items_table_headers: {
+      ...DEFAULT_ITEMS_TABLE_HEADERS,
+      ...(editData?.items_table_headers || {}),
+    },
     
     // Approval Section
     approved_by_name: editData?.approved_by_name || '',
     approved_by_title: editData?.approved_by_title || '',
     approved_date: editData?.approved_date || '',
+    approved_at: editData?.approved_at || '',
     approval_signature: editData?.approval_signature || '',
     
     // Vendor Confirmation
@@ -296,7 +359,11 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     contact_persons: editData?.contact_persons || {
       technical: [],
       project_team: [],
-      commercial: []
+      commercial: [],
+      buyer_references: [],
+      delivery_date_type: 'delivery',
+      attachment_details: [],
+      ...(!editData ? { show_order_introduction: false } : {}),
     },
     
     // Additional
@@ -308,96 +375,238 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     liquidated_damages: editData?.liquidated_damages || '',
     technical_approver: editData?.technical_approver || '',
     financial_approver: editData?.financial_approver || '',
-    management_approver: editData?.management_approver
-      || (prReference?.requisition_type === 'project' ? PROJECT_FINAL_APPROVER : ''),
-    approval_log: mergeApprovalLog(editData?.approval_log, prReference?.requisition_type),
+    management_approver: editData?.management_approver || '',
+    approval_log: approvalRouteEditable ? defaultApprovalLog() : (editData?.approval_log || []),
     final_approver_notes: editData?.final_approver_notes || '',
     notes: editData?.notes || '',
+    attachments: editData?.attachments || [],
     // Short summary that is sent to vendor with the PO
-    summary: editData?.summary || '',
+    summary: editData?.summary || editData?.contact_persons?.purchase_summary || '',
     status: editData?.status || 'draft',
   });
+  const [initialIntroductionVisible, setInitialIntroductionVisible] = useState(() => purchaseOrderIntroductionVisible(editData || formData));
+  const showOrderIntroduction = typeof formData.contact_persons?.show_order_introduction === 'boolean'
+    ? formData.contact_persons.show_order_introduction
+    : initialIntroductionVisible;
   
-  const [files, setFiles] = useState([]);
+  const [attachmentSlots, setAttachmentSlots] = useState(() => purchaseOrderAttachmentSlots(editData?.attachments));
+  const previewFiles = useMemo(() => attachmentSlots.filter(slot => slot.file || slot.existingAttachment), [attachmentSlots]);
+  const files = attachmentSlots.map((slot) => slot.file).filter(Boolean);
+  const initialAttachmentSlots = useRef(attachmentSlots);
   const [errors, setErrors] = useState({});
   const [popupError, setPopupError] = useState('');
   const [autoSaving, setAutoSaving] = useState(false);
   const [draftId, setDraftId] = useState(editData?.id || null);
   const [currentSection, setCurrentSection] = useState(1);
+  const formScrollRef = useRef(null);
+  const workspaceRef = useRef(null);
+  const [modalBounds, setModalBounds] = useState(null);
   const [approvalEmployees, setApprovalEmployees] = useState([]);
-  const [financeApprovers, setFinanceApprovers] = useState([]);
-  const [approversLoading, setApproversLoading] = useState(false);
+  const [finalApprovers, setFinalApprovers] = useState([]);
+  const [approversLoading, setApproversLoading] = useState(true);
   const [approverLoadError, setApproverLoadError] = useState('');
-  const [procurementHeads, setProcurementHeads] = useState([]);
-  const [ictHeadAdmins, setIctHeadAdmins] = useState([]);
-  const [buyerReferencesLoading, setBuyerReferencesLoading] = useState(false);
-  const [buyerReferenceLoadError, setBuyerReferenceLoadError] = useState('');
-  const isProjectPO = (selectedRequisition?.requisition_type || prReference?.requisition_type) === 'project';
+  const [employeeLoadError, setEmployeeLoadError] = useState('');
+  const initialFormData = useRef(formData);
+  const latestFormData = useRef(formData);
+  latestFormData.current = formData;
+  const recoveryContext = useRef({ editData, prReference });
+  const submittingRef = useRef(false);
 
-  // The PO invoicing contact is always the authenticated user. Preserve any
-  // additional shared procurement addresses after the primary user email.
   useEffect(() => {
-    if (!sessionUserName && !sessionUserEmail) return;
+    let active = true;
+    setRecoveryError('');
+    draftRecovery.load().then(async saved => {
+      if (!active) return;
+      const { editData: originalOrder, prReference } = recoveryContext.current;
+      let editData = originalOrder;
+      if (!editData && saved?.draftId) {
+        const response = await apiClient.get(`/procurement/orders/${saved.draftId}/`, { suppressErrorToast: true });
+        if (!active) return;
+        editData = response.data;
+        setSavedOrder(editData);
+      }
+      if (saved?.formData) {
+        setInitialIntroductionVisible(purchaseOrderIntroductionVisible(editData || saved.formData));
+        const restoreRoute = canConfigurePurchaseOrderRoute(editData);
+        approvalSelectionEditedRef.current = restoreRoute && Boolean(saved.approvalSelectionEdited);
+        const baseline = editData ? purchaseOrderSavedValues({ ...initialFormData.current, ...saved.initialFormData }, editData) : initialFormData.current;
+        initialFormData.current = baseline;
+        setFormData(previous => {
+          // Reapply only unsaved edits over the latest server record. A refresh
+          // must not restore old approval evidence or overwrite newer metadata.
+          const changes = Object.fromEntries(Object.entries(saved.formData).filter(([key, value]) => (
+            !['id', 'status', 'management_approver', 'approval_log', 'approval_signature', 'approved_by_name', 'approved_by_title', 'approved_at', 'approved_date'].includes(key)
+            && (!editData || !saved.initialFormData || JSON.stringify(value) !== JSON.stringify(saved.initialFormData[key]))
+          )));
+          if (restoreRoute && (!editData || saved.approvalSelectionEdited)) {
+            const pending = (Array.isArray(saved.formData.approval_log) ? saved.formData.approval_log : []).find(entry => (
+              entry.stage === 'Final Management Sign-off' && !entry.external && !entry.evidence_document_id
+              && String(entry.status || 'pending').toLowerCase() === 'pending'
+            ));
+            changes.approval_log = defaultApprovalLog().map(entry => ({
+              ...entry,
+              ...Object.fromEntries(['user_id', 'approver', 'approver_email', 'designation', 'comments']
+                .filter(key => pending?.[key] != null).map(key => [key, pending[key]])),
+            }));
+            changes.management_approver = pending?.approver || '';
+          }
+          return { ...previous, ...baseline, ...changes };
+        });
+        setSelectedRequisition(saved.selectedRequisition || prReference || null);
+        setProjectPreset(saved.projectPreset || null);
+        setPrSearch(saved.prSearch || '');
+        setProjectSearch(saved.projectSearch || '');
+        setNewProject(saved.newProject || { project_number: '', project_name: '' });
+        setShowNewProjectForm(Boolean(saved.showNewProjectForm));
+        setPricingConfirmed(Boolean(saved.pricingConfirmed));
+        setPricingEdited(Boolean(saved.pricingEdited));
+        setCurrentSection(Math.max(1, Math.min(4, saved.currentSection || 1)));
+        if (!editData || JSON.stringify(saved.attachmentSlots) !== JSON.stringify(saved.initialAttachmentSlots)) {
+          setAttachmentSlots(saved.attachmentSlots || []);
+        } else {
+          setAttachmentSlots(purchaseOrderAttachmentSlots(editData.attachments));
+        }
+        initialAttachmentSlots.current = purchaseOrderAttachmentSlots(editData?.attachments);
+        const recoveredId = editData?.id || saved.draftId || null;
+        persistedOrderIdRef.current = recoveredId;
+        setDraftId(recoveredId);
+        if (draftRecovery.missingFiles.length) {
+          setPopupError(`Your entries were restored. Please reattach: ${draftRecovery.missingFiles.join(', ')}.`);
+        }
+      }
+      setRecoveryReady(true);
+    }).catch(() => {
+      if (active) setRecoveryError('The saved purchase order could not be loaded. Your draft is retained.');
+    });
+    return () => { active = false; };
+  }, [draftRecovery, recoveryAttempt]);
+
+  const recoverySnapshot = useMemo(() => ({
+    formData, initialFormData: initialFormData.current, selectedRequisition, projectPreset,
+    prSearch, projectSearch, newProject, showNewProjectForm, pricingConfirmed, pricingEdited,
+    draftId, currentSection, attachmentSlots, initialAttachmentSlots: initialAttachmentSlots.current,
+    approvalSelectionEdited: approvalSelectionEditedRef.current,
+  }), [formData, selectedRequisition, projectPreset, prSearch, projectSearch, newProject,
+    showNewProjectForm, pricingConfirmed, pricingEdited, draftId, currentSection, attachmentSlots]);
+  const recoverySnapshotRef = useRef(null);
+  if (recoveryReady) recoverySnapshotRef.current = recoverySnapshot;
+
+  useEffect(() => {
+    if (!recoveryReady) return;
+    draftRecovery.save(recoverySnapshot);
+  }, [draftRecovery, recoveryReady, recoverySnapshot]);
+
+  useEffect(() => {
+    const preserve = () => {
+      if (recoverySnapshotRef.current) draftRecovery.save(recoverySnapshotRef.current);
+    };
+    window.addEventListener('pagehide', preserve);
+    return () => { window.removeEventListener('pagehide', preserve); preserve(); };
+  }, [draftRecovery]);
+
+  const handleCancel = async () => {
+    if (submittingRef.current || autoSaveRequestRef.current) return;
+    submittingRef.current = true;
+    await draftRecovery.clear();
+    onClose?.();
+  };
+
+  useLayoutEffect(() => {
+    if (!recoveryReady || !isOpen || pageMode) return undefined;
+    // The edit overlay belongs to the page, below the header and beside the
+    // sidebar. Measure the shell instead of duplicating its navigation widths.
+    const content = workspaceRef.current?.closest('main') || document.getElementById('application-content');
+    const updateBounds = () => {
+      const bounds = content?.getBoundingClientRect();
+      const next = {
+        left: bounds?.left ?? 0,
+        top: bounds?.top ?? 0,
+        width: bounds?.width ?? document.documentElement.clientWidth,
+        height: bounds?.height ?? window.innerHeight,
+      };
+      setModalBounds(previous => previous && Object.keys(next).every(key => previous[key] === next[key]) ? previous : next);
+    };
+    updateBounds();
+    const observer = new ResizeObserver(updateBounds);
+    if (content) observer.observe(content);
+    window.addEventListener('resize', updateBounds);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateBounds);
+    };
+  }, [isOpen, pageMode, recoveryReady]);
+
+  useEffect(() => {
+    // Master-data defaults belong to creation. Opening an existing PO must not
+    // rewrite its buyer references or recorded approval evidence.
+    if (!recoveryReady || editData) return;
+    if (!approvalEmployees.length && !finalApprovers.length) return;
+    const defaultCandidates = finalApprovers.filter((employee) =>
+      employee.is_active !== false
+      && String(employee.full_name || '').trim().toLowerCase() === PROJECT_FINAL_APPROVER.toLowerCase()
+    );
+    const jarmo = defaultCandidates.length === 1 ? defaultCandidates[0] : null;
     setFormData((previous) => {
-      const previousEmails = Array.isArray(previous.invoicing_emails)
-        ? previous.invoicing_emails
-        : String(previous.invoicing_emails || '').split(',').map((email) => email.trim()).filter(Boolean);
+      const buyer = approvalEmployees.find((employee) =>
+        String(employee.full_name || '').trim().toLowerCase()
+          === String(previous.buyer_reference_pm || DEFAULT_BUYER_REFERENCE).trim().toLowerCase()
+      ) || approvalEmployees.find((employee) =>
+        String(employee.full_name || '').trim().toLowerCase() === DEFAULT_BUYER_REFERENCE.toLowerCase()
+      );
+      const currentBuyerReferences = Array.isArray(previous.contact_persons?.buyer_references)
+        ? previous.contact_persons.buyer_references
+        : [];
+      const defaultBuyerReference = buyer ? {
+        user_id: buyer.id,
+        name: buyer.full_name || buyer.email,
+        designation: buyerEmployeeDesignation(buyer),
+        email: buyer.email || '',
+        primary: true,
+      } : null;
+      const buyerReferences = currentBuyerReferences.length
+        ? currentBuyerReferences
+        : defaultBuyerReference ? [defaultBuyerReference] : [];
       return {
         ...previous,
-        invoicing_attn: sessionUserName ? `Attn. ${sessionUserName}` : previous.invoicing_attn,
-        invoicing_emails: sessionUserEmail
-          ? [sessionUserEmail, ...previousEmails.slice(1)]
-          : previousEmails,
+        buyer_reference_pm: currentBuyerReferences.length ? previous.buyer_reference_pm : buyer?.full_name || previous.buyer_reference_pm,
+        buyer_reference_email: currentBuyerReferences.length ? previous.buyer_reference_email : buyer?.email || previous.buyer_reference_email,
+        invoicing_emails: previous.invoicing_emails?.length ? previous.invoicing_emails : DEFAULT_INVOICE_EMAILS,
+        contact_persons: {
+          ...(previous.contact_persons || {}),
+          buyer_references: buyerReferences,
+        },
+        ...(jarmo && !approvalSelectionEditedRef.current && previous.approval_log.some(entry => entry.stage === 'Final Management Sign-off' && !entry.user_id) ? {
+          management_approver: jarmo.full_name || jarmo.email,
+          approval_log: previous.approval_log.map((entry) => entry.stage === 'Final Management Sign-off'
+            ? {
+                ...entry,
+                user_id: jarmo.id,
+                approver: jarmo.full_name || jarmo.email,
+                approver_email: jarmo.email,
+                designation: employeeDesignation(jarmo),
+                status: 'Pending',
+                date: '',
+              }
+            : entry),
+        } : {}),
       };
     });
-  }, [sessionUserName, sessionUserEmail]);
-
-  useEffect(() => {
-    if (!isProjectPO || approvalEmployees.length === 0) return;
-    const jarmo = approvalEmployees.find((employee) =>
-      String(employee.full_name || '').trim().toLowerCase() === 'jarmo suominen'
-    );
-    if (!jarmo) return;
-    setFormData((previous) => ({
-      ...previous,
-      management_approver: jarmo.full_name || jarmo.email,
-      approval_log: previous.approval_log.map((entry) => entry.stage === 'Final Management Sign-off'
-        ? {
-            ...entry,
-            user_id: jarmo.id,
-            approver: jarmo.full_name || jarmo.email,
-            approver_email: jarmo.email,
-            status: 'Pending',
-            date: '',
-          }
-        : entry),
-    }));
-  }, [isProjectPO, approvalEmployees]);
+  }, [approvalEmployees, finalApprovers, recoveryReady, editData]);
 
   // Fetch the master data required to create a PO whenever the form is opened.
   useEffect(() => {
-    if (isOpen) {
+    if (recoveryReady && (isOpen || pageMode)) {
       fetchVendors();
       fetchProjects();
       fetchPOApprovers();
-      fetchBuyerReferences();
-      if (!editData) fetchAvailableRequisitions();
+      if (!editData?.pr_reference) fetchAvailableRequisitions();
     }
-  }, [isOpen, editData]);
-
-  // Auto-calculate tax when total amount or VAT% changes
-  useEffect(() => {
-    if (formData.total_amount && formData.vat_percentage) {
-      const amount = parseFloat(formData.total_amount) || 0;
-      const vatPct = parseFloat(formData.vat_percentage) || 0;
-      const taxAmount = (amount * vatPct) / 100;
-      setFormData(prev => ({ ...prev, tax_amount: taxAmount.toFixed(2) }));
-    }
-  }, [formData.total_amount, formData.vat_percentage]);
+  }, [isOpen, pageMode, editData?.pr_reference, recoveryReady]);
 
   // Auto-save draft every 30 seconds
   useEffect(() => {
-    if (!editData) {
+    if (recoveryReady && !suppliedEditData && (!editData || editData.status === 'draft')
+      && editData?.commercial_edit_locked !== true && !pricingEdited && !pricingConfirmed) {
       const autoSaveInterval = setInterval(() => {
         const canPersistDraft = Boolean(
           formData.pr_reference &&
@@ -412,7 +621,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       }, 30000);
       return () => clearInterval(autoSaveInterval);
     }
-  }, [formData, editData, draftId]);
+  }, [formData, editData, suppliedEditData, draftId, pricingEdited, pricingConfirmed, recoveryReady]);
 
   const normalizeApiArray = (data) => {
     if (Array.isArray(data)) return data;
@@ -465,85 +674,38 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
   const fetchPOApprovers = async () => {
     setApproversLoading(true);
     setApproverLoadError('');
-    try {
-      const [employeeResponse, financeResponse] = await Promise.all([
-        apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'any_active' } }),
-        apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'finance' } }),
-      ]);
-      const usersFrom = (response) => {
-        const payload = response?.data?.data || response?.data || {};
-        return Array.isArray(payload.users) ? payload.users : [];
-      };
-      setApprovalEmployees(usersFrom(employeeResponse));
-      setFinanceApprovers(usersFrom(financeResponse));
-    } catch (error) {
-      console.error('Error fetching PO approvers:', error);
+    setEmployeeLoadError('');
+    const usersFrom = (response) => {
+      const payload = response?.data?.data || response?.data || {};
+      if (!Array.isArray(payload.users)) throw new Error('Employee list is unavailable.');
+      return payload.users.filter(employee => employee.is_active !== false);
+    };
+    // Buyer references use the employee directory; final signatories must pass
+    // the same server eligibility check as an approval assignment.
+    const [directory, signatories] = await Promise.allSettled([
+      apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'any_active' }, suppressErrorToast: true }).then(usersFrom),
+      apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'po_final_signoff' }, suppressErrorToast: true }).then(usersFrom),
+    ]);
+    if (directory.status === 'fulfilled') {
+      setApprovalEmployees(directory.value);
+    } else {
       setApprovalEmployees([]);
-      setFinanceApprovers([]);
-      setApproverLoadError('Active employee approvers could not be loaded. Please retry.');
-    } finally {
-      setApproversLoading(false);
+      setEmployeeLoadError('Buyer reference employees could not be loaded. Please retry.');
     }
-  };
-
-  const buyerReferenceValue = (employee, departmentLabel) => {
-    const name = String(employee?.full_name || employee?.username || '').trim();
-    const email = String(employee?.email || '').trim();
-    const labelledName = name && departmentLabel ? `${name} (${departmentLabel})` : name;
-    return [labelledName, email].filter(Boolean).join(' — ');
-  };
-
-  const unassignedBuyerReference = (departmentLabel, superAdmin) => {
-    const temporaryContact = buyerReferenceValue(superAdmin, departmentLabel);
-    return temporaryContact
-      ? `Not assigned Yet: (Currently SuperAdmin User: ${temporaryContact})`
-      : 'Not assigned Yet: (Currently SuperAdmin User)';
-  };
-
-  const fetchBuyerReferences = async () => {
-    setBuyerReferencesLoading(true);
-    setBuyerReferenceLoadError('');
-    try {
-      const [procurementResponse, ictResponse, superAdminResponse] = await Promise.all([
-        apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'procurement_head' } }),
-        apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'ict_head_admin' } }),
-        apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'super_admin' } }),
-      ]);
-      const usersFrom = (response) => {
-        const payload = response?.data?.data || response?.data || {};
-        return Array.isArray(payload.users) ? payload.users : [];
-      };
-      const procurementUsers = usersFrom(procurementResponse);
-      const ictUsers = usersFrom(ictResponse);
-      const superAdminUsers = usersFrom(superAdminResponse);
-      const currentSuperAdmin = superAdminUsers.find((employee) => employee.is_current_user)
-        || superAdminUsers[0];
-      setProcurementHeads(procurementUsers);
-      setIctHeadAdmins(ictUsers);
-
-      if (!editData) {
-        setFormData((previous) => ({
-          ...previous,
-          buyer_reference_pm: procurementUsers.length
-            ? buyerReferenceValue(procurementUsers[0], 'Procurement')
-            : unassignedBuyerReference('Procurement', currentSuperAdmin),
-          buyer_reference_pe: ictUsers.length
-            ? buyerReferenceValue(ictUsers[0], 'ICT')
-            : unassignedBuyerReference('ICT', currentSuperAdmin),
-        }));
-      }
-    } catch (error) {
-      console.error('Error fetching buyer references:', error);
-      setProcurementHeads([]);
-      setIctHeadAdmins([]);
-      setBuyerReferenceLoadError('Assigned Procurement and ICT heads could not be loaded.');
-    } finally {
-      setBuyerReferencesLoading(false);
+    if (signatories.status === 'fulfilled') {
+      setFinalApprovers(signatories.value);
+      setErrors(previous => ({ ...previous, approval_log: null }));
+    } else {
+      setFinalApprovers([]);
+      setApproverLoadError(signatories.reason?.response?.status === 403
+        ? 'You do not have access to load authorized PO signatories.'
+        : 'Authorized PO signatories could not be loaded. Please retry.');
     }
+    setApproversLoading(false);
   };
 
   const handleProjectSelect = async (project) => {
-    if (!project) return;
+    if (!project || projectLinking || projectCreating) return;
     let selectedProject = project;
     if (project.source === 'core') {
       setProjectLinking(true);
@@ -576,31 +738,38 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       }
     }
 
-    setProjectSearch(`${selectedProject.project_number} — ${selectedProject.project_name}`);
+    setProjectSearch('');
+    setActiveProjectIndex(-1);
+    setProjectPreset(null);
     setShowProjectChoices(false);
     setShowNewProjectForm(false);
     setProjectCreateError('');
-    setFormData((prev) => ({
-      ...prev,
-      project: selectedProject.id,
-      project_number: selectedProject.project_number,
-    }));
+    setFormData((prev) => {
+      const selected = purchaseOrderProjectSelections(prev, projects);
+      const newSelection = {
+        project_number: selectedProject.project_number,
+        project_name: selectedProject.project_name,
+        project_id: selectedProject.id,
+        enterprise_project: selectedProject.enterprise_project ?? (project.source === 'core' ? project.source_project_id : null),
+      };
+      const existingIndex = selected.findIndex(item => item.project_number.toLowerCase() === String(newSelection.project_number).toLowerCase());
+      if (existingIndex < 0) selected.push(newSelection);
+      else selected[existingIndex] = newSelection;
+      return withPurchaseOrderProjects(prev, selected);
+    });
+  };
+
+  const handleProjectRemove = (number) => {
+    setProjectPreset(null);
+    setFormData(previous => withPurchaseOrderProjects(previous,
+      purchaseOrderProjectSelections(previous, projects).filter(project => project.project_number !== number)));
   };
 
   const handleProjectSearch = (event) => {
+    setActiveProjectIndex(-1);
     const value = event.target.value;
     setProjectSearch(value);
     setShowProjectChoices(true);
-    const normalizedValue = value.trim().toLowerCase();
-    const exactProject = projects.find((project) => (
-      String(project.project_number || '').toLowerCase() === normalizedValue
-      || `${project.project_number} — ${project.project_name}`.toLowerCase() === normalizedValue
-    ));
-    if (exactProject) {
-      handleProjectSelect(exactProject);
-      return;
-    }
-    setFormData((prev) => ({ ...prev, project: '' }));
   };
 
   const handleCreateProject = async () => {
@@ -641,14 +810,61 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     setRequisitionsLoading(true);
     setRequisitionLoadError('');
     try {
-      const response = await apiClient.get('/procurement/orders/available-requisitions/');
+      const response = await apiClient.get('/procurement/orders/available-requisitions/', {
+        params: {
+          limit: 500,
+          _fresh: Date.now(),
+        },
+      });
       setAvailableRequisitions(normalizeApiArray(response.data));
     } catch (error) {
       console.error('Error fetching available requisitions:', error);
-      setAvailableRequisitions([]);
-      setRequisitionLoadError(
-        error.response?.data?.detail || 'Existing Purchase Recommendations could not be loaded.'
-      );
+      try {
+        const fallbackResponse = await apiClient.get('/procurement/requisitions/', {
+          params: {
+            page_size: 500,
+            _fresh: Date.now(),
+          },
+          silentTimeout: true,
+        });
+        const fallbackRows = normalizeApiArray(fallbackResponse.data).map((requisition) => ({
+          id: requisition.id,
+          pr_number: requisition.pr_number,
+          status: requisition.status,
+          status_display: requisition.status_display,
+          vendor: requisition.vendor,
+          vendor_name: requisition.vendor_name,
+          supplier_name: requisition.supplier_name,
+          project_department: requisition.project_department,
+          product_service: requisition.product_service,
+          title: requisition.title,
+          total_price: requisition.total_price,
+          net_total_excl_vat: requisition.net_total_excl_vat,
+          estimated_budget: requisition.estimated_budget,
+          currency: requisition.currency,
+          issued_by_name: requisition.issued_by_name,
+          requested_by_name: requisition.requested_by_name,
+          description_reason: requisition.description_reason,
+          category: requisition.category,
+          required_date: requisition.required_date,
+          items: requisition.items,
+          purchase_recommendation: requisition.purchase_recommendation,
+          project_details: requisition.project_details,
+          project: requisition.project,
+          enterprise_project: requisition.enterprise_project,
+          created_at: requisition.created_at,
+        }));
+        setAvailableRequisitions(fallbackRows);
+        setRequisitionLoadError('');
+      } catch (fallbackError) {
+        console.error('Fallback requisition loading failed:', fallbackError);
+        setAvailableRequisitions([]);
+        setRequisitionLoadError(
+          error.response?.data?.detail
+          || fallbackError.response?.data?.detail
+          || 'Existing Purchase Recommendations could not be loaded.'
+        );
+      }
     } finally {
       setRequisitionsLoading(false);
     }
@@ -665,13 +881,25 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     const persistedOrderId = editData?.id || draftId || persistedOrderIdRef.current;
     // Do not race the user's first explicit Create request with a background
     // POST. Auto-save starts after the PO has a server-side draft ID.
-    if (!persistedOrderId) return;
-    if (autoSaveRequestRef.current) return;
+    if (!persistedOrderId || pricingEdited || pricingConfirmed) return;
+    if (autoSaveRequestRef.current || submittingRef.current) return;
     autoSaveRequestRef.current = true;
     setAutoSaving(true);
     try {
-      const payload = buildPurchaseOrderPayload(formData, 'draft');
-      await apiClient.patch(`/procurement/orders/${persistedOrderId}/`, payload);
+      const payload = buildPurchaseOrderPayload({ ...formData, contact_persons: contactPersonsWithSummary(formData, !editData || formData.summary !== initialFormData.current.summary) }, 'draft');
+      // Financial changes require an explicit VAT choice and Save. Draft
+      // background updates only preserve the existing recorded amounts.
+      ['vat_basis', 'net_amount', 'tax_amount', 'total_amount', 'vat_percentage', 'discount_amount', 'currency', 'items'].forEach(field => delete payload[field]);
+      // Background metadata updates must not overwrite a pending or completed decision.
+      ['approval_log', 'management_approver', 'approved_by_name', 'approved_by_title', 'approved_date', 'approved_at', 'approval_signature'].forEach(field => delete payload[field]);
+      const response = await apiClient.patch(`/procurement/orders/${persistedOrderId}/`, payload);
+      const persisted = Object.fromEntries(Object.keys(payload).filter(key => Object.hasOwn(formData, key)).map(key => [
+        key, Object.hasOwn(response.data, key) ? response.data[key] : payload[key],
+      ]));
+      initialFormData.current = { ...initialFormData.current, ...persisted };
+      setFormData(current => mergeSavedPurchaseOrder(current, formData, { ...formData, ...persisted }));
+      setSavedOrder(response.data);
+      onSuccess?.(response.data, { close: false });
     } catch (error) {
       console.error('Auto-save failed:', error);
     } finally {
@@ -688,7 +916,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     setFormData((prev) => ({
       ...prev,
       vendor: vendorId,
-      seller_contact_person: vendor?.contact_person || prev.seller_contact_person,
+      seller_contact_person: String(prev.vendor) === String(vendorId) ? prev.seller_contact_person : '',
       seller_email: vendor?.email || prev.seller_email,
       seller_phone: vendor?.phone || prev.seller_phone,
       seller_address: vendor?.address || prev.seller_address,
@@ -702,6 +930,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
   };
 
   const reservePONumber = async (requisition) => {
+    initiallyReservedPRRef.current = requisition.id;
     const requestId = ++poNumberRequestRef.current;
     setPONumberLoading(true);
     setFormData((prev) => ({ ...prev, po_number: '' }));
@@ -726,17 +955,42 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
 
   const handleRequisitionSelect = (requisition) => {
     if (!requisition) return;
+    if (projectPreset) {
+      const explicitCodes = requisitionProjectNumbers(requisition).map(value => value.toLowerCase());
+      const differentProject = explicitCodes.length > 0
+        ? !explicitCodes.includes(String(projectPreset.code).trim().toLowerCase())
+        : requisition.enterprise_project && String(requisition.enterprise_project) !== String(projectPreset.id);
+      if (differentProject) {
+        const message = `This PR belongs to another project. Choose a PR for ${projectPreset.code}, or close this form and choose another project in Project Links.`;
+        setPrSearch(selectedRequisition?.pr_number || '');
+        setShowPRChoices(false);
+        setErrors(previous => ({ ...previous, pr_reference: message }));
+        setPopupError(message);
+        return;
+      }
+    }
+    if (editData) {
+      // Reconciling a legacy order adds its PR link without replacing the
+      // existing PO identity, commercial values, or signed approval evidence.
+      setSelectedRequisition(requisition);
+      setPrSearch(requisition.pr_number || '');
+      setShowPRChoices(false);
+      setFormData(previous => ({ ...previous, pr_reference: requisition.id }));
+      setErrors(previous => ({ ...previous, pr_reference: null }));
+      return;
+    }
     const totalAmount = requisition.total_price
       || requisition.net_total_excl_vat
       || requisition.estimated_budget
       || '';
     const title = requisition.product_service || requisition.title || '';
     const normalizedItems = normalizeRequisitionItems(requisition);
-    const isProjectRecommendation = requisition.requisition_type === 'project';
+    const projectNumbers = requisitionProjectNumbers(requisition);
     const requisitionProject = Array.isArray(requisition.project_details)
       ? requisition.project_details[0]
       : null;
-    const projectReference = requisitionProject?.project_number
+    const projectReference = projectNumbers[0]
+      || requisitionProject?.project_number
       || requisitionProject?.project_name
       || requisition.project_department
       || requisition.project
@@ -748,10 +1002,10 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     ));
 
     setSelectedRequisition(requisition);
+    setPricingConfirmed(false);
+    setPricingEdited(false);
     setPrSearch(requisition.pr_number || '');
-    setProjectSearch(linkedProject
-      ? `${linkedProject.project_number} — ${linkedProject.project_name}`
-      : String(projectReference));
+    setProjectSearch('');
     setShowPRChoices(false);
     setCurrentSection(1);
     setFormData((prev) => ({
@@ -764,27 +1018,21 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       summary: prev.summary || title,
       category: requisition.category || prev.category,
       total_amount: totalAmount,
+      net_amount: requisition.net_total_excl_vat ?? '',
+      tax_amount: requisition.tax_amount ?? 0,
+      vat_percentage: requisition.vat_percentage ?? '',
+      price_amount: totalAmount,
+      vat_basis: 'unconfirmed',
       currency: requisition.currency || prev.currency,
-      project: linkedProject?.id || '',
-      project_number: linkedProject?.project_number || projectReference || prev.project_number,
+      project: projectPreset ? (projectPreset.procurement_project_id || '') : linkedProject?.id || '',
+      enterprise_project: projectPreset?.id ?? requisition.enterprise_project ?? linkedProject?.enterprise_project ?? (linkedProject?.source === 'core' ? linkedProject.source_project_id : null),
+      project_number: projectNumbers.join(', ') || projectPreset?.code || linkedProject?.project_number || projectReference || prev.project_number,
+      contact_persons: Object.fromEntries(Object.entries(prev.contact_persons || {}).filter(([key]) => key !== 'project_selections')),
+      seller_contact_person: String(prev.vendor) === String(requisition.vendor || '') ? prev.seller_contact_person : '',
       expected_delivery: requisition.required_date || prev.expected_delivery,
       items: normalizedItems,
       scope_of_services: requisition.description_reason || prev.scope_of_services,
       final_approver_notes: requisition.purchase_recommendation || prev.final_approver_notes,
-      management_approver: isProjectRecommendation
-        ? PROJECT_FINAL_APPROVER
-        : (prev.management_approver === PROJECT_FINAL_APPROVER ? '' : prev.management_approver),
-      approval_log: (Array.isArray(prev.approval_log) && prev.approval_log.length
-        ? prev.approval_log
-        : defaultApprovalLog(requisition.requisition_type)
-      ).map((entry) => entry.stage === 'Final Management Sign-off'
-        ? {
-            ...entry,
-            approver: isProjectRecommendation
-              ? PROJECT_FINAL_APPROVER
-              : (entry.approver === PROJECT_FINAL_APPROVER ? '' : entry.approver),
-          }
-        : entry),
     }));
     setErrors((prev) => ({ ...prev, pr_reference: null }));
     setPopupError('');
@@ -800,19 +1048,22 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
   };
 
   useEffect(() => {
+    const requisition = selectedRequisition || prReference;
     if (
       isOpen
+      && recoveryReady
       && !editData
-      && prReference?.id
+      && !persistedOrderIdRef.current
+      && requisition?.id
       && !formData.po_number
-      && initiallyReservedPRRef.current !== prReference.id
+      && initiallyReservedPRRef.current !== requisition.id
     ) {
-      initiallyReservedPRRef.current = prReference.id;
-      reservePONumber(prReference);
+      reservePONumber(requisition);
     }
-  }, [isOpen, editData, prReference?.id]);
+  }, [isOpen, editData, prReference, selectedRequisition, formData.po_number, recoveryReady]);
 
   const handleRequisitionSearch = (event) => {
+    setActivePRIndex(-1);
     const value = event.target.value;
     setPrSearch(value);
     setShowPRChoices(true);
@@ -829,13 +1080,18 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     setCurrentSection(1);
     poNumberRequestRef.current += 1;
     setPONumberLoading(false);
-    setFormData((prev) => ({ ...prev, pr_reference: null, po_number: '' }));
+    setFormData((prev) => ({ ...prev, pr_reference: null, ...(!editData ? { po_number: '' } : {}) }));
   };
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
+    if (['vat_basis', 'price_amount', 'discount_amount', 'currency'].includes(name)) setPricingEdited(true);
+    if (name === 'vat_basis') setPricingConfirmed(value !== 'unconfirmed');
     setFormData(prev => ({
       ...prev,
+      ...(name === 'vat_basis' && value === 'unconfirmed' ? Object.fromEntries(
+        ['net_amount', 'total_amount', 'tax_amount', 'vat_percentage'].map(field => [field, initialFormData.current[field]]),
+      ) : {}),
       [name]: type === 'checkbox' ? checked : value
     }));
     if (errors[name]) {
@@ -847,6 +1103,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
   };
 
   const updateApprovalLog = (index, field, value) => {
+    if (!approvalRouteEditable) return;
     setFormData(prev => {
       const approval_log = [...prev.approval_log];
       approval_log[index] = {
@@ -858,40 +1115,61 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
   };
 
   const handleApprovalSelection = (index, userId) => {
-    const entry = formData.approval_log[index];
-    const options = entry.stage === 'Financial Approval' ? financeApprovers : approvalEmployees;
-    const employee = options.find((candidate) => String(candidate.id) === String(userId));
-    const fieldByStage = {
-      'Technical Approval': 'technical_approver',
-      'Financial Approval': 'financial_approver',
-      'Final Management Sign-off': 'management_approver',
-    };
+    if (!approvalRouteEditable) return;
+    approvalSelectionEditedRef.current = true;
+    const employee = finalApprovers.find((candidate) => String(candidate.id) === String(userId));
+    const assigneeName = employee ? employeeDisplayName(employee) : '';
     setFormData((previous) => {
       const approvalLog = [...previous.approval_log];
       approvalLog[index] = {
         ...approvalLog[index],
         user_id: employee?.id || '',
-        approver: employee?.full_name || employee?.email || '',
+        approver: assigneeName,
         approver_email: employee?.email || '',
+        designation: employeeDesignation(employee),
         status: 'Pending',
         date: '',
       };
       return {
         ...previous,
         approval_log: approvalLog,
-        [fieldByStage[entry.stage]]: employee?.full_name || employee?.email || '',
+        management_approver: assigneeName,
       };
     });
     if (errors.approval_log) setErrors((previous) => ({ ...previous, approval_log: null }));
   };
 
-  const handleFileChange = (e) => {
-    const selectedFiles = Array.from(e.target.files);
-    setFiles(prevFiles => [...prevFiles, ...selectedFiles]);
+  const updateAttachmentSlot = (index, field, value) => {
+    setAttachmentSlots((previous) => previous.map((slot, slotIndex) => (
+      slotIndex === index ? { ...slot, [field]: value } : slot
+    )));
   };
 
-  const removeFile = (index) => {
-    setFiles(prevFiles => prevFiles.filter((_, i) => i !== index));
+  const addAttachmentFiles = (event) => {
+    const selectedFiles = Array.from(event.target.files || []);
+    if (!selectedFiles.length) return;
+    setAttachmentSlots((previous) => {
+      const currentNewFiles = previous.filter((item) => item.file).length;
+      const availableCount = Math.max(0, Math.min(10 - currentNewFiles, 20 - previous.length));
+      const acceptedFiles = selectedFiles.slice(0, availableCount);
+      if (acceptedFiles.length < selectedFiles.length) {
+        setPopupError('A maximum of 10 new files and 20 total PO attachments is supported.');
+      }
+      return [
+        ...previous,
+        ...acceptedFiles.map((file) => ({
+        title: file.name.replace(/\.[^.]+$/, ''),
+        description: '',
+        file,
+        existingAttachment: null,
+        })),
+      ];
+    });
+    event.target.value = '';
+  };
+
+  const removeAttachmentItem = (index) => {
+    setAttachmentSlots((previous) => previous.filter((_, itemIndex) => itemIndex !== index));
   };
 
   const addPaymentMilestone = () => {
@@ -920,6 +1198,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
   };
 
   const addItem = () => {
+    setPricingEdited(true);
     setFormData(prev => ({
       ...prev,
       items: [
@@ -939,6 +1218,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
   };
 
   const updateItem = (index, field, value) => {
+    if (['quantity', 'unit_price', 'discount'].includes(field)) setPricingEdited(true);
     setFormData(prev => {
       const items = [...prev.items];
       items[index] = {
@@ -951,86 +1231,258 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
     });
   };
 
-  const removeItem = (index) => {
+  const handleBuyerReferenceSelection = (slotIndex, employeeId) => {
+    const employee = approvalEmployees.find((candidate) => String(candidate.id) === String(employeeId));
+    setFormData((previous) => {
+      const buyerReferences = [...(previous.contact_persons?.buyer_references || [])];
+      if (!employee) buyerReferences.splice(slotIndex, 1);
+      else buyerReferences[slotIndex] = {
+        user_id: employee.id,
+        name: employee.full_name || employee.email || '',
+        designation: buyerEmployeeDesignation(employee),
+        email: employee.email || '',
+        primary: slotIndex === 0,
+      };
+      return {
+        ...previous,
+        buyer_reference_pm: buyerReferences[0]?.name || DEFAULT_BUYER_REFERENCE,
+        buyer_reference_email: buyerReferences[0]?.email || '',
+        contact_persons: {
+          ...(previous.contact_persons || {}),
+          buyer_references: buyerReferences.filter(Boolean).slice(0, 3),
+        },
+      };
+    });
+  };
+
+  const updateItemsTableHeader = (field, value) => {
     setFormData(prev => ({
       ...prev,
-      items: prev.items.filter((_, i) => i !== index),
+      items_table_headers: {
+        ...prev.items_table_headers,
+        [field]: value,
+      },
     }));
   };
 
-  const calculateItemTotal = (item) => {
-    const quantity = Number(item.quantity || 0);
-    const unitPrice = Number(item.unit_price || 0);
-    const discount = Number(item.discount || 0);
-    return Math.max(0, quantity * unitPrice - discount);
+  const addItemsTableColumn = (afterField) => {
+    const field = `custom_${Date.now()}`;
+    setFormData((previous) => {
+      const currentHeaders = previous.items_table_headers || {};
+      const currentOrder = Array.isArray(currentHeaders.__column_order)
+        ? currentHeaders.__column_order
+        : Object.keys(currentHeaders).filter((key) => !key.startsWith('__'));
+      const insertIndex = Math.max(0, currentOrder.indexOf(afterField) + 1);
+      const nextOrder = [...currentOrder];
+      nextOrder.splice(insertIndex, 0, field);
+      const newColumnNumber = currentOrder.filter((key) => key.startsWith('custom_')).length + 1;
+      const nextHeaders = { ...currentHeaders, [field]: `New Column ${newColumnNumber}`, __column_order: nextOrder };
+      return {
+        ...previous,
+        items_table_headers: nextHeaders,
+        items: (previous.items || []).map((item) => ({ ...item, [field]: '' })),
+      };
+    });
   };
 
-  const calculateSubtotal = () => {
-    return (formData.items || []).reduce((sum, item) => sum + calculateItemTotal(item), 0);
+  const handleBuyerReferenceInput = (slotIndex, value) => {
+    const normalizedValue = value.trim().toLowerCase();
+    const employee = approvalEmployees.find((candidate) => (
+      [candidate.full_name, candidate.email].some((candidateValue) => (
+        String(candidateValue || '').trim().toLowerCase() === normalizedValue
+      ))
+    ));
+    setFormData((previous) => {
+      const buyerReferences = [...(previous.contact_persons?.buyer_references || [])];
+      if (!value.trim()) buyerReferences.splice(slotIndex, 1);
+      else buyerReferences[slotIndex] = employee ? {
+        user_id: employee.id,
+        name: employee.full_name || employee.email || '',
+        designation: buyerEmployeeDesignation(employee),
+        email: employee.email || '',
+        primary: false,
+      } : {
+        user_id: null,
+        name: value,
+        designation: '',
+        email: '',
+        primary: false,
+      };
+      return {
+        ...previous,
+        contact_persons: {
+          ...(previous.contact_persons || {}),
+          buyer_references: buyerReferences.filter(Boolean).slice(0, 3),
+        },
+      };
+    });
   };
 
-  const calculateTaxAmount = (subtotal) => {
-    const vatPct = Number(formData.vat_percentage || 0);
-    return Number(((subtotal * vatPct) / 100).toFixed(2));
+  const removeItemsTableColumn = (field) => {
+    const visibleColumns = Object.keys(formData.items_table_headers || {}).filter((key) => !key.startsWith('__'));
+    if (visibleColumns.length <= 1) return;
+    setFormData((previous) => {
+      const nextHeaders = { ...(previous.items_table_headers || {}) };
+      delete nextHeaders[field];
+      if (nextHeaders.__column_widths) {
+        nextHeaders.__column_widths = { ...nextHeaders.__column_widths };
+        delete nextHeaders.__column_widths[field];
+      }
+      nextHeaders.__column_order = (Array.isArray(nextHeaders.__column_order)
+        ? nextHeaders.__column_order
+        : Object.keys(nextHeaders).filter((key) => !key.startsWith('__'))
+      ).filter((key) => key !== field);
+      return {
+        ...previous,
+        items_table_headers: nextHeaders,
+        items: (previous.items || []).map((item) => {
+          const nextItem = { ...item };
+          delete nextItem[field];
+          return nextItem;
+        }),
+      };
+    });
   };
 
-  const calculateGrandTotal = (subtotal, taxAmount) => {
-    return Number((subtotal + taxAmount).toFixed(2));
+  const removeItem = (index) => {
+    setPricingEdited(true);
+    setFormData(prev => ({
+      ...prev,
+      items: prev.items.filter((_, i) => i !== index),
+      ...(prev.items.length === 1 ? { price_amount: 0 } : {}),
+    }));
   };
+
+  const calculateItemTotal = item => purchaseOrderLineNet(item) ?? 0;
+  const pricing = purchaseOrderVat(formData, { preferItems: pricingConfirmed });
+  const calculateSubtotal = () => pricing.netAmount ?? 0;
+  const calculateTaxAmount = () => pricing.taxAmount ?? 0;
+  const calculateGrandTotal = () => pricing.totalAmount ?? 0;
 
   useEffect(() => {
-    const subtotal = calculateSubtotal();
-    const taxAmount = calculateTaxAmount(subtotal);
-    const totalAmount = calculateGrandTotal(subtotal, taxAmount);
+    if (!pricingConfirmed) return;
     setFormData(prev => {
-      if (prev.total_amount === totalAmount && prev.tax_amount === taxAmount) {
+      const amounts = purchaseOrderVat(prev, { preferItems: true });
+      const netAmount = amounts.netAmount ?? 0;
+      const taxAmount = amounts.taxAmount ?? 0;
+      const totalAmount = amounts.totalAmount ?? 0;
+      if (prev.total_amount === totalAmount && prev.tax_amount === taxAmount
+          && prev.net_amount === netAmount && prev.vat_percentage === amounts.vatRate) {
         return prev;
       }
       return {
         ...prev,
         total_amount: totalAmount,
         tax_amount: taxAmount,
+        net_amount: netAmount,
+        vat_percentage: amounts.vatRate,
       };
     });
-  }, [formData.items, formData.vat_percentage]);
+  }, [formData.items, formData.price_amount, formData.discount_amount, formData.vat_basis, pricingConfirmed]);
 
-  const requiredApprovalStages = ['Technical Approval', 'Financial Approval', ...(isProjectPO ? ['Final Management Sign-off'] : [])];
+  const approvalRouteChanged = JSON.stringify(formData.approval_log) !== JSON.stringify(initialFormData.current.approval_log);
+  const requiredApprovalStages = approvalRouteEditable && (!editData || approvalRouteChanged) ? ['Final Management Sign-off'] : [];
   const assignedApprovalStages = new Set(
     formData.approval_log.filter((entry) => entry.user_id).map((entry) => entry.stage)
   );
   const missingApprovalStages = requiredApprovalStages.filter((stage) => !assignedApprovalStages.has(stage));
+  const signatoryAvailabilityError = approversLoading
+    ? 'Checking authorized PO signatories...'
+    : approverLoadError || (!finalApprovers.length
+      ? 'No eligible final signatory is available. Check the CEO employee record and Purchase Order approval permission, then refresh signatories.'
+      : '');
+  const unavailableSignatory = formData.approval_log.some(entry => entry.user_id
+    && !finalApprovers.some(employee => String(employee.id) === String(entry.user_id)));
+  const approvalEligibilityError = requiredApprovalStages.length
+    ? signatoryAvailabilityError || (unavailableSignatory
+      ? 'The selected final signatory is no longer eligible. Your selection is retained; check their CEO position and Purchase Order approval permission, then refresh signatories.'
+      : missingApprovalStages.length ? `Select an authorized signatory for: ${missingApprovalStages.join(', ')}` : '')
+    : '';
 
-  const validateForm = (requireSummary = false) => {
+  const getValidationErrors = (requireSummary = false) => {
     const newErrors = {};
+    if ((!editData || pricingEdited) && !pricingConfirmed) newErrors.vat_basis = 'Confirm whether these prices include VAT, exclude VAT, or have no VAT before saving.';
     
-    if (!formData.pr_reference) newErrors.pr_reference = 'An existing Purchase Requisition is required';
+    if (!formData.pr_reference && (!editData || requireSummary)) newErrors.pr_reference = 'An existing Purchase Requisition is required';
     if (!formData.po_number?.trim()) {
       newErrors.po_number = 'PO number is required';
-    } else if (!/^RAD-(GEN|PRJ)-PUR-\d{4,}_\d{4}$/.test(formData.po_number.trim())) {
-      newErrors.po_number = 'Use RAD-{GEN|PRJ}-PUR-####_YYYY format';
+    } else if (!/^RAD-(GEN|PRJ)-PUR-\d{4,}_(?:(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)?\d{4})$/.test(formData.po_number.trim())) {
+      newErrors.po_number = 'Use RAD-{GEN|PRJ}-PUR-####_YYYY or RAD-{GEN|PRJ}-PUR-####_MMMYYYY format';
     }
     if (!formData.vendor) newErrors.vendor = 'Vendor is required';
+    if (String(formData.project_number || '').length > 100) newErrors.project_number = 'The selected project numbers exceed the 100-character limit.';
     if (!formData.title?.trim()) newErrors.title = 'Title is required';
     if (!formData.total_amount || parseFloat(formData.total_amount) <= 0) {
       newErrors.total_amount = 'Valid total amount is required';
     }
     if (!formData.payment_terms?.trim()) newErrors.payment_terms = 'Payment terms are required';
+    if (formData.contact_persons?.delivery_date_type === 'start' && !formData.start_date) {
+      newErrors.start_date = 'Start date is required';
+    }
+    if (formData.contact_persons?.delivery_date_type === 'start' && !formData.end_date) {
+      newErrors.end_date = 'End date is mandatory when Start Date is selected';
+    }
     if (requireSummary && !formData.summary?.trim()) newErrors.summary = 'Summary is required before sending to vendor';
-    if (requireSummary && missingApprovalStages.length) {
-      newErrors.approval_log = `Select an active employee for: ${missingApprovalStages.join(', ')}`;
+    if (approvalEligibilityError) {
+      newErrors.approval_log = approvalEligibilityError;
+    }
+    if (editData && !requireSummary) {
+      // A partial metadata correction must not require repairing unrelated
+      // missing fields on an older imported order before it can be saved.
+      for (const field of Object.keys(newErrors)) {
+        if (field === 'vat_basis' || field === 'approval_log') continue;
+        const deliveryTypeChanged = ['start_date', 'end_date'].includes(field)
+          && formData.contact_persons?.delivery_date_type !== initialFormData.current.contact_persons?.delivery_date_type;
+        if (!deliveryTypeChanged && JSON.stringify(formData[field]) === JSON.stringify(initialFormData.current[field])) delete newErrors[field];
+      }
     }
     
+    return newErrors;
+  };
+
+  const validateForm = (requireSummary = false) => {
+    const newErrors = getValidationErrors(requireSummary);
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
+  const openSection = (section) => {
+    if (window.matchMedia('(max-width: 1099px)').matches) {
+      formScrollRef.current?.closest('.pof-editor')?.scrollIntoView({ block: 'start' });
+    }
+    setCurrentSection(section);
+    formScrollRef.current?.scrollTo({ top: 0 });
+  };
+
+  const sectionForField = (field) => field === 'total_amount' ? 2 : ['attachments', 'approval_log'].includes(field) ? 4 : ['project_number', 'start_date', 'end_date', 'expected_delivery'].includes(field) ? 3 : 1;
+  const openValidationIssue = (issue) => {
+    const field = issue.field || issue.id;
+    openSection(sectionForField(field));
+    setErrors(getValidationErrors(true));
+    window.setTimeout(() => {
+      const target = field === 'pr_reference' ? '#po-pr-search'
+        : field === 'total_amount' ? '[data-po-price-summary]'
+          : `[name="${field}"], #po-${field}`;
+      const element = formScrollRef.current?.querySelector(target);
+      element?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      element?.focus({ preventScroll: true });
+    }, 50);
+  };
+
   const handleSubmit = async (e, sendToVendor = false) => {
     e.preventDefault();
+    if (submittingRef.current || autoSaveRequestRef.current) return;
+    if (sendToVendor && editData?.can_send_to_vendor !== true) {
+      setPopupError(editData ? purchaseOrderLifecycleBlockReason(editData) : 'Save this purchase order as a draft, then complete its approvals before sending it to the vendor.');
+      return;
+    }
 
     if (!validateForm(sendToVendor)) {
-      const validationMessage = !formData.pr_reference
+      const validationMessage = approvalEligibilityError
+        ? approvalEligibilityError
+        : !formData.pr_reference
         ? 'Please select an existing Purchase Requisition.'
-        : !/^RAD-(GEN|PRJ)-PUR-\d{4,}_\d{4}$/.test(formData.po_number?.trim() || '')
+        : !/^RAD-(GEN|PRJ)-PUR-\d{4,}_(?:(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)?\d{4})$/.test(formData.po_number?.trim() || '')
           ? 'Please use a valid RAD Purchase Order number.'
         : !formData.vendor
           ? 'Please select a vendor.'
@@ -1040,35 +1492,73 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
             ? 'Please add at least one priced line item.'
             : !formData.payment_terms?.trim()
               ? 'Please enter the payment terms.'
+              : String(formData.project_number || '').length > 100
+                ? 'The selected project numbers exceed the 100-character limit.'
               : missingApprovalStages.length
                 ? `Please select: ${missingApprovalStages.join(', ')}.`
                 : 'Please add a short summary before sending to the vendor.';
-      setPopupError(validationMessage);
-      setCurrentSection(missingApprovalStages.length ? 6
-        : !formData.pr_reference || !formData.po_number?.trim() || !formData.vendor || !formData.title?.trim() || (sendToVendor && !formData.summary?.trim()) ? 1 : 2);
+      setPopupError((!editData || pricingEdited) && !pricingConfirmed ? 'Confirm whether these prices include VAT, exclude VAT, or have no VAT before saving.' : validationMessage);
+      openSection(sectionForField(Object.keys(getValidationErrors(sendToVendor))[0]));
       setTimeout(() => setPopupError(''), 6000);
       return;
     }
 
+    submittingRef.current = true;
     setSubmitLoading(true);
     
     try {
-      const payload = buildPurchaseOrderPayload(
-        formData,
-        sendToVendor ? 'sent' : (editData?.status || 'draft')
-      );
+      const preparedFormData = {
+        ...formData,
+        payment_milestones: formData.payment_milestones || [],
+        attachments: attachmentSlots
+          .filter((slot) => slot.existingAttachment && !slot.file)
+          .map((slot) => {
+            const initial = initialAttachmentSlots.current.find(item => purchaseOrderAttachmentKey(item.existingAttachment) === purchaseOrderAttachmentKey(slot.existingAttachment));
+            return initial && slot.title === initial.title && slot.description === initial.description
+              ? slot.existingAttachment
+              : { ...slot.existingAttachment, title: slot.title.trim(), description: slot.description.trim() };
+          }),
+        contact_persons: {
+          ...contactPersonsWithSummary(formData, !editData || formData.summary !== initialFormData.current.summary),
+          ...(files.length ? { attachment_details: attachmentSlots
+            .filter((slot) => slot.file)
+            .map(({ title, description }) => ({ title: title.trim(), description: description.trim() })) } : {}),
+        },
+      };
+      // Existing records are partial updates: preserve untouched imported
+      // values and approval history, while allowing users to clear a field.
+      const payload = editData ? Object.fromEntries(
+        Object.entries(preparedFormData).filter(([key, value]) => (
+          !READ_ONLY_PO_FIELDS.has(key)
+          && JSON.stringify(value) !== JSON.stringify(initialFormData.current[key])
+        )),
+      ) : buildPurchaseOrderPayload(preparedFormData, 'draft');
+      if (pricingConfirmed && (!editData || pricingEdited)) {
+        Object.assign(payload, {
+          vat_basis: formData.vat_basis, net_amount: pricing.netAmount,
+          tax_amount: pricing.taxAmount, total_amount: pricing.totalAmount, vat_percentage: pricing.vatRate,
+          entered_amount: pricing.subtotal,
+        });
+      } else {
+        ['vat_basis', 'net_amount', 'tax_amount', 'total_amount', 'vat_percentage', 'discount_amount'].forEach(field => delete payload[field]);
+      }
+      for (const field of ['project', 'enterprise_project', 'pr_reference']) {
+        if (payload[field] === '') payload[field] = null;
+      }
+      if (sendToVendor) payload.status = 'sent';
       let submitData = payload;
-      let config;
+      let config = { suppressErrorToast: true };
 
       // Use the normal JSON API for ordinary PO creation. Multipart is only
       // required when the user actually attaches files.
       if (files.length) {
         submitData = new FormData();
         Object.entries(payload).forEach(([key, value]) => {
-          submitData.append(key, typeof value === 'object' ? JSON.stringify(value) : value);
+          submitData.append(key, value == null ? '' : typeof value === 'object' ? JSON.stringify(value) : value);
         });
         files.forEach((file) => submitData.append('attachments_files', file));
         config = {
+          suppressErrorToast: true,
           onUploadProgress: (progressEvent) => {
             if (!progressEvent.total) return;
             setUploadProgress(Math.round((progressEvent.loaded * 100) / progressEvent.total));
@@ -1078,6 +1568,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       
       let response;
       const persistedOrderId = editData?.id || draftId || persistedOrderIdRef.current;
+      const isExistingOrder = Boolean(persistedOrderId);
       if (persistedOrderId) {
         response = await apiClient.patch(`/procurement/orders/${persistedOrderId}/`, submitData, config);
       } else {
@@ -1085,23 +1576,56 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
         persistedOrderIdRef.current = response.data.id;
         setDraftId(response.data.id);
       }
+
+      const saved = response.data;
+      persistedOrderIdRef.current = saved.id;
+      setDraftId(saved.id);
+      const baseline = purchaseOrderSavedValues(preparedFormData, saved);
+      initialFormData.current = baseline;
+      initialAttachmentSlots.current = purchaseOrderAttachmentSlots(saved.attachments);
+      setFormData(current => mergeSavedPurchaseOrder(current, formData, baseline));
+      setAttachmentSlots(current => mergeSavedPurchaseOrderAttachments(current, attachmentSlots, saved.attachments || []));
+      const pricingFields = ['items', 'price_amount', 'vat_basis', 'currency', 'discount_amount'];
+      if (pricingFields.every(field => JSON.stringify(latestFormData.current[field]) === JSON.stringify(formData[field]))) {
+        setPricingEdited(false);
+      }
+      if (JSON.stringify(latestFormData.current.approval_log) === JSON.stringify(formData.approval_log)) {
+        approvalSelectionEditedRef.current = false;
+      }
+      setSavedOrder(saved);
+      setErrors({});
+      setPopupError('');
+      const poLabel = saved.po_number || formData.po_number || 'Purchase Order';
+      if (sendToVendor) {
+        await draftRecovery.clear();
+        toast.success('Purchase order issued.');
+      } else if (isExistingOrder) {
+        toast.success(`${poLabel} saved successfully.`);
+      } else {
+        toast.success(`${poLabel} draft created successfully.`);
+      }
       
-      if (onSuccess) onSuccess(response.data);
-      if (onClose) onClose();
+      if (onSuccess) onSuccess(saved, { close: sendToVendor });
+      else if (sendToVendor) onClose?.();
     } catch (error) {
       console.error('Error submitting PO:', error);
       const fieldErrors = normalizeApiErrors(error.response?.data);
+      const apiErrorMessage = getApiErrorMessage(error, fieldErrors);
       setErrors(fieldErrors);
-      setPopupError(getApiErrorMessage(error, fieldErrors));
+      setPopupError(apiErrorMessage);
+      toast.error(apiErrorMessage);
       setTimeout(() => setPopupError(''), 8000);
     } finally {
+      submittingRef.current = false;
       setSubmitLoading(false);
       setUploadProgress(0);
     }
   };
 
   // Don't render if not open - check AFTER all hooks
-  if (!isOpen) return null;
+  if (!isOpen && !pageMode) return null;
+  if (recoveryError) return <div role="alert" className="p-4"><p>{recoveryError}</p><button type="button" className="pof-button" onClick={() => setRecoveryAttempt(value => value + 1)}>Try again</button><button type="button" className="pof-button" onClick={handleCancel}>Close purchase order</button></div>;
+  if (!recoveryReady) return <div role="status" className="p-4">Restoring purchase order…</div>;
 
   const isNewOrder = !editData;
   const hasRequiredRequisition = !isNewOrder || Boolean(formData.pr_reference && selectedRequisition);
@@ -1119,125 +1643,57 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
       requisition.supplier_name,
       requisition.project_department,
     ].some((value) => String(value || '').toLowerCase().includes(normalizedPRSearch));
-  }).slice(0, 12);
+  }).slice(0, normalizedPRSearch ? 50 : undefined);
   const normalizedProjectSearch = projectSearch.trim().toLowerCase();
+  const selectedProjects = purchaseOrderProjectSelections(formData, projects);
   const filteredProjects = projects.filter((project) => {
     if (!normalizedProjectSearch) return true;
-    if (String(project.id) === String(formData.project)) return true;
     return [project.project_number, project.project_name].some((value) => (
       String(value || '').toLowerCase().includes(normalizedProjectSearch)
     ));
   }).slice(0, 15);
 
+  const buyerReferences = formData.contact_persons?.buyer_references || [];
+
   const sections = [
-    { id: 1, name: 'Header & Seller', icon: BuildingOfficeIcon },
-    { id: 2, name: 'Buyer & Payment', icon: CurrencyDollarIcon },
-    { id: 3, name: 'Project Details', icon: DocumentCheckIcon },
-    { id: 4, name: 'Items & Pricing', icon: CurrencyDollarIcon },
-    { id: 5, name: 'Contract Terms', icon: DocumentTextIcon },
-    { id: 6, name: 'Contacts & Approval', icon: UserGroupIcon },
+    { id: 1, name: 'Order & parties' },
+    { id: 2, name: 'Scope & pricing' },
+    { id: 3, name: 'Projects & delivery' },
+    { id: 4, name: 'Approval' },
   ];
 
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto p-4">
-      {popupError && (
-        <div className="fixed top-6 right-6 z-60">
-          <div className="flex items-start space-x-3 bg-red-600 text-white px-4 py-3 rounded-lg shadow-lg max-w-sm">
-            <div className="flex-1">
-              <div className="font-semibold">Error</div>
-              <div className="text-sm mt-1">{popupError}</div>
-            </div>
-            <button onClick={() => setPopupError('')} className="text-white opacity-90 hover:opacity-100 ml-2">×</button>
-          </div>
-        </div>
-      )}
-      <div className="flex h-[94vh] w-full max-w-[96vw] flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-8 py-6 rounded-t-xl">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <DocumentTextIcon className="h-8 w-8" />
-              <div>
-                <h2 className="text-2xl font-bold">
-                  {editData ? 'Edit Purchase Order' : 'New Purchase Order'}
-                </h2>
-                <p className="text-blue-100 text-sm mt-1">
-                  {formData.po_number ? `PO No: ${formData.po_number}` : 'RAD-PRJ-PUR Template'}
-                  {effectiveRequisition && ` • From PR: ${effectiveRequisition.pr_number}`}
-                </p>
-              </div>
-            </div>
-            <button onClick={onClose} className="text-white hover:text-blue-200 transition-colors">
-              <XCircleIcon className="h-7 w-7" />
-            </button>
-          </div>
-          
-          {autoSaving && (
-            <div className="mt-3 flex items-center space-x-2 text-blue-100 text-sm">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-              <span>Auto-saving draft...</span>
-            </div>
-          )}
-        </div>
+  const validationErrors = editData ? getValidationErrors(false) : formData.pr_reference ? getValidationErrors(true) : { pr_reference: 'Select an existing purchase recommendation to continue.' };
+  if (errors.approval_log) validationErrors.approval_log = errors.approval_log;
+  const validationIssues = Object.entries(validationErrors).map(([field, message]) => ({ id: field, field, message, title: message }));
+  const busy = submitLoading || autoSaving;
 
-        {/* Section Navigation */}
-        <div className="border-b border-gray-200 bg-gray-50 px-6 py-3">
-          <div className="flex space-x-4 overflow-x-auto">
-            {sections.map((section) => (
-              <button
-                key={section.id}
-                onClick={() => setCurrentSection(section.id)}
-                disabled={isNewOrder && !hasRequiredRequisition && section.id !== 1}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${
-                  currentSection === section.id
-                    ? 'bg-blue-100 text-blue-700 font-semibold'
-                    : 'text-gray-600 hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent'
-                }`}
-              >
-                <section.icon className="h-5 w-5" />
-                <span className="text-sm">{section.name}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Form Content */}
-        <form onSubmit={(e) => handleSubmit(e, false)} className="grid min-h-0 flex-1 overflow-y-auto xl:grid-cols-[minmax(0,1.25fr)_minmax(400px,0.75fr)] xl:overflow-hidden">
-          <div className="min-w-0 px-8 py-6 xl:overflow-y-auto">
-          
-          {/* Section 1: Header & Seller */}
-          {currentSection === 1 && (
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Header & Seller Information</h3>
-                  <p className="text-sm text-gray-500">Capture the purchase order header and supplier details needed for PO creation.</p>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border-2 border-blue-200 bg-blue-50/60 p-5 shadow-sm">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <label htmlFor="po-pr-search" className="block text-sm font-bold text-gray-900">
-                      Existing PR Number <span className="text-red-600">*</span>
-                    </label>
-                    <p className="mt-1 text-xs text-gray-600">All PRs created in RADAI are available, including PRs already used by another PO.</p>
-                  </div>
-                  {selectedRequisition && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">
-                      <CheckCircleIcon className="h-4 w-4" /> PR linked
-                    </span>
-                  )}
-                </div>
-
-                {isNewOrder ? (
+  const orderSellerCard = (
+    <section className="pof-card pof-order-card" aria-labelledby="po-header-group">
+      <div className="pof-card-heading"><span className="pof-card-icon"><DocumentTextIcon /></span><h3 id="po-header-group">Order &amp; seller</h3></div>
+      <div className="pof-card-body">
+        <div className="pof-field-grid">
+          <div className="pof-field-row pof-pr-row">
+            <label htmlFor="po-pr-search">PR Number <span className="pof-required">*</span></label>
+            {isNewOrder || !editData.pr_reference ? (
                   <div className="relative mt-3">
                     <input
                       id="po-pr-search"
+                      role="combobox"
                       type="search"
                       value={prSearch}
                       onChange={handleRequisitionSearch}
                       onFocus={() => setShowPRChoices(true)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Escape') { setShowPRChoices(false); event.preventDefault(); }
+                        else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                          event.preventDefault();
+                          setShowPRChoices(true);
+                          setActivePRIndex(index => Math.max(0, Math.min(filteredRequisitions.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1))));
+                        } else if (event.key === 'Enter') {
+                          event.preventDefault();
+                          if (showPRChoices && filteredRequisitions[activePRIndex]) handleRequisitionSelect(filteredRequisitions[activePRIndex]);
+                        }
+                      }}
                       onBlur={() => window.setTimeout(() => setShowPRChoices(false), 150)}
                       autoComplete="off"
                       placeholder={requisitionsLoading ? 'Loading existing PRs…' : 'Type or select an existing PR number…'}
@@ -1245,14 +1701,17 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                       aria-autocomplete="list"
                       aria-expanded={showPRChoices}
                       aria-controls="available-pr-options"
+                      aria-activedescendant={showPRChoices && filteredRequisitions[activePRIndex] ? `po-pr-option-${filteredRequisitions[activePRIndex].id}` : undefined}
                       className={`block w-full rounded-xl border bg-white px-4 py-3 text-sm font-semibold text-gray-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 ${errors.pr_reference ? 'border-red-500' : 'border-gray-300'}`}
                     />
 
                     {showPRChoices && !requisitionsLoading && !requisitionLoadError && (
                       <div id="available-pr-options" role="listbox" className="absolute z-30 mt-2 max-h-80 w-full overflow-y-auto rounded-xl border border-gray-200 bg-white p-1 shadow-xl">
-                        {filteredRequisitions.length ? filteredRequisitions.map((requisition) => (
+                        {filteredRequisitions.length ? filteredRequisitions.map((requisition, index) => (
                           <button
                             key={requisition.id}
+                            id={`po-pr-option-${requisition.id}`}
+                            data-highlighted={index === activePRIndex}
                             type="button"
                             role="option"
                             aria-selected={String(requisition.id) === String(formData.pr_reference)}
@@ -1285,53 +1744,36 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                     {effectiveRequisition?.pr_number || 'Legacy PO — no linked PR'}
                   </div>
                 )}
-
-                {selectedRequisition && (
-                  <div className="mt-3 grid gap-2 rounded-xl border border-blue-100 bg-white/80 p-3 text-xs text-gray-700 sm:grid-cols-3">
-                    <div><span className="font-semibold text-gray-500">Purchase:</span><br />{selectedRequisition.product_service || selectedRequisition.title || '—'}</div>
-                    <div><span className="font-semibold text-gray-500">Supplier:</span><br />{selectedRequisition.vendor_name || selectedRequisition.supplier_name || '—'}</div>
-                    <div><span className="font-semibold text-gray-500">PR Amount:</span><br />{selectedRequisition.currency || 'AED'} {Number(selectedRequisition.total_price || selectedRequisition.net_total_excl_vat || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
-                  </div>
-                )}
-              </div>
-
-              {!hasRequiredRequisition ? (
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-8 text-center">
-                  <DocumentCheckIcon className="mx-auto h-10 w-10 text-amber-500" />
-                  <h4 className="mt-3 font-bold text-amber-900">Select an existing PR to continue</h4>
-                  <p className="mt-1 text-sm text-amber-700">RADAI will link the PO to that requisition and prefill the available supplier, scope, project, pricing, and delivery data.</p>
-                </div>
-              ) : (
-              <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm space-y-6">
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
+          </div>
+          <div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">PO Number *</label>
                     <input
                       type="text"
-                      value={formData.po_number}
+                      id="po-po_number" aria-label="PO Number" value={formData.po_number}
                       onChange={handlePONumberChange}
                       readOnly={poNumberLoading}
                       className={`mt-1 block w-full rounded-md border bg-white px-3 py-2 text-sm font-semibold uppercase text-gray-900 focus:border-blue-500 focus:ring-blue-500 ${errors.po_number ? 'border-red-500' : 'border-gray-300'} ${poNumberLoading ? 'cursor-wait bg-gray-100' : ''}`}
                       placeholder={poNumberLoading ? 'Generating PO number…' : 'RAD-PRJ-PUR-####_YYYY'}
                     />
                     {poNumberLoading && <p className="mt-1 text-xs text-blue-600">Generating the next PO number from the selected PR…</p>}
-                    {!poNumberLoading && !errors.po_number && <p className="mt-1 text-xs text-gray-500">Auto-generated after PR selection. You may edit it while keeping the RAD format.</p>}
                     {errors.po_number && <p className="mt-1 text-xs font-medium text-red-600">{errors.po_number}</p>}
                   </div>
-                  <div>
+          <div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">PO Date</label>
                     <input
                       type="date"
                       name="po_date"
+                      aria-label="Po Date"
                       value={formData.po_date}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
                     />
                   </div>
-                  <div>
+          <div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">Currency *</label>
                     <select
                       name="currency"
+                      aria-label="Currency"
                       value={formData.currency}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
@@ -1342,12 +1784,13 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                       <option value="GBP">GBP</option>
                     </select>
                   </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Vendor / Seller *</label>
+        </div>
+        {hasRequiredRequisition ? <>
+          <div className="pof-field-row">
+                  <label className="block text-sm font-medium text-gray-700">Seller *</label>
                   <select
                     name="vendor"
+                      aria-label="Seller Information"
                     value={formData.vendor}
                     onChange={handleVendorChange}
                     className={`mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 ${
@@ -1363,294 +1806,186 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                   </select>
                   {errors.vendor && <p className="mt-1 text-xs text-red-600">{errors.vendor}</p>}
 
-                  {selectedVendor && (
-                    <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-gray-700">
-                      <div className="font-semibold text-blue-700 mb-2">Selected vendor details</div>
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        <div>
-                          <span className="font-medium">Contact Person:</span> {selectedVendor.contact_person || 'N/A'}
-                        </div>
-                        <div>
-                          <span className="font-medium">Email:</span> {selectedVendor.email || 'N/A'}
-                        </div>
-                        <div>
-                          <span className="font-medium">Phone:</span> {selectedVendor.phone || 'N/A'}
-                        </div>
-                        <div>
-                          <span className="font-medium">Country:</span> {selectedVendor.country || 'N/A'}
-                        </div>
-                        <div>
-                          <span className="font-medium">Trade License:</span> {selectedVendor.trade_license_number || 'N/A'}
-                        </div>
-                        <div>
-                          <span className="font-medium">VAT Number:</span> {selectedVendor.vat_number || 'N/A'}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
 
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
+                </div>
+          <div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">Seller Reference</label>
                     <input
                       type="text"
                       name="seller_reference"
+                      aria-label="Seller Reference"
                       value={formData.seller_reference}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
                       placeholder="Attn: Mr. Abdul Muneem"
                     />
                   </div>
-                  <div>
+          <div className="pof-field-grid"><div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">Quote Reference</label>
                     <input
                       type="text"
                       name="quote_ref"
+                      aria-label="Quote Reference"
                       value={formData.quote_ref}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
                       placeholder="E-mail dt 27.12.2024"
                     />
-                  </div>
-                  <div>
+                  </div><div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">License No.</label>
                     <input
                       type="text"
                       name="seller_license_no"
+                      aria-label="Seller License No"
                       value={formData.seller_license_no}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
                       placeholder="CN-3362215"
                     />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Title / Description *</label>
-                  <input
-                    type="text"
-                    name="title"
-                    value={formData.title}
-                    onChange={handleChange}
-                    className={`mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 ${
-                      errors.title ? 'border-red-500' : ''
-                    }`}
-                    placeholder="Value Engineering Services for STP & GTG Demolition Project"
-                  />
-                  {errors.title && <p className="mt-1 text-xs text-red-600">{errors.title}</p>}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Detailed Description</label>
-                  <textarea
-                    name="description"
-                    value={formData.description}
-                    onChange={handleChange}
-                    rows={4}
-                    className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
-                    placeholder="Detailed scope of work..."
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Vendor Summary (included when sending to vendor) *</label>
-                  <textarea
-                    name="summary"
-                    value={formData.summary}
-                    onChange={handleChange}
-                    rows={3}
-                    className={`mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 ${errors.summary ? 'border-red-500' : ''}`}
-                    placeholder="Short summary to appear in vendor notification..."
-                  />
-                  {errors.summary && <p className="mt-1 text-xs text-red-600">{errors.summary}</p>}
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Contact Person Name</label>
-                    <input
-                      type="text"
-                      name="seller_contact_person"
-                      value={formData.seller_contact_person}
-                      onChange={handleChange}
-                      className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
-                      placeholder="Name of seller contact"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Email</label>
+                  </div></div>
+          <div className="pof-field-grid"><div className="pof-field-row">
+                    <label className="block text-sm font-medium text-gray-700">Seller Email</label>
                     <input
                       type="email"
                       name="seller_email"
+                      aria-label="Seller Email"
                       value={formData.seller_email}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
                       placeholder="seller@example.com"
                     />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Phone Number</label>
+                  </div><div className="pof-field-row">
+                    <label className="block text-sm font-medium text-gray-700">Seller Phone</label>
                     <input
                       type="text"
                       name="seller_phone"
+                      aria-label="Seller Phone"
                       value={formData.seller_phone}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
                       placeholder="+971 4 123 4567"
                     />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Address</label>
-                    <textarea
+                  </div></div>
+          <div className="pof-field-row">
+                    <label htmlFor="seller-address" className="block text-sm font-medium text-gray-700">Seller Address</label>
+                    <input
+                      type="text"
+                      id="seller-address"
                       name="seller_address"
+                      aria-label="Seller Address"
                       value={formData.seller_address}
                       onChange={handleChange}
-                      rows={2}
-                      className="mt-1 block w-full resize-none rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
-                      placeholder="Seller office or registered address"
-                    />
-                  </div>
-                </div>
-              </div>
-              )}
-            </div>
-          )}
-
-          {/* Section 2: Buyer & Payment */}
-          {currentSection === 2 && (
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Buyer & Payment Information</h3>
-                  <p className="text-sm text-gray-500">Enter the buyer billing and payment terms for this purchase order.</p>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm space-y-6">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Invoicing Attention</label>
-                    <input
-                      type="text"
-                      name="invoicing_attn"
-                      value={formData.invoicing_attn}
-                      readOnly
-                      className="mt-1 block w-full cursor-not-allowed rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-900"
-                    />
-                    <p className="mt-1 text-xs text-gray-500">
-                      Signed-in user{sessionUserEmail ? ` · ${sessionUserEmail}` : ''}
-                    </p>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Company Fax</label>
-                    <input
-                      type="text"
-                      name="company_fax"
-                      value={formData.company_fax}
-                      onChange={handleChange}
+                      autoComplete="street-address"
+                      spellCheck="true"
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
+                      placeholder="Building, street, city, postal code, country"
                     />
                   </div>
-                </div>
+          {selectedVendor && <details className="pof-vendor-details">
+            <summary>Vendor details <span>{[selectedVendor.country, selectedVendor.vat_number && ('VAT ' + selectedVendor.vat_number), selectedVendor.trade_license_number && ('Trade licence ' + selectedVendor.trade_license_number)].filter(Boolean).join(' · ')}</span></summary>
+            <dl>{[['Email', selectedVendor.email], ['Phone', selectedVendor.phone], ['Country', selectedVendor.country], ['Trade licence', selectedVendor.trade_license_number], ['VAT number', selectedVendor.vat_number]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value || 'Not recorded'}</dd></div>)}</dl>
+          </details>}
+        </> : <div className="pof-empty-requisition"><DocumentCheckIcon /><h4>Select an existing PR to continue</h4></div>}
+      </div>
+    </section>
+  );
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Head of Procurement</label>
-                    <select
-                      name="buyer_reference_pm"
-                      value={formData.buyer_reference_pm}
-                      onChange={handleChange}
-                      className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
-                      disabled={buyerReferencesLoading}
-                    >
-                      <option value="">
-                        {buyerReferencesLoading ? 'Loading assigned employee...' : 'No Head of Procurement assigned'}
-                      </option>
-                      {formData.buyer_reference_pm
-                        && !procurementHeads.some((employee) => buyerReferenceValue(employee, 'Procurement') === formData.buyer_reference_pm)
-                        && <option value={formData.buyer_reference_pm}>{formData.buyer_reference_pm}</option>}
-                      {procurementHeads.map((employee) => {
-                        const value = buyerReferenceValue(employee, 'Procurement');
-                        return <option key={employee.id} value={value}>{value}</option>;
-                      })}
+  const buyerCommercialCard = (
+    <section className="pof-card pof-buyer-card" aria-labelledby="po-buyer-payment-group">
+      <div className="pof-card-heading"><span className="pof-card-icon"><UserGroupIcon /></span><h3 id="po-buyer-payment-group">Buyer &amp; commercial</h3></div>
+      <div className="pof-card-body">
+        <div className="pof-buyer-references">{[0, 1, 2].map((slotIndex) => {
+                      const reference = buyerReferences[slotIndex];
+                      return <div key={slotIndex} className="pof-buyer-reference">
+                        <div className="flex items-center gap-3">
+                          <span className="w-20 text-xs font-bold uppercase text-gray-500">{slotIndex === 0 ? 'Primary Buyer' : `Reference ${slotIndex + 1}`}</span>
+                          {slotIndex === 0 ? (
+                            <select aria-label="Primary buyer reference" value={reference?.user_id || ''} onChange={(event) => handleBuyerReferenceSelection(slotIndex, event.target.value)} disabled className="block flex-1 rounded-md border-gray-300 bg-gray-100 px-3 py-2 text-sm text-gray-900">
+                              <option value={reference?.user_id || ''}>{reference?.name || DEFAULT_BUYER_REFERENCE}</option>
+                            </select>
+                          ) : (
+                            <>
+                              <input
+                                type="text"
+                                aria-label={`Buyer reference ${slotIndex + 1}`}
+                                list={`buyer-reference-options-${slotIndex}`}
+                                value={reference?.name || ''}
+                                onChange={(event) => handleBuyerReferenceInput(slotIndex, event.target.value)}
+                                placeholder={approversLoading ? 'Loading RADAI employees...' : 'Type a name or search RADAI...'}
+                                disabled={approversLoading}
+                                autoComplete="off"
+                                className="block flex-1 rounded-md border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100"
+                              />
+                              <datalist id={`buyer-reference-options-${slotIndex}`}>
+                                {approvalEmployees.map((employee) => <option key={employee.id} value={employee.full_name || employee.email} label={[buyerEmployeeDesignation(employee), employee.email].filter(Boolean).join(' · ')} />)}
+                              </datalist>
+                            </>
+                          )}
+                        </div>
+                      </div>;
+                    })}</div>
+        {employeeLoadError && <p className="pof-field-error">{employeeLoadError} <button type="button" onClick={fetchPOApprovers} disabled={approversLoading}>Retry employee list</button></p>}
+        <div className="pof-field-grid pof-money-fields">
+          <div className="pof-field-row">
+                    <label className="block text-sm font-medium text-gray-700">Price Before Discount</label>
+                    <input type="number" step="0.01" min="0" name="price_amount" aria-label="Price before order discount"
+                      value={formData.items?.length ? sumProcurementMoney(formData.items.map(purchaseOrderLineNet)) ?? '' : formData.price_amount} readOnly={Boolean(formData.items?.length)} onChange={handleChange}
+                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 read-only:bg-gray-100" />
+                  </div>
+          <label className="pof-field-row">Price basis
+                    <select name="vat_basis" aria-label="Price basis" value={pricingConfirmed ? formData.vat_basis : 'unconfirmed'} onChange={handleChange}
+                      className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900">
+                      <option value="unconfirmed">Confirm VAT treatment</option>
+                      {PROCUREMENT_VAT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
                     </select>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">ICT Head Admin</label>
-                    <select
-                      name="buyer_reference_pe"
-                      value={formData.buyer_reference_pe}
-                      onChange={handleChange}
-                      className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
-                      disabled={buyerReferencesLoading}
-                    >
-                      <option value="">
-                        {buyerReferencesLoading ? 'Loading assigned employee...' : 'No ICT Head Admin assigned'}
-                      </option>
-                      {formData.buyer_reference_pe
-                        && !ictHeadAdmins.some((employee) => buyerReferenceValue(employee, 'ICT') === formData.buyer_reference_pe)
-                        && <option value={formData.buyer_reference_pe}>{formData.buyer_reference_pe}</option>}
-                      {ictHeadAdmins.map((employee) => {
-                        const value = buyerReferenceValue(employee, 'ICT');
-                        return <option key={employee.id} value={value}>{value}</option>;
-                      })}
-                    </select>
-                  </div>
-                </div>
-                {buyerReferenceLoadError && (
-                  <p className="text-xs text-amber-700">{buyerReferenceLoadError}</p>
-                )}
-
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
+                    {errors.vat_basis && <span className="mt-1 block text-xs text-red-600">{errors.vat_basis}</span>}
+                  </label>
+          <div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">Total Amount *</label>
                     <input
                       type="number"
                       step="0.01"
                       name="total_amount"
+                      aria-label="Total Amount"
                       value={formData.total_amount}
-                      onChange={handleChange}
+                      readOnly
                       className={`mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 ${
                         errors.total_amount ? 'border-red-500' : ''
                       }`}
                     />
                     {errors.total_amount && <p className="mt-1 text-xs text-red-600">{errors.total_amount}</p>}
                   </div>
-                  
-                  <div>
+          <div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">VAT %</label>
                     <input
                       type="number"
                       step="0.01"
                       name="vat_percentage"
+                      aria-label="VAT percentage"
                       value={formData.vat_percentage}
-                      onChange={handleChange}
+                      readOnly
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
                     />
                   </div>
-                  
-                  <div>
+          <div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">Tax Amount</label>
                     <input
                       type="number"
                       step="0.01"
                       name="tax_amount"
+                      aria-label="Tax Amount"
                       value={formData.tax_amount}
                       disabled
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-gray-100 px-3 py-2 text-sm text-gray-900"
                     />
                   </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
+        </div>
+        <div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">Payment Terms *</label>
                     <input
                       type="text"
                       name="payment_terms"
+                      aria-label="Payment Terms"
                       value={formData.payment_terms}
                       onChange={handleChange}
                       className={`mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 ${
@@ -1659,11 +1994,11 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                     />
                     {errors.payment_terms && <p className="mt-1 text-xs text-red-600">{errors.payment_terms}</p>}
                   </div>
-                  
-                  <div>
+        <div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">Payment Mode</label>
                     <select
                       name="payment_mode"
+                      aria-label="Payment Mode"
                       value={formData.payment_mode}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
@@ -1674,103 +2009,65 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                       <option value="Cheque">Cheque</option>
                     </select>
                   </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Delivery Terms</label>
-                    <input
-                      type="text"
-                      name="delivery_terms"
-                      value={formData.delivery_terms}
-                      onChange={handleChange}
-                      className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
-                    />
-                  </div>
-                  
-                  <div>
+        <div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">Shipment Marking</label>
                     <input
                       type="text"
                       name="marking"
+                      aria-label="Marking"
                       value={formData.marking}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
                       placeholder="RAD-PRJ-PUR-0014"
                     />
                   </div>
-                </div>
+      </div>
+    </section>
+  );
 
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm font-medium text-gray-700">Payment Milestones</label>
-                    <button
-                      type="button"
-                      onClick={addPaymentMilestone}
-                      className="text-sm text-blue-600 hover:text-blue-700"
-                    >
-                      + Add Milestone
-                    </button>
-                  </div>
-                  
-                  {Array.isArray(formData.payment_milestones) && formData.payment_milestones.map((milestone, index) => (
-                    <div key={index} className="grid grid-cols-5 gap-2 mb-2">
-                      <input
-                        type="text"
-                        value={milestone.milestone}
-                        onChange={(e) => updatePaymentMilestone(index, 'milestone', e.target.value)}
-                        placeholder="Draft Report"
-                        className="col-span-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
-                      />
-                      <input
-                        type="number"
-                        value={milestone.percentage}
-                        onChange={(e) => updatePaymentMilestone(index, 'percentage', e.target.value)}
-                        placeholder="%"
-                        className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
-                      />
-                      <input
-                        type="number"
-                        value={milestone.amount}
-                        onChange={(e) => updatePaymentMilestone(index, 'amount', e.target.value)}
-                        placeholder="Amount"
-                        className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removePaymentMilestone(index)}
-                        className="text-red-600 hover:text-red-700 text-sm"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Section 3: Project Details */}
-          {currentSection === 3 && (
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Project Details</h3>
-                  <p className="text-sm text-gray-500">Enter project and contract details for this purchase order.</p>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm space-y-6">
-                <div>
+  const scopeProjectsCard = (
+    <section className="pof-card pof-scope-card" aria-labelledby="po-project-group">
+      <div className="pof-card-heading"><span className="pof-card-icon"><FolderOpen /></span><h3 id="po-project-group">Scope &amp; projects</h3></div>
+      <div className="pof-card-body">
+        <div className="pof-field-grid"><div className="pof-field-row">
+                  <label className="block text-sm font-medium text-gray-700">Title / Description *</label>
+                  <input
+                    type="text"
+                    name="title"
+                      aria-label="Title / Description"
+                    value={formData.title}
+                    onChange={handleChange}
+                    className={`mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 ${
+                      errors.title ? 'border-red-500' : ''
+                    }`}
+                    placeholder="Value Engineering Services for STP & GTG Demolition Project"
+                  />
+                  {errors.title && <p className="mt-1 text-xs text-red-600">{errors.title}</p>}
+                </div><div className="pof-field-row">
+                  <label className="block text-sm font-medium text-gray-700">Vendor Summary *</label>
+                  <textarea
+                    name="summary"
+                      aria-label="Vendor Summary"
+                    value={formData.summary}
+                    onChange={handleChange}
+                    rows={1}
+                    className={`mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 ${errors.summary ? 'border-red-500' : ''}`}
+                    placeholder="Short summary to appear in vendor notification..."
+                  />
+                  {errors.summary && <p className="mt-1 text-xs text-red-600">{errors.summary}</p>}
+                </div></div>
+        <div className="pof-project-picker">
                   <div className="flex flex-wrap items-end justify-between gap-3">
                     <div>
                       <label htmlFor="po-project-search" className="block text-sm font-medium text-gray-700">Project Name and Number</label>
-                      <p className="mt-1 text-xs text-gray-500">Search by project number or project title.</p>
+
                     </div>
                     <button
                       type="button"
                       onClick={() => {
                         setShowNewProjectForm((current) => !current);
+                        setShowProjectChoices(false);
+                        setNewProject(previous => ({ ...previous, project_number: projectSearch.trim() || previous.project_number }));
                         setProjectCreateError('');
                       }}
                       className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100"
@@ -1779,38 +2076,64 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                     </button>
                   </div>
 
-                  <div className="relative mt-3">
+                  {selectedProjects.length > 0 && <ul className="pof-project-selections" aria-label="Selected projects">
+                    {selectedProjects.map(project => <li key={project.project_number}>
+                      <span title={project.project_name || project.project_number}><strong>{project.project_number}</strong>{project.project_name && <span>{project.project_name}</span>}</span>
+                      <button type="button" aria-label={`Remove project ${project.project_number}`} onClick={() => handleProjectRemove(project.project_number)}><X size={14} /></button>
+                    </li>)}
+                  </ul>}
+
+                  <div
+                    className="relative mt-3"
+                    onBlur={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget)) setShowProjectChoices(false);
+                    }}
+                  >
                     <input
                       id="po-project-search"
+                      role="combobox"
                       type="search"
                       value={projectSearch}
                       onChange={handleProjectSearch}
                       onFocus={() => setShowProjectChoices(true)}
-                      onBlur={() => window.setTimeout(() => setShowProjectChoices(false), 150)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Escape') { setShowProjectChoices(false); event.preventDefault(); }
+                        else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                          event.preventDefault();
+                          setShowProjectChoices(true);
+                          setActiveProjectIndex(index => Math.max(0, Math.min(filteredProjects.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1))));
+                        } else if (event.key === 'Enter') {
+                          event.preventDefault();
+                          if (showProjectChoices && filteredProjects[Math.max(0, activeProjectIndex)]) handleProjectSelect(filteredProjects[Math.max(0, activeProjectIndex)]);
+                        }
+                      }}
                       autoComplete="off"
                       placeholder={projectsLoading ? 'Loading existing projects…' : projectLinking ? 'Linking project to Procurement…' : 'Type a project number or name…'}
-                      disabled={projectsLoading || projectLinking}
+                      disabled={projectsLoading || projectLinking || projectCreating}
                       aria-autocomplete="list"
                       aria-expanded={showProjectChoices}
                       aria-controls="project-options"
+                      aria-activedescendant={showProjectChoices && filteredProjects[activeProjectIndex] ? `po-project-option-${filteredProjects[activeProjectIndex].id}` : undefined}
                       className="block w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm font-semibold text-gray-900 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                     />
 
                     {showProjectChoices && !projectsLoading && !projectLoadError && (
-                      <div id="project-options" role="listbox" className="absolute z-30 mt-2 max-h-80 w-full overflow-y-auto rounded-xl border border-gray-200 bg-white p-1 shadow-xl">
-                        {filteredProjects.length ? filteredProjects.map((project) => (
+                      <div id="project-options" role="listbox" aria-label="Projects" aria-multiselectable="true" className="absolute z-30 mt-2 max-h-80 w-full overflow-y-auto rounded-xl border border-gray-200 bg-white p-1 shadow-xl">
+                        {filteredProjects.length ? filteredProjects.map((project, index) => (
                           <button
                             key={project.id}
+                            id={`po-project-option-${project.id}`}
+                            data-highlighted={index === activeProjectIndex}
                             type="button"
                             role="option"
-                            aria-selected={String(project.id) === String(formData.project)}
+                            aria-selected={selectedProjects.some(selected => selected.project_number.toLowerCase() === String(project.project_number).toLowerCase())}
                             onMouseDown={(event) => event.preventDefault()}
                             onClick={() => handleProjectSelect(project)}
                             className="block w-full rounded-lg px-3 py-3 text-left hover:bg-blue-50 focus:bg-blue-50 focus:outline-none"
                           >
                             <span className="block text-sm font-bold text-blue-700">{project.project_number}</span>
                             <span className="mt-0.5 block text-xs text-gray-700">{project.project_name}</span>
-                            <span className="mt-1 block text-[11px] text-gray-500">{project.status_display || project.status}</span>
+                            {selectedProjects.some(selected => selected.project_number.toLowerCase() === String(project.project_number).toLowerCase()) && <span className="pof-project-selected">Selected</span>}
                           </button>
                         )) : (
                           <div className="px-3 py-5 text-center">
@@ -1848,7 +2171,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                           <label className="block text-xs font-semibold text-gray-700">Project Number *</label>
                           <input
                             type="text"
-                            value={newProject.project_number}
+                            aria-label="New project number" value={newProject.project_number}
                             onChange={(event) => setNewProject((prev) => ({ ...prev, project_number: event.target.value }))}
                             placeholder="e.g. 5901055"
                             className="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
@@ -1858,7 +2181,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                           <label className="block text-xs font-semibold text-gray-700">Project Title *</label>
                           <input
                             type="text"
-                            value={newProject.project_name}
+                            aria-label="New project title" value={newProject.project_name}
                             onChange={(event) => setNewProject((prev) => ({ ...prev, project_name: event.target.value }))}
                             placeholder="Enter the project title"
                             className="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
@@ -1879,161 +2202,373 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                     </div>
                   )}
                 </div>
-
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
+        <div className="pof-field-grid pof-three-fields"><div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">Project Number</label>
                     <input
                       type="text"
                       name="project_number"
+                      aria-label="Project Number"
                       value={formData.project_number}
-                      onChange={handleChange}
+                      readOnly
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
-                      placeholder="5900927"
+                      placeholder="Select projects above"
                     />
-                  </div>
-                  
-                  <div>
+                    {errors.project_number && <p className="mt-1 text-xs text-red-600">{errors.project_number}</p>}
+                  </div><div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">RAD Project No.</label>
                     <input
                       type="text"
                       name="rad_project_no"
+                      aria-label="Rad Project No"
                       value={formData.rad_project_no}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
                     />
-                  </div>
-                  
-                  <div>
+                  </div><div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">Agreement No.</label>
                     <input
                       type="text"
                       name="company_agreement_no"
+                      aria-label="Company Agreement No"
                       value={formData.company_agreement_no}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
                       placeholder="4700024202"
                     />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
+                  </div></div>
+        <div className="pof-field-grid pof-project-parties"><div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">End Client</label>
                     <input
                       type="text"
                       name="end_client"
+                      aria-label="End Client"
                       value={formData.end_client}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
                       placeholder="ADNOC Gas"
                     />
-                  </div>
-                  
-                  <div>
+                  </div><div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">Project Manager</label>
                     <input
                       type="text"
                       name="project_manager"
+                      aria-label="Project Manager"
                       value={formData.project_manager}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
                     />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
+                  </div><div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">Contractor</label>
                     <input
                       type="text"
                       name="contractor"
+                      aria-label="Contractor"
                       value={formData.contractor}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
                     />
-                  </div>
-                  
-                  <div>
+                  </div><div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">Subcontractor</label>
                     <input
                       type="text"
                       name="subcontractor"
+                      aria-label="Subcontractor"
                       value={formData.subcontractor}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
                     />
+                  </div></div>
+        {currentSection === 3 && <div className="pof-field-row">
+                    <label className="block text-sm font-medium text-gray-700">Delivery Terms</label>
+                    <input
+                      type="text"
+                      name="delivery_terms"
+                      aria-label="Delivery Terms"
+                      value={formData.delivery_terms}
+                      onChange={handleChange}
+                      className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
+                    />
+                  </div>}
+        <div className="pof-delivery-fields">
+                  <label className="block text-sm font-medium text-gray-700">Date for Delivery Information</label>
+                  <div className="mt-2 flex gap-6">
+                    {[['delivery', 'Delivery Date (supply)'], ['start', 'Start Date (services)']].map(([value, label]) => <label key={value} className="flex items-center gap-2 text-sm text-gray-700"><input type="radio" checked={(formData.contact_persons?.delivery_date_type || 'delivery') === value} onChange={() => setFormData((previous) => ({ ...previous, contact_persons: { ...(previous.contact_persons || {}), delivery_date_type: value } }))} />{label}</label>)}
                   </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-4">
+                  {(formData.contact_persons?.delivery_date_type || 'delivery') === 'start' ? <div className="mt-4 grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Start Date</label>
+                    <label className="block text-sm font-medium text-gray-700">Start Date *</label>
                     <input
                       type="date"
                       name="start_date"
+                      aria-label="Start Date"
                       value={formData.start_date}
                       onChange={handleChange}
-                      className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
+                      className={`mt-1 block w-full rounded-md border bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 ${errors.start_date ? 'border-red-500' : 'border-gray-300'}`}
                     />
+                    {errors.start_date && <p className="mt-1 text-xs text-red-600">{errors.start_date}</p>}
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">End Date</label>
+                    <label className="block text-sm font-medium text-gray-700">End Date *</label>
                     <input
                       type="date"
                       name="end_date"
+                      aria-label="End Date"
                       value={formData.end_date}
                       onChange={handleChange}
-                      className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
+                      className={`mt-1 block w-full rounded-md border bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 ${errors.end_date ? 'border-red-500' : 'border-gray-300'}`}
                     />
+                    {errors.end_date && <p className="mt-1 text-xs text-red-600">{errors.end_date}</p>}
                   </div>
-                  
+                  </div> : <div className="mt-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Expected Delivery</label>
+                    <label className="block text-sm font-medium text-gray-700">Delivery Date</label>
                     <input
                       type="date"
                       name="expected_delivery"
+                      aria-label="Expected Delivery"
                       value={formData.expected_delivery}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
                     />
                   </div>
+                  </div>}
+                </div>
+      </div>
+    </section>
+  );
+
+  const approvalCards = (
+    <div className="pof-approval-grid">
+      <section className="pof-card" aria-labelledby="po-approval-notes-heading">
+        <div className="pof-card-heading"><span className="pof-card-icon"><DocumentCheckIcon /></span><h3 id="po-approval-notes-heading">Approval notes</h3></div>
+        <div className="pof-card-body"><div className="pof-field-row"><label htmlFor="po-final-approval-notes">Final Approval Notes</label>
+          <textarea id="po-final-approval-notes" name="final_approver_notes" aria-label="Final approval notes" value={formData.final_approver_notes} onChange={handleChange} rows={2} placeholder="Final sign-off notes, approval comments or routing remarks..." />
+        </div></div>
+      </section>
+      <section className="pof-card pof-signatory-card" aria-labelledby="po-final-signatory-heading">
+        <div className="pof-card-heading"><span className="pof-card-icon"><DocumentCheckIcon /></span><h3 id="po-final-signatory-heading">Final signatory</h3>
+          {approvalRouteEditable && <button type="button" onClick={fetchPOApprovers} disabled={approversLoading} className="pof-refresh-signatories"><RefreshCw />Refresh signatories</button>}
+        </div>
+        <div className="pof-card-body">
+          {formData.approval_log.length > 0 ? formData.approval_log.map((entry, index) => (
+            <div key={[entry.stage, index].join('-')} className="pof-signatory-fields">
+              <div className="pof-field-row"><label>Approval Stage</label><span className="pof-recorded-value">{entry.stage || entry.role || 'Recorded approval'}</span></div>
+              <div className="pof-field-row"><label>Approver</label><select
+                              id={index === 0 ? 'po-approval_log' : undefined}
+                              value={entry.user_id || ''}
+                              onChange={(e) => handleApprovalSelection(index, e.target.value)}
+                              aria-label={`${entry.stage || entry.role || 'Recorded approval'} approver`}
+                              aria-describedby={approvalRouteEditable ? 'po-signatory-status' : undefined}
+                              disabled={!approvalRouteEditable || approversLoading || Boolean(approverLoadError) || !finalApprovers.length}
+
+                              className="block w-full rounded-md border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                            >
+                              <option value="">{approversLoading ? 'Loading authorized signatories...' : '-- Select authorized signatory --'}</option>
+                              {entry.user_id && !(approvalRouteEditable ? finalApprovers : approvalEmployees).some(employee => String(employee.id) === String(entry.user_id)) && <option value={entry.user_id} disabled={approvalRouteEditable}>{entry.approver || entry.user_name || 'Recorded approver'}{approvalRouteEditable ? ' — eligibility not confirmed' : ''}</option>}
+                              {(approvalRouteEditable ? finalApprovers : approvalEmployees).map((employee) => (
+                                <option key={employee.id} value={employee.id}>
+                                  {employee.full_name || employee.username || 'Active employee'}{employee.job_title ? ` — ${employee.job_title}` : ''}{employee.email ? ` — ${employee.email}` : ''}{employee.department ? ` (${employee.department})` : ''}
+                                </option>
+                              ))}
+                            </select></div>
+              <div className="pof-field-row"><label>Approved By</label><span className="pof-recorded-value">{[entry.approver || entry.user_name, entry.status].filter(Boolean).join(' · ') || 'Not recorded'}</span></div>
+              <div className="pof-field-row"><label>Routing Comments</label><input
+                              type="text"
+                              value={entry.comments || ''}
+                              aria-label={`${entry.stage || entry.role || 'Recorded approval'} routing comments`}
+                              onChange={(e) => updateApprovalLog(index, 'comments', e.target.value)}
+                              disabled={!approvalRouteEditable}
+                              placeholder="Optional comments"
+                              className="block w-full rounded-md border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                            /></div>
+              {entry.external && <p className="pof-source-history">{['purchase_requisition', 'signed_purchase_requisition_pdf'].includes(entry.source) ? 'Source recommendation history' : 'Source document history'}</p>}
+            </div>
+          )) : <p className="pof-helper">No separate PO approval route is recorded.</p>}
+          {approvalRouteEditable && <p id="po-signatory-status" role="status" className={'pof-field-error ' + (approversLoading ? 'is-loading' : '')}>{signatoryAvailabilityError || errors.approval_log || (unavailableSignatory ? approvalEligibilityError : '')}</p>}
+          {!approvalRouteEditable && errors.approval_log && <p className="pof-field-error">{errors.approval_log}</p>}
+        </div>
+      </section>
+    </div>
+  );
+
+  return (
+    <div ref={workspaceRef} className={`purchase-order-form-workspace ${pageMode ? 'pof-page' : 'pof-modal'}`} data-table-typography="preserve"
+      style={pageMode ? undefined : modalBounds || { visibility: 'hidden' }}>
+      <div className="pof-workspace-grid">
+        <section className="pof-editor" aria-label="Purchase order editor">
+          <header className="pof-header">
+            <nav className="pof-breadcrumb" aria-label="Breadcrumb">
+              <span>Procurement</span><span>/</span><button type="button" onClick={handleCancel} disabled={busy}>Purchase Orders</button><span>/</span><strong>{editData ? 'Edit' : 'New'}</strong>
+            </nav>
+            <div className="pof-title-row">
+              <div>
+                <h1>{editData ? 'Edit purchase order' : 'New purchase order'}</h1>
+              </div>
+              <button type="button" className="pof-close" onClick={handleCancel} disabled={busy} aria-label="Close purchase order"><X size={18} /></button>
+            </div>
+            <div className="pof-header-bottom">
+              <span className="pof-draft-state" role="status"><DocumentTextIcon />{autoSaving ? 'Saving draft…' : formData.po_number || 'Draft · select a recommendation to start'}</span>
+              <div className="pof-header-actions">
+                <button type="button" className="pof-button" onClick={(event) => handleSubmit(event, false)} disabled={busy || !hasRequiredRequisition || poNumberLoading}><SaveIcon />{submitLoading ? 'Saving…' : editData ? 'Save changes' : 'Save draft'}</button>
+              </div>
+            </div>
+            <div className="pof-tabs" role="tablist" aria-label="Purchase order sections">
+              {sections.map(section => (
+                <button type="button" role="tab" id={`po-tab-${section.id}`} aria-controls="po-section-panel" aria-selected={currentSection === section.id}
+                  tabIndex={currentSection === section.id ? 0 : -1}
+                  key={section.id} onClick={() => openSection(section.id)}
+                  onKeyDown={event => {
+                    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+                    event.preventDefault();
+                    const last = hasRequiredRequisition ? 4 : 1;
+                    const next = event.key === 'Home' ? 1 : event.key === 'End' ? last : ((currentSection - 1 + (event.key === 'ArrowRight' ? 1 : -1) + last) % last) + 1;
+                    openSection(next);
+                    event.currentTarget.parentElement.querySelector(`#po-tab-${next}`)?.focus();
+                  }}
+                  disabled={isNewOrder && !hasRequiredRequisition && section.id !== 1}>
+                  <span className="pof-step-number" aria-hidden="true">{section.id}</span><span>{section.name}</span>
+                </button>
+              ))}
+            </div>
+          </header>
+          <form className="pof-form" noValidate onSubmit={(event) => handleSubmit(event, false)} aria-label="Purchase order form">
+            {popupError && <div className="pof-error" role="alert"><AlertCircle size={17} /><span>{popupError}</span><button type="button" aria-label="Dismiss error" onClick={() => setPopupError('')}><X size={16} /></button></div>}
+            <div className="pof-form-scroll" ref={formScrollRef}>
+              {editData?.commercial_edit_locked === true && <p role="status" className="mx-4 mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{purchaseOrderCommercialLockReason(editData)}</p>}
+              {currentSection === 4 && (!editData || editData.status === 'draft') && editData?.can_send_to_vendor !== true && <p id="po-form-send-block-reason" role="status" className="mx-4 mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{editData ? purchaseOrderLifecycleBlockReason(editData) : 'Save this purchase order as a draft, then complete its approvals before sending it to the vendor.'}</p>}
+              <div id="po-section-panel" role="tabpanel" aria-labelledby={`po-tab-${currentSection}`} className="pof-section-panel">
+          {currentSection === 1 && <div className="pof-overview-grid">
+            {orderSellerCard}
+            {buyerCommercialCard}
+            {scopeProjectsCard}
+            {approvalCards}
+          </div>}
+          {currentSection === 3 && <>
+            {scopeProjectsCard}
+            <section className="pof-card" aria-labelledby="po-invoicing-heading">
+              <div className="pof-card-heading"><span className="pof-card-icon"><DocumentTextIcon /></span><h3 id="po-invoicing-heading">Invoicing</h3></div>
+              <div className="pof-card-body pof-field-grid">
+                <div className="pof-field-row">
+                  <label htmlFor="po-invoicing-attn">Invoicing Attention</label>
+                  <input id="po-invoicing-attn" type="text" name="invoicing_attn" aria-label="Invoicing Attn" value={formData.invoicing_attn} readOnly />
+                </div>
+                <div className="pof-field-row">
+                  <label htmlFor="po-company-fax">Company Fax</label>
+                  <input id="po-company-fax" type="text" name="company_fax" aria-label="Company Fax" value={formData.company_fax} onChange={handleChange} />
+                </div>
+              </div>
+            </section>
+          </>}
+
+          {/* Section 2: PO Description and Scope */}
+          {currentSection === 2 && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-2">
+                <h3 className="text-lg font-semibold text-gray-900">PO Description &amp; Scope</h3>
+                <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={formData.contact_persons?.show_scope_heading !== false}
+                    disabled={editData?.commercial_edit_locked === true}
+                    onChange={(event) => {
+                      const showScopeHeading = event.target.checked;
+                      setFormData(previous => ({ ...previous, contact_persons: { ...(previous.contact_persons || {}), show_scope_heading: showScopeHeading } }));
+                    }}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+                  />
+                  Show heading
+                </label>
+              </div>
+              <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+                <div>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <label htmlFor="po-order-introduction" className="block text-sm font-medium text-gray-700">Buyer / Seller introduction</label>
+                    <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={showOrderIntroduction}
+                        disabled={editData?.commercial_edit_locked === true}
+                        onChange={(event) => {
+                          const showIntroduction = event.target.checked;
+                          setFormData(previous => ({ ...previous, contact_persons: { ...(previous.contact_persons || {}), show_order_introduction: showIntroduction } }));
+                        }}
+                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+                      />
+                      Show introduction
+                    </label>
+                  </div>
+                  {showOrderIntroduction && <>
+                  <textarea
+                    id="po-order-introduction"
+                    name="order_introduction"
+                    rows={3}
+                    maxLength={ORDER_INTRODUCTION_MAX_LENGTH}
+                    disabled={editData?.commercial_edit_locked === true}
+                    value={typeof formData.contact_persons?.order_introduction === 'string'
+                      ? formData.contact_persons.order_introduction
+                      : defaultPurchaseOrderIntroduction(selectedVendor?.name || editData?.vendor_name)}
+                    onChange={(event) => {
+                      const introduction = event.target.value;
+                      setFormData(previous => ({ ...previous, contact_persons: { ...(previous.contact_persons || {}), order_introduction: introduction } }));
+                    }}
+                    className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
+                  />
+                  <div className="mt-2 flex justify-end">
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-blue-700 underline disabled:text-gray-400"
+                      disabled={editData?.commercial_edit_locked === true || !Object.hasOwn(formData.contact_persons || {}, 'order_introduction')}
+                      onClick={() => setFormData(previous => {
+                        const contacts = { ...(previous.contact_persons || {}) };
+                        delete contacts.order_introduction;
+                        return { ...previous, contact_persons: contacts };
+                      })}
+                    >Use standard introduction</button>
+                  </div>
+                  </>}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">PO Narrative</label>
+                  <PurchaseOrderNarrativeEditor disabled={editData?.commercial_edit_locked === true} value={formData.description} onChange={(description) => setFormData((previous) => ({ ...previous, description, scope_of_services: '' }))} />
                 </div>
               </div>
             </div>
           )}
 
-          {/* Section 4: Items & Pricing */}
-          {currentSection === 4 && (
-            <div className="space-y-6">
+          {/* Pricing shares the scope step. */}
+          {currentSection === 2 && (
+            <div className="space-y-4" data-po-price-summary tabIndex={-1}>
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Items & Pricing</h3>
-                  <p className="text-sm text-gray-500">Add line items, apply discounts, and review subtotal, tax, and grand total.</p>
+                  <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Summary of Prices</h3>
+                  <p className="text-sm text-gray-500">Review line items, discounts and VAT. The order totals update as you work.</p>
                 </div>
                 <button
                   type="button"
                   onClick={addItem}
-                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700"
+                  className="hidden items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700"
                 >
                   + Add Item
                 </button>
               </div>
 
-              <div className="overflow-x-auto rounded-2xl border border-gray-200 shadow-sm">
+              <div className="hidden overflow-x-auto rounded-2xl border border-gray-200 shadow-sm">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Line Code</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Item Description</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Specification / API/ASME Standard Tag</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Comment</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Qty</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">UOM</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Unit Price</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Discount</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Total Price</th>
+                      {Object.entries(DEFAULT_ITEMS_TABLE_HEADERS).map(([field, defaultLabel]) => (
+                        <th key={field} className="px-2 py-2 text-left">
+                          <input
+                            type="text"
+                            value={formData.items_table_headers?.[field] ?? defaultLabel}
+                            onChange={(event) => updateItemsTableHeader(field, event.target.value)}
+                            aria-label={`Edit ${defaultLabel} column heading`}
+                            title="Editable table heading"
+                            className="min-w-24 w-full rounded border border-blue-200 bg-white px-2 py-1.5 text-xs font-semibold uppercase text-gray-600 focus:border-blue-500 focus:ring-blue-500"
+                          />
+                        </th>
+                      ))}
                       <th className="px-4 py-3 text-center text-xs font-semibold uppercase text-gray-500">Actions</th>
                     </tr>
                   </thead>
@@ -2141,6 +2676,20 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                 </table>
               </div>
 
+              <PurchaseOrderPriceSpreadsheet
+                items={formData.items}
+                headers={formData.items_table_headers || DEFAULT_ITEMS_TABLE_HEADERS}
+                currency={formData.currency}
+                onItemsChange={(items) => {
+                  const amounts = rows => rows.map(item => [item.quantity, item.unit_price, item.discount, item.total, item.line_total]);
+                  if (JSON.stringify(amounts(items)) !== JSON.stringify(amounts(formData.items))) setPricingEdited(true);
+                  setFormData(previous => ({ ...previous, items }));
+                }}
+                onHeaderChange={updateItemsTableHeader}
+                onAddColumn={addItemsTableColumn}
+                onRemoveColumn={removeItemsTableColumn}
+              />
+
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                 <div className="lg:col-span-2 rounded-2xl border border-gray-200 bg-gray-50 p-4">
                   <div className="text-sm text-gray-600">Pricing details are calculated automatically as you update quantities, unit prices, and discounts.</div>
@@ -2148,20 +2697,26 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                 <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
                   <div className="space-y-3">
                     <div className="flex justify-between text-sm text-gray-500">
-                      <span>Subtotal</span>
-                      <span>${calculateSubtotal().toFixed(2)}</span>
+                      <span>Net amount after discounts</span>
+                      <span>{pricing.netAmount == null ? 'Not recorded' : `${formData.currency} ${pricing.netAmount.toFixed(2)}`}</span>
                     </div>
                     <div className="flex justify-between text-sm text-gray-500">
-                      <span>VAT ({formData.vat_percentage}%)</span>
-                      <span>${calculateTaxAmount(calculateSubtotal()).toFixed(2)}</span>
+                      <span>VAT{pricing.vatRate == null ? '' : ` (${pricing.vatRate}%)`}</span>
+                      <span>{formData.currency} {calculateTaxAmount(calculateSubtotal()).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between text-sm text-gray-500">
                       <span>Discount (line items only)</span>
-                      <span>${(formData.items || []).reduce((sum, item) => sum + Number(item.discount || 0), 0).toFixed(2)}</span>
+                      <span>{formData.currency} {(formData.items || []).reduce((sum, item) => sum + Number(item.discount || 0), 0).toFixed(2)}</span>
                     </div>
+                    <label className="flex items-center justify-between gap-3 text-sm text-gray-500">
+                      Order discount
+                      <input type="number" min="0" step="0.01" name="discount_amount" aria-label="Order discount"
+                        value={formData.discount_amount} onChange={handleChange}
+                        className="w-32 rounded border border-gray-300 px-2 py-1 text-right read-only:bg-gray-100" />
+                    </label>
                     <div className="border-t pt-3 flex justify-between text-base font-semibold text-gray-900">
                       <span>Grand Total</span>
-                      <span>${calculateGrandTotal(calculateSubtotal(), calculateTaxAmount(calculateSubtotal())).toFixed(2)}</span>
+                      <span>{formData.currency} {calculateGrandTotal(calculateSubtotal(), calculateTaxAmount(calculateSubtotal())).toFixed(2)}</span>
                     </div>
                   </div>
                 </div>
@@ -2169,8 +2724,8 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
             </div>
           )}
 
-          {/* Section 5: Contract Terms */}
-          {currentSection === 5 && (
+          {/* Section 6: Contract Terms */}
+          {currentSection === 6 && (
             <div className="space-y-6">
               <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
                 <div>
@@ -2182,6 +2737,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                     <label className="block text-sm font-medium text-gray-700">Preset Template</label>
                     <select
                       name="terms_template"
+                      aria-label="Terms Template"
                       value={formData.terms_template}
                       onChange={(e) => {
                         const templateKey = e.target.value;
@@ -2216,6 +2772,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                   <label className="block text-sm font-medium text-gray-700">Terms &amp; Conditions</label>
                   <textarea
                     name="terms_and_conditions"
+                      aria-label="Terms And Conditions"
                     value={formData.terms_and_conditions}
                     onChange={handleChange}
                     rows={8}
@@ -2230,6 +2787,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                     <input
                       type="text"
                       name="warranty_period"
+                      aria-label="Warranty Period"
                       value={formData.warranty_period}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
@@ -2241,6 +2799,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                     <input
                       type="text"
                       name="guarantee_period"
+                      aria-label="Guarantee Period"
                       value={formData.guarantee_period}
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
@@ -2253,6 +2812,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                   <label className="block text-sm font-medium text-gray-700">Inspection &amp; Testing Requirements</label>
                   <textarea
                     name="inspection_requirements"
+                      aria-label="Inspection Requirements"
                     value={formData.inspection_requirements}
                     onChange={handleChange}
                     rows={5}
@@ -2265,6 +2825,7 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
                   <label className="block text-sm font-medium text-gray-700">Liquidated Damages &amp; Penalty Clauses</label>
                   <textarea
                     name="liquidated_damages"
+                      aria-label="Liquidated Damages"
                     value={formData.liquidated_damages}
                     onChange={handleChange}
                     rows={5}
@@ -2276,182 +2837,88 @@ const PurchaseOrderForm = ({ isOpen, onClose, onSuccess, editData = null, prRefe
             </div>
           )}
 
-          {/* Section 6: Contacts & Approval */}
-          {currentSection === 6 && (
-            <div className="space-y-6">
-              <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Final Approval Notes</h3>
-                  <p className="text-sm text-gray-500">Use this field for any final instructions, exceptions, or handover comments from approvers.</p>
-                </div>
-                <textarea
-                  name="final_approver_notes"
-                  value={formData.final_approver_notes}
-                  onChange={handleChange}
-                  rows={5}
-                  className="mt-4 block w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:border-blue-500 focus:ring-blue-500"
-                  placeholder="Final sign-off notes, approval comments, or routing remarks..."
-                />
+          {currentSection === 4 && approvalCards}
+
+          {/* Section 4: all PO attachments are managed in this tab only. */}
+          {currentSection === 4 && <div className="space-y-4">
+            <div>
+              <h3 className="border-b pb-2 text-lg font-semibold text-gray-900">Attachments</h3>
+              <p className="text-sm text-gray-500">Attach supporting documents and give each file a clear title and description.</p>
+            </div>
+            <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between gap-3"><h4 className="font-semibold text-gray-900">Attachment 1</h4><span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">{attachmentSlots.length} item{attachmentSlots.length === 1 ? '' : 's'}</span></div>
+              <div className="mt-3 rounded-xl border-2 border-dashed border-blue-200 bg-blue-50/40 p-4 text-center hover:border-blue-400">
+                <input type="file" multiple onChange={addAttachmentFiles} className="sr-only" id="po-attachment-multiple" />
+                <label htmlFor="po-attachment-multiple" className="cursor-pointer"><CloudArrowUpIcon className="mx-auto h-10 w-10 text-blue-500" /><p className="mt-2 text-sm font-semibold text-blue-700">Select multiple attachments</p><p className="mt-1 text-xs text-gray-500">PDF, Word, Excel, PNG, or JPEG · up to 10 new files per save</p></label>
               </div>
 
-              <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900">Approvers</h3>
-                    <p className="text-sm text-gray-500">Assign active employees. Status and decision dates are recorded later by each approver from their Approval tab.</p>
-                  </div>
-                </div>
-
-                <div className="mt-6 overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200 text-sm">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Stage</th>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Approver</th>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Routing Comments</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200 bg-white">
-                      {formData.approval_log.map((entry, index) => (
-                        <tr key={entry.stage}>
-                          <td className="whitespace-nowrap px-4 py-3 text-gray-900">{entry.stage}</td>
-                          <td className="px-4 py-3">
-                            <select
-                              value={entry.user_id || ''}
-                              onChange={(e) => handleApprovalSelection(index, e.target.value)}
-                              disabled={approversLoading || (isProjectPO && entry.stage === 'Final Management Sign-off')}
-                              className="block w-full rounded-md border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
-                            >
-                              <option value="">{approversLoading ? 'Loading active employees...' : '-- Select active employee --'}</option>
-                              {(entry.stage === 'Financial Approval' ? financeApprovers : approvalEmployees).map((employee) => (
-                                <option key={employee.id} value={employee.id}>
-                                  {employee.full_name || employee.email}{employee.job_title ? ` — ${employee.job_title}` : ''}{employee.department ? ` (${employee.department})` : ''}
-                                </option>
-                              ))}
-                            </select>
-                            {entry.stage === 'Financial Approval' && (
-                              <p className="mt-1 text-xs text-gray-500">Only active employees with Finance department or Finance-system access are listed.</p>
-                            )}
-                          </td>
-                          <td className="px-4 py-3">
-                            <input
-                              type="text"
-                              value={entry.comments}
-                              onChange={(e) => updateApprovalLog(index, 'comments', e.target.value)}
-                              placeholder="Optional comments"
-                              className="block w-full rounded-md border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
-                            />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                {approverLoadError && (
-                  <div className="mt-4 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                    <span>{approverLoadError}</span>
-                    <button type="button" onClick={fetchPOApprovers} className="font-semibold underline">Retry</button>
-                  </div>
-                )}
-                {errors.approval_log && <p className="mt-3 text-sm font-medium text-red-600">{errors.approval_log}</p>}
-              </div>
-            </div>
-          )}
-
-          {/* File Attachments */}
-          <div className="mt-8 border-t pt-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">Attachments</label>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-              <input
-                type="file"
-                multiple
-                onChange={handleFileChange}
-                className="hidden"
-                id="file-upload"
-              />
-              <label htmlFor="file-upload" className="cursor-pointer">
-                <CloudArrowUpIcon className="mx-auto h-12 w-12 text-gray-400" />
-                <p className="mt-2 text-sm text-gray-600">Click to upload or drag and drop</p>
-              </label>
-            </div>
-            
-            {Array.isArray(files) && files.length > 0 && (
-              <div className="mt-4 space-y-2">
-                {files.map((file, index) => (
-                  <div key={index} className="flex items-center justify-between bg-gray-50 px-4 py-2 rounded-lg">
-                    <div className="flex items-center space-x-2">
-                      <PaperClipIcon className="h-4 w-4 text-gray-400" />
-                      <span className="text-sm text-gray-700">{file.name}</span>
+              <div className="mt-4 space-y-3">
+                {attachmentSlots.length ? attachmentSlots.map((slot, index) => <div key={`${slot.existingAttachment?.s3_key || slot.file?.name || 'attachment'}-${index}`} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <PaperClipIcon className="mt-1 h-5 w-5 shrink-0 text-blue-500" />
+                    <div className="min-w-0 flex-1">
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div><label className="block text-xs font-semibold text-gray-600">Item {index + 1} title</label><input type="text" aria-label={`Attachment ${index + 1} title`} value={slot.title} onChange={(event) => updateAttachmentSlot(index, 'title', event.target.value)} className="mt-1 block w-full rounded-md border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500" /></div>
+                        <div><label className="block text-xs font-semibold text-gray-600">Description</label><input type="text" aria-label={`Attachment ${index + 1} description`} value={slot.description} onChange={(event) => updateAttachmentSlot(index, 'description', event.target.value)} placeholder="Editable attachment description" className="mt-1 block w-full rounded-md border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500" /></div>
+                      </div>
+                      <p className="mt-2 truncate text-xs text-gray-500">{slot.file?.name || slot.existingAttachment?.filename}</p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => removeFile(index)}
-                      className="text-red-600 hover:text-red-700 text-sm"
-                    >
-                      Remove
-                    </button>
+                    <button type="button" onClick={() => removeAttachmentItem(index)} className="rounded px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50">Remove</button>
                   </div>
-                ))}
+                </div>) : <div className="rounded-lg border border-dashed border-gray-300 px-4 py-8 text-center text-sm text-gray-500">No attachment items selected.</div>}
               </div>
-            )}
-          </div>
+            </section>
+          </div>}
 
-          </div>
-          <aside className="min-h-[760px] overflow-hidden border-t border-slate-300 xl:min-h-0 xl:border-l xl:border-t-0" aria-label="Live purchase order preview">
-            <PurchaseOrderLivePreview formData={formData} vendor={selectedVendor} prReference={effectiveRequisition} files={files} />
-          </aside>
-        </form>
-
-        {/* Footer Actions */}
-        <div className="bg-gray-50 px-8 py-4 rounded-b-xl border-t flex items-center justify-between">
-          <div className="flex space-x-2 text-sm text-gray-600">
-            <button
-              onClick={() => setCurrentSection(Math.max(1, currentSection - 1))}
-              disabled={currentSection === 1}
-              className="px-4 py-2 border border-gray-300 rounded-md disabled:opacity-50"
-            >
-              ← Previous
-            </button>
-            <button
-              onClick={() => setCurrentSection(Math.min(6, currentSection + 1))}
-              disabled={currentSection === 6 || !hasRequiredRequisition}
-              className="px-4 py-2 border border-gray-300 rounded-md disabled:opacity-50"
-            >
-              Next →
-            </button>
-          </div>
-
-          <div className="flex space-x-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={(e) => handleSubmit(e, false)}
-              disabled={submitLoading || !hasRequiredRequisition}
-              className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50"
-            >
-              {submitLoading ? 'Saving...' : editData ? 'Save Changes' : 'Save Draft'}
-            </button>
-            {(!editData || editData.status === 'draft') && (
-              <button
-                type="button"
-                onClick={(e) => handleSubmit(e, true)}
-                disabled={submitLoading || !hasRequiredRequisition}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-              >
-                {submitLoading ? 'Sending...' : 'Send to Vendor'}
-              </button>
-            )}
-          </div>
-        </div>
+              </div>
+            </div>
+            <footer className="pof-actionbar">
+              <button type="button" className="pof-button pof-cancel" onClick={handleCancel} disabled={busy}>Cancel</button>
+              <span className={`pof-validation-state ${validationIssues.length ? 'has-issues' : ''}`} role="status">
+                {validationIssues.length ? <AlertCircle /> : <CheckCircleIcon />}
+                {validationIssues.length ? `${validationIssues.length} required item${validationIssues.length === 1 ? '' : 's'} remaining` : 'Required fields complete'}
+              </span>
+              <div className="pof-footer-actions">
+                {currentSection > 1 && <button type="button" className="pof-button" onClick={() => openSection(currentSection - 1)}><ArrowLeft />Previous</button>}
+                <button type="submit" className="pof-button" disabled={busy || !hasRequiredRequisition || poNumberLoading}><SaveIcon />{submitLoading ? (uploadProgress ? `Uploading ${uploadProgress}%` : 'Saving…') : editData ? 'Save changes' : 'Save draft'}</button>
+                {currentSection < 4 ? <button type="button" className="pof-button pof-primary" disabled={!hasRequiredRequisition} onClick={() => openSection(currentSection + 1)}>Continue <ArrowRight /></button>
+                  : (!editData || editData.status === 'draft') && <button type="button" className="pof-button pof-primary" disabled={busy || !hasRequiredRequisition || poNumberLoading || editData?.can_send_to_vendor !== true} aria-describedby={editData?.can_send_to_vendor !== true ? 'po-form-send-block-reason' : undefined} onClick={(event) => handleSubmit(event, true)}>{submitLoading ? 'Sending…' : 'Send to vendor'}<ArrowRight /></button>}
+              </div>
+            </footer>
+          </form>
+        </section>
+        <PurchaseOrderPreviewPane formData={formData} files={previewFiles} issues={validationIssues} onIssueClick={openValidationIssue} orderId={editData?.id || draftId} />
       </div>
     </div>
   );
 };
 
-export default PurchaseOrderForm;
+PurchaseOrderForm.propTypes = {
+  isOpen: PropTypes.bool,
+  pageMode: PropTypes.bool,
+  onClose: PropTypes.func,
+  onSuccess: PropTypes.func,
+  editData: PropTypes.object,
+  prReference: PropTypes.object,
+  initialProject: PropTypes.shape({
+    id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+    code: PropTypes.string.isRequired,
+    name: PropTypes.string.isRequired,
+    procurement_project_id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  }),
+};
+
+function PurchaseOrderEditor(props) {
+  // Choose at entry so a save response cannot discard an already open draft.
+  const [numberOnly] = useState(() => Boolean(props.editData
+    && (props.editData.commercial_edit_locked === true || props.editData.status === 'completed')));
+  if (numberOnly) {
+    return props.isOpen ? <PurchaseOrderNumberCorrection key={props.editData.id} order={props.editData}
+      onSaved={props.onSuccess} onClose={props.onClose} /> : null;
+  }
+  return <PurchaseOrderForm {...props} />;
+}
+
+PurchaseOrderEditor.propTypes = PurchaseOrderForm.propTypes;
+
+export default PurchaseOrderEditor;

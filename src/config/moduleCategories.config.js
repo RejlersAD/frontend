@@ -164,7 +164,7 @@ export const MODULE_CATEGORIES_CONFIG = {
     admin: ['admin', 'user_management', 'settings', 'system_', 'rbac_'],
 
     // Digitization — SOFT-CODED: extend list when adding new digitization modules
-    digitization: ['digitization', 'non_teff', 'teff_', 'metadata_extract'],
+    digitization: ['digitization', 'non_teff', 'teff_', 'metadata_extract', 'smart_plant_3d'],
 
     // Other (catch-all)
     other: []

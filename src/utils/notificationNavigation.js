@@ -11,8 +11,17 @@ const legacyRouteAliases = (path) => {
 }
 
 const metadataTarget = (metadata = {}) => {
-  if (metadata.pr_id) return `/notifications?preview=pr&id=${encodeURIComponent(metadata.pr_id)}`
+  if (metadata.entity_type === 'purchase_recommendation') {
+    const id = metadata.pr_id || metadata.entity_id
+    return id ? `/notifications?preview=pr&id=${encodeURIComponent(id)}` : ''
+  }
+  if (metadata.entity_type === 'purchase_order') {
+    const id = metadata.po_id || metadata.entity_id
+    return id ? `/notifications?preview=po&id=${encodeURIComponent(id)}` : ''
+  }
+  // Legacy notifications follow the same PO-first precedence as the backend.
   if (metadata.po_id) return `/notifications?preview=po&id=${encodeURIComponent(metadata.po_id)}`
+  if (metadata.pr_id) return `/notifications?preview=pr&id=${encodeURIComponent(metadata.pr_id)}`
   if (metadata.payroll_run_id) return `/hr/payroll?run=${metadata.payroll_run_id}`
   if (metadata.offboarding_id) return `/hr/onboarding?tab=offboarding&record_id=${metadata.offboarding_id}`
   return ''
@@ -38,9 +47,7 @@ export const resolveNotificationTarget = (notification) => {
 
   try {
     const parsed = new URL(rawTarget, origin)
-    if (!['http:', 'https:'].includes(parsed.protocol)) {
-      return { href: parsed.href, isExternal: true, isRecordPreview: Boolean(recordTarget) }
-    }
+    if (!['http:', 'https:'].includes(parsed.protocol)) return null
 
     if (parsed.origin !== origin) {
       return { href: parsed.href, isExternal: true, isRecordPreview: Boolean(recordTarget) }

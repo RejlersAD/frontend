@@ -1,3 +1,4 @@
+import { radaiAlert } from '../services/radaiDialog'
 /**
  * CRS PDF Processor Component
  * Add this to your existing CRSDocuments.jsx page
@@ -18,19 +19,19 @@ const CRSPDFProcessor = ({ document }) => {
 
   const API_URL = API_BASE_URL.replace('/api/v1', '');
 
-  const handleFileSelect = (e) => {
+  const handleFileSelect = async (e) => {
     const file = e.target.files[0];
     if (file && file.type === 'application/pdf') {
       setPdfFile(file);
       setResult(null);
     } else {
-      alert('Please select a valid PDF file');
+      await radaiAlert('Please select a valid PDF file');
     }
   };
 
   const processAndDownload = async () => {
     if (!pdfFile) {
-      alert('Please select a PDF file first');
+      await radaiAlert('Please select a PDF file first');
       return;
     }
 
@@ -98,7 +99,7 @@ const CRSPDFProcessor = ({ document }) => {
 
   const extractCommentsOnly = async () => {
     if (!pdfFile) {
-      alert('Please select a PDF file first');
+      await radaiAlert('Please select a PDF file first');
       return;
     }
 

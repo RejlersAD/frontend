@@ -45,12 +45,30 @@ class RBACService {
     return apiService.get(`${RBAC_BASE_URL}/users/me/`);
   }
 
+  async getProfileDocuments(params = {}) {
+    return apiService.get(`${RBAC_BASE_URL}/profile-documents/`, { params });
+  }
+
+  async getProfileDocumentContent(id) {
+    return apiService.get(`${RBAC_BASE_URL}/profile-documents/${id}/content/`, {
+      responseType: 'blob'
+    });
+  }
+
   async createUser(data) {
     return apiService.post(`${RBAC_BASE_URL}/users/`, data);
   }
 
   async updateUser(id, data) {
     return apiService.patch(`${RBAC_BASE_URL}/users/${id}/`, data);
+  }
+
+  async uploadUserPhoto(id, photo) {
+    const formData = new FormData();
+    formData.append('photo', photo);
+    // Let the browser supply the multipart boundary. Use the upload client so
+    // a slow remote object-store response does not fail as a generic timeout.
+    return apiClientLongTimeout.post(`${RBAC_BASE_URL}/users/${id}/profile-photo/`, formData);
   }
 
   async deleteUser(id) {
@@ -177,6 +195,22 @@ class RBACService {
     return apiService.patch(`${RBAC_BASE_URL}/roles/${id}/`, data);
   }
 
+  async reviewRoleAccess(id, data) {
+    return apiService.post(`${RBAC_BASE_URL}/roles/${id}/review-access/`, data);
+  }
+
+  async getUserPermissionOverrides(id) {
+    return apiService.get(`${RBAC_BASE_URL}/users/${id}/permission-overrides/`);
+  }
+
+  async saveUserPermissionOverrides(id, data) {
+    return apiService.patch(`${RBAC_BASE_URL}/users/${id}/permission-overrides/`, data);
+  }
+
+  async getPermissionCatalogue() {
+    return apiService.get(`${RBAC_BASE_URL}/permissions/by_module/`);
+  }
+
   async deleteRole(id) {
     return apiService.delete(`${RBAC_BASE_URL}/roles/${id}/`);
   }
@@ -289,6 +323,15 @@ class RBACService {
   // Bulk assign modules to all users
   async bulkAssignModules(data) {
     return apiService.post(`${RBAC_BASE_URL}/users/bulk-assign-modules/`, data);
+  }
+
+  // ── Module Catalogue Synchronisation ────────────────────────────────
+  async getModuleCatalogueSyncStatus() {
+    return apiService.get(`${RBAC_BASE_URL}/admin/module-catalogue-sync/`);
+  }
+
+  async runModuleCatalogueSync() {
+    return apiService.post(`${RBAC_BASE_URL}/admin/module-catalogue-sync/run/`);
   }
 
   // ── Access Requests ────────────────────────────────────────────────

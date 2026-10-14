@@ -21,6 +21,8 @@ import {
   TIMESHEET_TABS,
   TIMESHEET_DEFAULT_TAB,
   TIMESHEET_POLL_MS,
+  TIMESHEET_TABLE_PAGE_SIZES,
+  TIMESHEET_TABLE_DEFAULT_PAGE_SIZE,
   TIMESHEET_STATUS_TONES,
   TIMESHEET_LIVE_COLUMNS,
   TIMESHEET_DAILY_COLUMNS,
@@ -113,6 +115,7 @@ const RowSearchBar = ({ value, onChange, totalCount, matchCount }) => (
 const LIVE_FILTER_FNS = {
   in:      (r) => r.is_in === true,
   out:     (r) => r.is_in === false,
+  no_punch: (r) => r.is_in !== true && r.is_in !== false,
   late:    (r) => r.is_late === true,
   total:   null,
   matched: (r) => Boolean(r.radai_user_id),
@@ -121,6 +124,7 @@ const LIVE_FILTER_FNS = {
 const LIVE_FILTER_LABELS = {
   in:      'Currently IN',
   out:     'Currently OUT',
+  no_punch: 'No Biometric Punch',
   late:    'Late Today',
   total:   'All Seen Today',
   matched: 'Matched to RAD AI',
@@ -133,13 +137,14 @@ const LiveKpis = ({ summary, asOf, activeFilter, onFilterChange }) => {
   const tiles = [
     { id: 'in',      label: 'Currently IN',      value: summary?.currently_in    ?? 0, accent: 'from-emerald-500 to-teal-600',   icon: 'ArrowRightOnRectangleIcon' },
     { id: 'out',     label: 'Currently OUT',     value: summary?.currently_out   ?? 0, accent: 'from-slate-500 to-slate-700',    icon: 'ArrowLeftOnRectangleIcon' },
+    { id: 'no_punch', label: 'No Punch',          value: summary?.no_punch         ?? 0, accent: 'from-slate-400 to-slate-600',    icon: 'QuestionMarkCircleIcon' },
     { id: 'late',    label: 'Late Today',        value: summary?.late_today      ?? 0, accent: 'from-amber-500 to-orange-600',   icon: 'ClockIcon' },
     { id: 'total',   label: 'Seen Today',        value: summary?.total_seen_today ?? 0, accent: 'from-blue-500 to-indigo-600',    icon: 'UsersIcon' },
     { id: 'matched', label: 'Matched to RAD AI', value: summary?.matched_to_radai ?? 0, accent: 'from-purple-500 to-fuchsia-600', icon: 'LinkIcon' },
   ]
   return (
     <div className="space-y-1">
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
         {tiles.map(t => {
           const isActive = activeFilter === t.id
           return (
@@ -184,7 +189,23 @@ const LiveKpis = ({ summary, asOf, activeFilter, onFilterChange }) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // Sub-component: Generic data table
 // ─────────────────────────────────────────────────────────────────────────────
-const DataTable = ({ rows, columns, emptyMessage }) => {
+const DataTable = ({ rows, columns, emptyMessage, resetKey }) => {
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(TIMESHEET_TABLE_DEFAULT_PAGE_SIZE)
+  const rowCount = rows?.length || 0
+  const totalPages = Math.max(1, Math.ceil(rowCount / pageSize))
+  const safePage = Math.min(page, totalPages)
+  const firstRow = (safePage - 1) * pageSize
+  const visibleRows = rows?.slice(firstRow, firstRow + pageSize) || []
+
+  useEffect(() => {
+    setPage(1)
+  }, [resetKey, pageSize])
+
+  useEffect(() => {
+    setPage(current => Math.min(current, totalPages))
+  }, [totalPages])
+
   if (!rows || rows.length === 0) {
     return (
       <div className="bg-white border border-slate-200 rounded-xl p-10 text-center">
@@ -207,8 +228,8 @@ const DataTable = ({ rows, columns, emptyMessage }) => {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {rows.map((r, i) => (
-              <tr key={r.employee_code || r.radai_user_id || i} className="hover:bg-slate-50">
+            {visibleRows.map((r, i) => (
+              <tr key={r.employee_code || r.radai_user_id || firstRow + i} className="hover:bg-slate-50">
                 {columns.map(c => {
                   const v = c.accessor(r)
                   // Soft-coded cell renderer dispatch — `cellType` on the
@@ -253,6 +274,46 @@ const DataTable = ({ rows, columns, emptyMessage }) => {
             ))}
           </tbody>
         </table>
+      </div>
+      <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="text-xs text-slate-600">
+          Showing <span className="font-semibold text-slate-800">{firstRow + 1}</span>
+          {' – '}
+          <span className="font-semibold text-slate-800">{Math.min(firstRow + pageSize, rowCount)}</span>
+          {' of '}
+          <span className="font-semibold text-slate-800">{rowCount}</span> rows
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-2 text-xs text-slate-600">
+            Rows per page
+            <select
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value))}
+              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+            >
+              {TIMESHEET_TABLE_PAGE_SIZES.map(size => <option key={size} value={size}>{size}</option>)}
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={() => setPage(current => Math.max(1, current - 1))}
+            disabled={safePage === 1}
+            className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <HeroIcons.ChevronLeftIcon className="h-3.5 w-3.5" /> Previous
+          </button>
+          <span className="min-w-[5.5rem] text-center text-xs text-slate-600">
+            Page <span className="font-semibold text-slate-800">{safePage}</span> of {totalPages}
+          </span>
+          <button
+            type="button"
+            onClick={() => setPage(current => Math.min(totalPages, current + 1))}
+            disabled={safePage === totalPages}
+            className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Next <HeroIcons.ChevronRightIcon className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -460,7 +521,7 @@ const LiveTab = ({ refreshTick, onManualRefresh }) => {
       )}
 
       {/* ── Soft-coded stale sync diagnostic banner (when DB has data but it's too old) ── */}
-      {allRows.length === 0 && !activeFilter && !q && data?.sync_stale && (
+      {data?.sync_stale && (
         <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-start gap-3">
           <HeroIcons.ExclamationTriangleIcon className="w-5 h-5 text-rose-500 flex-shrink-0 mt-0.5" />
           <div className="flex-1">
@@ -516,6 +577,7 @@ const LiveTab = ({ refreshTick, onManualRefresh }) => {
       <DataTable
         rows={filteredRows}
         columns={TIMESHEET_LIVE_COLUMNS}
+        resetKey={`${activeFilter || 'all'}:${q}`}
         emptyMessage={
           q              ? `No rows match "${rowSearch}".` :
           activeFilter   ? `No employees match "${LIVE_FILTER_LABELS[activeFilter]}".` :
@@ -574,7 +636,12 @@ const DailyTab = () => {
       {loading ? (
         <div className="text-center text-slate-500 py-6">Loading…</div>
       ) : data?.configured === false ? null : (
-        <DataTable rows={filteredRows} columns={TIMESHEET_DAILY_COLUMNS} emptyMessage={q ? `No rows match "${rowSearch}".` : `No attendance for ${date}.`} />
+        <DataTable
+          rows={filteredRows}
+          columns={TIMESHEET_DAILY_COLUMNS}
+          resetKey={`${date}:${q}`}
+          emptyMessage={q ? `No rows match "${rowSearch}".` : `No attendance for ${date}.`}
+        />
       )}
     </div>
   )
@@ -632,7 +699,12 @@ const MonthlyTab = () => {
       {loading ? (
         <div className="text-center text-slate-500 py-6">Loading…</div>
       ) : data?.configured === false ? null : (
-        <DataTable rows={filteredRows} columns={TIMESHEET_MONTHLY_COLUMNS} emptyMessage={q ? `No rows match "${rowSearch}".` : 'No attendance in this month.'} />
+        <DataTable
+          rows={filteredRows}
+          columns={TIMESHEET_MONTHLY_COLUMNS}
+          resetKey={`${year}:${month}:${q}`}
+          emptyMessage={q ? `No rows match "${rowSearch}".` : 'No attendance in this month.'}
+        />
       )}
     </div>
   )
@@ -897,7 +969,7 @@ const Stat = ({ label, value, ok }) => (
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Component
 // ─────────────────────────────────────────────────────────────────────────────
-const TimeSheetAnalytics = () => {
+const TimeSheetAnalytics = ({ embedded = false }) => {
   const [activeTab, setActiveTab] = useState(TIMESHEET_DEFAULT_TAB)
   const [health, setHealth] = useState(null)
   const [healthError, setHealthError] = useState(null)
@@ -932,7 +1004,7 @@ const TimeSheetAnalytics = () => {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-start justify-between gap-3">
+      {!embedded && <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
             <HeroIcons.ClockIcon className="w-6 h-6 text-blue-600" />
@@ -948,7 +1020,7 @@ const TimeSheetAnalytics = () => {
           <HeroIcons.ArrowPathIcon className="w-4 h-4" />
           Refresh status
         </button>
-      </div>
+      </div>}
 
       {healthError && (
         <div className="bg-rose-50 border border-rose-200 text-rose-800 p-3 rounded-lg text-sm">

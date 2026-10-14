@@ -1,0 +1,13 @@
+.gr-actions { display: grid; gap: 5px; min-width: 0; }
+.gr-actions-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+.gr-actions-buttons button { min-height: 32px; padding: 5px 8px; border: 1px solid #b8cce7; border-radius: 4px; background: white; color: #145dcc; font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; }
+.gr-actions-buttons .gr-action-confirm { background: #166534; border-color: #166534; color: white; }
+.gr-actions-buttons .gr-action-delete { color: #b42318; border-color: #e9b6b1; }
+.gr-actions-buttons button:disabled { opacity: .55; cursor: not-allowed; }
+.gr-actions-buttons button:focus-visible { outline: 2px solid #075def; outline-offset: 2px; }
+.gr-actions p { margin: 0; color: #78511c; font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
+.dark .gr-actions-buttons button { background: #172a43; color: #a0c3ff; border-color: #526f96; }
+.dark .gr-actions-buttons .gr-action-confirm { background: #166534; color: white; border-color: #3c9160; }
+.dark .gr-actions-buttons .gr-action-delete { color: #ffb5ac; border-color: #985b53; }
+.dark .gr-actions p { color: #f1d2a5; }
+@media print { .gr-actions { display: none; } }

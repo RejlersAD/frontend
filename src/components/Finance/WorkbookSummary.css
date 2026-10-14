@@ -1,0 +1,66 @@
+.ar-workbook-summary { margin: 0 0 12px; min-width: 0; }
+.ar-workbook-heading { position: relative; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 7px; }
+.ar-dashboard .ar-workbook-heading h2 { margin: 0 0 2px; color: var(--ar-ink); font-size: 14px; line-height: 1.3; letter-spacing: 0; font-weight: 700; }
+.ar-workbook-heading p { margin: 0; color: var(--ar-muted); font-size: 10px; line-height: 1.4; }
+.ar-workbook-scope { margin-left: auto; padding: 3px 7px; border-radius: 4px; background: #e2effc; color: #375b86; font-size: 10px; }
+.ar-workbook-source { position: static; color: var(--ar-muted); font-size: 10px; }
+.ar-workbook-source > summary { display: flex; align-items: center; gap: 5px; padding: 4px 0; color: #005de9; list-style: none; }
+.ar-workbook-source > summary::-webkit-details-marker { display: none; }
+.ar-dashboard .ar-workbook-source > summary svg { width: 14px; height: 14px; }
+.ar-workbook-source > div { position: absolute; top: calc(100% + 4px); right: 0; z-index: 35; width: min(530px, 100%); padding: 12px 14px; border: 1px solid var(--ar-border); border-radius: 6px; background: var(--ar-panel); box-shadow: 0 8px 24px #163c6722; }
+.ar-workbook-source > div > p { margin: 0 0 8px; line-height: 1.5; overflow-wrap: anywhere; }
+.ar-workbook-source > div > p:last-child { margin-bottom: 0; }
+.ar-workbook-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 15px; }
+.ar-workbook-card { --workbook-accent: #0060c8; --workbook-tint: #e8f3ff; min-width: 0; padding: 11px 15px 9px; border: 1px solid var(--ar-border); border-radius: 6px; background: linear-gradient(120deg, #fff, #ffffffed); box-shadow: 0 1px 3px #04386a09; }
+.ar-workbook-cyan { --workbook-accent: #0086a5; --workbook-tint: #e4f7fa; }
+.ar-workbook-green { --workbook-accent: #00876c; --workbook-tint: #e3f5ee; }
+.ar-workbook-violet { --workbook-accent: #5b5bbd; --workbook-tint: #eeeeff; }
+.ar-workbook-card-label { display: flex; align-items: center; gap: 7px; min-height: 22px; }
+.ar-dashboard .ar-workbook-card-label > svg { width: 22px; height: 22px; padding: 3px; border-radius: 5px; background: var(--workbook-tint); color: var(--workbook-accent); }
+.ar-dashboard .ar-workbook-card h3 { margin: 0; color: var(--ar-ink); font-size: 12px; line-height: 1.3; font-weight: 600; letter-spacing: 0; }
+.ar-workbook-card > strong { display: block; margin-top: 5px; color: var(--ar-ink); font-size: clamp(19px, 1.45vw, 25px); line-height: 1.2; font-weight: 750; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ar-workbook-card > span { display: block; margin-top: 3px; color: var(--ar-muted); font-size: 10px; }
+.ar-workbook-currencies { display: grid; gap: 0; margin: 9px 0 0; padding-top: 6px; border-top: 1px solid var(--ar-border); font-size: 11px; line-height: 1.4; }
+.ar-workbook-currencies > div { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 2px 8px; padding: 2px 0; }
+.ar-workbook-currencies > div:not(:last-child) { border-bottom: 1px solid var(--ar-border); }
+.ar-workbook-currencies dt { color: var(--ar-muted); }
+.ar-workbook-currencies dd { margin: 0 0 0 auto; color: var(--ar-ink); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ar-workbook-currency-state { color: var(--ar-muted); font-size: 10px; }
+.ar-payment-status-content { padding: 0 9px 6px; }
+.ar-payment-status-panel .ar-payment-status-table { min-width: 0; table-layout: fixed; }
+.ar-payment-status-panel .ar-payment-status-table :is(th, td) { height: 22px; padding: 2px 8px; }
+.ar-payment-status-panel .ar-payment-status-table :is(thead th, td):nth-child(2) { width: 38%; text-align: right; }
+.ar-payment-status-panel .ar-payment-status-table :is(thead th, td):last-child { width: 24%; text-align: right; }
+.ar-payment-status-panel .ar-payment-status-table tbody th { max-width: none; }
+.ar-payment-status-table tbody tr:nth-child(even) { background: #f8fbff; }
+.ar-payment-status-table tbody th abbr { color: inherit; margin: 0; text-decoration: underline dotted; text-underline-offset: 3px; }
+.ar-payment-status-panel .ar-payment-status-table tfoot :is(th, td) { height: 25px; background: #edf5ff; border-top: 1px solid var(--ar-border); }
+.ar-workbook-status-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 8px; background: #7f8da9; }
+.ar-workbook-status-paid { background: #119574; }
+.ar-workbook-status-cancelled { background: #bd5369; }
+.ar-workbook-status-pending { background: #d28b13; }
+.ar-workbook-status-new { background: #1674d9; }
+.ar-payment-status-content > p { margin: 4px 0 0; font-size: 9px; color: var(--ar-muted); }
+.ar-workbook-state { display: grid; place-items: center; min-height: 145px; padding: 16px; text-align: center; color: var(--ar-muted); font-size: 11px; }
+@media (max-width: 1599px) { .ar-workbook-cards { gap: 11px; } .ar-workbook-card { padding-inline: 11px; } }
+@media (max-width: 1350px) { .ar-workbook-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; } .ar-workbook-card > strong { font-size: 24px; } }
+@media (max-width: 700px) { .ar-workbook-heading { gap: 6px 10px; } .ar-workbook-heading > div { width: 100%; } .ar-workbook-scope { margin-left: 0; } .ar-workbook-source { margin-left: auto; } .ar-workbook-cards { grid-template-columns: minmax(0, 1fr); } .ar-workbook-card { padding: 10px 12px; } .ar-workbook-card > strong { font-size: 25px; } }
+.dark .ar-workbook-card { background: #122a43; }
+.dark .ar-workbook-scope { background: #203e5b; color: #c1d8f6; }
+.dark .ar-workbook-source > summary { color: #9dc6ff; }
+.dark .ar-payment-status-table tbody tr:nth-child(even) { background: #17314c; }
+.dark .ar-payment-status-table tfoot :is(th, td) { background: #213f60; }
+@media print {
+  .ar-workbook-summary { break-inside: avoid; }
+  .ar-workbook-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
+  .ar-workbook-card { padding: 8px; background: white; color: #0b1545; }
+  .ar-workbook-card > strong { font-size: 16px; color: #0b1545; }
+  .ar-dashboard .ar-workbook-card h3 { font-size: 10px; color: #0b1545; }
+  .ar-workbook-card > span, .ar-workbook-heading p { font-size: 9px; color: #4a5f87; }
+  .ar-workbook-currencies { gap: 3px; margin-top: 7px; font-size: 9px; }
+  .ar-workbook-currencies dt { color: #4a5f87; }
+  .ar-workbook-currencies dd { color: #0b1545; }
+  .ar-workbook-scope { margin-left: auto; background: #e2effc; color: #375b86; }
+  .ar-workbook-source { display: none; }
+  .ar-payment-status-table { min-width: 0; }
+}

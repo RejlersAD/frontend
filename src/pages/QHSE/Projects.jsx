@@ -1,3 +1,4 @@
+import { radaiConfirm } from '../../services/radaiDialog'
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Search, Filter, Download, RefreshCw, Eye, Calendar, DollarSign, Users, TrendingUp, Building2, UserCircle, CheckCircle2, AlertCircle, Clock, Target } from 'lucide-react';
 import { useQHSERunningProjects } from './hooks/useQHSEProjects';
@@ -120,7 +121,7 @@ const Projects = () => {
 
   // Handle delete project
   const handleDelete = async (project) => {
-    if (!confirm(`Are you sure you want to delete project "${project.project_name || project.projectTitle}"? This action cannot be undone.`)) {
+    if (!(await radaiConfirm(`Are you sure you want to delete project "${project.project_name || project.projectTitle}"? This action cannot be undone.`))) {
       return;
     }
 
