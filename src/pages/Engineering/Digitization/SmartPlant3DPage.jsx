@@ -14,6 +14,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ROUTES } from '../../../config/routes.config';
 import SpecCustomizationPage from './SpecCustomizationPage';
+import S3DExtractionFlow from './components/S3DExtractionFlow';
 import {
   CloudArrowUpIcon,
   CheckCircleIcon,
@@ -96,12 +97,16 @@ const SmartPlant3DPage = () => {
     if (tab === 'paper-specification') {
       params.set('tab', 'paper-specification');
     } else {
-      params.delete('tab');
+      params.set('tab', 'overview');
       params.delete('stage');
     }
     const search = params.toString();
-    navigate({ pathname: location.pathname, search: search ? `?${search}` : '' });
+    navigate({ pathname: location.pathname, search: search ? `?${search}` : '' }, { state: location.state });
   };
+
+  if (!new URLSearchParams(location.search).has('tab')) {
+    return <S3DExtractionFlow />;
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-cyan-50 p-8">
@@ -299,7 +304,7 @@ const SmartPlant3DPage = () => {
         </div>
           </>
         ) : (
-          <SpecCustomizationPage />
+          <SpecCustomizationPage initialFile={location.state?.s3dSourceFile || null} />
         )}
       </div>
     </div>
