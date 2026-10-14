@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs'
 import type { CaseData } from './index.ts'
-import { buildComparison, buildStreamMaxima, rowVaries } from './compare.ts'
+import { buildComparison, buildGoverningCaseColumns, rowVaries } from './compare.ts'
 
 export interface ExportOptions {
   highlightVariation: boolean
@@ -54,7 +54,7 @@ export async function buildComparisonWorkbookBlob(
   options: ExportOptions,
 ): Promise<Blob> {
   const { rows, streamNames } = buildComparison(cases)
-  const streamMaxima = buildStreamMaxima(cases)
+  const governingColumns = buildGoverningCaseColumns(cases)
   const wb = new ExcelJS.Workbook()
   wb.creator = 'HMB Stream Table Consolidator'
   wb.created = new Date()
@@ -141,13 +141,16 @@ export async function buildComparisonWorkbookBlob(
       band.height = 16
     }
 
-    const maxEntry = streamMaxima.get(row.streamName)
+    const governing = governingColumns.get(row.streamName)
     const r = ws.addRow([
       '',
       row.propertyName,
       row.unit,
       ...caseIds.map((id) => row.values[id] ?? null),
-      ...MAX_RATE_HEADERS.map((c) => maxEntry?.[c.kind]?.value ?? null),
+      ...MAX_RATE_HEADERS.map((c) => {
+        const value = governing?.[c.kind].values[row.propertyName.trim().toLowerCase()]
+        return value === undefined ? null : value
+      }),
     ])
     const varies = options.highlightVariation && rowVaries(row, caseIds)
     const baseFill = varies ? FILL_VARIES : alt ? FILL_ALT : 'FFFFFFFF'
@@ -166,8 +169,9 @@ export async function buildComparisonWorkbookBlob(
             cell.font = { size: 10, bold: true, italic: true, color: { argb: FONT_EDITED } }
           }
         } else {
-          const maximum = maxEntry?.[MAX_RATE_HEADERS[col - 4 - caseIds.length].kind]
-          if (typeof maximum?.value === 'number') cell.numFmt = numFormat(maximum.unit)
+          const copied = governing?.[MAX_RATE_HEADERS[col - 4 - caseIds.length].kind]
+            .values[row.propertyName.trim().toLowerCase()]
+          if (typeof copied === 'number') cell.numFmt = numFormat(row.unit)
           cell.font = { size: 10, bold: true, color: { argb: 'FF24466F' } }
         }
         if (varies) cell.font = { ...cell.font, bold: true }
@@ -190,7 +194,7 @@ export async function buildComparisonWorkbookBlob(
   // Footer note
   ws.addRow([])
   const note = ws.addRow([
-    `${streamNames.length} streams × ${cases.length} cases — Max Liquid/Gas/Water show the highest rate across cases for each stream; edited values shown in orange italic; amber rows vary across cases.`,
+    `${streamNames.length} streams × ${cases.length} cases — Max Liquid/Gas/Water are complete copies of the governing case column per stream (highest Light Liquid Act Flow / Std Ideal Gas Vol Flow / Heavy Liquid Flow); edited values shown in orange italic; amber rows vary across cases.`,
   ])
   ws.mergeCells(note.number, 1, note.number, nCols)
   note.getCell(1).font = { size: 9, color: { argb: 'FF989F9B' } }
