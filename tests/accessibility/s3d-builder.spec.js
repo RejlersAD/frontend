@@ -33,7 +33,7 @@ async function prepare(page, options = {}) {
     return route.fulfill({ json: { count: 0, results: [], items: [] } });
   });
   await page.goto(`/tests/fixtures/s3d-builder-shell.html${state.entry ? `?entry=${encodeURIComponent(state.entry)}` : ''}`, { waitUntil: 'domcontentloaded' });
-  await expect(page.getByRole('heading', { name: 'RADAI S3D Database Builder' })).toBeVisible({ timeout: 60000 });
+  await expect(page.getByRole('heading', { name: 'S3D Database Builder' })).toBeVisible({ timeout: 60000 });
   return state;
 }
 
@@ -47,9 +47,9 @@ test('upload lets the server select a project from the file hash', async ({ page
   await expect(page.getByLabel('Project', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Create project', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Remove Piping Spec.pdf' }).click();
-  await expect(page.getByRole('button', { name: 'Extract Database', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Extract database', exact: true })).toBeDisabled();
   await page.locator('input[type=file]').setInputFiles(source);
-  await page.getByRole('button', { name: 'Extract Database', exact: true }).click();
+  await page.getByRole('button', { name: 'Extract database', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Data Extraction & Integration Hub', exact: true })).toBeVisible();
   expect(state.creates).toHaveLength(0);
   expect(state.uploads).toHaveLength(1);
@@ -63,9 +63,9 @@ test('one action extracts on upload and automatically opens preview after comple
   const state = await prepare(page);
   const headerBefore = await page.locator('header').first().boundingBox();
   await page.locator('input[type=file]').setInputFiles(source);
-  await page.getByRole('button', { name: 'Extract Database', exact: true }).click();
+  await page.getByRole('button', { name: 'Extract database', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Cancel extraction' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'RADAI S3D Database Builder' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'S3D Database Builder' })).toBeVisible();
   expect(state.uploads).toHaveLength(1);
   expect(state.uploads[0]).toContain('auto_project');
   state.jobStatus = 'completed';
@@ -78,20 +78,28 @@ test('one action extracts on upload and automatically opens preview after comple
   expect(await page.locator('header').first().boundingBox()).toEqual(headerBefore);
   await page.screenshot({ path: testInfo.outputPath('s3d-extracted-data-preview.png'), fullPage: true });
   await page.getByRole('button', { name: 'Upload document' }).click();
-  await expect(page.getByRole('heading', { name: 'RADAI S3D Database Builder' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'S3D Database Builder' })).toBeVisible();
   expect(state.uploads).toHaveLength(1);
   expect(state.errors).toEqual([]);
 });
 
-test('failed upload retains source and retry handles completed deduplication', async ({ page }) => {
+test('failed upload retains source and retry handles completed deduplication', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1586, height: 992 });
   const state = await prepare(page, { uploadStatus: 503 });
   await page.locator('input[type=file]').setInputFiles(source);
-  await page.getByRole('button', { name: 'Extract Database', exact: true }).click();
+  await page.getByRole('button', { name: 'Extract database', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Upload unavailable');
   await expect(page.locator('.s3db-file-row')).toContainText(source.name);
+  await expect(page.getByText('Needs retry', { exact: true })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('s3d-upload-retry-reference.png'), fullPage: true });
+  await page.getByRole('button', { name: 'View details' }).click();
+  await expect(page.locator('.s3db-upload-error details')).toBeVisible();
+  await page.getByRole('button', { name: 'Dismiss upload message' }).click();
+  await expect(page.locator('.s3db-upload-error')).toHaveCount(0);
+  await expect(page.getByText('Needs retry', { exact: true })).toBeVisible();
   state.uploadStatus = 200;
   state.jobStatus = 'completed';
-  await page.getByRole('button', { name: 'Extract Database', exact: true }).click();
+  await page.getByRole('button', { name: 'Retry', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Data Extraction & Integration Hub', exact: true })).toBeVisible();
   await page.getByRole('tab', { name: 'Piping classes' }).click();
   await expect(page.getByText('CS150', { exact: true })).toBeVisible();
@@ -103,14 +111,14 @@ test('failed upload retains source and retry handles completed deduplication', a
 test('failed extraction stays on upload and preview errors support retry', async ({ page }) => {
   const state = await prepare(page);
   await page.locator('input[type=file]').setInputFiles(source);
-  await page.getByRole('button', { name: 'Extract Database', exact: true }).click();
+  await page.getByRole('button', { name: 'Extract database', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Cancel extraction' })).toBeVisible();
   state.jobStatus = 'failed';
   await expect(page.getByRole('alert')).toContainText('could not read', { timeout: 15000 });
-  await expect(page.getByRole('heading', { name: 'RADAI S3D Database Builder' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'S3D Database Builder' })).toBeVisible();
   state.jobStatus = 'completed';
   state.detailStatus = 503;
-  await page.getByRole('button', { name: 'Extract Database', exact: true }).click();
+  await page.getByRole('button', { name: 'Extract database', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
   state.detailStatus = 200;
   await page.getByRole('button', { name: 'Retry', exact: true }).click();
@@ -125,21 +133,21 @@ test('mobile upload preserves the original application shell', async ({ page }) 
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await expect(page.locator('header').first()).toBeVisible();
   await expect(page.locator('.s3db-sidebar, .s3db-topbar')).toHaveCount(0);
-  expect(await page.getByRole('heading', { name: 'RADAI S3D Database Builder' }).evaluate(element => getComputedStyle(element).fontSize)).toBe('24px');
-  expect(await page.getByRole('heading', { name: 'Upload Files', exact: true }).evaluate(element => getComputedStyle(element).fontSize)).toBe('18px');
-  expect(await page.getByRole('button', { name: 'Extract Database', exact: true }).evaluate(element => getComputedStyle(element).fontSize)).toBe('14px');
+  expect(await page.getByRole('heading', { name: 'S3D Database Builder' }).evaluate(element => getComputedStyle(element).fontSize)).toBe('24px');
+  expect(await page.getByRole('heading', { name: /Source documents/ }).evaluate(element => getComputedStyle(element).fontSize)).toBe('18px');
+  expect(await page.getByRole('button', { name: 'Extract database', exact: true }).evaluate(element => getComputedStyle(element).fontSize)).toBe('14px');
   expect(state.errors).toEqual([]);
 });
 
 test('server project selection failure retains source', async ({ page }) => {
   const state = await prepare(page, { uploadStatus: 403, jobStatus: 'completed' });
   await page.locator('input[type=file]').setInputFiles(source);
-  await page.getByRole('button', { name: 'Extract Database', exact: true }).click();
+  await page.getByRole('button', { name: 'Extract database', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Project creation is not allowed');
   expect(state.uploads).toHaveLength(1);
   await expect(page.locator('.s3db-file-row')).toContainText(source.name);
   state.uploadStatus = 200;
-  await page.getByRole('button', { name: 'Extract Database', exact: true }).click();
+  await page.getByRole('button', { name: 'Retry', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Data Extraction & Integration Hub', exact: true })).toBeVisible();
   expect(state.uploads).toHaveLength(2);
   expect(state.errors).toEqual([]);
@@ -160,7 +168,7 @@ test('processing job resumes after refresh without another project or upload', a
 test('completed extraction requires explicit save and history survives refresh', async ({ page }) => {
   const state = await prepare(page, { jobStatus: 'completed' });
   await page.locator('input[type=file]').setInputFiles(source);
-  await page.getByRole('button', { name: 'Extract Database', exact: true }).click();
+  await page.getByRole('button', { name: 'Extract database', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Save extracted data' })).toBeVisible();
   expect(state.saved).toBe(false);
   await page.getByRole('button', { name: 'Save extracted data' }).click();
@@ -178,7 +186,7 @@ test('completed extraction requires explicit save and history survives refresh',
 test('save failure remains retryable and never reports success', async ({ page }) => {
   const state = await prepare(page, { jobStatus: 'completed', saveStatus: 503 });
   await page.locator('input[type=file]').setInputFiles(source);
-  await page.getByRole('button', { name: 'Extract Database', exact: true }).click();
+  await page.getByRole('button', { name: 'Extract database', exact: true }).click();
   await page.getByRole('button', { name: 'Save extracted data' }).click();
   await expect(page.getByRole('alert')).toContainText('Extraction could not be saved.');
   expect(state.saved).toBe(false);

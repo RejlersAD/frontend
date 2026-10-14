@@ -187,9 +187,13 @@ export default function S3DExtractionFlow() {
       onExtract={extract}
       onHistory={() => navigate(`${root}?screen=history`)}
       busy={busy}
+      requestError={error}
+      uploading={uploading}
+      jobStatus={job?.status || ''}
+      onSelectionChange={() => { setError(''); setJob(null); navigate(root, { replace: true }); }}
       progressContent={
         <>
-          {error && (
+          {error && busy && (
             <p className="s3db-error" role="alert">
               {error}
             </p>
