@@ -1,0 +1,55 @@
+﻿.s3db-shell{--ink:#080f29;--muted:#546584;--blue:#0055ff;display:block;width:100%;min-height:calc(100dvh - 68px);background:radial-gradient(ellipse at 62% 30%,#f9fcff 0,#f0f7fd 76%);color:var(--ink);font-family:'S3D Roboto',Arial,sans-serif;font-size:16px}
+.s3db-shell *{box-sizing:border-box}.s3db-shell button{font:inherit;cursor:pointer}.s3db-shell button:focus-visible,.s3db-shell input:focus-visible{outline:3px solid #80adff;outline-offset:3px}.s3db-shell button:disabled{opacity:.45;cursor:not-allowed}
+.s3db-content{width:100%;min-width:0;padding:27px 24px 36px 33px;max-width:1600px;margin:auto}.s3db-heading{margin:0 0 31px 10px}.s3db-heading h1{font-size:46px;line-height:55px;letter-spacing:-1.2px;font-weight:750;margin:0}.s3db-heading p{font-size:23px;line-height:30px;color:var(--muted);margin:0}.s3db-grid{display:grid;grid-template-columns:minmax(0,2.05fr) minmax(330px,1fr);gap:13px}.s3db-card{background:#ffffffdc;border:1px solid #dfe8f2;border-radius:12px;box-shadow:0 1px 3px #8caac311;min-width:0}.s3db-card h2{font-size:30px;line-height:37px;font-weight:750;letter-spacing:-.65px;margin:0}.s3db-upload{padding:25px 27px 41px}.s3db-dropzone{height:337px;margin-top:25px;border:2px dashed #b4d0ff;border-radius:12px;background:#f4f9feae;display:flex;align-items:center;flex-direction:column;padding-top:38px}.s3db-dropzone.is-dragging{background:#e3efff;border-color:var(--blue)}.s3db-upload-icon{width:114px;height:114px;border-radius:50%;background:#e3efff;display:grid;place-items:center;color:var(--blue);margin-bottom:16px}.s3db-dropzone h3{font-size:23px;line-height:29px;margin:0;font-weight:750;letter-spacing:-.3px}.s3db-dropzone p{font-size:18px;color:var(--muted);line-height:25px;margin:4px 0 23px}.s3db-primary{display:inline-flex;align-items:center;justify-content:center;gap:13px;border:1px solid #0065ff;border-radius:8px;background:linear-gradient(120deg,#0060ff,#0050ff);color:white;min-height:52px;padding:0 34px;font-size:19px!important;font-weight:500!important}.s3db-primary:hover{background:#004be7}.s3db-files{margin-top:34px;padding-top:25px;border-top:1px solid #cfdcec}.s3db-files h3{font-size:24px;line-height:30px;font-weight:750;letter-spacing:-.4px;margin:0 0 19px}.s3db-file-row{min-height:79px;border:1px solid #dce5f0;border-radius:10px;display:flex;align-items:center;gap:25px;padding:11px 19px}.s3db-check{display:grid;place-items:center;width:29px;height:29px;flex-shrink:0;border-radius:50%;background:linear-gradient(#00ce78,#00a75c);color:white}.s3db-file-icon{position:relative;display:flex;color:#7e8ca6;flex-shrink:0}.s3db-file-icon b{position:absolute;bottom:1px;left:5px;font-size:15px;color:white;background:#ff3447;padding:1px 4px;border-radius:3px;max-width:48px;overflow:hidden}.s3db-file-row>strong{font-size:18px;font-weight:500;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.s3db-uploaded{display:flex;align-items:center;gap:11px;padding:7px 17px;background:#dffbef;border-radius:30px;color:#00a459;white-space:nowrap}.s3db-uploaded .s3db-check{width:21px;height:21px}.s3db-file-row>button{border:0;background:none;color:#7787a3;padding:4px;margin-left:9px}.s3db-extract{display:flex;justify-content:flex-end;margin-top:30px}.s3db-extract .s3db-primary{min-height:58px}.s3db-empty{color:var(--muted);min-height:54px}.s3db-error{color:#c52131;margin:12px 0}
+.s3db-how{padding:25px 24px 36px}.s3db-how ol{padding:0;margin:32px 0 0;list-style:none;display:flex;flex-direction:column;gap:42px}.s3db-how li{position:relative;display:grid;grid-template-columns:38px 64px minmax(0,1fr);gap:16px;min-height:112px}.s3db-how li:not(:last-child):before{content:'';position:absolute;left:18px;top:49px;bottom:-35px;width:2px;background:#e0eaf7}.s3db-step-number{width:38px;height:38px;display:grid;place-items:center;background:#e8f2ff;border-radius:50%;color:var(--blue);font-size:20px;font-weight:700;margin-top:6px}.s3db-step-icon{height:64px;width:64px;border-radius:50%;background:#eaf3ff;display:grid;place-items:center;color:var(--blue)}.s3db-how h3{font-size:21px;line-height:27px;font-weight:750;letter-spacing:-.3px;margin:4px 0}.s3db-how p{font-size:16px;line-height:23px;color:#61718f;margin:0}
+.s3db-heading h1{letter-spacing:-.7px}
+@media(min-width:1500px){.s3db-how ol{gap:42px}.s3db-how li{height:112px}.s3db-how li:nth-child(3){margin-top:6px}.s3db-how li:last-child{margin-top:10px}}
+@media(max-width:1200px){.s3db-heading h1{font-size:36px;line-height:46px}.s3db-heading p{font-size:19px}.s3db-grid{grid-template-columns:minmax(0,1.7fr) minmax(300px,1fr)}.s3db-how li{grid-template-columns:30px 48px minmax(0,1fr);gap:9px}.s3db-step-icon{width:48px;height:48px}.s3db-how h3{font-size:18px}.s3db-step-number{width:30px;height:30px}.s3db-how li:not(:last-child):before{left:14px}.s3db-file-row{gap:12px}.s3db-uploaded{padding:7px 10px}}
+@media(max-width:1000px){.s3db-grid{grid-template-columns:1fr}.s3db-how ol{display:grid;grid-template-columns:1fr 1fr;gap:24px}.s3db-how li:before{display:none}.s3db-content{width:100%;min-width:0;padding:28px 20px}.s3db-heading{margin-left:0}}
+@media(max-width:650px){.s3db-heading h1{font-size:29px;line-height:35px}.s3db-heading p{font-size:17px;line-height:24px;margin-top:8px}.s3db-content{width:100%;min-width:0;padding:27px 14px}.s3db-card h2{font-size:26px}.s3db-upload{padding:20px 16px 25px}.s3db-dropzone{height:320px;padding-top:28px}.s3db-dropzone h3{font-size:21px}.s3db-dropzone p{font-size:15px}.s3db-file-row{gap:9px;padding:12px 9px;flex-wrap:wrap}.s3db-file-row>strong{font-size:15px}.s3db-file-icon svg{width:38px}.s3db-file-icon b{font-size:11px;bottom:7px}.s3db-uploaded{font-size:12px;gap:5px}.s3db-uploaded .s3db-check{width:16px;height:16px}.s3db-file-row>.s3db-check{width:23px;height:23px}.s3db-file-row>button{margin-left:0}.s3db-how ol{display:flex;gap:20px}.s3db-how li{min-height:100px;grid-template-columns:30px 48px minmax(0,1fr)}}
+/* Enterprise typography: docs/DESIGN_SYSTEM.md, adopted operational roles. */
+.s3db-shell {
+  font-family: var(--font-sans, 'Segoe UI', system-ui, sans-serif);
+  font-size: var(--text-body-size, 14px);
+  line-height: var(--text-body-line, 20px);
+  font-weight: 400;
+}
+.s3db-heading h1 {
+  font-size: var(--text-page-title-size, 24px);
+  line-height: var(--text-page-title-line, 32px);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+.s3db-heading p, .s3db-dropzone p, .s3db-how p, .s3db-empty, .s3db-error {
+  font-size: var(--text-body-size, 14px);
+  line-height: var(--text-body-line, 20px);
+  font-weight: 400;
+}
+.s3db-card h2 {
+  font-size: var(--text-section-title-size, 18px);
+  line-height: var(--text-section-title-line, 24px);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.s3db-dropzone h3, .s3db-files h3, .s3db-how h3 {
+  font-size: var(--text-card-title-size, 16px);
+  line-height: var(--text-card-title-line, 22px);
+  font-weight: 600;
+  letter-spacing: normal;
+}
+.s3db-primary, .s3db-back, .s3db-progress button {
+  font-size: 14px !important;
+  line-height: 20px;
+  font-weight: 600 !important;
+}
+.s3db-file-row > strong { font-size: 13px; line-height: 18px; font-weight: 600; }
+.s3db-file-icon b, .s3db-uploaded { font-size: 11px; line-height: 14px; font-weight: 600; }
+.s3db-step-number { font-size: 12px; line-height: 16px; font-weight: 600; }
+.s3db-back { margin: 0 0 20px 10px; border: 1px solid #a9c7ff; border-radius: 6px; background: white; color: #0055ff; padding: 7px 12px; }
+.s3db-progress { margin-top: 18px; padding: 12px; border: 1px solid #dce5f0; border-radius: 8px; font-size: 14px; line-height: 20px; }
+.s3db-progress progress { width: 100%; height: 10px; margin: 10px 0; accent-color: #0055ff; }
+.s3db-progress button { border: 1px solid #a9c7ff; border-radius: 6px; background: white; color: #0055ff; padding: 7px 12px; }
+.s3db-preview :is(button, input, select) { font-family: inherit; font-size: 14px !important; line-height: 20px; }
+.s3db-preview :is(h2, h3) { font-size: 16px; line-height: 22px; font-weight: 600; }
+.s3db-preview .text-xs { font-size: 12px; line-height: 16px; }
+.s3db-preview :is([class~="text-[10px]"], [class~="text-[11px]"]) { font-size: 11px; line-height: 14px; }

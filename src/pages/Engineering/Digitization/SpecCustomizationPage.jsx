@@ -185,7 +185,7 @@ const formatSpecCost = (costUsd) => {
 };
 
 // ───────────────────────────────────────────────────────────────────────────
-const SpecCustomizationPage = () => {
+const SpecCustomizationPage = ({ initialFile = null } = {}) => {
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -251,7 +251,7 @@ const SpecCustomizationPage = () => {
     }
     setWorkspaceMode(mode);
     const search = params.toString();
-    navigate({ pathname: location.pathname, search: search ? `?${search}` : '' });
+    navigate({ pathname: location.pathname, search: search ? `?${search}` : '' }, { state: location.state });
   };
 
   // Persist active project for cross-page handoff.
@@ -558,6 +558,7 @@ const SpecCustomizationPage = () => {
             {HUB_FEATURE_FLAGS.SHOW_PAPER_SPEC_EXTRACTOR && workspaceMode === 'extract' && !viewingJobId && (
               <div className="mb-10">
                 <PaperSpecExtractor
+                  initialFile={initialFile}
                   projectId={activeProject.project_id}
                   projectByok={{
                     enabled: activeProject.ai_enabled,

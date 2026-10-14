@@ -54,6 +54,7 @@ export const SPEC_API_CONFIG = {
   jobDetailPath:    (id) => `/paper-spec/jobs/${id}/`,
   jobClassesPath:   (id) => `/paper-spec/jobs/${id}/classes/`,
   jobCancelPath:    (id) => `/paper-spec/jobs/${id}/cancel/`,
+  jobSavePath:      (id) => `/paper-spec/jobs/${id}/save/`,
   jobExportPath:    (id, fmt = 'xlsx') => `/paper-spec/jobs/${id}/export/?format=${fmt}`,
   // SmartPlant 3D bulk-load exports (two separate workbooks)
   jobExportSpecPath: (id) => `/paper-spec/jobs/${id}/export-spec/`,
@@ -133,7 +134,7 @@ const specCustomizationAPI = {
    *      presign error, network blip) silently falls back to the legacy
    *      multipart upload below — UX stays identical.
    */
-  async upload({ file, projectId, title, documentNumber, engineerName, userApiKey, userAiProvider, userAiModel, onUploadProgress } = {}) {
+  async upload({ file, projectId, autoProject = false, title, documentNumber, engineerName, userApiKey, userAiProvider, userAiModel, onUploadProgress } = {}) {
     // ── Path A: direct-to-S3 (presigned) ─────────────────────────────
     const wantsPresign =
       SPEC_API_CONFIG.presignedUpload.enabled &&
@@ -142,7 +143,7 @@ const specCustomizationAPI = {
     if (wantsPresign) {
       try {
         const presigned = await this._tryPresignedUpload({
-          file, projectId, title, documentNumber, engineerName, userApiKey, userAiProvider, userAiModel, onUploadProgress,
+          file, projectId, autoProject, title, documentNumber, engineerName, userApiKey, userAiProvider, userAiModel, onUploadProgress,
         });
         if (presigned) return presigned;
         // presigned === null → backend signalled `enabled: false`; fall through.
@@ -157,6 +158,7 @@ const specCustomizationAPI = {
     const fd = new FormData();
     fd.append(SPEC_API_CONFIG.fileFieldName, file);
     if (projectId)         fd.append('project_id', projectId);
+    if (autoProject)       fd.append('auto_project', '1');
     if (title)             fd.append('title', title);
     if (documentNumber)    fd.append('document_number', documentNumber);
     if (engineerName)      fd.append('engineer_name', engineerName);         // BYOK attribution
@@ -182,7 +184,7 @@ const specCustomizationAPI = {
    * explicitly says the feature is unavailable (so the caller knows to fall
    * back rather than retry).
    */
-  async _tryPresignedUpload({ file, projectId, title, documentNumber, engineerName, userApiKey, userAiProvider, userAiModel, onUploadProgress }) {
+  async _tryPresignedUpload({ file, projectId, autoProject, title, documentNumber, engineerName, userApiKey, userAiProvider, userAiModel, onUploadProgress }) {
     // Step 1 — ask backend for a presigned PUT URL.
     const presignResp = await apiClient.post(
       path(SPEC_API_CONFIG.uploadPresignPath),
@@ -215,6 +217,7 @@ const specCustomizationAPI = {
         s3_key:               presign.s3_key,
         filename:             file.name,
         project_id:           projectId || null,
+        auto_project:         autoProject,
         title:                title || '',
         document_number:      documentNumber || '',
         engineer_name:        engineerName || '',             // BYOK attribution
@@ -244,6 +247,16 @@ const specCustomizationAPI = {
 
   async cancelJob(jobId) {
     const { data } = await apiClient.post(path(SPEC_API_CONFIG.jobCancelPath(jobId)));
+    return data;
+  },
+
+  async saveJob(jobId) {
+    const { data } = await apiClient.post(path(SPEC_API_CONFIG.jobSavePath(jobId)));
+    return data;
+  },
+
+  async listProjects() {
+    const { data } = await apiClient.get('/spec-customization/projects/');
     return data;
   },
 
