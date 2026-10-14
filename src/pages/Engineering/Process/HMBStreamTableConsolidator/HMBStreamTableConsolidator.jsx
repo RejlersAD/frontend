@@ -22,7 +22,12 @@ import apiClient from "../../../../services/api.service";
 import ProjectFormModal from "../../../../components/ProjectOrganizer/ProjectFormModal";
 import { PROJECT_ORGANIZER_CONFIG } from "../../../../config/projectOrganizer.config";
 import { createProject as createOrganizerProject } from "../../../../services/projectOrganizerService";
-import { buildComparison, buildStreamMaxima, formatValue, rowVaries } from "./compare.ts";
+import {
+  buildComparison,
+  buildGoverningCaseColumns,
+  formatValue,
+  rowVaries,
+} from "./compare.ts";
 import { useCases } from "./useCases";
 import useRadaiChatPage from "../../../../hooks/useRadaiChatPage";
 import "./HMBStreamTableConsolidator.css";
@@ -118,17 +123,17 @@ const MAX_RATE_COLUMNS = [
   {
     kind: "liquid",
     label: "Max Liquid",
-    hint: "Highest Liquid Rate among all selected Comparison Cases",
+    hint: "Values copied from the case with the highest Light Liquid Act Flow for this stream",
   },
   {
     kind: "gas",
     label: "Max Gas",
-    hint: "Highest Gas Rate among all selected Comparison Cases",
+    hint: "Values copied from the case with the highest Std Ideal Gas Vol Flow (or Standard Gas Flow) for this stream",
   },
   {
     kind: "water",
     label: "Max Water",
-    hint: "Highest Water Rate among all selected Comparison Cases",
+    hint: "Values copied from the case with the highest Heavy Liquid Flow for this stream",
   },
 ];
 
@@ -464,7 +469,7 @@ function ComparisonView({ cases }) {
   const scrollRef = useRef(null);
   const sentinelRef = useRef(null);
   const comparison = useMemo(() => buildComparison(cases), [cases]);
-  const streamMaxima = useMemo(() => buildStreamMaxima(cases), [cases]);
+  const governingColumns = useMemo(() => buildGoverningCaseColumns(cases), [cases]);
   const caseIds = useMemo(() => cases.map((item) => item.id), [cases]);
   const propertyNames = useMemo(
     () =>
@@ -605,11 +610,7 @@ function ComparisonView({ cases }) {
                 </th>
               ))}
               {MAX_RATE_COLUMNS.map((column) => (
-                <th
-                  key={column.kind}
-                  className="hmbc-max-col"
-                  title={column.hint}
-                >
+                <th key={column.kind} className="hmbc-max-col" title={column.hint}>
                   {column.label}
                 </th>
               ))}
@@ -650,22 +651,19 @@ function ComparisonView({ cases }) {
                       </td>
                     ))}
                     {MAX_RATE_COLUMNS.map((column) => {
-                      const maximum = streamMaxima.get(row.streamName)?.[
+                      const governing = governingColumns.get(row.streamName)?.[
                         column.kind
+                      ];
+                      const value = governing?.values[
+                        row.propertyName.trim().toLowerCase()
                       ];
                       return (
                         <td
                           key={column.kind}
-                          className={`hmbc-max-cell${maximum?.value == null ? " is-missing" : ""}`}
-                          title={
-                            maximum?.unit
-                              ? `${column.hint} — ${maximum.unit}`
-                              : column.hint
-                          }
+                          className={`hmbc-max-cell${value == null ? " is-missing" : ""}`}
+                          title={column.hint}
                         >
-                          {maximum?.value == null
-                            ? "—"
-                            : formatValue(maximum.value)}
+                          {value == null ? "—" : formatValue(value)}
                         </td>
                       );
                     })}
@@ -701,8 +699,8 @@ function ComparisonView({ cases }) {
           <i className="is-missing">—</i>Property absent in this case
         </span>
         <span>
-          <i className="is-max">MAX</i>Max Liquid / Gas / Water — highest rate
-          across cases for this stream
+          <i className="is-max">MAX</i>Max Liquid / Gas / Water — complete copy
+          of the governing case column for this stream
         </span>
       </div>
     </section>
