@@ -67,6 +67,25 @@ export const LEGEND_SECTIONS = [
   { id: 'electrical', label: 'Electrical' },
 ]
 
+// SOFT-CODED: discipline grouping for the Legend Manager, aligned with the
+// Engineering sidebar numbering (1.1 Process … 1.7 Digitization, 1.8 Legend
+// Manager). Each discipline lists the legend section IDs it owns — section
+// IDs themselves are unchanged so all backend data stays compatible.
+export const LEGEND_DISCIPLINES = [
+  { id: 'process',         number: '1.1', label: 'Process',         sections: ['line_list', 'equipment_list', 'scope_symbols', 'limit_line', 'drawing_cont', 'miscellaneous'] },
+  { id: 'piping',          number: '1.2', label: 'Piping',          sections: ['piping', 'valve', 'pipe_connection', 'pipe_end', 'special_piping', 'other_specialties'] },
+  { id: 'instrumentation', number: '1.3', label: 'Instrumentation', sections: ['instrument_index', 'instrument_function', 'instrument_signal', 'instrument_typical_letter', 'general_instrument', 'actuator_symbols', 'flow_detector', 'control_valve_regulator'] },
+  { id: 'electrical',      number: '1.4', label: 'Electrical',      sections: ['electrical'] },
+  { id: 'civil',           number: '1.5', label: 'Civil',           sections: [] },
+  { id: 'mechanical',      number: '1.6', label: 'Mechanical',      sections: ['equipment_symbols'] },
+  { id: 'digitization',    number: '1.7', label: 'Digitization',    sections: [] },
+]
+
+// Section ID → discipline lookup (derived)
+export const LEGEND_SECTION_DISCIPLINE = Object.fromEntries(
+  LEGEND_DISCIPLINES.flatMap(d => d.sections.map(s => [s, d.id]))
+)
+
 // Extraction modes
 export const MODE_OCR = 'ocr'
 export const MODE_VISION = 'vision'
