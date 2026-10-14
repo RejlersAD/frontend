@@ -11,6 +11,7 @@ import {
 import {
   listLegends, createLegend, updateLegend, deleteLegend,
   activateLegend, getLegendDefaultTemplate, exportLegendWorkbook, LEGEND_SECTIONS,
+  LEGEND_DISCIPLINES, LEGEND_SECTION_DISCIPLINE,
 } from '../../../services/pidCheckerV2API'
 import {
   LEGEND_SECTION_RULES, getSectionRules,
@@ -60,6 +61,11 @@ export default function LegendSheetsCanvas({ projectId = null, projectName = '',
   const initialSection = params.get('section') || DEFAULT_SECTION
 
   const [activeSection, setActiveSection] = useState(initialSection)
+  // Discipline tab (1.1 Process … 1.7 Digitization) — filters the section rail.
+  // Derived from the active section; 'all' shows every section (legacy view).
+  const [activeDiscipline, setActiveDiscipline] = useState(
+    () => LEGEND_SECTION_DISCIPLINE[initialSection] || 'all'
+  )
   useEffect(() => {
     if (importedSection) setActiveSection(importedSection)
   }, [importedSection, importVersion])
@@ -132,10 +138,12 @@ export default function LegendSheetsCanvas({ projectId = null, projectName = '',
       }))
       const counts = {}
       const active = {}
+      const activeCounts = {}
       results.forEach(({ id, rows }) => {
         counts[id] = rows.length
-        const a = rows.find(r => r.is_active) || null
-        active[id] = a ? { legend_id: a.legend_id, name: a.name } : null
+        const actives = rows.filter(r => r.is_active)
+        activeCounts[id] = actives.length
+        active[id] = actives[0] ? { legend_id: actives[0].legend_id, name: actives[0].name } : null
       })
       // Diff before setState — avoids a re-render (and the resulting layout
       // flicker / scroll jump) on every background poll when nothing changed.
@@ -145,11 +153,15 @@ export default function LegendSheetsCanvas({ projectId = null, projectName = '',
       })
       setSectionActive(prev => {
         const same = LEGEND_SECTIONS.every(s =>
-          (prev[s.id]?.legend_id || null) === (active[s.id]?.legend_id || null))
+          (prev[s.id]?.legend_id || null) === (active[s.id]?.legend_id || null)
+          && (prev[s.id]?.__count || 0) === activeCounts[s.id])
         if (same) return prev
         // Map back to full legend objects only when the active set changed.
         const next = {}
-        results.forEach(({ id, rows }) => { next[id] = rows.find(r => r.is_active) || null })
+        results.forEach(({ id, rows }) => {
+          const first = rows.find(r => r.is_active) || null
+          next[id] = first ? { ...first, __count: activeCounts[id] } : null
+        })
         return next
       })
       setLastSync(new Date())
@@ -277,15 +289,15 @@ export default function LegendSheetsCanvas({ projectId = null, projectName = '',
 
   const onActivate = useCallback(async (legendId) => {
     try {
-      const activated = await activateLegend(legendId)
-      toast.success(`Activated: ${activated.name}`)
-      setLegends(prev => prev.map(l => ({
-        ...l,
-        is_active: l.legend_id === activated.legend_id ? true : (l.section === activated.section ? false : l.is_active),
-      })))
-      emitLegendSync(LEGEND_SYNC_ACTIONS.ACTIVATED, { legend_id: activated.legend_id, section: activated.section })
+      const result = await activateLegend(legendId)
+      toast.success(result.is_active ? `Activated: ${result.name}` : `Deactivated: ${result.name}`)
+      // Multi-active: only this legend's flag flips — siblings keep theirs.
+      setLegends(prev => prev.map(l => (
+        l.legend_id === result.legend_id ? { ...l, is_active: result.is_active } : l
+      )))
+      emitLegendSync(LEGEND_SYNC_ACTIONS.ACTIVATED, { legend_id: result.legend_id, section: result.section })
       loadAllCounts()
-    } catch { toast.error('Failed to activate') }
+    } catch { toast.error('Failed to update activation') }
   }, [loadAllCounts])
 
   const onDelete = useCallback(async (legendId) => {
@@ -618,13 +630,17 @@ export default function LegendSheetsCanvas({ projectId = null, projectName = '',
         </div>
       </div>
 
-      {/* All-sections overview — always in sync with backend + other tabs */}
+      {/* All-sections overview — always in sync with backend + other tabs.
+          Filtered by the active discipline tab (all = legacy full grid). */}
+      {(() => {
+        const visibleRules = LEGEND_SECTION_RULES.filter(s => activeDiscipline === 'all' || LEGEND_SECTION_DISCIPLINE[s.id] === activeDiscipline)
+        return (
       <div style={{
-        display: 'grid', gridTemplateColumns: `repeat(${LEGEND_SECTION_RULES.length}, 1fr)`,
+        display: 'grid', gridTemplateColumns: `repeat(${Math.max(visibleRules.length, 1)}, 1fr)`,
         gap: 12, padding: '12px 20px', background: THEME_BG_SOFT,
         borderBottom: `1px solid ${THEME_BORDER}`,
       }}>
-        {LEGEND_SECTION_RULES.map(s => {
+        {visibleRules.map(s => {
           const count = sectionCounts[s.id] ?? 0
           const active = sectionActive[s.id]
           const isCurrent = s.id === activeSection
@@ -654,12 +670,60 @@ export default function LegendSheetsCanvas({ projectId = null, projectName = '',
               <div style={{ fontSize: 11, color: THEME_TEXT, marginTop: 2 }}>
                 <span style={{ color: THEME_MUTED }}>Active:&nbsp;</span>
                 {active
-                  ? <b style={{ color: '#047857' }}>{active.name}</b>
+                  ? <b style={{ color: '#047857' }}>{active.name}{(active.__count || 0) > 1 ? ` (+${active.__count - 1} more)` : ''}</b>
                   : <span style={{ color: '#b45309', fontWeight: 600 }}>none (using built-in default)</span>}
               </div>
             </button>
           )
         })}
+      </div>
+        )
+      })()}
+
+      {/* Discipline tabs — aligned with Engineering sidebar 1.1–1.7 */}
+      <div style={{ background: '#fff', borderBottom: `1px solid ${THEME_BORDER}` }}>
+        <div className="legend-canvas-tabrail" style={{
+          display: 'flex', gap: 6, padding: '10px 20px 0',
+          overflowX: 'auto',
+        }}>
+          {[{ id: 'all', number: '', label: 'All Disciplines' }, ...LEGEND_DISCIPLINES].map(d => {
+            const on = activeDiscipline === d.id
+            return (
+              <button
+                key={d.id}
+                type="button"
+                onClick={() => {
+                  setActiveDiscipline(d.id)
+                  if (d.id !== 'all' && !d.sections.includes(activeSection) && d.sections.length) {
+                    setActiveSection(d.sections[0])
+                  }
+                }}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '8px 14px', flex: '0 0 auto', whiteSpace: 'nowrap',
+                  border: 'none', borderRadius: '10px 10px 0 0',
+                  borderBottom: on ? `3px solid ${THEME_PRIMARY}` : '3px solid transparent',
+                  background: on ? THEME_BG_SOFT : 'transparent',
+                  color: on ? THEME_PRIMARY : THEME_MUTED,
+                  fontWeight: 700, fontSize: 12, cursor: 'pointer',
+                  transition: 'color 0.15s ease, background 0.15s ease',
+                }}
+              >
+                {d.number && (
+                  <span style={{
+                    fontSize: 10, fontWeight: 800, padding: '1px 6px', borderRadius: 6,
+                    background: on ? `${THEME_PRIMARY}18` : THEME_BG_SOFT,
+                    color: on ? THEME_PRIMARY : THEME_MUTED,
+                  }}>{d.number}</span>
+                )}
+                {d.label}
+                {d.id !== 'all' && (
+                  <span style={{ fontSize: 10, color: THEME_MUTED }}>({d.sections.length})</span>
+                )}
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* Section tabs — horizontally-scrollable pill rail. Fixed single-line
@@ -672,7 +736,7 @@ export default function LegendSheetsCanvas({ projectId = null, projectName = '',
           display: 'flex', gap: 8, padding: '12px 20px',
           overflowX: 'auto', scrollSnapType: 'x proximity',
         }}>
-          {LEGEND_SECTIONS.map(s => {
+          {LEGEND_SECTIONS.filter(s => activeDiscipline === 'all' || LEGEND_SECTION_DISCIPLINE[s.id] === activeDiscipline).map(s => {
             const on = s.id === activeSection
             const count = sectionCounts[s.id] ?? legends.filter(l => l.section === s.id).length
             return (
@@ -972,9 +1036,13 @@ export default function LegendSheetsCanvas({ projectId = null, projectName = '',
                 ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Saving…</>
                 : <><Save size={14} /> {selectedId ? 'Save changes' : 'Create legend'}</>}
             </button>
-            {selectedId && !selected?.is_active && (
-              <button onClick={() => onActivate(selectedId)} style={btnGreen()}>
-                <CheckCircle2 size={14} /> Activate for {LEGEND_SECTIONS.find(s => s.id === activeSection)?.label || activeSection}
+            {selectedId && (
+              <button onClick={() => onActivate(selectedId)} style={selected?.is_active ? btnGhost() : btnGreen()}
+                title={selected?.is_active
+                  ? 'Deactivate this legend (other active legends in the section stay active)'
+                  : 'Activate alongside any already-active legends — actives are merged for extraction/validation'}
+              >
+                <CheckCircle2 size={14} /> {selected?.is_active ? 'Deactivate' : 'Activate'} for {LEGEND_SECTIONS.find(s => s.id === activeSection)?.label || activeSection}
               </button>
             )}
             <button onClick={onExportExcel} disabled={excelBusy} style={btnGhost()}

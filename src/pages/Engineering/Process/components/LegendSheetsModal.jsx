@@ -470,18 +470,26 @@ export default function LegendSheetsModal({
   const onActivate = useCallback(async (legendId) => {
     try {
       const activated = await activateLegendApi(legendId)
-      toast.success(`Activated: ${activated.name}`)
-      // Update local list: only one active per section
-      setLegends(prev => prev.map(l => ({
-        ...l,
-        is_active: l.legend_id === activated.legend_id ? true : (l.section === activated.section ? false : l.is_active),
-      })))
+      const isDefaultPidApi = !legendApi?.activateLegend
+      toast.success(activated.is_active ? `Activated: ${activated.name}` : `Deactivated: ${activated.name}`)
+      if (isDefaultPidApi) {
+        // Multi-active backend (pid_checker_v2): only this legend's flag flips.
+        setLegends(prev => prev.map(l => (
+          l.legend_id === activated.legend_id ? { ...l, is_active: activated.is_active } : l
+        )))
+      } else {
+        // Legacy single-active backends (valve MTO / IO list)
+        setLegends(prev => prev.map(l => ({
+          ...l,
+          is_active: l.legend_id === activated.legend_id ? true : (l.section === activated.section ? false : l.is_active),
+        })))
+      }
       if (onActiveChange && activated.section === section) onActiveChange(activated)
       emitLegendSync(LEGEND_SYNC_ACTIONS.ACTIVATED, { legend_id: activated.legend_id, section: activated.section })
     } catch (err) {
-      toast.error('Failed to activate')
+      toast.error('Failed to update activation')
     }
-  }, [onActiveChange, section, activateLegendApi])
+  }, [onActiveChange, section, activateLegendApi, legendApi])
 
   const onDelete = useCallback(async (legendId) => {
     if (!(await radaiConfirm('Delete this legend? This cannot be undone.'))) return
