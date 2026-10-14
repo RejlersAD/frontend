@@ -1,4 +1,4 @@
-import type { CaseData, ComparisonRow } from './index.ts'
+import type { CaseData, ComparisonRow, StreamMaxima } from './index.ts'
 
 /**
  * Build the cross-case comparison matrix.
@@ -100,4 +100,98 @@ export function formatValue(v: number | string | null): string {
   const abs = Math.abs(v)
   if (abs !== 0 && (abs >= 1e6 || abs < 1e-3)) return v.toExponential(3)
   return v.toLocaleString('en-US', { maximumFractionDigits: 4 })
+}
+
+/* ------------------------------------------------------------------ */
+/* Per-stream liquid/gas/water rate maxima across all selected cases   */
+/* ------------------------------------------------------------------ */
+
+export type RateKind = 'liquid' | 'gas' | 'water'
+
+export const RATE_KINDS: RateKind[] = ['liquid', 'gas', 'water']
+
+const normalizeRateName = (name: string): string =>
+  name
+    .toLowerCase()
+    .replace(/\s*[\(\[][^\)\]]*[\)\]]/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+/**
+ * Score how well a property name represents the requested phase rate.
+ * 0 = not a rate for that phase; higher = more specific/standard naming.
+ */
+function rateMatchScore(kind: RateKind, propertyName: string): number {
+  const n = normalizeRateName(propertyName)
+  if (!/\b(flow|rate)\b/.test(n)) return 0
+  const phase =
+    kind === 'liquid'
+      ? /\b(liquid|liq)\b/.test(n)
+      : kind === 'water'
+        ? /\bwater\b/.test(n)
+        : /\b(gas|vapour|vapor)\b/.test(n)
+  if (!phase) return 0
+  if (n === `${kind} rate` || (kind === 'gas' && /^(vapour|vapor) rate$/.test(n)))
+    return 100
+  if (/\b(std|standard)\b/.test(n)) return 90
+  if (/vol(ume)? flow/.test(n)) return 80
+  if (/mass flow/.test(n)) return 60
+  if (/molar flow/.test(n)) return 40
+  return 20
+}
+
+function bestRateProperty(stream: CaseData['streams'][number], kind: RateKind) {
+  let best: { value: number | string | null; unit: string; score: number } | null = null
+  for (const p of stream.properties) {
+    const score = rateMatchScore(kind, p.name)
+    if (score === 0) continue
+    if (!best || score > best.score) best = { value: p.value, unit: p.unit, score }
+  }
+  return best
+}
+
+/**
+ * Highest liquid/gas/water rate per stream across all selected comparison
+ * cases, keyed by display stream name (same keying as comparison rows).
+ * Only included streams and finite numeric values participate.
+ */
+export function buildStreamMaxima(cases: CaseData[]): Map<string, StreamMaxima> {
+  const displayName = new Map<string, string>() // lower -> first-seen display name
+  for (const c of cases) {
+    for (const s of c.streams) {
+      if (!s.included) continue
+      const key = s.name.trim().toLowerCase()
+      if (!displayName.has(key)) displayName.set(key, s.name)
+    }
+  }
+
+  const maxima = new Map<string, StreamMaxima>()
+  for (const [key, name] of displayName) {
+    const entry: StreamMaxima = {
+      liquid: { value: null, unit: '' },
+      gas: { value: null, unit: '' },
+      water: { value: null, unit: '' },
+    }
+    for (const kind of RATE_KINDS) {
+      let maxValue: number | null = null
+      let unit = ''
+      for (const c of cases) {
+        const stream = c.streams.find(
+          (s) => s.included && s.name.trim().toLowerCase() === key,
+        )
+        if (!stream) continue
+        const match = bestRateProperty(stream, kind)
+        if (!match || typeof match.value !== 'number' || !Number.isFinite(match.value))
+          continue
+        if (maxValue === null || match.value > maxValue) {
+          maxValue = match.value
+          unit = match.unit || unit
+        }
+      }
+      entry[kind] = { value: maxValue, unit }
+    }
+    maxima.set(name, entry)
+  }
+  return maxima
 }

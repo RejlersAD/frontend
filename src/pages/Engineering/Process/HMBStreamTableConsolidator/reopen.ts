@@ -37,7 +37,17 @@ export function reopenComparisonWorkbook(buffer: ArrayBuffer, archiveName: strin
   }
 
   const header = comparisonRows[headerIndex]
-  const caseNames = header.slice(3).map(text).filter(Boolean)
+  // Workbooks exported since the stream-maxima release carry three trailing
+  // computed columns (Max Liquid/Gas/Water) that are not cases.
+  const MAX_COLUMN_LABELS = new Set(['max liquid', 'max gas', 'max water'])
+  let caseEnd = header.length
+  while (
+    caseEnd > 3 &&
+    MAX_COLUMN_LABELS.has(text(header[caseEnd - 1]).toLowerCase())
+  ) {
+    caseEnd -= 1
+  }
+  const caseNames = header.slice(3, caseEnd).map(text).filter(Boolean)
   if (!caseNames.length) {
     throw new Error('The saved Comparison sheet contains no cases to reopen.')
   }

@@ -31,3 +31,15 @@ export interface ComparisonRow {
   values: Record<string, CellValue>
   editedFlags: Record<string, boolean>
 }
+
+/** Highest liquid/gas/water rate of one stream across all selected cases */
+export interface StreamRateMaximum {
+  value: number | null
+  unit: string
+}
+
+export interface StreamMaxima {
+  liquid: StreamRateMaximum
+  gas: StreamRateMaximum
+  water: StreamRateMaximum
+}
