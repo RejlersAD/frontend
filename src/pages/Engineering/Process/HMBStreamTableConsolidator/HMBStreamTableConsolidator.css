@@ -240,6 +240,11 @@
 .hmbc-column-case i { width: 8px; height: 8px; border-radius: 50%; }
 .hmbc-stream-band th { position: relative; z-index: 5; height: 32px; padding: 5px 10px; background: #eff6ff; color: #24466f; text-align: left; font-size: var(--text-caption-size); font-weight: var(--font-semibold); letter-spacing: .04em; text-transform: uppercase; }
 .hmbc-comparison-table tbody td { text-align: right; font-variant-numeric: tabular-nums; }
+.hmbc-comparison-table th.hmbc-max-col { min-width: 96px; text-align: right; }
+.hmbc-comparison-table td.hmbc-max-cell { background: #f4f8fd; color: #24466f; font-weight: var(--font-semibold); }
+.hmbc-comparison-table td.hmbc-max-cell.is-missing { color: #9aa8b8; font-weight: var(--font-regular); }
+.hmbc-comparison-table tr.is-varying > td.hmbc-max-cell { background: #fff3c4; }
+.hmbc-legend i.is-max { width: auto; padding: 0 4px; background: #f4f8fd; color: #24466f; font-size: var(--text-micro-size); font-weight: var(--font-semibold); }
 .hmbc-comparison-table tr.is-varying > * { background: #fff7db; }
 .hmbc-comparison-table tr.is-varying > .is-sticky { background: #fff7db; }
 .hmbc-no-results { height: 120px !important; color: var(--hmbc-muted); text-align: center !important; }
