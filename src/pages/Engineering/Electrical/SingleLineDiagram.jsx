@@ -345,14 +345,14 @@ const parseTagParts = (tag) => {
 const TAB_CONFIG = {
   pid_vs_equipment: {
     source: 'equipment_list',
-    label: 'P&ID vs Equipment List',
+    label: 'P&ID vs Equipment List (Panels/Switchboards)',
     primaryLabel: 'In P&ID',
     referenceLabel: 'In Equipment List',
     exportPrefix: 'pid_vs_equipment',
   },
   pid_vs_loadlist: {
     source: 'load_list',
-    label: 'P&ID vs Load List',
+    label: 'P&ID vs Load List (Motors/Loads)',
     primaryLabel: 'In P&ID',
     referenceLabel: 'In Load List',
     exportPrefix: 'pid_vs_loadlist',
@@ -573,6 +573,7 @@ const SingleLineDiagram = () => {
   const [historySort, setHistorySort] = useState('newest'); // newest | oldest
   const [selectedJobId, setSelectedJobId] = useState(null); // which job's results are currently shown
   const [historyActionBusyId, setHistoryActionBusyId] = useState(null); // job_id with a download/delete in flight
+  const [loadingCombinedView, setLoadingCombinedView] = useState(false);
 
   const fetchHistory = async (projectId) => {
     if (!projectId) { setHistory([]); return; }
@@ -718,6 +719,23 @@ const SingleLineDiagram = () => {
   const [error, setError] = useState('');
   const [results, setResults] = useState(null); // full upload response
   const [pidFileNameUsed, setPidFileNameUsed] = useState(''); // snapshot — pidFile itself may be cleared on reset
+
+  // BUG FIX: Project Combined View used to be tracked as its own
+  // isCombinedView useState, set/reset by hand at every setResults(...)
+  // call site. Two async handlers (the upload-poll-completion callback
+  // and handleViewCombinedResults) can resolve out of order — e.g. the
+  // user opens Combined Results, then quickly clicks "View Results" on
+  // a history row before the combined fetch resolves; whichever request
+  // wins the race last would clobber the OTHER's isCombinedView value,
+  // leaving it permanently (and invisibly) stuck true even though
+  // `results` now held a normal single-job payload — which is exactly
+  // what disabled the Export button (disabled={... || isCombinedView})
+  // on an ordinary analysis, with no way to recover short of a full
+  // page reload. Derived from `results` itself instead, so it can never
+  // desync: ProjectCombinedResultsView's response always has project_id
+  // and never job_id; every single-job response (JobResultsView) always
+  // has job_id and never project_id.
+  const isCombinedView = Boolean(results?.project_id && !results?.job_id);
 
   // Real progress — polled from GET /status/<job_id>/ every
   // POLL_INTERVAL_MS while a job is 'processing' (backend now runs the
@@ -1000,6 +1018,29 @@ const SingleLineDiagram = () => {
     }
   };
 
+  // Project Combined View — see ProjectCombinedResultsView's own
+  // docstring. Reuses the exact same `results` shape/state as a single
+  // job (so the existing tab-rendering logic needs no branching), just
+  // sourced from a different, project-scoped, read-only endpoint.
+  const handleViewCombinedResults = async () => {
+    if (!selectedProject) return;
+    setError('');
+    setSelectedJobId(null);
+    setLoadingCombinedView(true);
+    try {
+      const { data } = await axios.get(
+        `${API_PREFIX}/projects/${selectedProject.project_id}/combined-results/`,
+        { headers: authHeader() },
+      );
+      setResults(data);
+      setUploadSectionOpen(false);
+    } catch (err) {
+      setError(err?.response?.data?.error || 'Failed to load combined results.');
+    } finally {
+      setLoadingCombinedView(false);
+    }
+  };
+
   const handleDeleteHistoryJob = async (jobId) => {
     setHistoryActionBusyId(jobId);
     try {
@@ -1127,6 +1168,34 @@ const SingleLineDiagram = () => {
       setError('Failed to export Excel.');
     } finally {
       setDownloadingTab(null);
+    }
+  };
+
+  // "Download Annotated PDF" — only ever available for a single job
+  // (results.job_id), never Combined Results (no single PDF to overlay
+  // boxes on). Backend's AnnotatedPDFView (apps.electrical_comparison.
+  // views) requires job.pid_file, which the upload flow now persists
+  // permanently alongside the temp copy tasks.py cleans up after
+  // processing — results.has_pid_file (from JobResultsView) is what
+  // gates the button itself, below.
+  const [downloadingAnnotatedPdf, setDownloadingAnnotatedPdf] = useState(false);
+  const downloadAnnotatedPdf = async () => {
+    if (!results?.job_id) return;
+    setDownloadingAnnotatedPdf(true);
+    try {
+      const response = await axios.get(`${API_PREFIX}/jobs/${results.job_id}/annotated-pdf/`, {
+        headers: authHeader(), responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `annotated_SLD_${results.job_id}.pdf`;
+      link.click();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      setError('Failed to download annotated PDF.');
+    } finally {
+      setDownloadingAnnotatedPdf(false);
     }
   };
 
@@ -1335,7 +1404,8 @@ const SingleLineDiagram = () => {
                     <div className="absolute right-0 top-full mt-2 w-56 rounded-lg border shadow-xl z-50 overflow-hidden" style={{ background: '#fff', borderColor: C.border }}>
                       <button
                         type="button"
-                        disabled={!results || !activeTab}
+                        disabled={!results || !activeTab || isCombinedView}
+                        title={isCombinedView ? 'Export is not available for the combined project view — open an individual analysis to export.' : undefined}
                         onClick={() => { setActionsOpen(false); if (activeTab) downloadExcel(activeTab); }}
                         className="w-full text-left px-4 py-2.5 text-sm font-medium flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50"
                         style={{ color: C.textPrimary }}
@@ -1839,10 +1909,23 @@ const SingleLineDiagram = () => {
 
             {/* ───────────────────────── PREVIOUS ANALYSES (history) ───────────────────────── */}
             <div className="rounded-lg border mb-6" style={{ borderColor: C.border }}>
-              <div className="px-5 py-3.5 border-b" style={{ borderColor: C.border }}>
+              <div className="px-5 py-3.5 border-b flex items-center justify-between gap-3" style={{ borderColor: C.border }}>
                 <span className="text-sm font-bold" style={{ color: C.textPrimary }}>
                   Previous Analyses ({filteredHistory.length})
                 </span>
+                {history.filter((h) => h.status === 'completed').length >= 2 && (
+                  <button
+                    type="button"
+                    onClick={handleViewCombinedResults}
+                    disabled={loadingCombinedView}
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
+                    style={{ background: C.primarySoft, color: C.primary }}
+                    title="Merge results across every completed SLD upload in this project"
+                  >
+                    {loadingCombinedView ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <BarChart3 className="w-3.5 h-3.5" />}
+                    Combined Results
+                  </button>
+                )}
               </div>
 
               <div className="p-4 flex flex-wrap items-center gap-2.5 border-b" style={{ borderColor: C.border }}>
@@ -1919,6 +2002,21 @@ const SingleLineDiagram = () => {
             {results && (
               /* ───────────────────────── RESULTS ───────────────────────── */
               <div className="space-y-5">
+                {isCombinedView && (
+                  <div
+                    className="rounded-lg border px-4 py-3 text-sm font-semibold flex flex-wrap items-center gap-2"
+                    style={{ background: C.primarySoft, borderColor: C.border, color: C.primary }}
+                  >
+                    <span>
+                      📊 Combined results from {(results.sld_files || []).length} SLD drawing{(results.sld_files || []).length === 1 ? '' : 's'}
+                    </span>
+                    {(results.sld_files || []).length > 0 && (
+                      <span className="font-normal" style={{ color: C.textSecondary }}>
+                        {results.sld_files.join(' · ')}
+                      </span>
+                    )}
+                  </div>
+                )}
                 {/* ── STATS BAR ──
                     'pid_vs_equipment'/'pid_vs_loadlist' get a 5th card
                     (results.pid_tags_found — the real, backend-derived
@@ -1929,7 +2027,11 @@ const SingleLineDiagram = () => {
                     these must never share one card/label again. ── */}
                 {(activeTab === 'pid_vs_equipment' || activeTab === 'pid_vs_loadlist') ? (
                   <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                    <StatCard label="Tags Found in P&ID" value={results.pid_tags_found || 0} tone="blue" />
+                    <StatCard
+                      label={activeTab === 'pid_vs_equipment' ? 'P&ID Panel Tags Found' : 'P&ID Motor Tags Found'}
+                      value={results.pid_tags_found || 0}
+                      tone="blue"
+                    />
                     <StatCard label={statCardLabels.matched} value={tabStats.matched} tone="green" icon={<CheckCircle className="w-4 h-4" style={{ color: C.success }} />} />
                     <StatCard label={statCardLabels.missing} value={tabStats.missing} tone="amber" icon={<AlertTriangle className="w-4 h-4" style={{ color: C.warning }} />} />
                     <StatCard label={statCardLabels.extra} value={tabStats.extra} tone="red" icon={<X className="w-4 h-4" style={{ color: C.error }} />} />
@@ -2105,14 +2207,35 @@ const SingleLineDiagram = () => {
 
                       <button
                         onClick={() => downloadExcel(activeTab)}
-                        disabled={downloadingTab === activeTab}
+                        disabled={downloadingTab === activeTab || isCombinedView}
+                        title={isCombinedView ? 'Export is not available for the combined project view — open an individual analysis to export.' : undefined}
                         className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors disabled:opacity-50 text-sm font-semibold text-white ml-auto"
                         style={{ background: C.success }}
                       >
                         {downloadingTab === activeTab ? <Loader className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
                         Export
                       </button>
+
+                      {!isCombinedView && results?.has_pid_file && results?.status === 'completed' && (
+                        <button
+                          onClick={downloadAnnotatedPdf}
+                          disabled={downloadingAnnotatedPdf}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors disabled:opacity-50 text-sm font-semibold text-white"
+                          style={{ background: C.primary }}
+                        >
+                          {downloadingAnnotatedPdf ? <Loader className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+                          📄 Download Annotated PDF
+                        </button>
+                      )}
                     </div>
+
+                    {(activeTab === 'pid_vs_equipment' || activeTab === 'pid_vs_loadlist') && (
+                      <p className="px-4 pt-3 text-xs" style={{ color: C.textSecondary }}>
+                        {activeTab === 'pid_vs_equipment'
+                          ? 'Showing panel & switchboard tags only (U, SB, TF, GEN, JB, BD, AB, TSG...)'
+                          : 'Showing motor & load tags only (PM, NPM, RM, MTR)'}
+                      </p>
+                    )}
 
                     <div className="flex">
                       <div className="flex-1 min-w-0">
