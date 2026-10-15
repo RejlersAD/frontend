@@ -468,6 +468,153 @@ const Badge = ({ style: st }) => (
   </span>
 );
 
+// One rendered P&ID/SLD page with the comparison-result tag boxes drawn
+// over it. The backend sends the page PNG + boxes in image-pixel
+// coordinates (see pdf_annotator.get_annotated_pages); this draws the
+// image at canvas resolution and the boxes on top, scaled to whatever
+// width the container gives it.
+const AnnotatedPageCanvas = ({ page, statusFilter }) => {
+  const canvasRef = useRef(null);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container || !page) return;
+
+    const img = new Image();
+    img.src = page.image;
+    img.onload = () => {
+      const displayWidth = container.clientWidth;
+      const scale = displayWidth / page.width;
+      const displayHeight = Math.round(page.height * scale);
+      canvas.width = displayWidth;
+      canvas.height = displayHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, displayWidth, displayHeight);
+
+      const visibleBoxes = (page.boxes || []).filter((b) => statusFilter[b.status]);
+      for (const b of visibleBoxes) {
+        const x = b.x0 * scale;
+        const y = b.y0 * scale;
+        const w = (b.x1 - b.x0) * scale;
+        const h = (b.y1 - b.y0) * scale;
+        ctx.strokeStyle = b.color;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, w, h);
+        // Small status label above the box, same as the PDF annotator's
+        const label = `[${b.status.toUpperCase()}]`;
+        ctx.font = 'bold 10px sans-serif';
+        const labelWidth = ctx.measureText(label).width;
+        const labelY = Math.max(y - 3, 10);
+        ctx.fillStyle = 'rgba(255,255,255,0.85)';
+        ctx.fillRect(x, labelY - 10, labelWidth + 4, 12);
+        ctx.fillStyle = b.color;
+        ctx.fillText(label, x + 2, labelY);
+      }
+    };
+  }, [page, statusFilter]);
+
+  const boxCount = (page.boxes || []).filter((b) => statusFilter[b.status]).length;
+  return (
+    <div className="border rounded-lg overflow-hidden" style={{ borderColor: '#e5e7eb' }}>
+      <div className="px-3 py-2 text-xs font-semibold flex items-center justify-between"
+           style={{ background: '#f9fafb', color: '#374151' }}>
+        <span>Page {page.page}</span>
+        <span>{boxCount} highlighted tag(s)</span>
+      </div>
+      <div ref={containerRef} className="w-full overflow-auto" style={{ maxHeight: '70vh' }}>
+        <canvas ref={canvasRef} className="block w-full" style={{ height: 'auto' }} />
+      </div>
+    </div>
+  );
+};
+
+// One rendered Equipment List / Load List Excel document as a canvas
+// table — each row highlighted by its comparison status (red = missing
+// from P&ID, green = matched, yellow = extra). The backend sends the
+// sheet as a grid (excel_parser.extract_table_grid); row rectangles
+// are the "marked coordinates" equivalent for a spreadsheet.
+const TABLE_STATUS_COLORS = {
+  matched: { stroke: '#16a34a', fill: 'rgba(22,163,74,0.10)' },
+  missing: { stroke: '#dc2626', fill: 'rgba(220,38,38,0.12)' },
+  extra: { stroke: '#ca8a04', fill: 'rgba(202,138,4,0.12)' },
+};
+
+const DocumentTableCanvas = ({ grid, statusFilter }) => {
+  const canvasRef = useRef(null);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container || !grid) return;
+
+    const ROW_H = 24;
+    const HEADER_H = 28;
+    const PAD = 8;
+    const width = container.clientWidth;
+    const colCount = Math.max(grid.headers.length, 1);
+    const colWidth = Math.max((width - PAD * 2) / colCount, 60);
+    const rows = grid.rows || [];
+    const height = HEADER_H + rows.length * ROW_H + PAD * 2;
+
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+
+    // Header
+    ctx.fillStyle = '#f3f4f6';
+    ctx.fillRect(0, 0, width, HEADER_H);
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillStyle = '#374151';
+    grid.headers.forEach((h, i) => {
+      ctx.fillText(String(h).slice(0, 24), PAD + i * colWidth + 4, HEADER_H / 2 + 4, colWidth - 8);
+    });
+
+    // Rows
+    ctx.font = '10px sans-serif';
+    rows.forEach((row, ri) => {
+      const y = HEADER_H + ri * ROW_H;
+      const colors = row.status && statusFilter[row.status] ? TABLE_STATUS_COLORS[row.status] : null;
+      if (colors) {
+        ctx.fillStyle = colors.fill;
+        ctx.fillRect(0, y, width, ROW_H);
+        ctx.strokeStyle = colors.stroke;
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(1, y + 1, width - 2, ROW_H - 2);
+        // Status chip on the right edge so the highlight says WHY
+        const label = `[${row.status.toUpperCase()}]`;
+        ctx.font = 'bold 9px sans-serif';
+        ctx.fillStyle = colors.stroke;
+        ctx.fillText(label, width - PAD - ctx.measureText(label).width - 4, y + ROW_H / 2 + 3);
+        ctx.font = '10px sans-serif';
+      }
+      ctx.strokeStyle = '#e5e7eb';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(0, y, width, ROW_H);
+      ctx.fillStyle = '#111827';
+      row.cells.forEach((cell, ci) => {
+        ctx.fillText(String(cell).slice(0, 28), PAD + ci * colWidth + 4, y + ROW_H / 2 + 3, colWidth - 8);
+      });
+    });
+  }, [grid, statusFilter]);
+
+  const highlighted = (grid.rows || []).filter((r) => r.status && statusFilter[r.status]).length;
+  return (
+    <div className="border rounded-lg overflow-hidden" style={{ borderColor: '#e5e7eb' }}>
+      <div className="px-3 py-2 text-xs font-semibold flex items-center justify-between"
+           style={{ background: '#f9fafb', color: '#374151' }}>
+        <span>{(grid.rows || []).length} row(s)</span>
+        <span>{highlighted} highlighted row(s)</span>
+      </div>
+      <div ref={containerRef} className="w-full overflow-auto" style={{ maxHeight: '70vh' }}>
+        <canvas ref={canvasRef} className="block w-full" style={{ height: 'auto' }} />
+      </div>
+    </div>
+  );
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Main page
 // ─────────────────────────────────────────────────────────────────────────────
@@ -574,6 +721,12 @@ const SingleLineDiagram = () => {
   const [selectedJobId, setSelectedJobId] = useState(null); // which job's results are currently shown
   const [historyActionBusyId, setHistoryActionBusyId] = useState(null); // job_id with a download/delete in flight
   const [loadingCombinedView, setLoadingCombinedView] = useState(false);
+  // Project Comment History — per-tag discrepancy lifecycle across all
+  // SLD uploads (ProjectCommentsView): which comments are still open and
+  // which were killed by a later SLD covering the tag.
+  const [commentHistory, setCommentHistory] = useState(null);
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [showComments, setShowComments] = useState(false);
 
   const fetchHistory = async (projectId) => {
     if (!projectId) { setHistory([]); return; }
@@ -1041,8 +1194,31 @@ const SingleLineDiagram = () => {
     }
   };
 
-  const handleDeleteHistoryJob = async (jobId) => {
-    setHistoryActionBusyId(jobId);
+  // Project Comment History — see ProjectCommentsView's own docstring.
+  const handleViewComments = async () => {
+    if (!selectedProject) return;
+    if (showComments) {
+      setShowComments(false);
+      return;
+    }
+    setShowComments(true);
+    if (commentHistory) return; // cached — just re-show
+    setLoadingComments(true);
+    try {
+      const { data } = await axios.get(
+        `${API_PREFIX}/projects/${selectedProject.project_id}/comments/`,
+        { headers: authHeader() },
+      );
+      setCommentHistory(data);
+    } catch (err) {
+      setError(err?.response?.data?.error || 'Failed to load comment history.');
+      setShowComments(false);
+    } finally {
+      setLoadingComments(false);
+    }
+  };
+
+  const handleDeleteHistoryJob = async (jobId) => {    setHistoryActionBusyId(jobId);
     try {
       await axios.delete(`${API_PREFIX}/results/${jobId}/`, { headers: authHeader() });
       setHistory((prev) => prev.filter((h) => h.job_id !== jobId));
@@ -1171,31 +1347,39 @@ const SingleLineDiagram = () => {
     }
   };
 
-  // "Download Annotated PDF" — only ever available for a single job
-  // (results.job_id), never Combined Results (no single PDF to overlay
-  // boxes on). Backend's AnnotatedPDFView (apps.electrical_comparison.
-  // views) requires job.pid_file, which the upload flow now persists
-  // permanently alongside the temp copy tasks.py cleans up after
-  // processing — results.has_pid_file (from JobResultsView) is what
-  // gates the button itself, below.
-  const [downloadingAnnotatedPdf, setDownloadingAnnotatedPdf] = useState(false);
-  const downloadAnnotatedPdf = async () => {
+  // "View on Drawing" canvas viewer — replaces the old "Download
+  // Annotated PDF" button. Fetches each P&ID/SLD page as a PNG plus the
+  // comparison-result tag boxes (image-pixel coordinates) from the
+  // backend's AnnotatedPagesView (apps.electrical_comparison.views),
+  // then draws color-coded highlights on a <canvas> per page — same
+  // matched=green/missing=red/extra=yellow semantics as the old
+  // annotated PDF, but interactive (status toggles) and nothing to
+  // download. Only ever available for a single job (results.job_id),
+  // never Combined Results; results.has_pid_file gates the button.
+  const [annotatedPages, setAnnotatedPages] = useState(null);
+  const [loadingAnnotatedPages, setLoadingAnnotatedPages] = useState(false);
+  const [showCanvasViewer, setShowCanvasViewer] = useState(false);
+  const [canvasStatusFilter, setCanvasStatusFilter] = useState({ matched: true, missing: true, extra: true, located: true });
+  const toggleCanvasViewer = async () => {
     if (!results?.job_id) return;
-    setDownloadingAnnotatedPdf(true);
+    if (showCanvasViewer) {
+      setShowCanvasViewer(false);
+      return;
+    }
+    setShowCanvasViewer(true);
+    if (annotatedPages) return; // already fetched — just re-show
+    setLoadingAnnotatedPages(true);
     try {
-      const response = await axios.get(`${API_PREFIX}/jobs/${results.job_id}/annotated-pdf/`, {
-        headers: authHeader(), responseType: 'blob',
+      const { data } = await axios.get(`${API_PREFIX}/jobs/${results.job_id}/annotated-pages/`, {
+        headers: authHeader(),
+        timeout: 300000, // rendering every page server-side can take a while on big drawings
       });
-      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `annotated_SLD_${results.job_id}.pdf`;
-      link.click();
-      window.URL.revokeObjectURL(url);
+      setAnnotatedPages(data.documents || {});
     } catch {
-      setError('Failed to download annotated PDF.');
+      setError('Failed to load the annotated drawing viewer.');
+      setShowCanvasViewer(false);
     } finally {
-      setDownloadingAnnotatedPdf(false);
+      setLoadingAnnotatedPages(false);
     }
   };
 
@@ -1907,6 +2091,66 @@ const SingleLineDiagram = () => {
               </div>
             )}
 
+            {/* ───────────────────────── COMMENT HISTORY (per-tag lifecycle across SLD uploads) ───────────────────────── */}
+            {showComments && commentHistory && (
+              <div className="rounded-lg border mb-6" style={{ borderColor: C.border }}>
+                <div className="px-5 py-3.5 border-b flex items-center justify-between gap-3" style={{ borderColor: C.border }}>
+                  <span className="text-sm font-bold" style={{ color: C.textPrimary }}>
+                    Comment History — {commentHistory.summary.open} open · {commentHistory.summary.resolved} killed · {commentHistory.summary.jobs_analysed} SLD(s) analysed
+                  </span>
+                </div>
+                <div className="p-4 space-y-4">
+                  {commentHistory.summary.total_comments === 0 && (
+                    <p className="text-sm" style={{ color: C.textSecondary }}>
+                      No discrepancy comments yet — every comparison so far came back clean.
+                    </p>
+                  )}
+
+                  {commentHistory.open_comments.length > 0 && (
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#dc2626' }}>
+                        🔴 Open comments ({commentHistory.open_comments.length})
+                      </p>
+                      <div className="space-y-2">
+                        {commentHistory.open_comments.map((c, i) => (
+                          <div key={i} className="rounded-lg border-l-4 px-3 py-2 text-sm" style={{ borderColor: '#dc2626', background: '#fef2f2' }}>
+                            <span className="font-bold">{c.tag_number}</span>
+                            <span className="mx-2 px-1.5 py-0.5 rounded text-[10px] font-bold text-white" style={{ background: '#dc2626' }}>{c.issue.replace(/_/g, ' ').toUpperCase()}</span>
+                            {c.reopen_count > 0 && <span className="mr-2 text-[10px] font-semibold" style={{ color: '#b91c1c' }}>(re-opened ×{c.reopen_count})</span>}
+                            <span style={{ color: C.textSecondary }}>{c.description}</span>
+                            <div className="text-xs mt-0.5" style={{ color: C.textSecondary }}>
+                              Raised by <b>{c.opened_in.file}</b> · {new Date(c.opened_in.at).toLocaleDateString()}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {commentHistory.resolved_comments.length > 0 && (
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#16a34a' }}>
+                        ✅ Killed comments ({commentHistory.resolved_comments.length})
+                      </p>
+                      <div className="space-y-2">
+                        {commentHistory.resolved_comments.map((c, i) => (
+                          <div key={i} className="rounded-lg border-l-4 px-3 py-2 text-sm" style={{ borderColor: '#16a34a', background: '#f0fdf4' }}>
+                            <span className="font-bold">{c.tag_number}</span>
+                            <span className="mx-2 px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: '#dcfce7', color: '#166534' }}>{c.issue.replace(/_/g, ' ').toUpperCase()}</span>
+                            <span style={{ color: C.textSecondary }}>{c.description}</span>
+                            <div className="text-xs mt-0.5" style={{ color: C.textSecondary }}>
+                              Raised by <b>{c.opened_in.file}</b> ({new Date(c.opened_in.at).toLocaleDateString()})
+                              → killed by <b>{c.resolved_in.file}</b> ({new Date(c.resolved_in.at).toLocaleDateString()})
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* ───────────────────────── PREVIOUS ANALYSES (history) ───────────────────────── */}
             <div className="rounded-lg border mb-6" style={{ borderColor: C.border }}>
               <div className="px-5 py-3.5 border-b flex items-center justify-between gap-3" style={{ borderColor: C.border }}>
@@ -1924,6 +2168,19 @@ const SingleLineDiagram = () => {
                   >
                     {loadingCombinedView ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <BarChart3 className="w-3.5 h-3.5" />}
                     Combined Results
+                  </button>
+                )}
+                {history.filter((h) => h.status === 'completed').length >= 1 && (
+                  <button
+                    type="button"
+                    onClick={handleViewComments}
+                    disabled={loadingComments}
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
+                    style={{ background: showComments ? '#ede9fe' : C.primarySoft, color: showComments ? '#7c3aed' : C.primary }}
+                    title="Track every discrepancy comment across SLD uploads — see which are still open and which were killed by a later SLD"
+                  >
+                    {loadingComments ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
+                    {showComments ? 'Hide Comment History' : 'Comment History'}
                   </button>
                 )}
               </div>
@@ -2061,6 +2318,51 @@ const SingleLineDiagram = () => {
                 {pidWasUsed && (activeTab === 'pid_vs_equipment' || activeTab === 'pid_vs_loadlist') && (
                   <div className="flex flex-wrap gap-3">
                     <StatCard label="Provider Used" value="RADAI" tone="purple" />
+                  </div>
+                )}
+
+                {/* ── AGPS-SP-EDS-002 Drafting Check — per-page
+                    pass/fail/review checklist produced by
+                    services/drafting_check.py during the analysis
+                    (single-job view only; combined view has no single
+                    drawing to check). ── */}
+                {!isCombinedView && results?.drafting_check?.pages?.length > 0 && (
+                  <div className="rounded-lg border overflow-hidden" style={{ borderColor: C.border }}>
+                    <div className="px-5 py-3.5 border-b flex items-center justify-between gap-3" style={{ borderColor: C.border, background: C.greyBg }}>
+                      <span className="text-sm font-bold" style={{ color: C.textPrimary }}>
+                        📐 Drafting Check (AGPS-SP-EDS-002)
+                      </span>
+                      <span className="text-xs font-semibold" style={{ color: C.textSecondary }}>
+                        ✅ {results.drafting_check.summary?.pass || 0} pass · ❌ {results.drafting_check.summary?.fail || 0} fail · ⚠️ {results.drafting_check.summary?.review || 0} needs review
+                      </span>
+                    </div>
+                    <div className="p-4 space-y-4">
+                      {results.drafting_check.pages.map((p) => (
+                        <div key={p.page}>
+                          <p className="text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: C.textSecondary }}>Page {p.page}</p>
+                          <div className="space-y-1.5">
+                            {p.checks.map((chk, ci) => {
+                              const badge = chk.status === 'pass'
+                                ? { bg: '#f0fdf4', border: '#16a34a', text: '#166534', label: 'PASS' }
+                                : chk.status === 'fail'
+                                  ? { bg: '#fef2f2', border: '#dc2626', text: '#991b1b', label: 'FAIL' }
+                                  : { bg: '#fffbeb', border: '#d97706', text: '#92400e', label: 'REVIEW' };
+                              return (
+                                <div key={ci} className="rounded-lg border-l-4 px-3 py-2" style={{ borderColor: badge.border, background: badge.bg }}>
+                                  <div className="flex items-start gap-2 text-sm">
+                                    <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-black" style={{ background: badge.border, color: '#fff' }}>{badge.label}</span>
+                                    <div>
+                                      <div style={{ color: badge.text }}>{chk.rule}</div>
+                                      {chk.evidence && <div className="text-xs mt-0.5" style={{ color: C.textSecondary }}>{chk.evidence}</div>}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
 
@@ -2218,16 +2520,74 @@ const SingleLineDiagram = () => {
 
                       {!isCombinedView && results?.has_pid_file && results?.status === 'completed' && (
                         <button
-                          onClick={downloadAnnotatedPdf}
-                          disabled={downloadingAnnotatedPdf}
+                          onClick={toggleCanvasViewer}
+                          disabled={loadingAnnotatedPages}
                           className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors disabled:opacity-50 text-sm font-semibold text-white"
                           style={{ background: C.primary }}
                         >
-                          {downloadingAnnotatedPdf ? <Loader className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-                          📄 Download Annotated PDF
+                          {loadingAnnotatedPages ? <Loader className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+                          {showCanvasViewer ? '🙈 Hide Document Viewer' : '🗂️ View Documents (Canvas)'}
                         </button>
                       )}
                     </div>
+
+                    {showCanvasViewer && !isCombinedView && (
+                      <div className="px-4 pt-4 space-y-4">
+                        {/* Legend + status toggles */}
+                        <div className="flex flex-wrap items-center gap-3 text-xs font-semibold">
+                          <span style={{ color: C.textSecondary }}>Highlight:</span>
+                          {[
+                            { key: 'matched', label: 'Matched', color: '#16a34a' },
+                            { key: 'missing', label: 'Missing', color: '#dc2626' },
+                            { key: 'extra', label: 'Extra', color: '#ca8a04' },
+                            { key: 'located', label: 'Located on Drawing', color: '#7c3aed' },
+                          ].map((s) => (
+                            <button
+                              key={s.key}
+                              onClick={() => setCanvasStatusFilter((prev) => ({ ...prev, [s.key]: !prev[s.key] }))}
+                              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border transition-opacity"
+                              style={{
+                                borderColor: s.color,
+                                color: s.color,
+                                opacity: canvasStatusFilter[s.key] ? 1 : 0.35,
+                              }}
+                            >
+                              <span className="inline-block w-3 h-3 rounded-sm" style={{ background: s.color }} />
+                              {s.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        {loadingAnnotatedPages && (
+                          <div className="flex items-center gap-2 text-sm" style={{ color: C.textSecondary }}>
+                            <Loader className="w-4 h-4 animate-spin" />
+                            Rendering documents…
+                          </div>
+                        )}
+
+                        {annotatedPages && Object.keys(annotatedPages).length === 0 && !loadingAnnotatedPages && (
+                          <p className="text-sm" style={{ color: C.textSecondary }}>No documents to display.</p>
+                        )}
+
+                        {annotatedPages && [
+                          { key: 'pid', title: '📄 P&ID / SLD Drawing' },
+                          { key: 'equipment_list', title: '📊 Equipment List' },
+                          { key: 'load_list', title: '📊 Load List' },
+                        ].filter((d) => annotatedPages[d.key]).map((d) => {
+                          const docData = annotatedPages[d.key];
+                          return (
+                            <div key={d.key} className="space-y-2">
+                              <h4 className="text-sm font-bold" style={{ color: C.textPrimary }}>{d.title}</h4>
+                              {docData.type === 'pages'
+                                ? docData.pages.map((p) => (
+                                    <AnnotatedPageCanvas key={p.page} page={p} statusFilter={canvasStatusFilter} />
+                                  ))
+                                : <DocumentTableCanvas grid={docData.grid} statusFilter={canvasStatusFilter} />}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
 
                     {(activeTab === 'pid_vs_equipment' || activeTab === 'pid_vs_loadlist') && (
                       <p className="px-4 pt-3 text-xs" style={{ color: C.textSecondary }}>
