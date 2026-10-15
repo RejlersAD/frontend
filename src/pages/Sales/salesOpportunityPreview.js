@@ -7,6 +7,7 @@ const officeTypes = {
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   msg: 'application/vnd.ms-outlook',
+  eml: 'message/rfc822',
 };
 
 export function filePreviewType(file) {
