@@ -519,7 +519,7 @@ const STAGE_FLOW = [
         "Don't have a key? Raise a ticket with the ICT department via My Enquiries to get one issued.",
       ],
       action: { label: 'Raise a ticket with ICT', route: '/my-enquiries' },
-      note: 'Optional — leave empty to use the shared engines (which can be quota-limited).',
+      note: 'Your own key gives the best accuracy and is never stored. Don\'t have one? Raise a ticket with ICT via My Enquiries.',
     },
   },
 ];
@@ -831,6 +831,9 @@ const II_REGISTER_UI = {
 // submit gate. enabled:false restores legacy behaviour (file+project only).
 const II_SUBMIT_GATE = {
   enabled: true,
+  // BYOK-only mode: hide the "shared engines" choice — extraction requires
+  // the user's own AI key. Flip to false to restore both choices.
+  byokOnly: true,
   choices: {
     byok: {
       id: 'byok',
@@ -1143,7 +1146,8 @@ const InstrumentIndex = () => {
     upload:   Boolean(pidFile),
     legend:   Boolean(legendFile) || Boolean(skippedStages.legend),
     metadata: Boolean(drawingNumber || drawingTitle) || Boolean(skippedStages.metadata),
-    byok:     byokChoice === 'shared' || (byokChoice === 'byok' && Boolean(byokApiKey.trim())),
+    byok:     (byokChoice === 'shared' && !II_SUBMIT_GATE.byokOnly)
+              || (byokChoice === 'byok' && Boolean(byokApiKey.trim())),
   };
   const iiAllStagesVerified =
     !II_SUBMIT_GATE.enabled ||
@@ -2426,7 +2430,10 @@ const InstrumentIndex = () => {
               Extract stays disabled until BYOK-vs-shared is decided. */}
           {II_SUBMIT_GATE.enabled && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
-              {[II_SUBMIT_GATE.choices.byok, II_SUBMIT_GATE.choices.shared].map(c => {
+              {(II_SUBMIT_GATE.byokOnly
+                ? [II_SUBMIT_GATE.choices.byok]
+                : [II_SUBMIT_GATE.choices.byok, II_SUBMIT_GATE.choices.shared]
+              ).map(c => {
                 const active = byokChoice === c.id;
                 const verified = c.id === 'shared' ? active : (active && Boolean(byokApiKey.trim()));
                 return (
@@ -2461,7 +2468,10 @@ const InstrumentIndex = () => {
             <p className="text-xs text-gray-600 mb-3">
               Provide your own <b>OpenAI</b> or <b>Claude</b> API key for the most accurate extraction —
               it is used <b>before</b> the shared engines (which can be quota-limited) and is
-              <b> never stored</b>. Leave empty to use the shared engines.
+              <b> never stored</b>.{' '}
+              {II_SUBMIT_GATE.byokOnly
+                ? <b>A key is required to run extraction.</b>
+                : 'Leave empty to use the shared engines.'}
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
