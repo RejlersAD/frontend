@@ -904,71 +904,12 @@ const NotificationPanel = () => {
       >
         <div className="notification-center__heading-row">
           <div>
-            <h1 id="notification-center-title">Notification Center</h1>
+            <h1 id="notification-center-title">Notification</h1>
             <p>Review updates, approvals and items requiring your attention.</p>
           </div>
           
         </div>
-        <div className="notification-center__metrics">
-          {[
-            {
-              id: "all",
-              label: "All",
-              accessible: "All notifications",
-              value: notifications.length,
-              icon: BellIcon,
-              tone: "blue",
-            },
-            {
-              id: "unread",
-              label: "Unread",
-              accessible: "Unread notifications",
-              value: unreadCount,
-              icon: EnvelopeIcon,
-              tone: "purple",
-            },
-            {
-              id: "urgent",
-              label: "Urgent & critical",
-              accessible: "Urgent notifications",
-              value: urgentCount,
-              icon: ExclamationTriangleIcon,
-              tone: "red",
-            },
-            {
-              id: "approvals",
-              label: "Approvals",
-              accessible: "Approval notifications",
-              value: approvalCount,
-              icon: UsersIcon,
-              tone: "amber",
-            },
-          ].map((metric) => (
-            <button
-              type="button"
-              key={metric.id}
-              aria-label={`${metric.accessible}: ${countsReady ? metric.value : "unavailable"}`}
-              aria-pressed={filter === metric.id}
-              title={
-                metric.id === "urgent"
-                  ? "High, urgent and critical priority notifications"
-                  : undefined
-              }
-              onClick={() => setFilter(metric.id)}
-              className={`notification-center__metric notification-center__metric--${metric.tone}${filter === metric.id ? " is-selected" : ""}`}
-            >
-              <span className="notification-center__metric-icon">
-                <metric.icon aria-hidden="true" />
-              </span>
-              <span>
-                <span className="notification-center__metric-label">
-                  {metric.label}
-                </span>
-                <strong>{countsReady ? metric.value : "—"}</strong>
-              </span>
-            </button>
-          ))}
-        </div>
+     
         {filtersOpen && (
           <div
             id="notification-center-filters"
