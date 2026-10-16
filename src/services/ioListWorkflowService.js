@@ -234,9 +234,10 @@ const ioListWorkflowService = {
    * text-only call, no image, no cost beyond that ping. Returns
    * { valid: boolean, message: string }.
    */
-  async testVisionApiKey(provider, apiKey) {
+  async testVisionApiKey(provider, apiKey, model) {
     const { data } = await apiClient.post(IO_LIST_WORKFLOW_API.visionTestKey, {
       provider, api_key: apiKey,
+      ...(model ? { model } : {}),
     })
     return data
   },

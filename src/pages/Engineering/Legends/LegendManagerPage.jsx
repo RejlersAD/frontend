@@ -14,9 +14,9 @@
  * SOFT-CODED: palette + copy live in LM_THEME / LM_COPY below.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import LegendSheetsCanvas from '../Process/LegendSheetsCanvas';
+import LegendSheetsCanvas, { SMART_BACK_CONFIG } from '../Process/LegendSheetsCanvas';
 import ImportFromRepositoryModal from './ImportFromRepositoryModal';
 import WorkbookImportModal from './WorkbookImportModal';
 import projectOrganizerService from '../../../services/projectOrganizerService';
@@ -52,6 +52,19 @@ const LM_COPY = {
   globalLabel: 'Global library (no project)',
 };
 
+// ── Soft-coded: "return to caller" banner ───────────────────────────────────
+// Shown only when the user arrived via a redirect carrying `returnTo` (and
+// optional `from`) query params — e.g. from Instrument Index step 2. Lets the
+// user come back to the originating tool after aligning legends.
+const LM_RETURN_BANNER = {
+  enabled:      true,
+  icon:         '↩️',
+  message:      'You were redirected here to cross-check / align your legends.',
+  returnLabel:  'Done — Return to',
+  // Safety: only allow internal paths (must start with '/') as return targets.
+  isSafeTarget: (p) => typeof p === 'string' && p.startsWith('/') && !p.startsWith('//'),
+};
+
 // Coverage chip derived per section
 const SectionChip = ({ label, covered }) => (
   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold"
@@ -65,6 +78,18 @@ const SectionChip = ({ label, covered }) => (
 
 const LegendManagerPage = () => {
   const [params] = useSearchParams();
+  const navigate = useNavigate();
+
+  // ── Return-to-caller context (soft-coded, optional) ─────────────────────
+  // Smart resolution: explicit `returnTo` wins; otherwise the `section` param
+  // maps to its owning tool via SMART_BACK_CONFIG (enterprise smart-back).
+  const returnToParam = params.get('returnTo');
+  const sectionHome   = SMART_BACK_CONFIG.sectionHomes[params.get('section')] || null;
+  const returnTo      = LM_RETURN_BANNER.isSafeTarget(returnToParam)
+    ? returnToParam
+    : sectionHome?.route || null;
+  const returnFrom    = params.get('from') || sectionHome?.label || 'previous page';
+  const showReturnBanner = LM_RETURN_BANNER.enabled && Boolean(returnTo);
 
   // ── Project binding (shared Project Organizer) ──────────────────────────
   const [projects, setProjects]       = useState([]);
@@ -176,6 +201,24 @@ const LegendManagerPage = () => {
       <style>{`@keyframes gradShift { 0%,100%{background-position:0% 50%} 50%{background-position:100% 50%} }`}</style>
 
       <div className="relative z-10 w-full px-2 sm:px-4 lg:px-6 py-6">
+
+        {/* ── Return-to-caller banner (soft-coded; only when `returnTo` is present) ── */}
+        {showReturnBanner && (
+          <div className="rounded-xl mb-4 px-4 py-3 flex items-center justify-between gap-4 flex-wrap"
+            style={{ background: 'linear-gradient(90deg, rgba(59,130,246,0.08), rgba(99,102,241,0.08))', border: '1px solid rgba(99,102,241,0.30)' }}>
+            <p className="text-xs font-medium text-indigo-800 flex items-center gap-2" style={{ margin: 0 }}>
+              <span>{LM_RETURN_BANNER.icon}</span>
+              {LM_RETURN_BANNER.message}
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate(returnTo)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white rounded-lg transition-all hover:-translate-y-px"
+              style={{ background: LM_THEME.accent, boxShadow: '0 2px 10px rgba(59,130,246,0.35)' }}>
+              ✓ {LM_RETURN_BANNER.returnLabel} {returnFrom}
+            </button>
+          </div>
+        )}
 
         {/* ── Header ── */}
         <div className="rounded-2xl mb-5" style={{
