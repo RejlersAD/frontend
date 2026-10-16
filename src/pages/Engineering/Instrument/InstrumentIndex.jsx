@@ -77,7 +77,7 @@ const T_INST = {
     { color: 'rgba(6,182,212,0.06)',  size: '300px', top: '62%',     left: '-40px', anim: 'instFloatA 10s ease-in-out infinite 3s' },
   ],
 
-  card:  { background: '#ffffff', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.06),0 4px 12px rgba(0,0,0,0.04)' },
+  card:  { background: '#ffffff', border: '1px solid rgba(59,130,246,0.15)', boxShadow: '0 4px 28px rgba(59,130,246,0.09), 0 1px 4px rgba(0,0,0,0.04)' },
   cardH: { boxShadow: '0 10px 30px rgba(0,0,0,0.10),0 2px 8px rgba(0,0,0,0.05)', borderColor: '#93c5fd', transform: 'translateY(-2px)' },
   panel: { background: 'rgba(255,255,255,0.85)', border: '1px solid #e8edf5', backdropFilter: 'blur(12px)', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' },
 
@@ -88,7 +88,49 @@ const T_INST = {
 
   gradBar: 'linear-gradient(90deg,#3b82f6,#6366f1,#f59e0b,#3b82f6)',
   gridDot: 'radial-gradient(circle, rgba(99,102,241,0.055) 1px, transparent 1px)',
+
+  // Card aesthetic — mirrors EQ_T card style in EquipmentList.jsx
+  cardEq: { background: 'white', border: '1px solid rgba(59,130,246,0.15)', boxShadow: '0 4px 28px rgba(59,130,246,0.09), 0 1px 4px rgba(0,0,0,0.04)' },
+
+  // Capability chips in hero section (Instrument Index flavor)
+  chips: [
+    { icon: '🏷️', label: 'Instrument Tags' },
+    { icon: '🗂️', label: 'Categories' },
+    { icon: '📊', label: 'Excel Export' },
+    { icon: '🔑', label: 'BYOK AI' },
+  ],
 };
+
+// ═════════════════════════════════════════════════════════════════════════════
+// EQ_T-style presentation layer — copied from EquipmentList.jsx (EQ_KEYFRAMES)
+// with the `eq` prefix renamed to `ii`. Purely visual: entrance animations,
+// sticky table header, button hover glow, KPI pop, hero ring/sheen.
+// ═════════════════════════════════════════════════════════════════════════════
+const II_KEYFRAMES = `
+  @keyframes iiGradShift { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
+  @keyframes ii-shimmer { 0%{transform:translateX(-100%)} 100%{transform:translateX(300%)} }
+  @keyframes ii-row-in { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes ii-fade-up { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes ii-kpi-count { from{opacity:0;transform:translateY(8px) scale(0.9)} to{opacity:1;transform:translateY(0) scale(1)} }
+  @keyframes iiChipPop { 0%{opacity:0;transform:scale(0.72) translateY(5px)} 62%{transform:scale(1.06) translateY(-1px)} 100%{opacity:1;transform:scale(1) translateY(0)} }
+  @keyframes iiNodeGlow { 0%,100%{box-shadow:0 0 10px rgba(59,130,246,0.12),0 4px 16px rgba(59,130,246,0.07)} 50%{box-shadow:0 0 26px rgba(59,130,246,0.26),0 4px 22px rgba(59,130,246,0.13)} }
+  @keyframes ii-pulse-badge { 0%,100%{opacity:1} 50%{opacity:0.55} }
+  @keyframes ii-hero-ring { to { transform: rotate(360deg); } }
+  @keyframes ii-hero-sheen { 0%{transform:translateX(-120%) skewX(-18deg)} 100%{transform:translateX(220%) skewX(-18deg)} }
+  @keyframes ii-glow-light { 0%,100%{box-shadow:0 0 6px rgba(59,130,246,0.18)} 50%{box-shadow:0 0 18px rgba(59,130,246,0.38),0 0 36px rgba(59,130,246,0.1)} }
+  @keyframes ii-spin-slow { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+  @keyframes iiSpinSlowRev { from{transform:rotate(360deg)} to{transform:rotate(0deg)} }
+  .ii-row-animate { animation: ii-row-in 0.3s ease forwards; opacity: 0; }
+  .ii-section { animation: ii-fade-up 0.5s ease both; }
+  .ii-filter-input::placeholder { color: #94a3b8; }
+  .ii-th-sticky { position: sticky; top: 0; z-index: 10; }
+  .ii-upload-zone:hover { border-color: rgba(59,130,246,0.55) !important; background: rgba(59,130,246,0.06) !important; }
+  .ii-action-btn:hover:not(:disabled) { box-shadow: 0 6px 24px rgba(59,130,246,0.42) !important; transform: translateY(-1px); }
+  .ii-export-btn:hover { background: rgba(59,130,246,0.14) !important; border-color: rgba(59,130,246,0.4) !important; }
+  .ii-kpi-card { animation: ii-kpi-count 0.45s ease both; }
+  .ii-chip { animation: iiChipPop 0.4s ease both; }
+  .ii-kpi-node { animation: iiNodeGlow 2.6s ease infinite; }
+`;
 
 const KEYFRAMES_INST = `
   @keyframes instFloatA { 0%,100%{transform:translate(0,0) scale(1)} 50%{transform:translate(40px,-30px) scale(1.06)} }
@@ -162,8 +204,8 @@ const InstBg = ({ children, fullscreen = false }) => (
     className={`min-h-screen relative overflow-hidden${fullscreen ? ' inst-fullscreen-wrap' : ''}`}
     style={{ background: T_INST.bg }}
   >
-    <style>{KEYFRAMES_INST}</style>
-    <div className="absolute inset-0 pointer-events-none"
+    <style>{KEYFRAMES_INST + II_KEYFRAMES}</style>
+    <div className="fixed inset-0 pointer-events-none"
       style={{ backgroundImage: T_INST.gridDot, backgroundSize: '44px 44px' }} />
     {T_INST.blobs.map((b, i) => (
       <div key={i} className="absolute rounded-full pointer-events-none"
@@ -710,6 +752,14 @@ const InstrumentIndex = () => {
   const [revision, setRevision]           = useState('0');
   const [projectName, setProjectName]     = useState('');
 
+  // BYOK (Bring Your Own Key) — optional user-supplied OpenAI/Claude key,
+  // tried BEFORE the shared/quota-limited engines for accurate extraction.
+  // Sent with the upload, never stored anywhere (state only, like the
+  // SLD Checker's key field).
+  const [byokProvider, setByokProvider]   = useState('claude');
+  const [byokApiKey, setByokApiKey]       = useState('');
+  const [byokModel, setByokModel]         = useState('');
+
   // Processing state
   const [isProcessing, setIsProcessing]     = useState(false);
   const [progress, setProgress]             = useState(0);
@@ -960,6 +1010,13 @@ const InstrumentIndex = () => {
     // Explicit unit / area code (e.g. ADNOC Gas '562'). Drives the {unit}
     // prefix in tag-format normalisation when present.
     formData.append('project_unit', activeProject.unit || '');
+    // BYOK — optional user key for extraction accuracy (backend tries it
+    // before the shared engines; empty values are ignored server-side).
+    if (byokApiKey.trim()) {
+      formData.append('provider', byokProvider);
+      formData.append('api_key', byokApiKey.trim());
+      if (byokModel.trim()) formData.append('model', byokModel.trim());
+    }
 
     const token  = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
     const url    = `${API_BASE}/pid/instrument-index/analyze/`;
@@ -1006,6 +1063,42 @@ const InstrumentIndex = () => {
       }
 
       const data = await resp.json();
+
+      // ── Async path — the backend queues extraction (202 + upload_id)
+      // and the real result must be POLLED from the status endpoint.
+      // (Previously the response was assumed synchronous, so a queued
+      // job rendered nothing even though the worker finished fine.)
+      if (data?.upload_id && !data.instruments) {
+        const statusUrl = `${API_BASE}/pid/instrument-index/status/${data.upload_id}/`;
+        const deadline  = Date.now() + UPLOAD_TIMEOUT_MS;
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          if (Date.now() > deadline) {
+            throw new Error(`Extraction timed out after ${Math.round(UPLOAD_TIMEOUT_MS / 60000)} min. Try splitting the PDF into single-sheet files.`);
+          }
+          await new Promise(r => setTimeout(r, 4000));
+          let st;
+          try {
+            const sResp = await fetch(statusUrl, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+            if (!sResp.ok) continue; // transient — keep polling
+            st = await sResp.json();
+          } catch (_) {
+            continue; // network blip — keep polling until deadline
+          }
+          if (st?.status === 'failed') {
+            throw new Error(st.error || 'Extraction failed on the server.');
+          }
+          if (st?.status === 'completed' || st?.instruments) {
+            setProgress(100);
+            setStatusMessage('Extraction complete!');
+            setResult(st);
+            return; // finally block still runs (setIsProcessing(false))
+          }
+          if (typeof st?.progress === 'number') setProgress(st.progress);
+          if (st?.message) setStatusMessage(st.message);
+        }
+      }
+
       setProgress(100);
       setStatusMessage('Extraction complete!');
       setResult(data);
@@ -1226,14 +1319,21 @@ const InstrumentIndex = () => {
         <div className="w-full px-2 sm:px-4 lg:px-6 py-10">
 
           {/* ── Hero — V1 light header card (aligned with Valve MTO / common design) ── */}
-          <div className="mb-10 rounded-2xl" style={{
-            animation: 'instFadeUp 0.6s ease-out both',
-            background: 'linear-gradient(135deg, rgba(59,130,246,0.03) 0%, rgba(99,102,241,0.06) 100%)',
-            border: '1px solid #e2e8f0',
-            padding: '24px 28px',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+          <div className="mb-10 rounded-3xl ii-section relative overflow-hidden" style={{
+            background: 'linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(238,242,255,0.94) 55%, rgba(240,249,255,0.96) 100%)',
+            border: '1px solid rgba(255,255,255,0.7)',
+            padding: '32px 36px',
+            boxShadow: '0 12px 40px rgba(59,130,246,0.14), 0 2px 8px rgba(15,23,42,0.05)',
+            backdropFilter: 'blur(8px)',
           }}>
-          <div className="flex flex-col lg:flex-row lg:items-center gap-8">
+          {/* Sheen sweep + soft inner glow orbs */}
+          <div className="pointer-events-none absolute top-0 bottom-0 w-1/3" aria-hidden
+            style={{ background: 'linear-gradient(105deg, transparent 0%, rgba(255,255,255,0.5) 50%, transparent 100%)', animation: 'ii-hero-sheen 5.5s ease-in-out infinite' }} />
+          <div className="pointer-events-none absolute -top-16 -right-10 w-64 h-64 rounded-full" aria-hidden
+            style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.18), transparent 70%)' }} />
+          <div className="pointer-events-none absolute -bottom-20 -left-10 w-64 h-64 rounded-full" aria-hidden
+            style={{ background: 'radial-gradient(circle, rgba(59,130,246,0.14), transparent 70%)' }} />
+          <div className="flex flex-col lg:flex-row lg:items-center gap-8 relative">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 mb-2">
                 <div className="w-1 h-7 rounded-full" style={{ background: 'linear-gradient(180deg,#3b82f6,#6366f1)' }} />
@@ -1469,6 +1569,95 @@ const InstrumentIndex = () => {
         }}
       >
 
+        {/* ── Hero Header — elevated gradient card (EquipmentList EQ_T pattern) ── */}
+        <div className="mb-8 ii-section relative" style={{ animationDelay: '0s' }}>
+          {/* Glowing gradient border ring (rotating conic) */}
+          <div className="absolute -inset-[1.5px] rounded-3xl pointer-events-none overflow-hidden" aria-hidden>
+            <div style={{
+              position: 'absolute', inset: '-40%',
+              background: 'conic-gradient(from 0deg, rgba(59,130,246,0.55), rgba(99,102,241,0.55), rgba(245,158,11,0.45), rgba(16,185,129,0.45), rgba(59,130,246,0.55))',
+              animation: 'ii-hero-ring 9s linear infinite',
+            }} />
+          </div>
+          {/* Card body */}
+          <div className="relative rounded-3xl overflow-hidden" style={{
+            background: 'linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(238,242,255,0.94) 55%, rgba(240,249,255,0.96) 100%)',
+            border: '1px solid rgba(255,255,255,0.7)',
+            boxShadow: '0 12px 40px rgba(59,130,246,0.14), 0 2px 8px rgba(15,23,42,0.05)',
+            padding: '28px 32px',
+            backdropFilter: 'blur(8px)',
+          }}>
+            {/* Sheen sweep */}
+            <div className="pointer-events-none absolute top-0 bottom-0 w-1/3" aria-hidden
+              style={{ background: 'linear-gradient(105deg, transparent 0%, rgba(255,255,255,0.5) 50%, transparent 100%)', animation: 'ii-hero-sheen 5.5s ease-in-out infinite' }} />
+            {/* Soft inner glow orbs */}
+            <div className="pointer-events-none absolute -top-16 -right-10 w-64 h-64 rounded-full" aria-hidden
+              style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.18), transparent 70%)' }} />
+            <div className="pointer-events-none absolute -bottom-20 -left-10 w-64 h-64 rounded-full" aria-hidden
+              style={{ background: 'radial-gradient(circle, rgba(59,130,246,0.14), transparent 70%)' }} />
+
+            {/* Badge pill */}
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full mb-4 ii-chip"
+              style={{
+                background: 'linear-gradient(90deg, rgba(59,130,246,0.12), rgba(99,102,241,0.12))',
+                border: '1px solid rgba(59,130,246,0.30)',
+                animationDelay: '0.04s',
+                boxShadow: '0 2px 10px rgba(59,130,246,0.15)',
+              }}>
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500" style={{ animation: 'ii-pulse-badge 2s ease infinite' }} />
+              <span className="text-blue-700 text-xs font-bold tracking-widest uppercase">AI-Powered · P&amp;ID Instrument Analysis</span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold text-white"
+                style={{ background: 'linear-gradient(135deg,#10b981,#059669)' }}>
+                ✓ PRODUCTION READY
+              </span>
+            </div>
+
+            {/* Title */}
+            <h1 className="text-4xl font-bold text-slate-900 flex items-center gap-4 mb-3">
+              <div className="p-2.5 rounded-xl relative overflow-hidden flex-shrink-0"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(59,130,246,0.12) 0%, rgba(99,102,241,0.07) 100%)',
+                  border: '1px solid rgba(59,130,246,0.22)',
+                  animation: 'ii-glow-light 3s ease infinite',
+                }}>
+                <TagIcon className="h-7 w-7 text-blue-600" />
+              </div>
+              Instrument&nbsp;
+              <span style={{
+                background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 60%, #6366f1 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+              }}>
+                Index
+              </span>
+            </h1>
+
+            {/* Description */}
+            <p className="text-slate-500 text-base leading-relaxed max-w-2xl mb-6">
+              Extract every instrument tag from any P&amp;ID using AI Vision — Flow, Pressure,
+              Temperature, Level, SDV/BDV, MOV, PSV, RO &amp; more — categorised by ISA 5.1,
+              cross-checked against the legend, and ready for one-click Excel export.
+            </p>
+
+            {/* Capability chips */}
+            <div className="flex flex-wrap gap-2">
+              {T_INST.chips.map((chip, i) => (
+                <span key={chip.label}
+                  className="ii-chip inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold"
+                  style={{
+                    background: 'rgba(59,130,246,0.06)',
+                    border: '1px solid rgba(59,130,246,0.18)',
+                    color: '#1e40af',
+                    animationDelay: `${0.08 + i * 0.06}s`,
+                  }}>
+                  <span>{chip.icon}</span>
+                  <span>{chip.label}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+
         {/* ── Slim project header / breadcrumb ── */}
         <div className="mb-6 flex items-center justify-between flex-wrap gap-3" style={{ animation: 'instFadeUp 0.4s ease-out both' }}>
           <div className="flex items-center gap-3 min-w-0">
@@ -1535,9 +1724,9 @@ const InstrumentIndex = () => {
         />
 
         {/* ── Step 2 · Upload P&ID Drawing card ── */}
-        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-6 mb-6">
+        <div className="rounded-2xl p-6 mb-6 ii-section" style={{ ...T_INST.cardEq, animationDelay: '0.08s' }}>
           <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-            <span className="h-6 w-6 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold flex items-center justify-center">1</span>
+            <span className="h-6 w-6 rounded-full text-xs font-bold flex items-center justify-center text-white" style={{ background: 'linear-gradient(135deg,#3b82f6,#2563eb)', boxShadow: '0 2px 8px rgba(59,130,246,0.35)' }}>1</span>
             Upload P&amp;ID Drawing (PDF)
           </h2>
 
@@ -1576,7 +1765,7 @@ const InstrumentIndex = () => {
           <div
             onDrop={handleDrop}
             onDragOver={e => e.preventDefault()}
-            className={`border-2 border-dashed rounded-xl p-8 transition-all cursor-pointer mb-4 ${
+            className={`ii-upload-zone border-2 border-dashed rounded-xl p-8 transition-all cursor-pointer mb-4 ${
               pidFile
                 ? 'border-green-300 bg-gradient-to-br from-green-50 to-emerald-50'
                 : 'border-indigo-200 bg-gradient-to-br from-indigo-50/40 to-blue-50/40 hover:border-indigo-400 hover:from-indigo-50 hover:to-blue-50 hover:shadow-inner'
@@ -1691,20 +1880,91 @@ const InstrumentIndex = () => {
               </div>
             ))}
           </div>
+
+          {/* ── BYOK — Bring Your Own AI Key (optional) ── */}
+          <h2 className={`text-lg font-semibold mt-5 mb-3 flex items-center gap-2 ${pidFile ? 'text-gray-800' : 'text-gray-400'}`}>
+            <span className={`h-6 w-6 rounded-full text-xs font-bold flex items-center justify-center ${pidFile ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-400'}`}>4</span>
+            AI Extraction Key — BYOK <span className="text-xs font-normal text-gray-400">(optional, improves accuracy)</span>
+            {!pidFile && <span className="text-xs">🔒</span>}
+          </h2>
+          <div className={`rounded-lg border p-4 ${pidFile ? 'border-purple-200 bg-purple-50/40' : 'border-gray-200 bg-gray-50 opacity-60'}`}>
+            <p className="text-xs text-gray-600 mb-3">
+              Provide your own <b>OpenAI</b> or <b>Claude</b> API key for the most accurate extraction —
+              it is used <b>before</b> the shared engines (which can be quota-limited) and is
+              <b> never stored</b>. Leave empty to use the shared engines.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Provider</label>
+                <select
+                  value={byokProvider}
+                  onChange={e => { setByokProvider(e.target.value); setByokModel(''); }}
+                  disabled={isProcessing || !pidFile}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-purple-500 disabled:bg-gray-100"
+                >
+                  <option value="claude">Claude (Anthropic)</option>
+                  <option value="openai">OpenAI (GPT-4o)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">API Key</label>
+                <input
+                  type="password"
+                  value={byokApiKey}
+                  onChange={e => setByokApiKey(e.target.value)}
+                  placeholder={byokProvider === 'claude' ? 'sk-ant-…' : 'sk-…'}
+                  autoComplete="off"
+                  disabled={isProcessing || !pidFile}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 disabled:bg-gray-100"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Model</label>
+                <select
+                  value={byokModel}
+                  onChange={e => setByokModel(e.target.value)}
+                  disabled={isProcessing || !pidFile}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-purple-500 disabled:bg-gray-100"
+                >
+                  {(byokProvider === 'claude'
+                    ? [
+                        ['', 'Claude default (auto)'],
+                        ['claude-sonnet-5', 'Claude Sonnet 5'],
+                        ['claude-opus-5', 'Claude Opus 5'],
+                        ['claude-sonnet-4-5-20250929', 'Claude Sonnet 4.5'],
+                      ]
+                    : [
+                        ['', 'OpenAI default (gpt-4o)'],
+                        ['gpt-4o', 'GPT-4o'],
+                        ['gpt-4o-mini', 'GPT-4o mini (cheaper)'],
+                      ]
+                  ).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* ── Action button ───────────────────────────────────────────── */}
-        <div className="flex flex-wrap gap-4 mb-6">
+        <div className="flex flex-wrap gap-3 mb-6 ii-section" style={{ animationDelay: '0.15s' }}>
           <button
             onClick={handleExtract}
             disabled={!pidFile || isProcessing || !activeProject}
             title={!activeProject ? 'Select or create an active project first' : ''}
-            className={`flex-1 sm:flex-none px-8 py-3.5 rounded-xl font-semibold text-white transition-all shadow-md ${
+            className="ii-action-btn flex-1 sm:flex-none px-8 py-3.5 rounded-xl font-semibold text-sm relative overflow-hidden"
+            style={
               !pidFile || isProcessing || !activeProject
-                ? 'bg-gray-300 cursor-not-allowed'
-                : 'bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-700 hover:via-indigo-700 hover:to-blue-700 hover:shadow-xl hover:-translate-y-0.5'
-            }`}
+                ? { background: '#f1f5f9', color: '#94a3b8', cursor: 'not-allowed', border: '1px solid #e2e8f0', transition: 'all 0.25s' }
+                : { background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', color: 'white', border: 'none', boxShadow: '0 4px 18px rgba(59,130,246,0.32)', transition: 'all 0.25s', cursor: 'pointer' }
+            }
           >
+            {/* Shimmer on active */}
+            {pidFile && !isProcessing && activeProject && (
+              <div className="absolute inset-0 pointer-events-none"
+                style={{ background: 'linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.18) 50%, transparent 60%)', animation: 'ii-shimmer 2.8s linear infinite' }} />
+            )}
             {isProcessing ? (
               <span className="flex items-center gap-2">
                 <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
@@ -1725,7 +1985,8 @@ const InstrumentIndex = () => {
             <>
               <button
                 onClick={handleDownloadClientExcel}
-                className="flex items-center gap-2 px-6 py-3.5 bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-xl font-semibold hover:from-emerald-600 hover:to-green-700 transition-all shadow-md hover:shadow-xl hover:-translate-y-0.5"
+                className="ii-export-btn flex items-center gap-2 px-6 py-3.5 rounded-xl font-semibold text-sm"
+                style={{ background: 'rgba(59,130,246,0.07)', color: '#065f46', border: '1px solid rgba(59,130,246,0.22)', boxShadow: '0 2px 8px rgba(59,130,246,0.08)', transition: 'all 0.2s', cursor: 'pointer' }}
               >
                 <ArrowDownTrayIcon className="h-5 w-5" />
                 Download Excel
@@ -1736,7 +1997,11 @@ const InstrumentIndex = () => {
 
         {/* ── Progress bar ────────────────────────────────────────────── */}
         {isProcessing && (
-          <div className="bg-white rounded-xl shadow-sm p-5 mb-6">
+          <div className="rounded-2xl overflow-hidden mb-6"
+            style={{ background: 'white', border: '1px solid rgba(59,130,246,0.20)', boxShadow: '0 4px 24px rgba(59,130,246,0.10)', animation: 'ii-fade-up 0.35s ease forwards' }}>
+            {/* Gradient top strip */}
+            <div className="h-[3px]" style={{ backgroundImage: T_INST.gradBar, backgroundSize: '300% auto', animation: 'iiGradShift 2.5s linear infinite' }} />
+            <div className="p-5">
             <div className="flex justify-between items-center mb-2">
               <span className="text-sm font-medium text-gray-700">{statusMessage}</span>
               <div className="flex items-center gap-3">
@@ -1750,8 +2015,8 @@ const InstrumentIndex = () => {
             </div>
             <div className="w-full bg-gray-200 rounded-full h-3">
               <div
-                className="bg-purple-600 h-3 rounded-full transition-all duration-700"
-                style={{ width: `${Math.max(5, progress)}%` }}
+                className="h-3 rounded-full transition-all duration-700"
+                style={{ width: `${Math.max(5, progress)}%`, background: 'linear-gradient(90deg,#3b82f6,#6366f1)' }}
               />
             </div>
             <p className="text-xs text-gray-500 mt-2">
@@ -1763,6 +2028,7 @@ const InstrumentIndex = () => {
                 ? 'Processing multi-page P&ID — identifying all instrument tags…'
                 : `Still working (${formatElapsed(elapsedSeconds)}) — large drawings take longer. Please keep this tab open.`}
             </p>
+            </div>
           </div>
         )}
 
@@ -1796,7 +2062,7 @@ const InstrumentIndex = () => {
             )}
             {/* Stats bar */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-              <div className="relative overflow-hidden rounded-2xl p-5 text-white shadow-lg bg-gradient-to-br from-purple-600 to-indigo-700">
+              <div className="ii-kpi-card ii-kpi-node relative overflow-hidden rounded-2xl p-5 text-white shadow-lg bg-gradient-to-br from-purple-600 to-indigo-700" style={{ animationDelay: '0s' }}>
                 <div className="absolute -top-6 -right-6 h-24 w-24 rounded-full bg-white/10 blur-2xl" />
                 <div className="relative">
                   <p className="text-[11px] uppercase tracking-wider text-purple-100 font-semibold">Total Instruments</p>
@@ -1807,14 +2073,14 @@ const InstrumentIndex = () => {
               {Object.entries(result.category_summary || {})
                 .sort((a, b) => b[1] - a[1])
                 .slice(0, 3)
-                .map(([cat, cnt]) => {
+                .map(([cat, cnt], kpiIdx) => {
                   const style = categoryStyle(cat);
                   const pct = result.total > 0 ? (cnt / result.total) * 100 : 0;
                   return (
                     <div
                       key={cat}
-                      className="relative overflow-hidden rounded-2xl p-5 border shadow-sm hover:shadow-md transition-shadow"
-                      style={{ backgroundColor: style.bg, borderColor: style.text + '30' }}
+                      className="ii-kpi-card relative overflow-hidden rounded-2xl p-5 border shadow-sm hover:shadow-md transition-shadow"
+                      style={{ backgroundColor: style.bg, borderColor: style.text + '30', animationDelay: `${0.1 + kpiIdx * 0.06}s` }}
                     >
                       <p className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: style.text, opacity: 0.75 }}>{cat}</p>
                       <p className="text-4xl font-black mt-1 tabular-nums" style={{ color: style.text }}>{cnt}</p>
@@ -1828,7 +2094,7 @@ const InstrumentIndex = () => {
             </div>
 
             {/* View tabs */}
-            <div className="flex gap-2 mb-4 p-1 bg-white rounded-xl shadow-sm border border-gray-100 w-fit">
+            <div className="flex gap-2 mb-4 p-1 rounded-xl w-fit ii-section" style={{ background: 'white', border: '1px solid rgba(59,130,246,0.12)', boxShadow: '0 4px 24px rgba(59,130,246,0.07)', animationDelay: '0.05s' }}>
               {[
                 { id: 'table',   icon: <ListBulletIcon className="h-4 w-4" />,  label: 'Instrument Table' },
                 { id: 'summary', icon: <ChartBarIcon   className="h-4 w-4" />,  label: 'Category Summary' },
@@ -1839,7 +2105,7 @@ const InstrumentIndex = () => {
                   onClick={() => setActiveView(tab.id)}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                     activeView === tab.id
-                      ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
+                      ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md'
                       : 'text-gray-600 hover:bg-gray-50'
                   }`}
                 >
@@ -1901,7 +2167,7 @@ const InstrumentIndex = () => {
               };
 
               return (
-              <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
+              <div className="rounded-2xl overflow-hidden ii-section" style={{ background: 'white', border: '1px solid rgba(59,130,246,0.12)', boxShadow: '0 4px 24px rgba(59,130,246,0.07)', animationDelay: '0s' }}>
                 {/* Filters + template badge + download */}
                 <div className="px-5 py-4 bg-gradient-to-r from-slate-50 via-white to-slate-50 border-b border-gray-200 flex flex-wrap gap-3 items-center">
                   <h3 className="text-base font-semibold text-gray-800 mr-2 flex items-center gap-2">
@@ -1935,7 +2201,7 @@ const InstrumentIndex = () => {
                       placeholder="Filter by tag / service / type…"
                       value={filterText}
                       onChange={e => setFilterText(e.target.value)}
-                      className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-400 focus:border-purple-400"
+                      className="ii-filter-input w-full pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
                     />
                   </div>
                   <select
@@ -1958,7 +2224,8 @@ const InstrumentIndex = () => {
                   {/* Download Excel — exports selection if any, else everything */}
                   <button
                     onClick={handleDownloadClientExcel}
-                    className="ml-auto inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-gradient-to-r from-emerald-500 to-green-600 text-white hover:from-emerald-600 hover:to-green-700 shadow-sm hover:shadow transition-all"
+                    className="ii-export-btn ml-auto inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg"
+                    style={{ background: 'rgba(59,130,246,0.07)', color: '#065f46', border: '1px solid rgba(59,130,246,0.22)', boxShadow: '0 2px 8px rgba(59,130,246,0.08)', transition: 'all 0.2s', cursor: 'pointer' }}
                     title={selectedRows.size > 0 ? `Download ${selectedRows.size} selected rows` : 'Download all rows'}
                   >
                     <ArrowDownTrayIcon className="h-4 w-4" />
@@ -1970,7 +2237,7 @@ const InstrumentIndex = () => {
                 {useTpl ? (
                   <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200 text-xs">
-                      <thead className="bg-gradient-to-b from-slate-100 to-slate-50 text-[10px] uppercase tracking-wider text-slate-700">
+                      <thead className="ii-th-sticky text-[10px] uppercase tracking-wider text-white" style={{ background: 'linear-gradient(90deg,#065f46,#2563eb)' }}>
                         {tpl.groupHeader && tpl.groupHeader.length > 0 && (
                           <tr>
                             {/* Empty span over checkbox + SL No */}
@@ -1986,7 +2253,7 @@ const InstrumentIndex = () => {
                           </tr>
                         )}
                         <tr>
-                          <th className="px-2 py-2.5 text-center font-semibold border-b border-slate-200 w-8 sticky left-0 bg-slate-100 z-10">
+                          <th className="px-2 py-2.5 text-center font-semibold border-b border-slate-200 w-8 sticky left-0 z-10" style={{ background: '#065f46' }}>
                             <input
                               type="checkbox"
                               className="h-3.5 w-3.5 accent-indigo-600 cursor-pointer"
@@ -2004,7 +2271,7 @@ const InstrumentIndex = () => {
                               {c.header}
                             </th>
                           ))}
-                          <th className="px-2 py-2.5 text-center font-semibold border-b border-slate-200 w-16 sticky right-0 bg-slate-100 z-10">
+                          <th className="px-2 py-2.5 text-center font-semibold border-b border-slate-200 w-16 sticky right-0 z-10" style={{ background: '#2563eb' }}>
                             Action
                           </th>
                         </tr>
@@ -2047,7 +2314,7 @@ const InstrumentIndex = () => {
                                               : isInferred ? 'bg-fuchsia-50/30'
                                               : hasWarnings ? 'bg-amber-50/40' : '';
                                 rows.push(
-                                  <tr key={`${block.key}-${gIdx}`} className={`${rowBg} hover:bg-emerald-50/40 transition-colors`}>
+                                  <tr key={`${block.key}-${gIdx}`} className={`${rowBg} ii-row-animate hover:bg-blue-50/60 transition-colors`} style={{ animationDelay: `${Math.min(sl * 0.035, 0.5)}s` }}>
                                     <td className="px-2 py-2 text-center sticky left-0 bg-inherit">
                                       <input
                                         type="checkbox"
@@ -2107,7 +2374,7 @@ const InstrumentIndex = () => {
                 ) : (
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200 text-sm">
-                    <thead className="bg-gradient-to-b from-gray-100 to-gray-50 text-xs uppercase tracking-wider text-gray-600">
+                    <thead className="ii-th-sticky text-xs uppercase tracking-wider text-white" style={{ background: 'linear-gradient(90deg,#065f46,#2563eb)' }}>
                       <tr>
                         <th className="px-2 py-3 text-center font-semibold w-8">
                           <input
@@ -2168,7 +2435,7 @@ const InstrumentIndex = () => {
                               ? 'bg-amber-50/40'
                               : '';
                           return (
-                            <tr key={idx} className={`${rowBg} hover:bg-purple-50/40 transition-colors`}>
+                            <tr key={idx} className={`${rowBg} ii-row-animate hover:bg-blue-50/60 transition-colors`} style={{ animationDelay: `${Math.min(idx * 0.035, 0.5)}s` }}>
                               <td className="px-2 py-2.5 text-center">
                                 <input
                                   type="checkbox"
@@ -2178,7 +2445,7 @@ const InstrumentIndex = () => {
                                 />
                               </td>
                               <td className="px-2 py-2.5 text-center text-gray-500 tabular-nums font-medium">{idx + 1}</td>
-                              <td className="px-3 py-2.5 font-bold whitespace-nowrap" style={{ color: style.text }}>
+                              <td className="px-3 py-2.5 font-bold font-mono whitespace-nowrap" style={{ color: style.text }}>
                                 <div className="flex items-center gap-1.5">
                                   <span>{inst.tag_number || '—'}</span>
                                   {isInferred && (
@@ -2264,7 +2531,7 @@ const InstrumentIndex = () => {
 
             {/* ── SUMMARY VIEW ───────────────────────────────────────── */}
             {activeView === 'summary' && (
-              <div className="bg-white rounded-xl shadow-sm p-6">
+              <div className="rounded-2xl p-6 ii-section" style={{ ...T_INST.cardEq, animationDelay: '0s' }}>
                 <h3 className="text-lg font-semibold text-gray-800 mb-4">
                   Instruments by Category
                 </h3>
@@ -2449,7 +2716,7 @@ const InstrumentIndex = () => {
               return (
                 <div>
                   {/* ── Header ── */}
-                  <div className="bg-white rounded-xl shadow-sm p-5 mb-4">
+                  <div className="rounded-2xl p-5 mb-4 ii-section" style={{ ...T_INST.cardEq, animationDelay: '0s' }}>
                     <div className="flex items-start justify-between flex-wrap gap-4 mb-4">
                       <div>
                         <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
@@ -2464,17 +2731,17 @@ const InstrumentIndex = () => {
                         </p>
                       </div>
                       <div className="flex gap-3 flex-shrink-0">
-                        <div className="text-center px-4 py-2 bg-purple-50 border border-purple-200 rounded-xl">
+                        <div className="ii-kpi-card text-center px-4 py-2 bg-purple-50 border border-purple-200 rounded-xl" style={{ animationDelay: '0s' }}>
                           <p className="text-2xl font-black text-purple-700">{totalInMatrix}</p>
                           <p className="text-xs text-purple-500 font-medium">Instruments</p>
                         </div>
-                        <div className="text-center px-4 py-2 bg-indigo-50 border border-indigo-200 rounded-xl">
+                        <div className="ii-kpi-card text-center px-4 py-2 bg-indigo-50 border border-indigo-200 rounded-xl" style={{ animationDelay: '0.06s' }}>
                           <p className="text-2xl font-black text-indigo-700">
                             {ISA_MEASURED.filter(m => rowTotal(m.letter) > 0).length}
                           </p>
                           <p className="text-xs text-indigo-500 font-medium">Variables</p>
                         </div>
-                        <div className="text-center px-4 py-2 bg-teal-50 border border-teal-200 rounded-xl">
+                        <div className="ii-kpi-card text-center px-4 py-2 bg-teal-50 border border-teal-200 rounded-xl" style={{ animationDelay: '0.12s' }}>
                           <p className="text-2xl font-black text-teal-700">{activeFns.length}</p>
                           <p className="text-xs text-teal-500 font-medium">Functions</p>
                         </div>
@@ -2500,7 +2767,7 @@ const InstrumentIndex = () => {
                   <div className="flex gap-4 items-start">
 
                     {/* Matrix table */}
-                    <div className="flex-1 bg-white rounded-xl shadow-sm overflow-hidden" style={{ minWidth:0 }}>
+                    <div className="flex-1 rounded-2xl overflow-hidden ii-section" style={{ minWidth:0, ...T_INST.cardEq }}>
                       <div className="overflow-x-auto">
                         <table className="w-full border-collapse text-xs">
                           {/* Column headers */}
@@ -2622,7 +2889,7 @@ const InstrumentIndex = () => {
                     {/* Detail drawer */}
                     <div style={{ width: selectedCell ? '320px' : '200px', flexShrink:0, transition:'width 0.22s ease' }}>
                       {selectedCell ? (
-                        <div className="bg-white rounded-xl shadow-sm overflow-hidden" style={{ maxHeight:'75vh', display:'flex', flexDirection:'column' }}>
+                        <div className="rounded-2xl overflow-hidden" style={{ maxHeight:'75vh', display:'flex', flexDirection:'column', ...T_INST.cardEq }}>
                           {/* Drawer header */}
                           <div className="px-4 py-3 flex items-center justify-between gap-2 border-b"
                             style={{ background: selectedMvDef ? selectedMvDef.light : '#f8fafc' }}>
@@ -2704,8 +2971,8 @@ const InstrumentIndex = () => {
                           </div>
                         </div>
                       ) : (
-                        <div className="bg-white rounded-xl shadow-sm p-5 flex flex-col items-center text-center gap-3"
-                          style={{ minHeight:'140px' }}>
+                        <div className="rounded-2xl p-5 flex flex-col items-center text-center gap-3"
+                          style={{ minHeight:'140px', ...T_INST.cardEq }}>
                           <div className="w-12 h-12 rounded-2xl flex items-center justify-center"
                             style={{ background:'linear-gradient(135deg,#f5f3ff,#ede9fe)', border:'1px solid #c4b5fd' }}>
                             <span className="text-2xl">🔬</span>
@@ -2721,7 +2988,7 @@ const InstrumentIndex = () => {
                   </div>
 
                   {/* ── ISA Reference Quick Guide ── */}
-                  <div className="bg-white rounded-xl shadow-sm p-5 mt-4">
+                  <div className="rounded-2xl p-5 mt-4 ii-section" style={{ ...T_INST.cardEq, animationDelay: '0.05s' }}>
                     <p className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-3">
                       ISA 5.1 Quick Reference — Instrument Identification Letters
                     </p>
