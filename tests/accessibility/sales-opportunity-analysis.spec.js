@@ -36,7 +36,7 @@ async function setup(page, { status = 'partial', denied = false, noMatch = false
 
 test('Analysis presents a cited executive brief, requirements, dates, relationships and downloadable deliverable', async ({ page }) => {
   const { state } = await setup(page);
-  await expect(pane(page).getByRole('heading', { name: 'Your bid, at a glance' })).toBeVisible();
+  await expect(pane(page).getByRole('heading', { name: 'What is this opportunity?', exact: true })).toBeVisible();
   await expect(pane(page)).toContainText('Partial analysis');
   await expect(pane(page)).toContainText('501');
   await expect(pane(page)).toContainText('RFQ-2026-100');
@@ -106,7 +106,7 @@ test('denied and wrong-opportunity responses show errors without leaking cached 
 
 test('keyboard tab navigation and responsive Analysis remain accessible', async ({ page }) => {
   await setup(page);
-  await expect(pane(page).getByRole('heading', { name: 'Your bid, at a glance' })).toBeVisible();
+  await expect(pane(page).getByRole('heading', { name: 'What is this opportunity?', exact: true })).toBeVisible();
   const results = await new AxeBuilder({ page }).include('.soa').analyze();
   expect(results.violations).toEqual([]);
   await page.getByRole('tab', { name: 'Analysis', exact: true }).focus();
