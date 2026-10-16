@@ -323,3 +323,283 @@ export function parseMessage(value) {
   }
   return result;
 }
+
+// ---------------------------------------------------------------------------
+// EML (RFC 5322 / MIME) preview.
+//
+// .eml is the textual MIME serialization of an Internet mail message (the form
+// produced by Outlook "Save As", Gmail exports, etc.), unlike .msg which is a
+// binary MS-CFB compound file. It is parsed with a small, dependency-free MIME
+// reader and returned in the same shape as parseMessage so the shared
+// Outlook-message renderer displays it. The worker's timeout still bounds input.
+const EML_BYTES = 8 * 1024 * 1024;
+const EML_INLINE_IMAGE_BYTES = 2 * 1024 * 1024;
+
+function emlLatin1(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let out = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) out += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return out;
+}
+
+function emlRawBytes(str) {
+  const out = new Uint8Array(str.length);
+  for (let i = 0; i < str.length; i += 1) out[i] = str.charCodeAt(i) & 0xff;
+  return out;
+}
+
+function emlDecode(bytes, charset) {
+  if (!bytes || !bytes.length) return '';
+  const label = String(charset || '').trim().toLowerCase();
+  if (!label || label === 'default' || label === 'us-ascii' || label === 'ascii') {
+    return new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+  }
+  try { return new TextDecoder(label, { fatal: false }).decode(bytes); }
+  catch { try { return new TextDecoder('utf-8', { fatal: false }).decode(bytes); } catch { return ''; } }
+}
+
+function emlBase64(str) {
+  try { return emlRawBytes(atob(str.replace(/\s/g, ''))); }
+  catch { return new Uint8Array(0); }
+}
+
+function emlQp(str) {
+  const bytes = [];
+  for (let i = 0; i < str.length; ) {
+    const ch = str[i];
+    if (ch === '=' && i + 2 < str.length && /[0-9A-Fa-f]/.test(str[i + 1]) && /[0-9A-Fa-f]/.test(str[i + 2])) {
+      bytes.push(parseInt(str[i + 1] + str[i + 2], 16)); i += 3;
+    } else if (ch === '=' && i + 2 < str.length && str[i + 1] === '\r' && str[i + 2] === '\n') {
+      i += 3;
+    } else if (ch === '=' && i + 1 < str.length && str[i + 1] === '\n') {
+      i += 2;
+    } else {
+      bytes.push(str.charCodeAt(i) & 0xff); i += 1;
+    }
+  }
+  return new Uint8Array(bytes);
+}
+
+function emlParams(value) {
+  const params = {};
+  if (!value) return params;
+  const parts = String(value).split(';');
+  for (let i = 1; i < parts.length; i += 1) {
+    const segment = parts[i].trim();
+    const eq = segment.indexOf('=');
+    if (eq === -1) continue;
+    let key = segment.slice(0, eq).trim().toLowerCase();
+    let val = segment.slice(eq + 1).trim();
+    if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1).replace(/\\(.)/g, '$1');
+    else if (val.startsWith("'") && val.endsWith("'")) val = val.slice(1, -1);
+    params[key] = val;
+  }
+  return params;
+}
+
+function emlHeaders(headerStr) {
+  const headers = {};
+  let current = null;
+  for (const rawLine of headerStr.replace(/\r\n/g, '\n').split('\n')) {
+    if (rawLine.startsWith(' ') || rawLine.startsWith('\t')) {
+      if (current) headers[current] = (headers[current] || '') + ' ' + rawLine.trim();
+    } else {
+      const c = rawLine.indexOf(':');
+      if (c === -1) { current = null; continue; }
+      const name = rawLine.slice(0, c).trim().toLowerCase();
+      const value = rawLine.slice(c + 1).trim();
+      current = name;
+      headers[name] = headers[name] === undefined ? value : headers[name] + ', ' + value;
+    }
+  }
+  return headers;
+}
+
+function emlSplitHeadersBody(raw) {
+  const crlf = raw.indexOf('\r\n\r\n');
+  let idx, sepLen;
+  if (crlf !== -1) { idx = crlf; sepLen = 4; }
+  else {
+    const lf = raw.indexOf('\n\n');
+    if (lf !== -1) { idx = lf; sepLen = 2; }
+    else return { headers: raw, body: '' };
+  }
+  return { headers: raw.slice(0, idx), body: raw.slice(idx + sepLen) };
+}
+
+function emlSplitMultipart(body, boundary) {
+  const escaped = boundary.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp('\\r?\\n--' + escaped + '(--)?', 'g');
+  const haystack = '\n' + body;
+  const cuts = [];
+  let m;
+  while ((m = re.exec(haystack)) !== null) cuts.push({ start: m.index, end: m.index + m[0].length, close: !!m[1] });
+  const parts = [];
+  for (let i = 0; i < cuts.length; i += 1) {
+    if (cuts[i].close) continue;
+    const end = i + 1 < cuts.length ? cuts[i + 1].start : haystack.length;
+    const part = haystack.slice(cuts[i].end, end).replace(/\r?\n$/, '');
+    if (part) parts.push(part);
+  }
+  return parts;
+}
+
+function emlParsePart(raw) {
+  const { headers: headerStr, body } = emlSplitHeadersBody(raw);
+  const headers = emlHeaders(headerStr);
+  const ct = (headers['content-type'] || '').trim();
+  const base = ct ? ct.split(';')[0].trim().toLowerCase() : 'text/plain';
+  const params = emlParams(ct);
+  if (base.startsWith('multipart/')) {
+    const boundary = params.boundary;
+    if (!boundary) return { kind: 'multipart', subtype: '', headers, params, parts: [] };
+    return { kind: 'multipart', subtype: base.split('/')[1] || '', headers, params, parts: emlSplitMultipart(body, boundary).map(s => emlParsePart(s)).filter(Boolean) };
+  }
+  return { kind: 'leaf', headers, body, params, transferEncoding: (headers['content-transfer-encoding'] || '7bit').trim().toLowerCase(), contentType: base };
+}
+
+function emlLeaves(node, out) {
+  if (node.kind === 'multipart') node.parts.forEach(p => emlLeaves(p, out));
+  else out.push(node);
+}
+
+function emlLeafBytes(leaf) {
+  const transfer = leaf.transferEncoding;
+  if (transfer === 'base64') return emlBase64(leaf.body);
+  if (transfer === 'quoted-printable') return emlQp(leaf.body);
+  return emlRawBytes(leaf.body);
+}
+
+function emlSplitAddresses(raw) {
+  const parts = [];
+  let cur = ''; let inQuote = false; let inAngle = false; let inParen = false;
+  for (const ch of raw) {
+    if (ch === '"' && !inAngle && !inParen) inQuote = !inQuote;
+    else if (ch === '(' && !inAngle && !inQuote) inParen = true;
+    else if (ch === ')' && inParen) inParen = false;
+    else if (ch === '<' && !inQuote && !inParen) inAngle = true;
+    else if (ch === '>' && inAngle) inAngle = false;
+    if (ch === ',' && !inQuote && !inAngle && !inParen) { parts.push(cur); cur = ''; }
+    else cur += ch;
+  }
+  parts.push(cur);
+  return parts;
+}
+
+function emlFormatAddress(raw) {
+  const decoded = emlDecodeHeader(raw);
+  const angle = /<([^>]*)>/.exec(decoded);
+  let email = ''; let name = '';
+  if (angle) { email = angle[1].trim(); name = decoded.slice(0, angle.index).trim(); }
+  else { email = decoded.trim(); name = ''; }
+  if (name.startsWith('"') && name.endsWith('"')) name = name.slice(1, -1);
+  name = name.trim();
+  email = email.replace(/[<>]/g, '').trim();
+  if (name && email) return `${name} <${email}>`;
+  return email || name;
+}
+
+function emlFormatAddresses(raw) {
+  const parts = emlSplitAddresses(raw || '');
+  if (parts.length > MAX_RECIPIENTS) parts.length = MAX_RECIPIENTS;
+  return parts.map(segment => emlFormatAddress(segment)).filter(Boolean).join(', ');
+}
+
+function emlDecodeWord(charset, encoding, encoded) {
+  const bytes = encoding === 'b' ? emlBase64(encoded) : emlQp(encoded);
+  return emlDecode(bytes, charset);
+}
+
+function emlDecodeHeader(value) {
+  if (!value) return '';
+  const re = /=\?([^? ]+?)\?([QBqb])\?([^?]*)\?=/g;
+  let result = ''; let last = 0; let m;
+  while ((m = re.exec(value)) !== null) {
+    result += value.slice(last, m.index);
+    result += emlDecodeWord(m[1], m[2].toLowerCase(), m[3]);
+    last = m.index + m[0].length;
+  }
+  result += value.slice(last);
+  return result.replace(/\s+/g, ' ').trim();
+}
+
+function emlFormatDate(value) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value || '';
+  try { return new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Dubai' }).format(parsed); } catch { return value; }
+}
+
+export function parseEml(value) {
+  const buffer = exactBuffer(value);
+  if (buffer.byteLength > EML_BYTES) throw new Error('This file is too large for the email preview. Download the original to open it.');
+  if (buffer.byteLength < 5) throw new Error('This file does not contain a readable email message. Download the original to inspect it.');
+  const notices = [];
+  const node = emlParsePart(emlLatin1(buffer));
+  const headers = node.headers || {};
+  const leaves = [];
+  emlLeaves(node, leaves);
+  let htmlBody = '';
+  let textBody = '';
+  const attachments = [];
+  const cidMap = {};
+  for (const leaf of leaves) {
+    const cd = (leaf.headers['content-disposition'] || '').toLowerCase();
+    const fileName = own(emlParams(leaf.headers['content-disposition'] || ''), 'filename') || own(leaf.params, 'filename') || '';
+    const rawCid = own(leaf.headers, 'content-id');
+    const cid = rawCid ? rawCid.replace(/[<>]/g, '').trim() : '';
+    const mimeType = leaf.contentType;
+    if (mimeType.startsWith('image/') && cid) {
+      const bytes = emlLeafBytes(leaf);
+      if (bytes.length <= EML_INLINE_IMAGE_BYTES) {
+        const mime = mimeType === 'image/jpg' ? 'image/jpeg' : mimeType;
+        cidMap[cid] = `data:${mime};base64,${base64(bytes)}`;
+      }
+      continue;
+    }
+    if (cd === 'attachment' || fileName) {
+      attachments.push({ name: fileName || 'attachment', size: null, type: mimeType });
+      continue;
+    }
+    const bytes = emlLeafBytes(leaf);
+    const charset = own(leaf.params, 'charset') || 'utf-8';
+    const decoded = emlDecode(bytes, charset);
+    if (mimeType === 'text/html' && !htmlBody) htmlBody = decoded;
+    else if (mimeType === 'text/plain' && !textBody) textBody = decoded;
+    else if (mimeType.startsWith('text/') && !textBody) textBody = decoded;
+  }
+  let bodyHtml = '';
+  let bodyText = '';
+  if (htmlBody.trim()) {
+    bodyHtml = htmlBody.replace(/\bsrc\s*=\s*(?:"cid:([^"]+)"|'cid:([^']+)'|cid:([^\s>'"]+))/gi, (match, a, b, c) => {
+      const uri = cidMap[(a || b || c).trim()];
+      return uri ? `src="${uri}"` : match;
+    });
+  } else if (textBody) {
+    bodyText = textBody;
+  }
+  if (bodyHtml && byteLength(bodyHtml) > MESSAGE_BYTES) {
+    bodyHtml = '';
+    notices.push('The HTML body is too large to preview. Download the original to read it.');
+  }
+  if (!bodyHtml && bodyText && byteLength(bodyText) > MESSAGE_BYTES) {
+    const bytes = encoder.encode(bodyText);
+    bodyText = new TextDecoder().decode(bytes.subarray(0, MESSAGE_BYTES - 65536), { stream: true });
+    notices.push('The message body is truncated. Download the original for the complete message.');
+  }
+  if (attachments.length > MAX_ATTACHMENTS) {
+    attachments.length = MAX_ATTACHMENTS;
+    notices.push(`Showing the first ${MAX_ATTACHMENTS} attachments.`);
+  }
+  return {
+    kind: 'eml',
+    subject: text(emlDecodeHeader(own(headers, 'subject') || ''), 4096),
+    sender: emlFormatAddresses(own(headers, 'from') || ''),
+    to: emlFormatAddresses(own(headers, 'to') || ''),
+    cc: own(headers, 'cc') ? emlFormatAddresses(own(headers, 'cc')) : '',
+    date: emlFormatDate(emlDecodeHeader(own(headers, 'date') || '')),
+    bodyText,
+    bodyHtml,
+    attachments,
+    ...(notices.length ? { notice: notices.join(' ') } : {}),
+  };
+}
