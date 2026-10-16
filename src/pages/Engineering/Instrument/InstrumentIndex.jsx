@@ -393,11 +393,15 @@ const API_BASE = getApiBaseUrl();
 // instrument tags per page don't trip a fixed 10-min cap.  Override at build
 // time via VITE_INSTRUMENT_INDEX_UPLOAD_TIMEOUT_MS (milliseconds).
 // Must stay <= Vite proxy `proxyTimeout` (see frontend/vite.config.js) and
-// <= Gunicorn worker timeout (30 min). Default: 28 min — leaves headroom
-// for dense 5-page ADNOC P&IDs even when AI providers are slow.
+// <= Gunicorn worker timeout (40 min per gunicorn_config.py) / the Celery
+// task soft limit (50 min — pid_analysis/tasks.py II_TASK_SOFT_LIMIT_S).
+// Default: 55 min — the Celery task may legitimately run up to 50 min on
+// dense multi-page P&IDs; the old 28-min cap aborted polling while the
+// server was still working (and a Railway deploy can also restart the
+// worker, redelivering the job). Override via VITE_INSTRUMENT_INDEX_UPLOAD_TIMEOUT_MS.
 const UPLOAD_TIMEOUT_MS = Number(
   import.meta.env?.VITE_INSTRUMENT_INDEX_UPLOAD_TIMEOUT_MS
-) || 1_680_000;
+) || 3_300_000;
 
 // ─── Network resilience (soft-coded) ─────────────────────────────────────────
 // Railway's edge proxy / shared infra occasionally drops long-running HTTPS
@@ -1588,7 +1592,7 @@ const InstrumentIndex = () => {
         // eslint-disable-next-line no-constant-condition
         while (true) {
           if (Date.now() > deadline) {
-            throw new Error(`Extraction timed out after ${Math.round(UPLOAD_TIMEOUT_MS / 60000)} min. Try splitting the PDF into single-sheet files.`);
+            throw new Error(`Extraction timed out after ${Math.round(UPLOAD_TIMEOUT_MS / 60000)} min on this browser. The server job may still finish — wait a minute and re-run with BYOK (your own key is much faster), or split the PDF into single-sheet files.`);
           }
           await new Promise(r => setTimeout(r, 4000));
           let st;
@@ -1620,7 +1624,7 @@ const InstrumentIndex = () => {
       clearTimeout(abort);
       let msg;
       if (err.name === 'AbortError') {
-        msg = `Upload timed out after ${Math.round(UPLOAD_TIMEOUT_MS / 60000)} min. Try splitting the PDF into single-sheet files.`;
+        msg = `Upload timed out after ${Math.round(UPLOAD_TIMEOUT_MS / 60000)} min on this browser. The server job may still finish — re-run with BYOK (your own key is much faster), or split the PDF into single-sheet files.`;
       } else if (isTransientNetworkError(err)) {
         msg = CONN_RESET_HELP_MSG;
       } else {
