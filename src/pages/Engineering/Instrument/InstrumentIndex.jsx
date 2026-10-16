@@ -1122,6 +1122,32 @@ const InstrumentIndex = () => {
   const [byokProvider, setByokProvider]   = useState('claude');
   const [byokApiKey, setByokApiKey]       = useState('');
   const [byokModel, setByokModel]         = useState('');
+  // BYOK key self-test (soft-coded) — validates the key server-side with
+  // one minimal call before a long extraction run. Required in byokOnly mode.
+  const [byokTesting, setByokTesting]     = useState(false);
+  const [byokTestResult, setByokTestResult] = useState(null);   // { valid, message }
+
+  const handleByokTest = async () => {
+    if (!byokApiKey.trim()) { setByokTestResult({ valid: false, message: 'Enter an API key first.' }); return; }
+    setByokTesting(true); setByokTestResult(null);
+    try {
+      const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+      const resp = await fetch(`${API_BASE}/pid/instrument-index/test-key/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ provider: byokProvider, api_key: byokApiKey.trim(), model: byokModel || undefined }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      setByokTestResult({ valid: Boolean(data.valid), message: data.message || (data.valid ? 'Key valid' : 'Test failed') });
+    } catch (e) {
+      setByokTestResult({ valid: false, message: e.message || 'Connection test failed' });
+    } finally {
+      setByokTesting(false);
+    }
+  };
 
   // ── Stage-flow gating (soft-coded UI only — no core logic) ───────────────
   // Tracks optional stages the user explicitly skipped so the next stage
@@ -1147,7 +1173,7 @@ const InstrumentIndex = () => {
     legend:   Boolean(legendFile) || Boolean(skippedStages.legend),
     metadata: Boolean(drawingNumber || drawingTitle) || Boolean(skippedStages.metadata),
     byok:     (byokChoice === 'shared' && !II_SUBMIT_GATE.byokOnly)
-              || (byokChoice === 'byok' && Boolean(byokApiKey.trim())),
+              || (byokChoice === 'byok' && Boolean(byokApiKey.trim()) && byokTestResult?.valid === true),
   };
   const iiAllStagesVerified =
     !II_SUBMIT_GATE.enabled ||
@@ -2435,7 +2461,7 @@ const InstrumentIndex = () => {
                 : [II_SUBMIT_GATE.choices.byok, II_SUBMIT_GATE.choices.shared]
               ).map(c => {
                 const active = byokChoice === c.id;
-                const verified = c.id === 'shared' ? active : (active && Boolean(byokApiKey.trim()));
+                const verified = c.id === 'shared' ? active : (active && Boolean(byokApiKey.trim()) && byokTestResult?.valid === true);
                 return (
                   <button
                     key={c.id}
@@ -2455,8 +2481,10 @@ const InstrumentIndex = () => {
                       {verified && <CheckCircleIcon className="h-4 w-4 text-emerald-600 ml-auto" />}
                     </p>
                     <p className="text-[11px] text-slate-500 mt-1 leading-snug">{c.desc}</p>
-                    {active && c.id === 'byok' && !byokApiKey.trim() && (
-                      <p className="text-[11px] font-medium text-amber-700 mt-1.5">{II_SUBMIT_GATE.byokKeyHint}</p>
+                    {active && c.id === 'byok' && !verified && (
+                      <p className="text-[11px] font-medium text-amber-700 mt-1.5">
+                        {byokApiKey.trim() ? 'Key entered — click Test Connection below to validate it.' : II_SUBMIT_GATE.byokKeyHint}
+                      </p>
                     )}
                   </button>
                 );
@@ -2478,7 +2506,7 @@ const InstrumentIndex = () => {
                 <label className="block text-xs font-medium text-gray-600 mb-1">Provider</label>
                 <select
                   value={byokProvider}
-                  onChange={e => { setByokProvider(e.target.value); setByokModel(''); }}
+                  onChange={e => { setByokProvider(e.target.value); setByokModel(''); setByokTestResult(null); }}
                   disabled={isProcessing || !pidFile}
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-purple-500 disabled:bg-gray-100"
                 >
@@ -2488,21 +2516,37 @@ const InstrumentIndex = () => {
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">API Key</label>
-                <input
-                  type="password"
-                  value={byokApiKey}
-                  onChange={e => setByokApiKey(e.target.value)}
-                  placeholder={byokProvider === 'claude' ? 'sk-ant-…' : 'sk-…'}
-                  autoComplete="off"
-                  disabled={isProcessing || !pidFile}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 disabled:bg-gray-100"
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    value={byokApiKey}
+                    onChange={e => { setByokApiKey(e.target.value); setByokTestResult(null); }}
+                    placeholder={byokProvider === 'claude' ? 'sk-ant-…' : 'sk-…'}
+                    autoComplete="off"
+                    disabled={isProcessing || !pidFile}
+                    className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 disabled:bg-gray-100"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleByokTest}
+                    disabled={isProcessing || !pidFile || byokTesting || !byokApiKey.trim()}
+                    className="px-3 py-2 text-xs font-semibold border border-purple-300 text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                    title="Validate the key with one minimal provider call"
+                  >
+                    {byokTesting ? 'Testing…' : '⚡ Test'}
+                  </button>
+                </div>
+                {byokTestResult && (
+                  <p className={`text-[11px] mt-1.5 ${byokTestResult.valid ? 'text-emerald-600' : 'text-red-600'}`}>
+                    {byokTestResult.valid ? '✓ ' : '✕ '}{byokTestResult.message}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Model</label>
                 <select
                   value={byokModel}
-                  onChange={e => setByokModel(e.target.value)}
+                  onChange={e => { setByokModel(e.target.value); setByokTestResult(null); }}
                   disabled={isProcessing || !pidFile}
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-purple-500 disabled:bg-gray-100"
                 >
