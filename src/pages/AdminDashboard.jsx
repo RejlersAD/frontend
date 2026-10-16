@@ -6,6 +6,7 @@ import { fetchCurrentUser, fetchUserStats } from '../store/slices/rbacSlice';
 import { isUserAdmin } from '../utils/rbac.utils';
 import analyticsService from '../services/analyticsService';
 import AuditLogsTab from '../components/admin/AuditLogsTab';
+import NotificationHistoryTab from '../components/admin/NotificationHistoryTab';
 import './AdminDashboard.css';
 
 const SERVICES = [
@@ -18,7 +19,7 @@ const SERVICES = [
   { name: 'Authentication', key: 'authentication', icon: Users, group: 'Platform', color: 'blue', description: 'Authentication request outcomes' },
   { name: 'Server disk', key: 'disk', icon: HardDrive, group: 'Data', color: 'blue', description: 'Application server filesystem' },
 ];
-const TABS = ['Overview', 'Incidents', 'Services', 'Dependencies', 'Capacity', 'Maintenance', 'Audit'];
+const TABS = ['Overview', 'Incidents', 'Services', 'Dependencies', 'Capacity', 'Maintenance', 'Audit', 'Notification Logs History'];
 const list = value => Array.isArray(value) ? value : value?.results || [];
 const display = (value, suffix = '') => value == null ? '—' : `${value}${suffix}`;
 const label = value => value ? value.charAt(0).toUpperCase() + value.slice(1) : 'Unknown';
@@ -48,7 +49,8 @@ function History({ history, hours, now }) {
 
 export default function AdminDashboard() {
   const dispatch = useDispatch();
-  const { user } = useSelector(state => state.auth);
+  const { user, isAuthenticated } = useSelector(state => state.auth);
+  const notificationAccountKey = `${Boolean(isAuthenticated)}:${user?.user?.id ?? user?.id ?? user?.email ?? user?.username ?? ''}`;
   const { currentUser, stats } = useSelector(state => state.rbac);
   const allowed = isUserAdmin(user) || currentUser?.roles?.some(role => ['super_admin', 'admin'].includes(role.code));
   const [tab, setTab] = useState('Overview');
@@ -172,6 +174,7 @@ export default function AdminDashboard() {
           {tab === 'Maintenance' && <section className="ac-panel"><div className="ac-panel-heading"><h2>Administrative work</h2><button className="ac-primary" onClick={() => setTaskOpen(true)}><Plus size={16} />Create admin task</button></div><p className="ac-support">{insights.length} findings · {tasks.length} session drafts. No maintenance schedule is connected.</p>{insights.map((item, index) => <div className="ac-maintenance-item" key={item.id || index}><FileText size={20} /><span>{item.title}</span><button className="ac-detail-button" onClick={() => setDetail({ title: item.title, description: item.description, raw: item })}>Review finding</button></div>)}{tasks.map((task, index) => <div className="ac-maintenance-item" key={index}><Clock size={20} /><span>{task.title}</span><small>Session draft</small></div>)}</section>}
         </div>
         {tab === 'Audit' && <AuditLogsTab />}
+        {tab === 'Notification Logs History' && <NotificationHistoryTab key={notificationAccountKey} hours={Number(period)} refreshToken={updated} />}
       </div>
     </main>
     <dialog ref={dialogRef} className="ac-dialog" onCancel={closeDialog} onClick={event => { if (event.target === event.currentTarget) closeDialog(); }} aria-labelledby="ac-dialog-title"><button className="ac-dialog-close" aria-label="Close dialog" onClick={closeDialog}><X size={20} /></button><h2 id="ac-dialog-title">{taskOpen ? 'Create admin task' : detail?.title}</h2>{taskOpen ? <form onSubmit={event => { event.preventDefault(); const form = new FormData(event.currentTarget); setTasks(previous => [...previous, { title: form.get('title'), notes: form.get('notes') }]); setTaskOpen(false); setDetail({ title: 'Task draft created', description: 'Saved for this console session. Server-side task management is not connected.' }); }}><p className="ac-support">Create a local draft for this console session.</p><label>Task title<input name="title" required maxLength={150} autoFocus /></label><label>Notes<textarea name="notes" rows={4} /></label><button className="ac-primary" type="submit">Save draft</button></form> : <><p className="ac-support">{detail?.description}</p>{detail?.activity && <dl className="ac-key-values"><dt>Actor</dt><dd>{detail.activity.actor_name || detail.activity.user_email || 'System'}</dd><dt>Time</dt><dd>{new Date(detail.activity.timestamp).toLocaleString()}</dd><dt>Action</dt><dd>{detail.activity.description}</dd><dt>Target</dt><dd>{target(detail.activity)}</dd><dt>Outcome</dt><dd>{outcome(detail.activity)}</dd></dl>}{detail?.activity && Object.keys(detail.activity.metadata?.changes || {}).length > 0 && <><h3>Recorded changes</h3><pre>{JSON.stringify(detail.activity.metadata.changes, null, 2)}</pre></>}{detail?.raw && <pre>{JSON.stringify(detail.raw, null, 2)}</pre>}{detail?.alertId && <button className="ac-primary" disabled={busy} onClick={async () => { setBusy(true); try { await analyticsService.investigateAlert(detail.alertId); closeDialog(); setBusy(false); await refresh(); } catch { setDetail(previous => ({ ...previous, description: 'Unable to start investigation. Please try again.' })); setBusy(false); } }}>Start investigation</button>}</>}</dialog>

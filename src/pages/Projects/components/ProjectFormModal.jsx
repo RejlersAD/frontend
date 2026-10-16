@@ -6,6 +6,8 @@ import {
   PROJECT_COPY,
 } from '../../../config/projectControl.config'
 import useModalAccessibility from '../../../hooks/useModalAccessibility'
+import SharedRecordTargetSelector from './SharedRecordTargetSelector'
+import '../SharedRecordsWorkspace.css'
 
 const buildInitial = (project) => {
   const base = {}
@@ -46,6 +48,7 @@ export default function ProjectFormModal({
   const [submitting, setSubmitting] = useState(false)
   const [serverError, setServerError] = useState(null)
   const [fieldErrors, setFieldErrors] = useState({})
+  const [selectedClient, setSelectedClient] = useState(null)
   const dialogRef = useModalAccessibility(open, onClose, submitting)
 
   useEffect(() => {
@@ -53,6 +56,7 @@ export default function ProjectFormModal({
       setValues(initial)
       setServerError(null)
       setFieldErrors({})
+      setSelectedClient(null)
     }
   }, [open, initial])
 
@@ -87,6 +91,7 @@ export default function ProjectFormModal({
     try {
       await onSubmit({
         ...stripBlanks(values),
+        ...(mode === 'create' && selectedClient ? { client_id: selectedClient.id } : {}),
         custom_fields: {
           ...project?.custom_fields,
           project_type: values.project_type,
@@ -141,6 +146,7 @@ export default function ProjectFormModal({
               <fieldset key={section.id} className="border-t border-slate-100 pt-4 first:border-0 first:pt-0">
                 <legend className="text-sm font-semibold text-slate-700 mb-3">{section.title}</legend>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {mode === 'create' && section.fields.some(field => field.name === 'client_name') && <div className="sm:col-span-3"><SharedRecordTargetSelector kind="client" value={selectedClient} disabled={submitting} onChange={client => { setSelectedClient(client); if (client) setField('client_name', client.label) }} /></div>}
                   {section.fields.map((f) => (
                     <div
                       key={f.name}
@@ -157,6 +163,7 @@ export default function ProjectFormModal({
                         aria-required={f.required || undefined}
                         aria-invalid={Boolean(fieldErrors[f.name])}
                         aria-describedby={(f.help || fieldErrors[f.name]) ? `project-field-${f.name}-description` : undefined}
+                        disabled={submitting || Boolean(f.name === 'client_name' && selectedClient)}
                       />
                       {f.help && !fieldErrors[f.name] && (
                         <p id={`project-field-${f.name}-description`} className="mt-1 text-xs text-slate-500">{f.help}</p>

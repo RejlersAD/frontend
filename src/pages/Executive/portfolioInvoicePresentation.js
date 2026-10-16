@@ -1,5 +1,5 @@
-import { internalRoute } from './executivePresentation';
-import { revenueNumber } from './portfolioRevenuePresentation';
+import { internalRoute } from './executivePresentation.js';
+import { revenueNumber } from './portfolioRevenuePresentation.js';
 
 export const RECORDED_INVOICE_STATUSES = new Set(['available', 'partial', 'incomplete']);
 export const INVOICE_TOTALS = [['invoice_amount', 'Recorded invoiced'], ['actual_payment_received', 'Recorded receipts'], ['calculated_receivable_balance', 'Outstanding balance']];
@@ -10,5 +10,5 @@ export function portfolioSourceRoute(value) {
   const route = internalRoute(value);
   if (!route) return null;
   const pathname = route.split(/[?#]/, 1)[0];
-  return /^\/(?:projects|finance\/outgoing-invoices(?:\/[^/]+)?|procurement\/(?:projects(?:\/[^/]+)?|orders|requisitions)|sales\/(?:opportunities|project-handovers)|qhse(?:\/[^?]*)?)\/?$/.test(pathname) ? route : null;
+  return /^\/(?:projects|finance(?:\/outgoing-invoices(?:\/[^/]+)?)?|procurement\/(?:projects(?:\/[^/]+)?|orders|requisitions)|sales\/(?:opportunities|project-handovers)|qhse(?:\/[^?]*)?)\/?$/.test(pathname) ? route : null;
 }

@@ -1,3 +1,4 @@
+import useAIProviderStatus from '../../../hooks/useAIProviderStatus'
 import { radaiConfirm } from '../../../services/radaiDialog'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -81,6 +82,38 @@ function downloadBlob(content, filename, type) {
 export default function PIDCheckerV2() {
   const navigate = useNavigate()
   const fileInputRef = useRef(null)
+  // BUG FIX (2026-09-08): a real, confirmed, reported symptom — creating a
+  // new project showed the Master Line List / Equipment List / Instrument
+  // Index as "Active" instead of empty. Two separate frontend causes, both
+  // fixed together:
+  //   1. handleCreateProject never selected the new project at all (see its
+  //      own comment below) — closing the create-project modal just
+  //      revealed whatever project was already open underneath it.
+  //   2. refreshLineList/refreshEquipmentList/refreshInstrumentIndex had no
+  //      staleness guard — a slow in-flight fetch could resolve AFTER a
+  //      switch and overwrite the freshly-cleared state. Mirrors
+  //      PIDVerificationV2.jsx's own projectEpochRef fix for the identical
+  //      class of race — bumped on every project switch, checked by each
+  //      fetch before it writes state.
+  //
+  // CORRECTED (2026-09-08, later same day): these two fixes were real and
+  // are still correct/kept — but they were originally framed as "stop this
+  // project's data leaking into another project," which turned out to be
+  // the wrong mental model. Traced the actual backend
+  // (apps.pid_checker_v2.views: Line/Equipment/InstrumentIndexUploadView)
+  // and confirmed these three "Master" lists are DELIBERATELY global, one
+  // per USER account, not per project — PidCheckerV2LineListUpload has no
+  // project field at all; the other two have only a free-text `project`
+  // CharField parsed from the Excel's own header block (a display label,
+  // not a real relation), and all three models' own unique constraints are
+  // `..._per_user`, not `..._per_user_project` (confirmed against a
+  // previously-pending, now-applied migration that formalized exactly
+  // this). So `projectId` below still matters for clearing/re-fetching UI
+  // state cleanly on a switch (the fixes above), but the Master Lists
+  // themselves are correctly the SAME data across every project for a
+  // given user — that's the intended "Master" (one canonical reference)
+  // design, not a bug.
+  const projectEpochRef = useRef(0)
   const [file, setFile] = useState(null)
   const [loading, setLoading] = useState(false)
   const [uploadPct, setUploadPct] = useState(0)
@@ -96,7 +129,8 @@ export default function PIDCheckerV2() {
   const [visionClaudeModel, setVisionClaudeModel] = useState(
     () => sessionStorage.getItem(SS_KEY_CLAUDE_MODEL) || CLAUDE_VISION_MODELS[0].id
   )
-  const [apiKey, setApiKey] = useState(() => sessionStorage.getItem(SS_KEY_APIKEY) || '')
+  const [apiKey, setApiKey] = useState('')
+  const centralAI = useAIProviderStatus(visionProvider)
   const [showKey, setShowKey] = useState(false)
   const [rememberKey, setRememberKey] = useState(
     () => sessionStorage.getItem(SS_KEY_REMEMBER) === '1'
@@ -128,6 +162,24 @@ export default function PIDCheckerV2() {
   const [projects, setProjects] = useState([])
   const [loadingProjects, setLoadingProjects] = useState(false)
   const [selectedProject, setSelectedProject] = useState(null)
+  // BUG FIX: SS_KEY_PROVIDER/APIKEY/REMEMBER/CLAUDE_MODEL were GLOBAL keys
+  // for the whole tab, so a key entered for one project leaked into every
+  // other project (including a brand-new one that had never seen a key)
+  // and showed up pre-filled before the user typed anything. The
+  // useState initializers above read the unscoped key at mount (fine —
+  // no project is selected yet at that instant, selectedProject starts
+  // null), then this effect re-syncs from the project-scoped key
+  // (`${BASE_KEY}::${project_id}`) on mount AND every subsequent project
+  // switch — same fix I/O List's UploadCard applies for its own BYOK
+  // fields (see IOListWorkflowPage.jsx).
+  useEffect(() => {
+    const scope = selectedProject?.project_id || 'none'
+    setVisionProvider(sessionStorage.getItem(`${SS_KEY_PROVIDER}::${scope}`) || VISION_PROVIDERS[0].id)
+    setVisionClaudeModel(sessionStorage.getItem(`${SS_KEY_CLAUDE_MODEL}::${scope}`) || CLAUDE_VISION_MODELS[0].id)
+    setApiKey(null || '')
+    setRememberKey(sessionStorage.getItem(`${SS_KEY_REMEMBER}::${scope}`) === '1')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProject?.project_id])
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -157,38 +209,62 @@ export default function PIDCheckerV2() {
   const [activeLineList, setActiveLineList] = useState(null)
 
   const refreshLineList = useCallback(async () => {
+    const projectId = selectedProject?.project_id
+    const epoch = projectEpochRef.current
+    console.log('refreshLineList called, projectId:', projectId, 'epoch:', epoch)
     try {
-      const rows = await listLineLists()
+      const rows = await listLineLists(projectId)
+      console.log('refreshLineList RAW RESPONSE for projectId:', projectId, rows)
+      if (epoch !== projectEpochRef.current) {
+        console.log('refreshLineList DISCARDED as stale — epoch', epoch, '!==', projectEpochRef.current)
+        return // stale — user switched project mid-request
+      }
       const list = Array.isArray(rows) ? rows : (rows?.results || [])
       setActiveLineList(list.find(r => r.is_active) || null)
     } catch (err) {
       console.warn('[PIDCheckerV2] line list fetch failed', err)
     }
-  }, [])
+  }, [selectedProject])
   // ── Master Equipment List (Excel) ─────────────────────────
   const [activeEquipmentList, setActiveEquipmentList] = useState(null)
 
   const refreshEquipmentList = useCallback(async () => {
+    const projectId = selectedProject?.project_id
+    const epoch = projectEpochRef.current
+    console.log('refreshEquipmentList called, projectId:', projectId, 'epoch:', epoch)
     try {
-      const rows = await listEquipmentLists()
+      const rows = await listEquipmentLists(projectId)
+      console.log('refreshEquipmentList RAW RESPONSE for projectId:', projectId, rows)
+      if (epoch !== projectEpochRef.current) {
+        console.log('refreshEquipmentList DISCARDED as stale — epoch', epoch, '!==', projectEpochRef.current)
+        return // stale — user switched project mid-request
+      }
       const list = Array.isArray(rows) ? rows : (rows?.results || [])
       setActiveEquipmentList(list.find(r => r.is_active) || null)
     } catch (err) {
       console.warn('[PIDCheckerV2] equipment list fetch failed', err)
     }
-  }, [])
+  }, [selectedProject])
   // ── Master Instrument Index (Excel) ─────────────────
   const [activeInstrumentIndex, setActiveInstrumentIndex] = useState(null)
 
   const refreshInstrumentIndex = useCallback(async () => {
+    const projectId = selectedProject?.project_id
+    const epoch = projectEpochRef.current
+    console.log('refreshInstrumentIndex called, projectId:', projectId, 'epoch:', epoch)
     try {
-      const rows = await listInstrumentIndexes()
+      const rows = await listInstrumentIndexes(projectId)
+      console.log('refreshInstrumentIndex RAW RESPONSE for projectId:', projectId, rows)
+      if (epoch !== projectEpochRef.current) {
+        console.log('refreshInstrumentIndex DISCARDED as stale — epoch', epoch, '!==', projectEpochRef.current)
+        return // stale — user switched project mid-request
+      }
       const list = Array.isArray(rows) ? rows : (rows?.results || [])
       setActiveInstrumentIndex(list.find(r => r.is_active) || null)
     } catch (err) {
       console.warn('[PIDCheckerV2] instrument index fetch failed', err)
     }
-  }, [])
+  }, [selectedProject])
 
   // ── Project Management Functions ──────────────────────────────────
   const fetchProjects = useCallback(async () => {
@@ -204,7 +280,33 @@ export default function PIDCheckerV2() {
     }
   }, [])
 
+  // BUG FIX: this used to be defined further down, after handleCreateProject
+  // — moved up here (unchanged otherwise, still a stable/no-deps callback)
+  // so handleCreateProject can actually call it. Also now bumps
+  // projectEpochRef on every switch — see its declaration comment for why.
+  const handleSelectProject = useCallback((project) => {
+    console.log('=== SELECT PROJECT CALLED ===', project?.project_id)
+    projectEpochRef.current += 1
+    setSelectedProject(project)
+    setFile(null)
+    setResult(null)
+    setError(null)
+    setHistory([])
+    // Clear the previous project's reference data immediately so it can't
+    // flash on screen while the new project's fetch (triggered by the
+    // refreshLineList/refreshEquipmentList/refreshInstrumentIndex effects
+    // re-firing on selectedProject change) is still in flight.
+    setActiveLineList(null)
+    setActiveEquipmentList(null)
+    setActiveInstrumentIndex(null)
+    // Fetch project-specific history
+    getProjectHistory(project.project_id)
+      .then(data => setHistory(data))
+      .catch(err => console.warn('[PIDCheckerV2] Failed to load project history:', err))
+  }, [])
+
   const handleCreateProject = useCallback(async (e) => {
+    console.log('=== CREATE PROJECT CLICKED ===')
     e?.preventDefault?.()
     if (!newProjectName.trim()) return
     setCreatingProject(true)
@@ -215,13 +317,22 @@ export default function PIDCheckerV2() {
       setNewProjectName('')
       setNewProjectDesc('')
       toast.success(`Project "${project.project_name}" created`)
+      // BUG FIX: this never actually navigated into the new project before —
+      // selectedProject stayed on whatever project was open when the
+      // create-project modal was opened, so closing the modal just
+      // revealed that same old project's screen (history, BYOK key, etc.
+      // are genuinely project-scoped — unlike the Master Lists, see this
+      // component's own top-of-file comment). handleSelectProject does the
+      // real work (select + clear + fresh fetch), same as clicking the new
+      // project from the list would.
+      handleSelectProject(project)
     } catch (err) {
       toast.error(err.response?.data?.project_name?.[0] || 'Failed to create project')
       console.error('[PIDCheckerV2] createProject error:', err)
     } finally {
       setCreatingProject(false)
     }
-  }, [newProjectName, newProjectDesc])
+  }, [newProjectName, newProjectDesc, handleSelectProject])
 
   const handleUpdateProject = useCallback(async (e) => {
     e?.preventDefault?.()
@@ -262,24 +373,16 @@ export default function PIDCheckerV2() {
     }
   }, [deletingProject, selectedProject])
 
-  const handleSelectProject = useCallback((project) => {
-    setSelectedProject(project)
-    setFile(null)
-    setResult(null)
-    setError(null)
-    setHistory([])
-    // Fetch project-specific history
-    getProjectHistory(project.project_id)
-      .then(data => setHistory(data))
-      .catch(err => console.warn('[PIDCheckerV2] Failed to load project history:', err))
-  }, [])
-
   const handleBackToProjects = useCallback(() => {
+    projectEpochRef.current += 1 // invalidate any in-flight per-project fetch still in the air
     setSelectedProject(null)
     setFile(null)
     setResult(null)
     setError(null)
     setHistory([])
+    setActiveLineList(null)
+    setActiveEquipmentList(null)
+    setActiveInstrumentIndex(null)
   }, [])
 
   const refreshActiveLegend = useCallback(async () => {
@@ -345,19 +448,22 @@ export default function PIDCheckerV2() {
       toast.warn('Choose a PDF first')
       return
     }
-    if (mode === MODE_VISION && !apiKey.trim()) {
-      toast.warn('Paste your AI API key to use Vision mode')
+    if (mode === MODE_VISION && !centralAI.canUseAI) {
+      toast.warn('Ask your administrator to configure the selected AI provider.')
       return
     }
-    // Persist / clear BYOK preference (sessionStorage only — cleared on tab close)
+    // Persist / clear BYOK preference (sessionStorage only — cleared on tab
+    // close), scoped to the active project — see the resync effect next to
+    // selectedProject's declaration for why.
+    const byokScope = selectedProject?.project_id || 'none'
     if (mode === MODE_VISION && rememberKey) {
-      sessionStorage.setItem(SS_KEY_PROVIDER, visionProvider)
-      sessionStorage.setItem(SS_KEY_CLAUDE_MODEL, visionClaudeModel)
-      sessionStorage.setItem(SS_KEY_APIKEY, apiKey)
-      sessionStorage.setItem(SS_KEY_REMEMBER, '1')
+      sessionStorage.setItem(`${SS_KEY_PROVIDER}::${byokScope}`, visionProvider)
+      sessionStorage.setItem(`${SS_KEY_CLAUDE_MODEL}::${byokScope}`, visionClaudeModel)
+      undefined
+      sessionStorage.setItem(`${SS_KEY_REMEMBER}::${byokScope}`, '1')
     } else {
-      sessionStorage.removeItem(SS_KEY_APIKEY)
-      sessionStorage.removeItem(SS_KEY_REMEMBER)
+      sessionStorage.removeItem(`${SS_KEY_APIKEY}::${byokScope}`)
+      sessionStorage.removeItem(`${SS_KEY_REMEMBER}::${byokScope}`)
     }
 
     setLoading(true)
@@ -383,7 +489,7 @@ export default function PIDCheckerV2() {
     } finally {
       setLoading(false)
     }
-  }, [file, mode, forceOcr, visionProvider, visionClaudeModel, apiKey, rememberKey, refreshHistory, selectedProject])
+  }, [file, mode, forceOcr, visionProvider, visionClaudeModel, apiKey, rememberKey, refreshHistory, selectedProject, centralAI.canUseAI])
 
   const onReset = useCallback(() => {
     setFile(null)
@@ -1186,6 +1292,7 @@ export default function PIDCheckerV2() {
             fileInputRef={fileInputRef}
             file={file}
             onPickFile={onPickFile}
+            projectId={selectedProject?.project_id}
             activeLineList={activeLineList}
             onLineListUploaded={refreshLineList}
             activeEquipmentList={activeEquipmentList}
@@ -1247,6 +1354,7 @@ export default function PIDCheckerV2() {
             onExportCsv={onExportCsv}
             onExportJson={onExportJson}
             pdfFile={file}
+            projectId={selectedProject?.project_id}
             activeLegend={activeLegend}
             effectiveLegend={effectiveLegend}
             activeLineList={activeLineList}

@@ -20,22 +20,26 @@ async function openSettings(page) {
 
 async function harness(page, settings = {}) {
   return masterScheduleHarness(page, {
+    harnessPath: '/tests/fixtures/simple-planning-harness.jsx',
     prepare(state) {
       state.aiSettings = { provider: 'anthropic', enabled: true, key_configured: true, encryption_configured: true, model: 'claude-opus-5', model_choices: providers[0].model_choices, provider_choices: providers, ...settings }
       state.aiWrites = []
       state.connectionTests = 0
+      state.testResponse = null
+      state.saveError = null
     },
     async handleRequest({ path, route, state, reply }) {
       const method = route.request().method()
       if (path.endsWith('/ai-settings/test/')) {
         state.connectionTests += 1
-        await reply(route, { success: true, message: `${state.aiSettings.provider === 'gemini' ? 'Google Gemini' : 'Anthropic'} connection verified.` })
+        await reply(route, state.testResponse || { success: true, message: `${state.aiSettings.provider === 'gemini' ? 'Google Gemini' : 'Anthropic'} connection verified.` })
         return true
       }
       if (!path.endsWith('/ai-settings/')) return false
       if (method === 'POST') {
         const payload = route.request().postDataJSON()
         state.aiWrites.push(payload)
+        if (state.saveError) { await reply(route, state.saveError, 400); return true }
         const { api_key: apiKey, ...configuration } = payload
         state.aiSettings = { ...state.aiSettings, ...configuration, key_configured: Boolean(apiKey || state.aiSettings.key_configured), model_choices: providers.find(provider => provider.value === payload.provider).model_choices }
       } else if (method !== 'GET') {
@@ -54,6 +58,68 @@ function clean(state) {
   expect(state.unknownWrites).toEqual([])
   expect(state.unknown).toEqual([])
 }
+
+test('administrator-managed providers require no project key when selecting and testing AI', async ({ page }) => {
+  const state = await harness(page, {
+    credential_source: 'administrator',
+    provider_choices: providers.map(provider => ({ ...provider, centrally_managed: true, central_ready: true })),
+  })
+  const settings = await openSettings(page)
+  await expect(settings.locator('input[type="password"]')).toHaveCount(0)
+  await expect(settings).toContainText('Connection managed by your administrator.')
+  await expect(settings.getByRole('button', { name: 'Remove key', exact: true })).toHaveCount(0)
+  await settings.getByRole('combobox', { name: 'Provider', exact: true }).selectOption('gemini')
+  await expect(settings.getByRole('button', { name: 'Save settings', exact: true })).toBeEnabled()
+  await settings.getByRole('button', { name: 'Save settings', exact: true }).click()
+  expect(state.aiWrites).toEqual([{ provider: 'gemini', enabled: true, model: 'gemini-3.8-flash' }])
+  await expect(settings.locator('input[type="password"]')).toHaveCount(0)
+  await settings.getByRole('button', { name: 'Test connection', exact: true }).click()
+  await expect(settings).toContainText('Google Gemini connection verified.')
+  expect(state.connectionTests).toBe(1)
+  clean(state)
+})
+
+test('a malformed connection response cannot establish verified readiness', async ({ page }) => {
+  const state = await harness(page, {
+    credential_source: 'administrator',
+    provider_choices: providers.map(provider => ({ ...provider, centrally_managed: true, central_ready: true })),
+  })
+  state.testResponse = { message: 'Connection verified.' }
+  const settings = await openSettings(page)
+  await settings.getByRole('button', { name: 'Test connection', exact: true }).click()
+  await expect(settings.getByRole('alert')).toContainText('Connection test did not confirm success.')
+  await expect(settings.getByText('Connection verified.', { exact: true })).toHaveCount(0)
+  expect(state.connectionTests).toBe(1)
+  clean(state)
+})
+
+test('failed optional project credential save preserves input without logging its value', async ({ page }) => {
+  const logs = []
+  page.on('console', message => logs.push(message.text()))
+  const state = await harness(page)
+  state.saveError = { detail: 'Provider settings could not be saved.' }
+  const settings = await openSettings(page)
+  const key = 'sk-ant-project-browser-fixture-only-never-a-real-key'
+  await settings.getByLabel('Anthropic API key', { exact: true }).fill(key)
+  await settings.getByRole('button', { name: 'Save settings', exact: true }).click()
+  await expect(settings.getByRole('alert')).toContainText('Provider settings could not be saved.')
+  await expect(settings.getByLabel('Anthropic API key', { exact: true })).toHaveValue(key)
+  expect(logs.join('\n')).not.toContain(key)
+  clean(state)
+})
+
+test('disabled administrator connection is reported without asking for a personal key', async ({ page }) => {
+  const state = await harness(page, {
+    enabled: false, key_configured: false, credential_source: 'administrator',
+    provider_choices: providers.map(provider => ({ ...provider, centrally_managed: true, central_ready: false })),
+  })
+  const settings = await openSettings(page)
+  await expect(settings).toContainText('The administrator-managed connection is unavailable.')
+  await expect(settings.locator('input[type="password"]')).toHaveCount(0)
+  await expect(settings.getByRole('button', { name: 'Test connection', exact: true })).toBeDisabled()
+  expect(state.connectionTests).toBe(0)
+  clean(state)
+})
 
 test('switching to Gemini requires its own key and tests only the saved provider', async ({ page }) => {
   const state = await harness(page)

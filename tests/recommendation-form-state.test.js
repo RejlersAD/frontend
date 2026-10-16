@@ -93,6 +93,22 @@ test('pending registration routes can be repaired until approval evidence is rec
   }
 });
 
+test('project number hydration preserves explicit codes and selected enterprise identities', () => {
+  const project = { project_id: 17, project_number: '5901001', label: 'Selected project' };
+  const record = { project_numbers: ['5901001', 'PRJ-02'], project: 'OLD', project_details: [project] };
+  const hydrated = hydrateRecommendationReferences(record);
+  assert.equal(hydrated.project, '5901001, PRJ-02');
+  assert.deepEqual(hydrated.project_details, [project, { type: 'project', project_number: 'PRJ-02', value: 'PRJ-02' }]);
+  assert.equal(hydrated.project_details[0], project);
+  assert.deepEqual(record.project_details, [project]);
+});
+
+test('explicitly cleared canonical numbers do not resurrect a removed legacy project', () => {
+  const hydrated = hydrateRecommendationReferences({ project_numbers: [], project: 'OLD', project_details: [{ project_number: 'OLD' }] });
+  assert.equal(hydrated.project, '');
+  assert.deepEqual(hydrated.project_details, []);
+});
+
 test('a reopened imported draft keeps provenance without locking its new approval round', () => {
   const record = { id: 'revision', status: 'draft', price_remarks_data: {
     import_source: 'signed_pr_pdf', approval_revision_history: [{ round: 1, rejection_reason: 'Correct the request' }],

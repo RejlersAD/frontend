@@ -33,6 +33,10 @@ export async function recommendationPdfImportHarness(page, options = {}) {
     importNumber: options.extracted?.pr_number || (options.existing ? existingImportNumber : missingImportNumber),
     saveError: null, savePending: null, deferSave: false,
     linkRequests: [], linkError: null,
+    sourceApprovalReview: structuredClone(options.sourceApprovalReview || { approval_labels: {}, additional_approvers: [] }),
+    sourceApprovalReviewResponse: undefined,
+    projectNumbersResponse: undefined,
+    approvalDetection: null,
   })
   await page.route('**/api/v1/procurement/orders/?*', async route => {
     if (!options.poOptions) return route.fallback()
@@ -71,17 +75,22 @@ export async function recommendationPdfImportHarness(page, options = {}) {
       field_confidence: { pr_number: 'high', issued_by: 'high', supplier: 'high', price: 'high' },
       ...(options.extracted || {}),
     }
-    const approvalDetection = {
+    const approvalDetection = state.approvalDetection || {
       signatures: { pm: false, moe: false, mop: false, vp: false },
       approver_names: {}, approval_date: '',
       ...(options.approvalDetection || {}),
     }
     if (body.preview_only === 'true') {
       state.previewRequests.push(body)
+      const matched = state.props.requisitions.find(row => row.pr_number === extracted.pr_number)
       return reply(route, {
         success: true, preview_only: true, pr_number: extracted.pr_number,
         database_match: state.props.requisitions.some(row => row.pr_number === extracted.pr_number),
         extracted_data: extracted, approval_detection: approvalDetection,
+        source_approval_review: state.sourceApprovalReview,
+        requisition_updated_at: matched?.updated_at || '2026-09-25T09:00:00.000000Z',
+        ...(Array.isArray(matched?.project_numbers) ? { project_numbers: matched.project_numbers } : {}),
+        default_level_zero_approver: options.levelZeroApprover || null,
         document_signed_off: Boolean(options.documentSignedOff),
         document_comparison: options.documentComparison,
         requires_manual_review: true, mapping_issues: options.mappingIssues || [], workflow_issues: [],
@@ -90,14 +99,20 @@ export async function recommendationPdfImportHarness(page, options = {}) {
     state.saveRequests.push(body)
     if (state.deferSave) await new Promise(resolve => { state.savePending = resolve })
     if (state.saveError) return reply(route, state.saveError.body, state.saveError.status || 400)
+    if (options.savedApprovalDetection) state.approvalDetection = structuredClone(options.savedApprovalDetection)
+    if (body.source_approval_review) state.sourceApprovalReview = JSON.parse(body.source_approval_review)
     const overrides = JSON.parse(body.manual_overrides || '{}')
     const number = body.expected_pr_number || overrides.pr_number || extracted.pr_number
     const previous = state.props.requisitions.find(row => row.pr_number === number)
+    const reviewedProjects = body.reviewed_project_references ? JSON.parse(body.reviewed_project_references) : null
+    const projectNumbers = (reviewedProjects?.project_number ?? overrides.project_number ?? previous?.project ?? extracted.project_number).split(',').map(value => value.trim()).filter(Boolean)
     const record = {
       ...(previous || state.props.requisitions[0]), id: previous?.id || recommendationId(9002),
       pr_number: number, product_service: body.attach_only === 'true' ? previous.product_service : overrides.product_service || extracted.product_service,
-      status: previous?.status === 'converted' ? 'converted' : options.documentSignedOff || previous ? 'approved' : 'draft', total_price: body.attach_only === 'true' ? previous.total_price : overrides.net_total || extracted.net_total,
+      status: options.savedStatus || (previous?.status === 'converted' ? 'converted' : options.documentSignedOff || previous ? 'approved' : 'draft'), total_price: body.attach_only === 'true' ? previous.total_price : overrides.net_total || extracted.net_total,
       attachments: options.savedAttachments || [{ filename: syntheticApprovedPdf.name, s3_key: 'synthetic-only/approved-pr.pdf' }],
+      project: projectNumbers.join(', '), project_numbers: projectNumbers,
+      source_approval_review: state.sourceApprovalReview,
       ...(options.savedVerification ? { price_remarks_data: { ...(previous?.price_remarks_data || {}), signed_document_verification: options.savedVerification } } : {}),
     }
     state.details[record.id] = record
@@ -106,7 +121,9 @@ export async function recommendationPdfImportHarness(page, options = {}) {
       : [...state.props.requisitions, record]
     return reply(route, {
       success: true, pr_number: number, status: record.status, created: !previous,
-      requisition_id: record.id, approval_detection: approvalDetection,
+      requisition_id: record.id, approval_detection: options.savedApprovalDetection || approvalDetection,
+      source_approval_review: state.sourceApprovalReviewResponse === undefined ? state.sourceApprovalReview : state.sourceApprovalReviewResponse,
+      project_numbers: state.projectNumbersResponse === undefined ? projectNumbers : state.projectNumbersResponse,
       document_signed_off: Boolean(options.documentSignedOff), po_link: options.poLink,
       mapping_issues: [], workflow_issues: [],
     }, previous ? 200 : 201)

@@ -17,6 +17,11 @@ export const INITIAL_INVOICE_FILTERS = { search: '', match: '', workflow: '', du
 const REVIEW_STATES = ['ocr_review', 'ready_for_matching', 'procurement_review', 'finance_review'];
 const DAY = 86400000;
 
+export function invoicePoReferences(invoice) {
+  const confirmed = Array.isArray(invoice?.confirmed_po_references) ? invoice.confirmed_po_references.map(order => order?.po_number).filter(Boolean) : [];
+  return [...new Set(confirmed)].join(', ') || invoice?.po_reference_text || '';
+}
+
 export function invoiceTone(value) {
   if (['verified', 'approved_for_payment', 'paid', 'closed'].includes(value)) return 'green';
   if (['exception', 'rejected', 'on_hold', 'cancelled'].includes(value)) return 'red';
@@ -98,7 +103,7 @@ export function filterInvoices(invoices, filters = INITIAL_INVOICE_FILTERS, queu
   const query = (filters.search || '').trim().toLowerCase();
   return invoices.filter(invoice => {
     if (!inInvoiceQueue(invoice, queue)) return false;
-    if (query && ![invoice.invoice_number, invoice.vendor_name, invoice.vendor_master_name, invoice.po_reference_text, invoice.tracking_id].some(value => String(value || '').toLowerCase().includes(query))) return false;
+    if (query && ![invoice.invoice_number, invoice.vendor_name, invoice.vendor_master_name, invoicePoReferences(invoice), invoice.po_reference_text, invoice.tracking_id].some(value => String(value || '').toLowerCase().includes(query))) return false;
     if (filters.match && invoice.match_status !== filters.match) return false;
     if (filters.workflow && invoice.procurement_status !== filters.workflow) return false;
     if (filters.currency && invoice.currency !== filters.currency) return false;
@@ -153,7 +158,7 @@ export function invoicesCsv(invoices) {
   };
   const headings = ['Invoice', 'Tracking ID', 'Supplier', 'PO reference', 'Invoice date', 'Due date', 'Currency', 'Total', 'Matching', 'Workflow', 'Payment'];
   return '\uFEFF' + [headings, ...invoices.map(invoice => [invoice.invoice_number, invoice.tracking_id, invoice.vendor_master_name || invoice.vendor_name,
-    invoice.po_reference_text, invoice.invoice_date, invoice.due_date, invoice.currency, invoice.total_amount,
+    invoicePoReferences(invoice), invoice.invoice_date, invoice.due_date, invoice.currency, invoice.total_amount,
     INVOICE_LABELS[invoice.match_status] || invoice.match_status, INVOICE_LABELS[invoice.procurement_status] || invoice.procurement_status,
     INVOICE_LABELS[invoice.payment_status] || invoice.payment_status])].map(row => row.map(cell).join(',')).join('\r\n');
 }

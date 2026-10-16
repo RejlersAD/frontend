@@ -5,6 +5,7 @@
 import apiClient from './api.service';
 
 const analyticsService = {
+  getNotificationHistory: async (params = {}, config = {}) => (await apiClient.get('/rbac/analytics/notification-history/', { ...config, params })).data,
   getAILiveActivity: async (params = {}, config = {}) => (await apiClient.get('/rbac/ai-champion/live-activity/', { ...config, params })).data,
   getAIMeasurements: async (params = {}, config = {}) => (await apiClient.get('/rbac/ai-champion/measurements/', { ...config, params })).data,
   getAIOutcomes: async (page = 1, config = {}) => (await apiClient.get('/rbac/ai-champion/outcomes/', { ...config, params: { page } })).data,

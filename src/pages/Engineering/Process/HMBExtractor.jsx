@@ -39,14 +39,30 @@ import apiClient from '../../../services/api.service';
 import { PROJECT_ORGANIZER_CONFIG } from '../../../config/projectOrganizer.config';
 import projectOrganizerService from '../../../services/projectOrganizerService';
 import { ProjectCard, ProjectFormModal, ProjectSwitcher, useActiveProject } from '../../../components/ProjectOrganizer';
+import './HMBExtractor.css';
+import HMBComparisonWorkspace from './components/HMBComparisonWorkspace';
 
 const ACTIVE_PROJECT_STORAGE_KEY = 'hmbExtractorActiveProject';
-const T = PROJECT_ORGANIZER_CONFIG.defaultTheme;
+
+// SOFT-CODED: V1-aligned theme override for THIS page only — the shared
+// PROJECT_ORGANIZER_CONFIG.defaultTheme (teal) is left untouched so
+// ManageProjectsPage keeps its own palette. All T.* consumers below
+// (accent, accentAlt, accentSoft, accentBorder, pageBg) pick up the
+// P&ID Verification V1 blue/indigo palette automatically.
+const T = {
+  ...PROJECT_ORGANIZER_CONFIG.defaultTheme,
+  accent:       '#3b82f6',                    // blue-500  (V1 COLOR_PRIMARY)
+  accentAlt:    '#6366f1',                    // indigo-500 (gradient pair — V1 accent)
+  accentSoft:   'rgba(59,130,246,0.08)',
+  accentBorder: 'rgba(59,130,246,0.25)',
+  pageBg:       'linear-gradient(135deg, #f8faff 0%, #eef2ff 45%, #f0f9ff 75%, #fffbeb 100%)', // V1 T.bg
+};
 
 const MASTER_TEMPLATE_CFG = {
   endpoint: '/process-datasheet/datasheets/analyze-hmb-master-template/',
   listEndpoint: '/process-datasheet/datasheets/hmb-master-templates/',
   detailEndpoint: (id) => `/process-datasheet/datasheets/hmb-master-templates/${id}/`,
+  syncStreamsEndpoint: '/process-datasheet/datasheets/hmb-master-templates/sync-streams/',
   importCasesEndpoint: '/process-datasheet/datasheets/import-hmb-cases/',
   previewCasesEndpoint: '/process-datasheet/datasheets/preview-hmb-cases/',
   executeCasesEndpoint: '/process-datasheet/datasheets/execute-hmb-cases/',
@@ -59,6 +75,17 @@ const MASTER_TEMPLATE_CFG = {
   maxSizeMb: 20,
 };
 
+// Display numeric stream values with at most 4 decimal places (e.g. 106770.6597).
+const formatStreamValue = (value) => {
+  if (value === '' || value == null) return value;
+  const text = String(value).trim();
+  if (!text || text === '\u2013' || text === '-') return text;
+  const numeric = Number(text);
+  if (!Number.isFinite(numeric)) return text;
+  if (!/^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(text)) return text;
+  return String(Math.round(numeric * 10000) / 10000);
+};
+
 const CASE_UPLOAD_CFG = {
   acceptedExt: ['xlsx', 'xlsm', 'csv', 'pdf'],
   maxFiles: 12,
@@ -67,6 +94,7 @@ const CASE_UPLOAD_CFG = {
 
 // Soft-coded UI visibility toggles for page sections.
 const HMB_UI_CFG = {
+  referenceComparisonWorkspace: true,
   showSmartWorkflowManager: false,
   showUpdateCrossCheck: false,
 };
@@ -89,8 +117,10 @@ const FIRST_RUN_GUIDANCE_CFG = {
   ctaLabel: 'Open Template Setup',
 };
 
+// SOFT-CODED: page shell theme — aligned with P&ID Verification V1
+// (blue/indigo/violet palette). UI.pageBg matches T.bg in PIDVerification.jsx.
 const UI = {
-  pageBg: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 62%, #eef2f7 100%)',
+  pageBg: 'linear-gradient(135deg, #f8faff 0%, #eef2ff 45%, #f0f9ff 75%, #fffbeb 100%)',
   shellMaxWidth: 1680,
   shellPadX: 24,
   panel: {
@@ -154,6 +184,8 @@ const HMBExtractorPage = () => {
   const [caseAssignments, setCaseAssignments] = useState({});
   const [casePreviewConfirmed, setCasePreviewConfirmed] = useState(false);
   const [replaceExisting, setReplaceExisting] = useState(false);
+  const [extractAllStreams, setExtractAllStreams] = useState(false);
+  const [syncStreamsBusy, setSyncStreamsBusy] = useState(false);
   const caseFileInputRef = useRef(null);
   const [projectSummary, setProjectSummary] = useState(null);
   const [canvasExportError, setCanvasExportError] = useState('');
@@ -167,6 +199,9 @@ const HMBExtractorPage = () => {
   const [outputBusy, setOutputBusy] = useState(false);
   const [outputError, setOutputError] = useState('');
   const [exportScope, setExportScope] = useState('selected');
+  const [comparisonQuery, setComparisonQuery] = useState('');
+  const [comparisonSection, setComparisonSection] = useState('all');
+  const [differencesOnly, setDifferencesOnly] = useState(false);
   const activeProjectIdRef = useRef(activeProject?.project_id);
   activeProjectIdRef.current = activeProject?.project_id;
   const selectionRef = useRef('');
@@ -308,13 +343,22 @@ const HMBExtractorPage = () => {
     const previewStreamIds = Array.from(
       new Set(preview.map((p) => String(p.stream_id || '').trim()).filter(Boolean))
     ).sort(streamIdCollator.compare);
-    const streamColumns = casePreviewRecords.length > 0
-      ? previewStreamIds.map((streamId, index) => ({
-        column_index: index + 4,
-        column_letter: columnLetter(index + 4),
-        stream_id: streamId,
-        description: '',
-      }))
+    const importedStreamIds = (Array.isArray(projectSummary?.stream_ids) ? projectSummary.stream_ids : [])
+      .map((sid) => String(sid || '').trim()).filter(Boolean).sort(streamIdCollator.compare);
+    const dynamicStreamIds = previewStreamIds.length > 0
+      ? previewStreamIds
+      : importedStreamIds;
+    const streamColumns = dynamicStreamIds.length > 0
+      ? dynamicStreamIds.map((streamId, index) => {
+        const templateMeta = templateStreamColumns.find((s) => String(s.stream_id) === streamId);
+        return {
+          column_index: index + 4,
+          column_letter: columnLetter(index + 4),
+          stream_id: streamId,
+          description: templateMeta?.description || '',
+          dynamic: !templateMeta,
+        };
+      })
       : templateStreamColumns;
     const canvasStreamIds = streamColumns.map((s) => String(s.stream_id || '').trim());
 
@@ -375,7 +419,7 @@ const HMBExtractorPage = () => {
             const loose = `${sectionKey}::${propKey}::${unitKey}::${resolvedStream}`;
             if (matrixValueMapExact.has(exact)) return matrixValueMapExact.get(exact);
             if (matrixValueMapLoose.has(loose)) return matrixValueMapLoose.get(loose);
-            return '';
+            return '\u2013';
           }),
         });
 
@@ -389,7 +433,7 @@ const HMBExtractorPage = () => {
             const loose = `${sectionKey}::${propKey}::${unitKey}::${resolvedStream}::${caseCol}`;
             if (valueMapExact.has(exact)) return valueMapExact.get(exact);
             if (valueMapLoose.has(loose)) return valueMapLoose.get(loose);
-            return '';
+            return '\u2013';
           });
           rows.push({
             section: section.label || '',
@@ -411,7 +455,7 @@ const HMBExtractorPage = () => {
       layout,
       layoutCells,
     };
-  }, [templateAnalysis, casePreviewRecords]);
+  }, [templateAnalysis, casePreviewRecords, projectSummary]);
 
   const masterCellStyle = useCallback((row, column, fallback = {}) => {
     const cell = templateCanvasModel.layoutCells?.get(`${row}:${column}`);
@@ -779,6 +823,29 @@ const HMBExtractorPage = () => {
     loadTemplateProfileDetail(selectedTemplateProfileId, { silent: true, withNotice: false });
   }, [selectedTemplateProfileId, templateAnalysis, loadTemplateProfileDetail]);
 
+  const handleSyncTemplateStreams = async () => {
+    if (!activeProject?.project_id || !selectedTemplateProfileId) {
+      setTemplateNotice('Select a project and master template first.');
+      return;
+    }
+    setSyncStreamsBusy(true);
+    setTemplateNotice('');
+    try {
+      const { data } = await apiClient.post(MASTER_TEMPLATE_CFG.syncStreamsEndpoint, {
+        project_id: activeProject.project_id,
+        template_profile_id: selectedTemplateProfileId,
+      }, { timeout: 120000 });
+      if (!data?.success) throw new Error(data?.error || 'Stream sync failed');
+      setTemplateNotice(`Template streams synced from source data: ${data.stream_count} streams (${data.added_dynamic_streams} added, ${data.retained_template_streams} retained).`);
+      await loadTemplateProfileDetail(selectedTemplateProfileId, { silent: true, withNotice: false });
+      await loadProjectSummary();
+    } catch (err) {
+      setTemplateNotice(err?.response?.data?.error || err.message || 'Stream sync failed.');
+    } finally {
+      setSyncStreamsBusy(false);
+    }
+  };
+
   const handleAnalyzeCases = async (incomingFiles = null) => {
     const context = selectionRef.current;
     const filesToImport = Array.isArray(incomingFiles) ? incomingFiles : caseFiles;
@@ -809,6 +876,7 @@ const HMBExtractorPage = () => {
       const fd = new FormData();
       fd.append('project_id', activeProject.project_id);
       fd.append('template_profile_id', resolvedTemplateProfileId);
+      if (extractAllStreams) fd.append('extract_all_streams', 'true');
       filesToImport.forEach((file) => fd.append('case_files', file));
       const { data } = await apiClient.post(MASTER_TEMPLATE_CFG.previewCasesEndpoint, fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -1049,14 +1117,17 @@ const HMBExtractorPage = () => {
 
   useEffect(() => {
     const streams = Array.isArray(templateAnalysis?.stream_columns) ? templateAnalysis.stream_columns : [];
-    if (!streams.length) {
+    const importedIds = Array.isArray(projectSummary?.stream_ids) ? projectSummary.stream_ids : [];
+    const validIds = new Set([...streams.map((s) => String(s.stream_id)), ...importedIds.map(String)]);
+    if (!validIds.size) {
       setComparisonStreamId('');
       return;
     }
-    if (!streams.some((stream) => String(stream.stream_id) === String(comparisonStreamId))) {
-      setComparisonStreamId(String(streams[0].stream_id));
+    if (!validIds.has(String(comparisonStreamId))) {
+      const fallback = streams.length ? String(streams[0].stream_id) : String(importedIds[0]);
+      setComparisonStreamId(fallback);
     }
-  }, [templateAnalysis, comparisonStreamId]);
+  }, [templateAnalysis, projectSummary, comparisonStreamId]);
 
   const loadStreamComparison = useCallback(async () => {
     const context = selectionRef.current;
@@ -1223,7 +1294,41 @@ const HMBExtractorPage = () => {
     );
   }
 
-  // ── Active project selected: show the extractor with a switcher header ──
+  if (HMB_UI_CFG.referenceComparisonWorkspace) {
+    return (
+      <HMBComparisonWorkspace
+        context={{
+          activeProject, projects, loadingProjects, workspaceView, setWorkspaceView,
+          setActiveProject, clearActiveProject, setProjectConfirmed, navigate, showCreate, setShowCreate,
+          busy, handleCreate, caseFileInputRef, caseFiles, caseBusy, caseError,
+          caseNotice, caseAnalysisResult, caseAssignments, setCaseAssignments,
+          casePreviewConfirmed, setCasePreviewConfirmed, replaceExisting,
+          setReplaceExisting, extractAllStreams, setExtractAllStreams,
+          handleCaseFileSelection, handleAnalyzeCases, handleExecuteCases,
+          removeCaseFile, clearCaseFiles, projectCaseSlots, projectSummary,
+          casePreviewFileOptions, comparisonData, comparisonBusy, comparisonError,
+          comparisonStreamId, setComparisonStreamId, loadStreamComparison,
+          inspectedValue, setInspectedValue, exportScope, setExportScope,
+          exportStreamComparison, outputTemplate, outputTemplateFile,
+          setOutputTemplateFile, outputBusy, outputError, saveOutputTemplate,
+          templateProfiles, selectedTemplateProfileId, setSelectedTemplateProfileId,
+          loadingProfiles, templateAnalysis, setTemplateAnalysis, templateName,
+          setTemplateName, masterTemplateFile, setMasterTemplateFile, templateBusy,
+          templateError, setTemplateError, templateNotice, setTemplateNotice,
+          handleAnalyzeTemplate, handleSyncTemplateStreams, syncStreamsBusy,
+          templateCanvasModel, templateCanvasBusy, templateAlignmentAudit,
+          casePreviewName, setCasePreviewName, casePreviewResolvedName,
+          setCasePreviewResolvedName, casePreviewOptions, casePreviewBusy,
+          casePreviewError, loadCasePreview, exportTemplateCanvasExcel,
+          canvasExportError, reviewChecklist, importExceptions, caseImportResult,
+          comparisonQuery, setComparisonQuery, comparisonSection,
+          setComparisonSection, differencesOnly, setDifferencesOnly,
+        }}
+      />
+    );
+  }
+
+  // ── Legacy workspace fallback retained while the reference UI is active. ──
   return (
     <>
       <div style={{
@@ -1308,7 +1413,7 @@ const HMBExtractorPage = () => {
                     if (item.key === 'template') setShowTemplateManager(true);
                     if (item.key === 'review') setShowTemplateManager(false);
                   }}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, border: active ? '1px solid #176b5b' : '1px solid transparent', borderRadius: 6, padding: '0 11px', background: active ? '#fff' : 'transparent', color: active ? '#176b5b' : '#475569', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, border: active ? '1px solid #1d4ed8' : '1px solid transparent', borderRadius: 6, padding: '0 11px', background: active ? '#fff' : 'transparent', color: active ? '#1d4ed8' : '#475569', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}
                 >
                   <Icon width={14} /> {item.label}
                 </button>
@@ -1446,7 +1551,7 @@ const HMBExtractorPage = () => {
                   <div style={{
                     width: '100%', marginTop: 10, padding: '10px 12px',
                     border: `1px solid ${T.accentBorder}`, borderRadius: 8,
-                    background: '#f0fdfa', display: 'flex', alignItems: 'center',
+                    background: '#eff6ff', display: 'flex', alignItems: 'center',
                     justifyContent: 'space-between', gap: 10, flexWrap: 'wrap',
                   }}>
                     <div style={{ fontSize: 12, color: '#134e4a' }}>
@@ -1500,7 +1605,7 @@ const HMBExtractorPage = () => {
                   Mapping master
                   <select aria-label="Mapping master" value={selectedTemplateProfileId || ''} disabled={loadingProfiles || caseBusy}
                     onChange={(event) => { setTemplateAnalysis(null); setSelectedTemplateProfileId(event.target.value || null); }}
-                    style={{ width: '100%', minWidth: 0, padding: 8, border: '1px solid #94b8b0', borderRadius: 6 }}>
+                    style={{ width: '100%', minWidth: 0, padding: 8, border: '1px solid #93c5fd', borderRadius: 6 }}>
                     <option value="">Select master</option>
                     {templateProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.template_name || profile.source_filename} · {profile.stream_count} streams{profile.project_id ? '' : ' · Personal'}</option>)}
                   </select>
@@ -1517,7 +1622,7 @@ const HMBExtractorPage = () => {
                       onChange={(event) => setOutputTemplateFile(event.target.files?.[0] || null)} style={{ maxWidth: '100%', width: 230 }} />
                   </label>
                   <button type="button" onClick={saveOutputTemplate} disabled={outputBusy || !outputTemplateFile}
-                    style={{ display: 'inline-flex', gap: 6, alignItems: 'center', padding: '8px 12px', border: '1px solid #176b5b', background: '#fff', borderRadius: 6 }}>
+                    style={{ display: 'inline-flex', gap: 6, alignItems: 'center', padding: '8px 12px', border: '1px solid #1d4ed8', background: '#fff', borderRadius: 6 }}>
                     <Upload width={15} /> {outputBusy ? 'Saving...' : 'Save Final Template'}
                   </button>
                 </>}
@@ -1599,8 +1704,8 @@ const HMBExtractorPage = () => {
                       gap: 5,
                       fontSize: 11,
                       fontWeight: 700,
-                      border: '1px solid #0f766e',
-                      background: templateCanvasModel.rows.length === 0 ? '#e2e8f0' : '#0f766e',
+                      border: '1px solid #2563eb',
+                      background: templateCanvasModel.rows.length === 0 ? '#e2e8f0' : '#2563eb',
                       color: templateCanvasModel.rows.length === 0 ? '#64748b' : '#ffffff',
                       borderRadius: 7,
                       padding: '0 10px',
@@ -1671,11 +1776,22 @@ const HMBExtractorPage = () => {
                   flexWrap: 'wrap',
                 }}>
                   <div style={{ fontSize: 12, fontWeight: 800, color: '#0f172a' }}>Attribute Alignment Audit</div>
-                  <div style={{ fontSize: 11, color: '#334155', fontWeight: 700 }}>
-                    Score: {templateAlignmentAudit.score}%
-                    {' | '}Matched: {templateAlignmentAudit.matched}/{templateAlignmentAudit.total}
-                    {' | '}Missing: {templateAlignmentAudit.missingCount}
-                    {' | '}Unit Mismatch: {templateAlignmentAudit.unitMismatchCount}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={handleSyncTemplateStreams}
+                      disabled={syncStreamsBusy || !selectedTemplateProfileId || !activeProject?.project_id}
+                      title="Rebuild the template's stream columns from the stream IDs actually found in imported case files (e.g. 1, 2, 3...) instead of the fixed IDs in the uploaded Master file"
+                      style={{ height: 26, display: 'inline-flex', alignItems: 'center', gap: 5, border: '1px solid #93c5fd', borderRadius: 6, padding: '0 9px', background: '#fff', color: '#1e3a8a', fontSize: 11, fontWeight: 700, cursor: syncStreamsBusy ? 'wait' : 'pointer', opacity: syncStreamsBusy || !selectedTemplateProfileId ? 0.6 : 1 }}
+                    >
+                      <RefreshCw width={12} /> {syncStreamsBusy ? 'Syncing...' : 'Sync Streams from Data'}
+                    </button>
+                    <div style={{ fontSize: 11, color: '#334155', fontWeight: 700 }}>
+                      Score: {templateAlignmentAudit.score}%
+                      {' | '}Matched: {templateAlignmentAudit.matched}/{templateAlignmentAudit.total}
+                      {' | '}Missing: {templateAlignmentAudit.missingCount}
+                      {' | '}Unit Mismatch: {templateAlignmentAudit.unitMismatchCount}
+                    </div>
                   </div>
                 </div>
 
@@ -1779,7 +1895,7 @@ const HMBExtractorPage = () => {
                                   padding: '6px 5px',
                                 }}
                               >
-                                {value === '' ? '' : String(value)}
+                                {value === '' ? '' : formatStreamValue(value)}
                               </td>
                             ))}
                           </tr>
@@ -1798,7 +1914,7 @@ const HMBExtractorPage = () => {
                 <div style={{ padding: '12px 14px', background: '#edf7f4', borderBottom: '1px solid #b9d7d0' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                     <div>
-                      <div style={{ fontSize: 14, fontWeight: 800, color: '#123b35' }}>Compare Cases</div>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a8a' }}>Compare Cases</div>
                       <div style={{ marginTop: 3, fontSize: 11, color: '#496b66' }}>
                         Project case comparison
                       </div>
@@ -1808,30 +1924,47 @@ const HMBExtractorPage = () => {
                         aria-label="Comparison stream"
                         value={comparisonStreamId}
                         onChange={(event) => setComparisonStreamId(event.target.value)}
-                        style={{ height: 34, minWidth: 190, border: '1px solid #94b8b0', borderRadius: 6, padding: '0 9px', background: '#fff', fontSize: 12 }}
+                        style={{ height: 34, minWidth: 190, border: '1px solid #93c5fd', borderRadius: 6, padding: '0 9px', background: '#fff', fontSize: 12 }}
                       >
-                        {(templateAnalysis?.stream_columns || []).map((stream) => (
-                          <option key={stream.stream_id} value={stream.stream_id}>
-                            {stream.stream_id} {stream.description ? `- ${stream.description}` : ''}
-                          </option>
-                        ))}
+                        {(() => {
+                          const templateStreams = templateAnalysis?.stream_columns || [];
+                          const known = new Map(templateStreams.map((stream) => [String(stream.stream_id), stream]));
+                          const importedIds = Array.isArray(projectSummary?.stream_ids) ? projectSummary.stream_ids : [];
+                          const dynamicIds = importedIds.filter((sid) => !known.has(String(sid)));
+                          return (
+                            <>
+                              {templateStreams.map((stream) => (
+                                <option key={stream.stream_id} value={stream.stream_id}>
+                                  {stream.stream_id} {stream.description ? `- ${stream.description}` : ''}
+                                </option>
+                              ))}
+                              {dynamicIds.length > 0 && (
+                                <optgroup label={`Extracted streams (${dynamicIds.length})`}>
+                                  {dynamicIds.map((sid) => (
+                                    <option key={`dyn-${sid}`} value={sid}>{sid}</option>
+                                  ))}
+                                </optgroup>
+                              )}
+                            </>
+                          );
+                        })()}
                       </select>
                       <button
                         onClick={loadStreamComparison}
                         disabled={comparisonBusy || !comparisonStreamId}
-                        style={{ height: 34, display: 'inline-flex', alignItems: 'center', gap: 6, justifyContent: 'center', border: '1px solid #94b8b0', borderRadius: 6, padding: '0 10px', background: '#fff', color: '#123b35', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                        style={{ height: 34, display: 'inline-flex', alignItems: 'center', gap: 6, justifyContent: 'center', border: '1px solid #93c5fd', borderRadius: 6, padding: '0 10px', background: '#fff', color: '#1e3a8a', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
                       >
                         <RefreshCw width={15} /> Load Comparison
                       </button>
                       <button
                         onClick={exportStreamComparison}
                         disabled={comparisonBusy || !comparisonData?.rows?.length || !outputTemplate || Boolean(comparisonData?.conflicts?.length)}
-                        style={{ height: 34, display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid #176b5b', borderRadius: 6, padding: '0 11px', background: '#176b5b', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                        style={{ height: 34, display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid #1d4ed8', borderRadius: 6, padding: '0 11px', background: '#1d4ed8', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
                       >
                         <Download width={14} /> Export Final Excel
                       </button>
                       <select aria-label="Export streams" value={exportScope} onChange={(event) => setExportScope(event.target.value)}
-                        style={{ height: 34, border: '1px solid #94b8b0', borderRadius: 6, maxWidth: '100%' }}>
+                        style={{ height: 34, border: '1px solid #93c5fd', borderRadius: 6, maxWidth: '100%' }}>
                         <option value="selected">Selected stream</option>
                         <option value="all">All master streams</option>
                       </select>
@@ -1868,7 +2001,7 @@ const HMBExtractorPage = () => {
                     {comparisonData.case_names.map((caseName) => {
                       const hasData = comparisonData.rows?.some((row) => row.values?.[caseName] !== '' && row.values?.[caseName] != null);
                       return (
-                        <span key={caseName} style={{ border: `1px solid ${hasData ? '#86b8ab' : '#d4d4d8'}`, borderRadius: 999, padding: '3px 7px', background: hasData ? '#e7f5f1' : '#f4f4f5', color: hasData ? '#176b5b' : '#71717a', fontSize: 10, fontWeight: 700 }}>
+                        <span key={caseName} style={{ border: `1px solid ${hasData ? '#93c5fd' : '#d4d4d8'}`, borderRadius: 999, padding: '3px 7px', background: hasData ? '#dbeafe' : '#f4f4f5', color: hasData ? '#1d4ed8' : '#71717a', fontSize: 10, fontWeight: 700 }}>
                           {caseName}: {hasData ? 'Imported' : 'Not imported'}
                         </span>
                       );
@@ -1884,7 +2017,7 @@ const HMBExtractorPage = () => {
                       <thead>
                         <tr>
                           {['Phase', 'Property', 'Unit', ...(comparisonData.case_names || [])].map((heading, index) => (
-                            <th key={heading} style={{ position: 'sticky', top: 0, zIndex: index < 3 ? 3 : 2, minWidth: index === 1 ? 190 : index < 3 ? 95 : 118, padding: '8px 7px', borderRight: '1px solid #bfd4cf', borderBottom: '1px solid #94b8b0', background: index < 3 ? '#dceee9' : '#edf7f4', color: '#123b35', textAlign: index === 1 ? 'left' : 'center', fontWeight: 800 }}>
+                            <th key={heading} style={{ position: 'sticky', top: 0, zIndex: index < 3 ? 3 : 2, minWidth: index === 1 ? 190 : index < 3 ? 95 : 118, padding: '8px 7px', borderRight: '1px solid #bfd4cf', borderBottom: '1px solid #93c5fd', background: index < 3 ? '#dceee9' : '#edf7f4', color: '#1e3a8a', textAlign: index === 1 ? 'left' : 'center', fontWeight: 800 }}>
                               {heading}
                             </th>
                           ))}
@@ -1901,7 +2034,7 @@ const HMBExtractorPage = () => {
                                 <button type="button" title="Inspect source value" aria-label={`Inspect ${caseName} ${row.section} ${row.property} ${row.unit}`}
                                   onClick={() => setInspectedValue({ caseName, property: row.property, unit: row.unit, value: row.values?.[caseName], source: row.sources?.[caseName] || {} })}
                                   style={{ font: 'inherit', color: 'inherit', border: 0, background: 'transparent', padding: 0, cursor: 'pointer', textAlign: 'right', width: '100%' }}>
-                                  {row.values?.[caseName] === '' || row.values?.[caseName] == null ? '-' : row.values[caseName]}
+                                  {row.values?.[caseName] === '' || row.values?.[caseName] == null ? '\u2013' : formatStreamValue(row.values[caseName])}
                                 </button>
                               </td>
                             ))}
@@ -2054,9 +2187,9 @@ const HMBExtractorPage = () => {
                 <div style={{ marginBottom: 14, fontSize: 13, color: '#475569' }}>
                   Select one or more HMB files. We will preview the detected records before anything is saved.
                 </div>
-                <label style={{ minHeight: 130, border: '2px dashed #86b8ab', borderRadius: 8, background: '#f4faf8', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 7, padding: 18, cursor: 'pointer', textAlign: 'center' }}>
-                  <Files width={28} color="#176b5b" />
-                  <span style={{ fontSize: 14, fontWeight: 800, color: '#123b35' }}>
+                <label style={{ minHeight: 130, border: '2px dashed #93c5fd', borderRadius: 8, background: '#f4faf8', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 7, padding: 18, cursor: 'pointer', textAlign: 'center' }}>
+                  <Files width={28} color="#1d4ed8" />
+                  <span style={{ fontSize: 14, fontWeight: 800, color: '#1e3a8a' }}>
                     {caseFiles.length ? `${caseFiles.length} file(s) ready` : 'Choose HMB files'}
                   </span>
                   <span style={{ fontSize: 11, color: '#64748b' }}>Excel, CSV, or PDF · up to 50 MB each</span>
@@ -2096,9 +2229,14 @@ const HMBExtractorPage = () => {
                   >
                     <Sparkles width={15} /> {caseBusy ? 'Analyzing...' : selectedTemplateProfileId ? 'Analyze Files' : 'Set Up Template'}
                   </button>
-                  <span style={{ fontSize: 12, color: selectedTemplateProfileId ? '#176b5b' : '#92400e', fontWeight: 700 }}>
+                  <span style={{ fontSize: 12, color: selectedTemplateProfileId ? '#1d4ed8' : '#92400e', fontWeight: 700 }}>
                     {selectedTemplateProfileId ? 'Master template ready' : 'Template setup required'}
                   </span>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#0f172a', fontWeight: 600, cursor: 'pointer' }}
+                    title="Extract every stream found in the source files, not just the streams defined in the master template">
+                    <input type="checkbox" checked={extractAllStreams} onChange={(event) => { setExtractAllStreams(event.target.checked); setCasePreviewConfirmed(false); }} />
+                    Extract all source streams
+                  </label>
                 </div>
 
                 {!selectedTemplateProfileId && (
@@ -2154,7 +2292,7 @@ const HMBExtractorPage = () => {
 
                 {caseAnalysisResult?.files?.length > 0 && (
                   <div style={{ marginTop: 12, border: '1px solid #b9d7d0', borderRadius: 8, overflow: 'hidden' }}>
-                    <div style={{ padding: '9px 11px', background: '#edf7f4', borderBottom: '1px solid #b9d7d0', fontSize: 12, fontWeight: 800, color: '#123b35' }}>
+                    <div style={{ padding: '9px 11px', background: '#edf7f4', borderBottom: '1px solid #b9d7d0', fontSize: 12, fontWeight: 800, color: '#1e3a8a' }}>
                       Analysis Preview - case records not imported
                     </div>
                     <div style={{ padding: 10, display: 'grid', gap: 9 }}>
@@ -2179,7 +2317,7 @@ const HMBExtractorPage = () => {
                                   setCaseAssignments((current) => ({ ...current, [file.file_id || file.filename]: event.target.value }));
                                   setCasePreviewConfirmed(false);
                                 }}
-                                style={{ height: 32, minWidth: 170, border: '1px solid #94b8b0', borderRadius: 6, padding: '0 8px', background: '#fff', fontSize: 12 }}
+                                style={{ height: 32, minWidth: 170, border: '1px solid #93c5fd', borderRadius: 6, padding: '0 8px', background: '#fff', fontSize: 12 }}
                               />
                             </label>
                           </div>
@@ -2195,7 +2333,7 @@ const HMBExtractorPage = () => {
                           ))}
                           {file.sample_records?.length > 0 && (
                             <div style={{ marginTop: 7, fontSize: 11, color: '#475569' }}>
-                              Sample: {file.sample_records.slice(0, 3).map((record) => `${record.stream_id} / ${record.property_name}: ${record.value_text}`).join(' | ')}
+                              Sample: {file.sample_records.slice(0, 3).map((record) => `${record.stream_id} / ${record.property_name}: ${formatStreamValue(record.value_text)}`).join(' | ')}
                             </div>
                           )}
                         </div>
@@ -2222,7 +2360,7 @@ const HMBExtractorPage = () => {
                         type="button"
                         onClick={handleExecuteCases}
                         disabled={caseBusy || !casePreviewConfirmed || !caseAnalysisResult.preview_token || caseAnalysisResult.files.some((file) => file.blocking_errors > 0)}
-                        style={{ justifySelf: 'start', display: 'inline-flex', alignItems: 'center', gap: 7, height: 36, border: 'none', borderRadius: 6, padding: '0 13px', background: casePreviewConfirmed ? '#176b5b' : '#cbd5e1', color: '#fff', fontSize: 12, fontWeight: 800, cursor: casePreviewConfirmed ? 'pointer' : 'not-allowed' }}
+                        style={{ justifySelf: 'start', display: 'inline-flex', alignItems: 'center', gap: 7, height: 36, border: 'none', borderRadius: 6, padding: '0 13px', background: casePreviewConfirmed ? '#1d4ed8' : '#cbd5e1', color: '#fff', fontSize: 12, fontWeight: 800, cursor: casePreviewConfirmed ? 'pointer' : 'not-allowed' }}
                       >
                         <Database width={15} /> {caseBusy ? 'Executing...' : 'Execute Import'}
                       </button>
@@ -2294,7 +2432,7 @@ const HMBExtractorPage = () => {
                       <div style={{ fontSize: 11, color: T.muted, textTransform: 'uppercase', fontWeight: 700 }}>Project Streams</div>
                       <div style={{ fontSize: 18, fontWeight: 700, color: T.text }}>{projectSummary?.stream_count ?? 0}</div>
                     </div>
-                    <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 12px', background: '#f0fdfa' }}>
+                    <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 12px', background: '#eff6ff' }}>
                       <div style={{ fontSize: 11, color: T.muted, textTransform: 'uppercase', fontWeight: 700 }}>Stored Records</div>
                       <div style={{ fontSize: 18, fontWeight: 700, color: T.text }}>{projectSummary?.total_records ?? 0}</div>
                     </div>

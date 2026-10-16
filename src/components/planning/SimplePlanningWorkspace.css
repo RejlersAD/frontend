@@ -26,6 +26,12 @@
 .ssd-evidence td:first-child { min-width: 300px; }
 .ssd-evidence small { display: block; color: #60779b; }
 .ssd-evidence blockquote { white-space: pre-wrap; margin-top: 8px; max-width: 650px; }
+.ssd-preview-selection { margin: 12px 0; padding: 12px; border: 1px solid #dce6f3; border-radius: 5px; background: #fff; overflow-wrap: anywhere; }
+.ssd-preview-selection summary { cursor: pointer; font-weight: 600; }
+.ssd-preview-selection dl { display: grid; grid-template-columns: minmax(100px, auto) minmax(0, 1fr); gap: 6px 16px; margin: 10px 0; }
+.ssd-preview-selection dt { color: #60779b; }
+.ssd-preview-selection dd { margin: 0; }
+.ssd-preview-selection ul { margin: 6px 0 12px; padding-left: 20px; list-style: disc; }
 .ssd-programmatic-summary { margin: 0 0 10px; padding: 10px 12px; border: 1px solid #cbd9ef; border-radius: 5px; background: #f5f8ff; color: #254677; font-size: 12px; line-height: 1.5; }
 .planning-inputs-simple .pln-metrics, .planning-inputs-simple .pln-date-help { display: none; }
 .simple-schedule-dialog .sp-mode-switch { display: none; }

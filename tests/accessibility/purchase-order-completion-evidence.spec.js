@@ -21,8 +21,8 @@ const evidence = () => ({
 
 async function setup(page, overrides = {}) {
   return orderFormHarness(page, { path: '/procurement/orders', prepare: state => {
-    state.record = { id: orderFormId, po_number: orderFormNumber, po_date: '2026-09-15', status: 'sent', can_complete: true,
-      title: 'Completion evidence regression', vendor: 21, vendor_name: state.vendors[0].name,
+    state.record = { id: orderFormId, po_number: orderFormNumber, po_date: '2026-09-15', status: 'draft', can_send_to_vendor: true,
+      title: 'Issue evidence regression', vendor: 21, vendor_name: state.vendors[0].name,
       currency: 'AED', total_amount: '1050', net_amount: '1000', tax_amount: '50', vat_basis: 'exclusive', vat_percentage: 5,
       created_at: '2026-09-15T08:00:00Z', updated_at: '2026-09-15T08:00:00Z', items: [], attachments: [], approval_log: [], ...overrides }
     state.orders = [state.record]
@@ -51,7 +51,7 @@ async function noSeparateApprovalCard(page) {
   await expect(page.getByRole('link', { name: /^Open recorded (signature|stamp) evidence$/ })).toHaveCount(0)
 }
 
-test('completion uses the saved evidence revision, ignores an older PDF and preserves the uploaded original', async ({ page }) => {
+test('issue uses the saved evidence revision, ignores an older PDF and preserves the uploaded original', async ({ page }) => {
   const state = await setup(page)
   const original = mixedSizePdf(2), latest = mixedSizePdf(3)
   const contentPath = `${orderPath}uploaded-documents/source/content/`
@@ -75,18 +75,18 @@ test('completion uses the saved evidence revision, ignores an older PDF and pres
   })
   await openDetails(page)
   await expect.poll(() => exports).toBe(1)
-  await page.getByRole('button', { name: 'Mark Complete', exact: true }).click()
+  await page.getByRole('button', { name: 'Send to Vendor', exact: true }).click()
   await page.getByRole('dialog', { name: 'Confirm action' }).getByRole('button', { name: 'Confirm', exact: true }).click()
-  await expect.poll(() => exports, { message: 'Completion must request the returned saved revision even while the older revision is pending.' }).toBe(2)
+  await expect.poll(() => exports, { message: 'Issue must request the returned saved revision even while the older revision is pending.' }).toBe(2)
   releaseOld()
   await expect(viewer(page).getByRole('img', { name: /page 1 of 3$/ })).toBeVisible({ timeout: 30000 })
   await noSeparateApprovalCard(page)
   expect(await downloaded(page, page.getByRole('button', { name: 'Download PDF', exact: true }))).toEqual(latest)
   expect(exports).toBe(2)
-  await page.screenshot({ path: '../artifacts/po-completed-document-without-approval-card.png' })
+  await page.screenshot({ path: '../artifacts/po-issued-document-without-approval-card.png' })
   await page.getByRole('tablist', { name: 'Purchase order PDF source' }).getByRole('tab', { name: 'Original source', exact: true }).click()
   expect(await downloaded(page, page.getByRole('link', { name: 'Download uploaded PO', exact: true }))).toEqual(original)
-  expect(state.acceptedWrites).toEqual([{ method: 'PATCH', path: orderPath, body: { status: 'completed' } }])
+  expect(state.acceptedWrites).toEqual([{ method: 'PATCH', path: orderPath, body: { status: 'sent' } }])
   clean(state)
 })
 
@@ -132,12 +132,12 @@ test('a late detail response cannot replace another PO or its PDF after navigati
   clean(state)
 })
 
-test('a pending completion cannot overwrite or disable actions on a different PO', async ({ page }) => {
+test('a pending issue cannot overwrite or disable actions on a different PO', async ({ page }) => {
   const state = await setup(page)
   const otherId = '00000000-0000-4000-8000-000000009004'
   const other = { ...state.record, id: otherId, po_number: 'RAD-PRJ-PUR-9004_SEP2026' }
-  let releaseCompletion, requested = false
-  const held = new Promise(resolve => { releaseCompletion = resolve })
+  let releaseIssue, requested = false
+  const held = new Promise(resolve => { releaseIssue = resolve })
   await page.route(`**${orderPath}`, async route => {
     if (route.request().method() !== 'PATCH') return route.fallback()
     requested = true
@@ -149,23 +149,23 @@ test('a pending completion cannot overwrite or disable actions on a different PO
   await page.route(`**/api/v1/procurement/orders/${otherId}/`, route => reply(route, other))
   await page.route(`**/api/v1/procurement/orders/${otherId}/export-pdf/`, route => pdfReply(route, mixedSizePdf(1)))
   await openDetails(page)
-  await page.getByRole('button', { name: 'Mark Complete', exact: true }).click()
+  await page.getByRole('button', { name: 'Send to Vendor', exact: true }).click()
   await page.getByRole('dialog', { name: 'Confirm action' }).getByRole('button', { name: 'Confirm', exact: true }).click()
   await expect.poll(() => requested).toBe(true)
   await page.evaluate(path => {
     window.history.pushState({}, '', path)
     window.dispatchEvent(new PopStateEvent('popstate'))
   }, `/procurement/orders/${otherId}`)
-  await expect(page.getByRole('button', { name: 'Mark Complete', exact: true })).toBeEnabled()
-  releaseCompletion()
+  await expect(page.getByRole('button', { name: 'Send to Vendor', exact: true })).toBeEnabled()
+  releaseIssue()
   await expect(page.getByRole('region', { name: `Purchase Order ${other.po_number} PDF preview`, exact: true }).getByRole('img', { name: /page 1 of 1$/ })).toBeVisible({ timeout: 30000 })
-  await expect(page.getByRole('button', { name: 'Mark Complete', exact: true })).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'Send to Vendor', exact: true })).toBeEnabled()
   await noSeparateApprovalCard(page)
-  expect(state.acceptedWrites).toEqual([{ method: 'PATCH', path: orderPath, body: { status: 'completed' } }])
+  expect(state.acceptedWrites).toEqual([{ method: 'PATCH', path: orderPath, body: { status: 'sent' } }])
   clean(state)
 })
 
-test('a header PDF export started before completion is cancelled instead of downloading the old revision', async ({ page }) => {
+test('a header PDF export started before issue is cancelled instead of downloading the old revision', async ({ page }) => {
   const state = await setup(page)
   const downloads = []
   page.on('download', download => downloads.push(download))
@@ -189,7 +189,7 @@ test('a header PDF export started before completion is cancelled instead of down
   await expect.poll(() => exports).toBe(1)
   await page.getByRole('button', { name: 'Download PDF', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Preparing PDF document', exact: true })).toBeDisabled()
-  await page.getByRole('button', { name: 'Mark Complete', exact: true }).click()
+  await page.getByRole('button', { name: 'Send to Vendor', exact: true }).click()
   await page.getByRole('dialog', { name: 'Confirm action' }).getByRole('button', { name: 'Confirm', exact: true }).click()
   await expect(viewer(page).getByRole('img', { name: /page 1 of 3$/ })).toBeVisible({ timeout: 30000 })
   releaseOld()
@@ -199,7 +199,7 @@ test('a header PDF export started before completion is cancelled instead of down
   expect(await downloaded(page, page.getByRole('button', { name: 'Download PDF', exact: true }))).toEqual(latest)
   expect(downloads).toHaveLength(1)
   expect(exports).toBe(2)
-  expect(state.acceptedWrites).toEqual([{ method: 'PATCH', path: orderPath, body: { status: 'completed' } }])
+  expect(state.acceptedWrites).toEqual([{ method: 'PATCH', path: orderPath, body: { status: 'sent' } }])
   clean(state)
 })
 

@@ -1,5 +1,8 @@
 import PropTypes from "prop-types";
 import { XMarkIcon } from "@heroicons/react/24/outline";
+import SalesBidDecisionJustification from './SalesBidDecisionJustification';
+import SalesProposalOpportunitySelector from './SalesProposalOpportunitySelector';
+import SalesProposalTextField from './SalesProposalTextField';
 
 const optionValue = (option) =>
   typeof option === "string" ? option : option.value;
@@ -14,6 +17,7 @@ export default function SalesActionDialog({
   onChange,
   onClose,
   onSubmit,
+  currentRecordId,
 }) {
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/40 p-4">
@@ -54,7 +58,13 @@ export default function SalesActionDialog({
             </div>
           )}
           <div className="grid gap-4 sm:grid-cols-2">
-            {action.fields.map((field) => (
+            {action.fields.map((field) => field.type === 'bid_justification' ? (
+              <SalesBidDecisionJustification key={`${field.name}-${field.opportunityId}`} opportunityId={field.opportunityId} currentRecordId={currentRecordId} decision={values.decision || ''} value={values[field.name] || ''} busy={busy} onChange={value => onChange(field.name, value)} />
+            ) : field.type === 'proposal_candidate' ? (
+              <SalesProposalOpportunitySelector key={field.name} value={values.deal || ''} selected={values._opportunity} busy={busy} onChange={(id, opportunity) => { onChange('deal', id); onChange('_opportunity', opportunity); }} />
+            ) : field.type === 'proposal_text' ? (
+              <SalesProposalTextField key={field.name} field={field.name} label={field.label} value={values[field.name] || ''} values={values} opportunityId={values.deal || ''} enabled={values._opportunity?.can_create_proposal === true} contextVersion={values._editEpoch || 0} required={field.required} busy={busy} onChange={(value, metadata) => onChange(field.name, value, metadata)} />
+            ) : (
               <label
                 key={field.name}
                 className={`${field.type === "textarea" || field.full ? "sm:col-span-2" : ""} ${field.type === "checkbox" ? "flex items-start gap-3 rounded-md border border-slate-200 p-3" : "block"}`}
@@ -161,7 +171,7 @@ export default function SalesActionDialog({
             </button>
             <button
               type="submit"
-              disabled={busy}
+              disabled={busy || (action.requiresOpportunity && values._opportunity?.can_create_proposal !== true)}
               className={`rounded-md px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 ${action.danger ? "bg-rose-700" : "bg-blue-700"}`}
             >
               {busy ? "Processing..." : action.submitLabel || action.title}
@@ -179,6 +189,7 @@ SalesActionDialog.propTypes = {
     description: PropTypes.string,
     submitLabel: PropTypes.string,
     danger: PropTypes.bool,
+    requiresOpportunity: PropTypes.bool,
     fields: PropTypes.arrayOf(PropTypes.object).isRequired,
   }).isRequired,
   values: PropTypes.object.isRequired,
@@ -187,5 +198,6 @@ SalesActionDialog.propTypes = {
   onChange: PropTypes.func.isRequired,
   onClose: PropTypes.func.isRequired,
   onSubmit: PropTypes.func.isRequired,
+  currentRecordId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
 };
 SalesActionDialog.defaultProps = { error: "" };

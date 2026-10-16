@@ -1,4 +1,5 @@
 import { recommendationSourceApprovals } from './recommendationApprovalEvidence.js';
+import { isPurchaseOrderIssued, purchaseOrderPhaseStatus } from './purchaseOrderPhase.js';
 
 const DAY = 86400000;
 const CLOSED = new Set(['completed', 'cancelled', 'rejected', 'converted']);
@@ -67,9 +68,7 @@ function approvalSteps(raw, isOrder) {
 
 const ORDER_STATUS = {
   pending_reconciliation: ['Pending reconciliation', 'amber'],
-  draft: ['Draft', 'muted'], sent: ['Issued', 'blue'], acknowledged: ['Acknowledged', 'green'],
-  in_progress: ['In delivery', 'blue'], partially_received: ['Partially received', 'amber'],
-  completed: ['Completed', 'green'], cancelled: ['Cancelled', 'muted'],
+  draft: ['Draft', 'muted'], sent: ['Issued', 'green'], cancelled: ['Cancelled', 'muted'],
 };
 
 /** A saved source PDF is a register entry, not a committed purchase order. */
@@ -214,6 +213,7 @@ export function normalizeRegisterRecord(raw = {}, kind = 'purchaseOrders', curre
   const isOrder = kind === 'purchaseOrders';
   const isPendingDocument = isOrder && raw.is_pending_document === true;
   const status = text(raw.status || 'unknown').toLowerCase();
+  const issued = isOrder && isPurchaseOrderIssued(status);
   const steps = approvalSteps(raw, isOrder);
   const awaitingApproval = !CLOSED.has(status) && (isOrder
     ? status === 'draft' && (Boolean(raw.current_approval) || steps.some(step => step.active)) && !raw.approved_at && !raw.approved_by
@@ -224,28 +224,25 @@ export function normalizeRegisterRecord(raw = {}, kind = 'purchaseOrders', curre
   const summary = status === 'rejected' || steps.some(step => step.status === 'rejected') ? 'rejected'
     : approved ? 'approved' : reviewOverdue ? 'overdue' : awaitingApproval ? 'under_review'
       : status === 'draft' ? 'not_started' : 'not_recorded';
-  const awaitingAcknowledgement = isOrder && status === 'sent' && !raw.confirmation_date;
   const buyerId = isOrder ? raw.created_by : raw.issued_by || raw.requested_by;
   const assigned = Boolean(currentUserId) && steps.some(step => step.active
     && String(step.raw.user_id || step.raw.approver_id || '') === String(currentUserId));
-  const mine = !CLOSED.has(status) && (raw.can_approve === true || (!isOrder && assigned)
+  const mine = !issued && !CLOSED.has(status) && (raw.can_approve === true || (!isOrder && assigned)
     || Boolean(currentUserId) && String(buyerId || '') === String(currentUserId));
   const deliveryDate = isOrder ? raw.expected_delivery || null : raw.required_date || null;
   const deliveryDay = dayValue(deliveryDate);
   const today = dayValue(now);
-  const deliveryOverdue = deliveryDay !== null && today !== null && deliveryDay < today && !CLOSED.has(status);
+  const deliveryOverdue = !isOrder && deliveryDay !== null && today !== null && deliveryDay < today && !CLOSED.has(status);
   const createdAt = raw.created_at || null;
   const createdDay = dayValue(createdAt);
   const amount = number(isOrder ? raw.total_amount : raw.total_price);
   const currency = currencyCode(raw.currency);
   const validCurrency = isCurrency(currency);
-  const statusMeta = (isOrder ? ORDER_STATUS : PR_STATUS)[status] || [firstText(raw.status_display, 'Unknown'), 'muted'];
+  const statusMeta = (isOrder ? ORDER_STATUS : PR_STATUS)[isOrder ? purchaseOrderPhaseStatus(status) : status] || [firstText(raw.status_display, 'Unknown'), 'muted'];
   const nextStep = status === 'draft' ? awaitingApproval ? 'Review approval' : approved ? 'Ready to issue' : 'Complete order details'
-    : awaitingAcknowledgement ? 'Confirm supplier acknowledgement'
+    : issued ? 'View issued order'
       : deliveryOverdue ? 'Review delivery date'
-        : status === 'acknowledged' || status === 'in_progress' ? 'Track delivery'
-          : status === 'partially_received' ? 'Review remaining delivery'
-            : awaitingApproval ? 'Review recommendation' : !isOrder && status === 'approved' ? 'Create purchase order'
+        : awaitingApproval ? 'Review recommendation' : !isOrder && status === 'approved' ? 'Create purchase order'
               : CLOSED.has(status) ? 'View record' : 'Open record';
   const explicitReceipt = number(raw.receipt_percent);
   const record = {
@@ -260,16 +257,16 @@ export function normalizeRegisterRecord(raw = {}, kind = 'purchaseOrders', curre
     projectId: firstText(raw.enterprise_project && `core:${raw.enterprise_project}`, raw.project?.id, raw.project),
     buyer: firstText(isOrder ? raw.buyer_reference_pm : raw.requester_name, raw.issued_by_name, raw.created_by_name, 'Not recorded'),
     buyerId: buyerId == null ? '' : String(buyerId),
-    status, statusLabel: awaitingApproval && isOrder ? 'Awaiting approval' : reviewOverdue ? 'Review overdue' : statusMeta[0],
+    status, issued, statusLabel: awaitingApproval && isOrder ? 'Awaiting approval' : reviewOverdue ? 'Review overdue' : statusMeta[0],
     tone: reviewOverdue ? 'red' : awaitingApproval && isOrder ? 'amber' : statusMeta[1],
     createdAt, date: isOrder ? raw.po_date || null : raw.issued_date || null,
     deliveryDate, amount, currency, currencyValid: validCurrency,
     valueIssue: amount === null ? 'Amount not recorded' : !validCurrency ? 'Currency not verified' : '',
     ageDays: createdDay !== null && today !== null && today >= createdDay ? Math.floor((today - createdDay) / DAY) : null,
     approvalSummary: summary, approvalSteps: steps, mine,
-    primaryAction: awaitingApproval ? 'review' : status === 'draft' ? 'edit' : awaitingAcknowledgement ? 'follow_up'
+    primaryAction: awaitingApproval ? 'review' : status === 'draft' ? 'edit'
       : !isOrder && status === 'approved' ? 'convert' : 'open',
-    nextStep, awaitingApproval, awaitingAcknowledgement, isDeliveryOverdue: deliveryOverdue,
+    nextStep, awaitingApproval, isDeliveryOverdue: deliveryOverdue,
     reviewDueAt: raw.review_due_at || null,
     receiptPercent: explicitReceipt !== null && explicitReceipt >= 0 && explicitReceipt <= 100 ? explicitReceipt : null,
     invoiceMatch: typeof raw.invoice_match_status === 'string' && raw.invoice_match_status.trim() ? raw.invoice_match_status : null,
@@ -290,7 +287,7 @@ export function normalizeRegisterRecord(raw = {}, kind = 'purchaseOrders', curre
   };
   if (isPendingDocument) return {
     ...record, primaryAction: 'preview', nextStep: 'Review imported PDF',
-    awaitingApproval: false, awaitingAcknowledgement: false, isDeliveryOverdue: false,
+    awaitingApproval: false, isDeliveryOverdue: false,
     approvalSummary: 'not_recorded', receiptPercent: null, invoiceMatch: null,
   };
   return isOrder ? record : { ...record, ...recommendationFields(record, currentUserId, now) };
@@ -305,8 +302,7 @@ function matchesStatus(record, filter) {
   if (filter === 'my_queue') return record.mine === true;
   if (filter === 'draft') return record.status === 'draft' && !record.awaitingApproval;
   if (['review', 'under_review', 'awaiting_approval'].includes(filter)) return record.awaitingApproval;
-  if (filter === 'issued') return record.status === 'sent';
-  if (filter === 'acknowledgement') return record.awaitingAcknowledgement;
+  if (filter === 'issued') return record.issued;
   if (filter === 'in_delivery') return ['in_progress', 'partially_received'].includes(record.status);
   if (filter === 'overdue') return record.kind === 'purchaseOrders' ? record.isDeliveryOverdue : record.approvalSummary === 'overdue';
   if (filter === 'approved' && record.kind === 'purchaseOrders') return record.approvalSummary === 'approved';
@@ -324,7 +320,7 @@ export function filterRegisterRecords(records, filters = {}, currentUserId, now 
       if (value && value !== 'all' && value !== record[key] && value !== record[`${key}Id`]) return false;
     }
     const saved = filters.savedView;
-    if (saved === 'open' && (CLOSED.has(record.status) || record.isPendingDocument)) return false;
+    if (saved === 'open' && (record.issued || CLOSED.has(record.status) || record.isPendingDocument)) return false;
     if (saved && !['all', 'open'].includes(saved) && !matchesStatus(record, saved)) return false;
     if (filters.myActions && !(record.mine && currentUserId)) return false;
     const created = dayValue(record.createdAt);
@@ -348,9 +344,7 @@ export function registerMetrics(records, kind = 'purchaseOrders') {
   if (isOrder) records = records.filter(record => !record.isPendingDocument);
   const descriptors = isOrder ? [
     ['all', 'All orders', 'ShoppingCartIcon', 'blue'], ['draft', 'Draft', 'DocumentTextIcon', 'muted'],
-    ['review', 'Awaiting approval', 'ClockIcon', 'amber'], ['issued', 'Issued', 'PaperAirplaneIcon', 'blue'],
-    ['acknowledgement', 'Awaiting acknowledgement', 'ExclamationTriangleIcon', 'amber'],
-    ['in_delivery', 'In delivery', 'TruckIcon', 'green'], ['completed', 'Completed', 'CheckCircleIcon', 'green'],
+    ['review', 'Awaiting approval', 'ClockIcon', 'amber'], ['issued', 'Issued', 'PaperAirplaneIcon', 'green'],
   ] : [
     ['all', 'All recommendations', 'DocumentTextIcon', 'blue'], ['draft', 'Draft', 'DocumentTextIcon', 'muted'],
     ['review', 'Under review', 'ClockIcon', 'amber'], ['approved', 'Approved', 'CheckCircleIcon', 'green'],

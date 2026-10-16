@@ -211,7 +211,8 @@ apiClient.interceptors.request.use(
     return config
   },
   (error) => {
-    console.error('[API] ❌ Request interceptor error:', error);
+    if (error.config?.sensitiveRequest) console.error('[API] Sensitive request could not be prepared');
+    else console.error('[API] ❌ Request interceptor error:', error);
     return Promise.reject(error)
   }
 )
@@ -245,11 +246,13 @@ apiClient.interceptors.response.use(
     // endpoint still surfaces errors normally.
     const _silent = _isSilentTimeoutEndpoint(error.config?.url || '') ||
       error.config?.silentTimeout === true ||
-      error.config?.suppressErrorToast === true
+      error.config?.suppressErrorToast === true || error.config?.sensitiveRequest === true
     
     // Enhanced error logging for debugging — but stay quiet for background
     // pollers so DevTools doesn't drown in red on a slow worker.
-    if (_silent) {
+    if (error.config?.sensitiveRequest) {
+      console.warn('[API] Sensitive request failed', error.response?.status || 'network');
+    } else if (_silent) {
       console.warn('[API] Silent endpoint error:', error.config?.url, '→', error.message)
     } else {
       console.group('[API Error] ❌ Detailed Error Information');

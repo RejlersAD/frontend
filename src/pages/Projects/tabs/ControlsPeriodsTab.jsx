@@ -6,6 +6,8 @@ import {
 } from '@heroicons/react/24/outline'
 
 import * as PC from '../../../services/projectControl.service'
+import SharedRecordTargetSelector from '../components/SharedRecordTargetSelector'
+import '../SharedRecordsWorkspace.css'
 
 const rows = (value) => (Array.isArray(value) ? value : value?.results || [])
 const fieldClass = 'mt-1 min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-200'
@@ -51,6 +53,7 @@ export default function ControlsPeriodsTab({ project }) {
   const [wbsNodes, setWbsNodes] = useState([])
   const [budgets, setBudgets] = useState([])
   const [hourEntries, setHourEntries] = useState([])
+  const [selectedEmployee, setSelectedEmployee] = useState(null)
   const [snapshots, setSnapshots] = useState([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState('')
@@ -131,6 +134,8 @@ export default function ControlsPeriodsTab({ project }) {
     setShowAccountForm(false)
     setShowPeriodForm(false)
     setShowHourForm(false)
+    setSelectedEmployee(null)
+    setHourForm({ control_account: '', reporting_period: '', employee_code: '', employee_name: '', work_date: '', hours: '', hourly_cost_rate: '', source_reference: '', notes: '' })
     setReopenId(null)
     setHistory({})
     reload()
@@ -180,9 +185,16 @@ export default function ControlsPeriodsTab({ project }) {
 
   const createHour = async (event) => {
     event.preventDefault()
-    const created = await runAction('new-hour', () => PC.createApprovedHour({ ...hourForm, project: project.id }), 'Draft project-hour entry created.')
+    const payload = { ...hourForm, project: project.id }
+    if (selectedEmployee) {
+      payload.employee = selectedEmployee.id
+      delete payload.employee_code
+      delete payload.employee_name
+    }
+    const created = await runAction('new-hour', () => PC.createApprovedHour(payload), 'Draft project-hour entry created.')
     if (!created) return
     setShowHourForm(false)
+    setSelectedEmployee(null)
     setHourForm({ control_account: '', reporting_period: '', employee_code: '', employee_name: '', work_date: '', hours: '', hourly_cost_rate: '', source_reference: '', notes: '' })
   }
 
@@ -276,10 +288,11 @@ export default function ControlsPeriodsTab({ project }) {
           <button type="button" className={primaryButton} onClick={() => setShowHourForm((value) => !value)} disabled={!accounts.some((account) => account.status === 'active') || !hasEntryWindow}><PlusIcon className="mr-1.5 h-4 w-4" />Enter project hours</button>
         </div>
         {showHourForm && <form onSubmit={createHour} className="grid gap-4 border-b border-slate-200 bg-slate-50 p-5 md:grid-cols-4">
+          <div className="md:col-span-4"><SharedRecordTargetSelector key={project.id} kind="employee" projectId={project.id} value={selectedEmployee} disabled={busy === 'new-hour'} onChange={employee => { setSelectedEmployee(employee); if (employee) setHourForm(current => ({ ...current, employee_code: employee.code || '', employee_name: employee.label || '' })) }} /></div>
           <Field label="Control Account"><select required className={fieldClass} value={hourForm.control_account} onChange={(event) => setHourForm({ ...hourForm, control_account: event.target.value })}><option value="">Select active account</option>{accounts.filter((account) => account.status === 'active').map((account) => <option key={account.id} value={account.id}>{account.code} — {account.name}</option>)}</select></Field>
           <Field label="Reporting period"><select required className={fieldClass} value={hourForm.reporting_period} onChange={(event) => setHourForm({ ...hourForm, reporting_period: event.target.value })}><option value="">Select open period</option>{periods.filter((period) => period.is_entry_allowed).map((period) => <option key={period.id} value={period.id}>{period.name}</option>)}</select></Field>
-          <Field label="Employee code"><input required className={fieldClass} value={hourForm.employee_code} onChange={(event) => setHourForm({ ...hourForm, employee_code: event.target.value })} /></Field>
-          <Field label="Employee name"><input className={fieldClass} value={hourForm.employee_name} onChange={(event) => setHourForm({ ...hourForm, employee_name: event.target.value })} /></Field>
+          <Field label="Employee code"><input required={!selectedEmployee} disabled={Boolean(selectedEmployee) || busy === 'new-hour'} className={fieldClass} value={hourForm.employee_code} onChange={(event) => setHourForm({ ...hourForm, employee_code: event.target.value })} /></Field>
+          <Field label="Employee name"><input disabled={Boolean(selectedEmployee) || busy === 'new-hour'} className={fieldClass} value={hourForm.employee_name} onChange={(event) => setHourForm({ ...hourForm, employee_name: event.target.value })} /></Field>
           <Field label="Work date"><input required type="date" className={fieldClass} value={hourForm.work_date} onChange={(event) => setHourForm({ ...hourForm, work_date: event.target.value })} /></Field>
           <Field label="Approved hours"><input required min="0.01" step="0.01" type="number" className={fieldClass} value={hourForm.hours} onChange={(event) => setHourForm({ ...hourForm, hours: event.target.value })} /></Field>
           <Field label={`Cost rate (${project.currency || 'AED'}/hour)`}><input required min="0" step="0.01" type="number" className={fieldClass} value={hourForm.hourly_cost_rate} onChange={(event) => setHourForm({ ...hourForm, hourly_cost_rate: event.target.value })} /></Field>

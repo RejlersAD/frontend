@@ -12,7 +12,7 @@ const PurchaseOrderPage = () => {
       isOpen
       pageMode
       onClose={returnToRegister}
-      onSuccess={returnToRegister}
+      onSuccess={(_order, { close = false } = {}) => { if (close) returnToRegister(); }}
     />
   );
 };

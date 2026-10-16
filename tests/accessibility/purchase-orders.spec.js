@@ -6,6 +6,7 @@ import { mixedSizePdf } from '../fixtures/mixed-size-pdf.fixture'
 test.setTimeout(60000)
 const register = page => page.getByRole('region', { name: 'Purchase order register', exact: true })
 const details = page => page.getByRole('complementary', { name: 'Purchase order details' })
+const lifecycle = page => details(page).getByRole('list', { name: 'Purchase order lifecycle' })
 const row = (page, number) => register(page).getByRole('row').filter({ has: page.getByRole('button', { name: `Select ${number}`, exact: true }) })
 const loaded = async page => {
   await expect(page.getByRole('heading', { name: 'Purchase Orders', exact: true })).toBeVisible()
@@ -27,11 +28,11 @@ test('desktop populated register selected detail and honest operational evidence
   await page.setViewportSize({ width: 1672, height: 941 })
   const state = await purchaseOrderHarness(page, { shell: true }); await loaded(page)
   await expect(register(page).getByRole('row')).toHaveCount(9)
-  await expect(page.locator('.prw-kpis > button')).toHaveCount(8)
+  await expect(page.locator('.prw-kpis > button')).toHaveCount(5)
   await expect(details(page)).toContainText('Control valves and actuator package delivery line')
   await expect(details(page).getByRole('table')).toContainText('AED 1,000')
-  await expect(row(page, 'PO-TEST-005').getByRole('cell').nth(7)).toHaveText('—')
-  await expect(row(page, 'PO-TEST-005').getByRole('cell').nth(8)).toHaveText('Not available')
+  await expect(register(page).getByRole('columnheader')).toHaveText(['Status & age', 'PO number', 'Order / Supplier', 'Project', 'Value', 'Order date', 'Promised delivery', 'Next step', 'Action'])
+  await expect(row(page, 'PO-TEST-005').getByRole('cell').nth(7)).toHaveText('View issued order')
   const total = page.locator('.prw-kpis > button').filter({ hasText: 'Total order value' })
   await expect(total).toContainText('2 currencies')
   await expect(total).toHaveAttribute('title', /USD 22,500/)
@@ -40,12 +41,16 @@ test('desktop populated register selected detail and honest operational evidence
   noWrites(state)
 })
 
-test('selection fetches only that order and receipt completion is not inferred from closed status', async ({ page }) => {
+test('selection retains legacy completed records and ends their displayed lifecycle at Issued', async ({ page }) => {
   const state = await purchaseOrderHarness(page); await loaded(page)
   await page.getByRole('button', { name: 'Select PO-TEST-005', exact: true }).click(); await loaded(page)
   await expect(details(page).getByRole('table')).toContainText(state.details[105].items[0].description)
-  await expect(details(page).getByRole('list', { name: 'Purchase order lifecycle' }).getByRole('listitem').filter({ hasText: /^Received/ })).toContainText('Not recorded')
-  await expect(details(page).getByRole('list', { name: 'Purchase order lifecycle' }).getByRole('listitem').filter({ hasText: /^Invoice matched/ })).toContainText('Not recorded')
+  await expect(lifecycle(page).getByRole('listitem').locator('small')).toHaveText(['Draft', 'Submitted', 'Approved', 'Issued'])
+  await expect(lifecycle(page).getByRole('listitem').filter({ hasText: /^Issued/ })).toHaveClass(/is-current/)
+  await expect(lifecycle(page).getByRole('listitem').filter({ hasText: /^Approved/ })).toContainText('Not recorded')
+  await expect(details(page)).not.toContainText(/Acknowledged|Received|Invoice matched|Closed/)
+  await expect(details(page).getByRole('button', { name: /Mark acknowledged|Mark Complete|Open receipts|Send to Vendor/ })).toHaveCount(0)
+  expect(state.details[105].status).toBe('completed')
   expect(state.requests.filter(request => request.path.includes('/procurement/orders/')).map(request => request.path)).toEqual(['/api/v1/procurement/orders/101/', '/api/v1/procurement/orders/105/'])
   noWrites(state)
 })
@@ -61,13 +66,43 @@ test('search combined filters my actions and filtered export use the visible sou
   await page.getByRole('button', { name: 'Clear filters', exact: true }).click()
   await page.getByRole('combobox', { name: 'Supplier', exact: true }).selectOption('Summit Cable Trading')
   await page.getByRole('combobox', { name: 'Buyer', exact: true }).selectOption('Samir Ali')
-  await page.getByRole('combobox', { name: 'Delivery date', exact: true }).selectOption('undated')
+  await expect(page.getByRole('combobox', { name: 'Delivery date', exact: true })).toHaveCount(0)
   await expect(register(page).getByRole('row')).toHaveCount(2)
   await expect(register(page)).toContainText('PO-TEST-003')
   await reset(page)
-  await page.getByRole('button', { name: 'Review acknowledgement queue', exact: true }).click()
-  await expect(register(page).getByRole('row')).toHaveCount(2)
+  await page.getByRole('button', { name: /Issued orders$/ }).click()
+  await expect(register(page).getByRole('row')).toHaveCount(5)
   await expect(register(page)).toContainText('PO-TEST-001')
+  await expect(page.getByRole('button', { name: /acknowledgement|overdue deliver|Follow up|Open receipts/i })).toHaveCount(0)
+  noWrites(state)
+})
+
+test('issued and legacy orders leave action queues and export their unchanged source statuses', async ({ page }) => {
+  const state = await purchaseOrderHarness(page); await loaded(page)
+  await page.getByRole('combobox', { name: 'Saved view', exact: true }).selectOption('open')
+  await expect(register(page).getByRole('row')).toHaveCount(5)
+  for (const number of ['001', '004', '005', '006']) await expect(register(page)).not.toContainText(`PO-TEST-${number}`)
+  await reset(page)
+  await page.getByRole('switch', { name: 'My actions' }).check()
+  await expect(register(page).getByRole('row')).toHaveCount(4)
+  for (const number of ['001', '004', '005', '006']) await expect(register(page)).not.toContainText(`PO-TEST-${number}`)
+  await reset(page)
+  await page.getByRole('combobox', { name: 'Status', exact: true }).selectOption('issued')
+  await expect(register(page).getByRole('row')).toHaveCount(5)
+  for (const number of ['001', '004', '005', '006']) {
+    await page.getByRole('button', { name: `Select PO-TEST-${number}`, exact: true }).click(); await loaded(page)
+    await expect(lifecycle(page).getByRole('listitem').locator('small')).toHaveText(['Draft', 'Submitted', 'Approved', 'Issued'])
+    await expect(lifecycle(page).getByRole('listitem').filter({ hasText: /^Issued/ })).toHaveClass(/is-current/)
+    await expect(details(page).getByRole('button', { name: /Mark acknowledged|Mark Complete|Open receipts|Send to Vendor/ })).toHaveCount(0)
+    await expect(details(page).getByRole('button', { name: 'Download order PDF', exact: true })).toBeEnabled()
+  }
+  await page.getByRole('button', { name: 'Export register', exact: true }).click()
+  const exported = (await actions(page)).at(-1)
+  expect(exported.name).toBe('export')
+  expect(exported.value.map(({ id, status }) => ({ id, status }))).toEqual([
+    { id: 101, status: 'sent' }, { id: 104, status: 'in_progress' },
+    { id: 105, status: 'completed' }, { id: 106, status: 'acknowledged' },
+  ])
   noWrites(state)
 })
 
@@ -112,15 +147,16 @@ test('header and row action callbacks preserve the selected source record and me
   noWrites(state)
 })
 
-test('acknowledgement issuing and detail navigation invoke the original workflows', async ({ page }) => {
+test('only approved pre-issue orders offer Send to Vendor and approval navigation remains available', async ({ page }) => {
   const state = await purchaseOrderHarness(page); await loaded(page)
-  await details(page).getByRole('button', { name: 'Mark acknowledged', exact: true }).click()
+  await expect(details(page).getByRole('button', { name: 'Send to Vendor', exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Select PO-TEST-003', exact: true }).click(); await loaded(page)
+  await expect(details(page).getByRole('button', { name: 'Send to Vendor', exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: 'Select PO-TEST-008', exact: true }).click(); await loaded(page)
-  await details(page).getByRole('button', { name: 'Issue order', exact: true }).click()
+  await details(page).getByRole('button', { name: 'Send to Vendor', exact: true }).click()
   await details(page).getByRole('button', { name: 'View approval record', exact: true }).click()
-  await details(page).getByRole('button', { name: 'Open receipts' }).click()
-  await expect.poll(() => page.evaluate(() => window.purchaseOrderRoute)).toBe('/procurement/receipts')
-  expect(await actions(page)).toMatchObject([{ name: 'acknowledge', value: { id: 101 } }, { name: 'issue', value: { id: 108 } }, { name: 'open', value: 108 }])
+  await expect(details(page).getByRole('button', { name: /Mark acknowledged|Mark Complete|Open receipts/ })).toHaveCount(0)
+  expect(await actions(page)).toMatchObject([{ name: 'issue', value: { id: 108 } }, { name: 'open', value: 108 }])
   noWrites(state)
 })
 
@@ -139,17 +175,20 @@ test('late response cannot replace a newly selected order', async ({ page }) => 
 })
 
 test('detail failure and mismatched identity stay explicit and retry current selection', async ({ page }) => {
-  const state = await purchaseOrderHarness(page, { prepare: state => { state.detailErrors[101] = 'Order detail unavailable.' } }); await loaded(page)
+  const state = await purchaseOrderHarness(page, { prepare: state => { state.detailErrors[108] = 'Order detail unavailable.' } }); await loaded(page)
+  await page.getByRole('button', { name: 'Select PO-TEST-008', exact: true }).click(); await loaded(page)
   await expect(details(page).getByRole('alert')).toContainText('Order detail unavailable.')
-  await expect(details(page).getByRole('button', { name: 'Mark acknowledged' })).toBeDisabled()
-  delete state.detailErrors[101]
-  state.details[101] = { ...state.details[101], id: 999 }
+  await expect(details(page).getByRole('button', { name: 'Send to Vendor', exact: true })).toBeDisabled()
+  delete state.detailErrors[108]
+  state.details[108] = { ...state.details[108], id: 999 }
   await details(page).getByRole('button', { name: 'Retry details' }).click()
   await expect(details(page).getByRole('alert')).toContainText('do not match the selected record')
-  state.details[101].id = 101
+  await expect(details(page).getByRole('button', { name: 'Send to Vendor', exact: true })).toBeDisabled()
+  state.details[108].id = 108
   await details(page).getByRole('button', { name: 'Retry details' }).click(); await loaded(page)
   await expect(details(page).getByRole('alert').filter({ hasText: 'do not match' })).toHaveCount(0)
-  await expect(details(page)).toContainText('Control valves and actuator package delivery line')
+  await expect(details(page)).toContainText('Approved pump package ready to issue delivery line')
+  await expect(details(page).getByRole('button', { name: 'Send to Vendor', exact: true })).toBeEnabled()
   noWrites(state)
 })
 
@@ -160,7 +199,7 @@ test('loading register failure and genuinely empty state remain distinct', async
   await page.evaluate(() => window.setPurchaseOrderProps({ loading: false, error: 'Synthetic register unavailable.' }))
   await expect(page.getByRole('heading', { name: 'Register unavailable' })).toBeVisible()
   await expect(page.getByRole('alert')).toContainText('Synthetic register unavailable.')
-  await expect(page.locator('.prw-kpi-value')).toHaveText(Array(8).fill('—'))
+  await expect(page.locator('.prw-kpi-value')).toHaveText(Array(5).fill('—'))
   await page.getByRole('button', { name: 'Try again', exact: true }).click()
   await page.evaluate(() => window.setPurchaseOrderProps({ error: null }))
   await expect(page.getByRole('heading', { name: 'No purchase orders yet' })).toBeVisible()

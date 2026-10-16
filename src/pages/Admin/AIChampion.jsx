@@ -41,7 +41,7 @@ const TIME_WINDOWS = [
   { id: 'quarter', label: 'Quarter',   days: 90 },
 ];
 
-const REFRESH_INTERVAL_MS = 60_000;
+const REFRESH_INTERVAL_MS = 300_000; // was 60s
 const LEADERBOARD_LIMIT = 20;
 
 // Tier visual styling (matches backend BADGE_TIERS thresholds)

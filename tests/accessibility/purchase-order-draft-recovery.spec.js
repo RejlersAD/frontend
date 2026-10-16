@@ -21,6 +21,11 @@ const selectionList = page => page.getByRole('list', { name: 'Selected projects'
 const lastSnapshot = state => state.requests.filter(request => request.path.endsWith('/preview-document/') && request.body?.format === 'pdf').at(-1)?.body.snapshot
 const orderWrites = state => state.requests.filter(({ path, method }) => ['POST', 'PATCH'].includes(method) && /^\/api\/v1\/procurement\/orders\/(?:[^/]+\/)?$/.test(path) && !path.includes('/preview-document/') && !path.includes('/reserve-number/') && !path.includes('/create-project/'))
 const clean = state => { expect(state.unknown).toEqual([]); expect(state.pageErrors).toEqual([]) }
+const expectSavedEditor = async (page, state) => {
+  await expect.poll(() => state.acceptedWrites.length).toBe(1)
+  await expect(editor(page).getByRole('heading', { name: 'Edit purchase order', exact: true })).toBeVisible()
+  await expect(editor(page).getByRole('button', { name: 'Save changes', exact: true }).first()).toBeEnabled()
+}
 
 async function openNew(page, prepare, options = {}) {
   const state = await orderFormHarness(page, {
@@ -58,11 +63,12 @@ async function addProject(page, code) {
 async function expectFreshNewForm(page) {
   await page.goto('/procurement/orders/new', { waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('heading', { name: 'New purchase order', exact: true })).toBeVisible({ timeout: 90000 })
-  await expect(title(page)).toHaveCount(0)
+  await expect(title(page)).toHaveValue('')
+  await expect(editor(page).getByRole('button', { name: 'Save draft', exact: true }).first()).toBeDisabled()
   await expect(editor(page)).toContainText('Select an existing PR to continue')
   await expect(page.locator('#po-pr-search')).toHaveValue('')
   await expect(projectOutput(page)).toHaveValue('')
-  await expect(tab(page, 'Header, Buyer & Project')).toHaveAttribute('aria-selected', 'true')
+  await expect(tab(page, 'Order & parties')).toHaveAttribute('aria-selected', 'true')
   await expect(selectionList(page).getByRole('button')).toHaveCount(0)
 }
 
@@ -71,13 +77,13 @@ test('refresh restores unsaved PO fields, linked PR, multiple projects, line edi
   await title(page).fill('Recovered engineering purchase order')
   await page.getByRole('textbox', { name: 'Seller Reference', exact: true }).fill('Vinoth')
   await addProject(page, '5901055')
-  await tab(page, 'PO Description & Scope').click()
+  await tab(page, 'Scope & pricing').click()
   await page.getByRole('textbox', { name: 'PO Narrative', exact: true }).fill('Unsaved narrative retained after refreshing the browser.')
-  await tab(page, 'Summary of Prices').click()
+  await tab(page, 'Scope & pricing').click()
   await page.locator('[data-cell="0-4"]').fill('2')
   await page.locator('[data-cell="0-6"]').fill('125')
   await page.locator('[data-cell="0-6"]').press('Tab')
-  await tab(page, 'Attachments').click()
+  await tab(page, 'Approval').click()
   await page.locator('#po-attachment-multiple').setInputFiles({ name: 'recovered-scope.txt', mimeType: 'text/plain', buffer: Buffer.from('Synthetic attachment content retained across reload.') })
   await page.getByRole('textbox', { name: 'Attachment 1 title', exact: true }).fill('Recovered scope title')
   await page.getByRole('textbox', { name: 'Attachment 1 description', exact: true }).fill('Retained attachment description')
@@ -103,7 +109,7 @@ test('refresh restores unsaved PO fields, linked PR, multiple projects, line edi
 
   await page.reload({ waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('heading', { name: 'New purchase order', exact: true })).toBeVisible({ timeout: 90000 })
-  await expect(tab(page, 'Attachments')).toHaveAttribute('aria-selected', 'true')
+  await expect(tab(page, 'Approval')).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByRole('textbox', { name: 'Attachment 1 title', exact: true })).toHaveValue('Recovered scope title')
   await expect(page.getByRole('textbox', { name: 'Attachment 1 description', exact: true })).toHaveValue('Retained attachment description')
   await expect(editor(page)).toContainText('recovered-scope.txt')
@@ -112,7 +118,7 @@ test('refresh restores unsaved PO fields, linked PR, multiple projects, line edi
   expect(state.recoveredAttachmentContents.at(-1)).toBe(true)
   await mkdir(artifactDirectory, { recursive: true })
   await page.screenshot({ path: `${artifactDirectory}/recovered-attachment-tab.png` })
-  await tab(page, 'Header, Buyer & Project').click()
+  await tab(page, 'Order & parties').click()
   await expect(title(page)).toHaveValue('Recovered engineering purchase order')
   await expect(page.locator('#po-pr-search')).toHaveValue(orderFormRecommendation.pr_number)
   await expect(page.getByLabel('PO Number', { exact: true })).toHaveValue(orderFormNumber)
@@ -120,9 +126,9 @@ test('refresh restores unsaved PO fields, linked PR, multiple projects, line edi
   await expect(page.getByRole('textbox', { name: 'Seller Reference', exact: true })).toHaveValue('Vinoth')
   await expect(page.locator('[name="payment_terms"]')).toHaveValue('Net 45')
   await expect(page.getByRole('combobox', { name: 'Price basis', exact: true })).toHaveValue('none')
-  await tab(page, 'PO Description & Scope').click()
+  await tab(page, 'Scope & pricing').click()
   await expect(page.getByRole('textbox', { name: 'PO Narrative', exact: true })).toContainText('Unsaved narrative retained after refreshing the browser.')
-  await tab(page, 'Summary of Prices').click()
+  await tab(page, 'Scope & pricing').click()
   await expect(page.locator('[data-cell="0-4"]')).toHaveValue('2')
   await expect(page.locator('[data-cell="0-6"]')).toHaveValue('125')
   await expect.poll(() => Number(lastSnapshot(state)?.total_amount)).toBe(250)
@@ -143,14 +149,17 @@ test('explicit Cancel discards the local PO and reopening starts a clean form', 
   clean(state)
 })
 
-test('successful Save draft persists once and clears the recovery copy for the next new order', async ({ page }) => {
+test('successful Save draft keeps editing open and explicit close clears recovery for the next new order', async ({ page }) => {
   const state = await openNew(page)
   await title(page).fill('Successfully saved recovered order')
   await addProject(page, '5901055')
   await editor(page).getByRole('button', { name: 'Save draft', exact: true }).first().click()
-  await expect(page.getByRole('heading', { name: 'Purchase Orders', exact: true })).toBeVisible()
+  await expectSavedEditor(page, state)
+  await expect(page).toHaveURL(/\/procurement\/orders\/new$/)
   expect(state.acceptedWrites).toHaveLength(1)
   expect(state.record).toMatchObject({ title: 'Successfully saved recovered order', status: 'draft', project_number: '5900985, 5901055' })
+  await editor(page).getByRole('button', { name: 'Close purchase order', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Purchase Orders', exact: true })).toBeVisible()
   await expectFreshNewForm(page)
   expect(orderWrites(state)).toHaveLength(1)
   clean(state)
@@ -243,11 +252,11 @@ test('an existing PO edit recovers after refresh and keeps the original PATCH ba
   await page.reload({ waitUntil: 'domcontentloaded' })
   await openEdit()
   await expect(title(page)).toHaveValue('Recovered edit to existing order')
-  await tab(page, 'Attachments').click()
+  await tab(page, 'Approval').click()
   await expect(editor(page)).toContainText('original-saved-scope.txt')
   await expect(editor(page)).toContainText('new-server-attachment.txt')
   await editor(page).getByRole('button', { name: 'Save changes', exact: true }).first().click()
-  await expect(page.getByRole('heading', { name: 'Purchase Orders', exact: true })).toBeVisible()
+  await expectSavedEditor(page, state)
   expect(state.acceptedWrites).toHaveLength(1)
   expect(state.acceptedWrites[0]).toMatchObject({ method: 'PATCH', body: { title: 'Recovered edit to existing order' } })
   expect(Object.keys(state.acceptedWrites[0].body)).toEqual(['title'])
@@ -341,7 +350,7 @@ test('an editable empty existing PO route restores the chosen signer without res
   await reopen()
   await expect(finalApprover(page)).toHaveValue('12')
   await editor(page).getByRole('button', { name: 'Save changes', exact: true }).first().click()
-  await expect(page.getByRole('heading', { name: 'Purchase Orders', exact: true })).toBeVisible()
+  await expectSavedEditor(page, state)
   expect(state.acceptedWrites).toHaveLength(1)
   const body = state.acceptedWrites[0].body
   expect(body.approval_log).toHaveLength(1)

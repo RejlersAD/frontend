@@ -40,6 +40,9 @@ import {
   ArrowsPointingOutIcon,
   ArrowsPointingInIcon,
 } from '@heroicons/react/24/outline';
+import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip as RTooltip, BarChart, Bar, XAxis, YAxis } from 'recharts';
+import { BYOK_COST_CONFIG, estimateByokCost } from '../../../config/byokCost.config';
+import { loadPdfLibrary } from '../../../components/Common/pdfDocumentLibrary';
 import { getApiBaseUrl } from '../../../config/environment.config';
 import { STORAGE_KEYS } from '../../../config/app.config';
 import * as XLSX from 'xlsx';
@@ -55,6 +58,9 @@ import {
   getInstrumentTemplate,
 } from './InstrumentProjectManager';
 import WrenchAiDocAssist from '../../../components/Engineering/WrenchAiDocAssist';
+// Shared project-legend inheritance (bridges local project by NAME)
+import ProjectLegendPanel from '../../../components/Engineering/ProjectLegendPanel';
+import LegendSheetsModal from '../Process/components/LegendSheetsModal';
 
 // ═════════════════════════════════════════════════════════════════════════════
 // PFD-FORMAT REDESIGN — theme, animations & landing-page primitives
@@ -64,28 +70,70 @@ import WrenchAiDocAssist from '../../../components/Engineering/WrenchAiDocAssist
 // ═════════════════════════════════════════════════════════════════════════════
 
 const T_INST = {
-  // Page background — soft indigo/violet sky for the instrument suite
-  bg: 'linear-gradient(145deg, #f5f3ff 0%, #eef2ff 30%, #f0f9ff 65%, #f5f3ff 100%)',
+  // Page background — ALIGNED with P&ID Verification V1 (T.bg in PIDVerification.jsx)
+  bg: 'linear-gradient(135deg, #f8faff 0%, #eef2ff 45%, #f0f9ff 75%, #fffbeb 100%)',
 
   blobs: [
-    { color: 'rgba(139,92,246,0.10)', size: '580px', top: '-100px',  left: '15%',    anim: 'instFloatA 14s ease-in-out infinite' },
-    { color: 'rgba(99,102,241,0.08)', size: '460px', top: '25%',     right: '-80px', anim: 'instFloatB 17s ease-in-out infinite' },
-    { color: 'rgba(168,85,247,0.07)', size: '400px', bottom: '-80px', left: '30%',    anim: 'instFloatC 12s ease-in-out infinite' },
-    { color: 'rgba(14,165,233,0.07)', size: '320px', top: '60%',     left: '-60px',  anim: 'instFloatA 10s ease-in-out infinite 3s' },
+    { color: 'rgba(59,130,246,0.09)', size: '520px', top: '-80px',   left: '18%',   anim: 'instFloatA 14s ease-in-out infinite' },
+    { color: 'rgba(168,85,247,0.07)', size: '430px', top: '28%',     right: '-60px', anim: 'instFloatB 17s ease-in-out infinite' },
+    { color: 'rgba(245,158,11,0.07)', size: '380px', bottom: '-60px', left: '32%',   anim: 'instFloatC 12s ease-in-out infinite' },
+    { color: 'rgba(6,182,212,0.06)',  size: '300px', top: '62%',     left: '-40px', anim: 'instFloatA 10s ease-in-out infinite 3s' },
   ],
 
-  card:  { background: '#ffffff', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.06),0 4px 16px rgba(0,0,0,0.04)' },
-  cardH: { boxShadow: '0 12px 40px rgba(99,102,241,0.16),0 2px 8px rgba(0,0,0,0.05)', borderColor: '#a5b4fc', transform: 'translateY(-2px)' },
-  panel: { background: 'rgba(255,255,255,0.92)', border: '1px solid #e0e7ff', backdropFilter: 'blur(16px)', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' },
+  card:  { background: '#ffffff', border: '1px solid rgba(59,130,246,0.15)', boxShadow: '0 4px 28px rgba(59,130,246,0.09), 0 1px 4px rgba(0,0,0,0.04)' },
+  cardH: { boxShadow: '0 10px 30px rgba(0,0,0,0.10),0 2px 8px rgba(0,0,0,0.05)', borderColor: '#93c5fd', transform: 'translateY(-2px)' },
+  panel: { background: 'rgba(255,255,255,0.85)', border: '1px solid #e8edf5', backdropFilter: 'blur(12px)', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' },
 
-  accent:        'linear-gradient(135deg,#7c3aed,#4f46e5)',
-  accentHex:     '#6366f1',
+  accent:        'linear-gradient(135deg,#3b82f6,#6366f1)',
+  accentHex:     '#3b82f6',
   accentShadow:  '0 4px 18px rgba(99,102,241,0.38)',
   accentShadowLg:'0 8px 28px rgba(99,102,241,0.42)',
 
-  gradBar: 'linear-gradient(90deg,#a78bfa,#6366f1,#3b82f6,#8b5cf6,#a78bfa)',
-  gridDot: 'radial-gradient(circle, rgba(139,92,246,0.07) 1px, transparent 1px)',
+  gradBar: 'linear-gradient(90deg,#3b82f6,#6366f1,#f59e0b,#3b82f6)',
+  gridDot: 'radial-gradient(circle, rgba(99,102,241,0.055) 1px, transparent 1px)',
+
+  // Card aesthetic — mirrors EQ_T card style in EquipmentList.jsx
+  cardEq: { background: 'white', border: '1px solid rgba(59,130,246,0.15)', boxShadow: '0 4px 28px rgba(59,130,246,0.09), 0 1px 4px rgba(0,0,0,0.04)' },
+
+  // Capability chips in hero section (Instrument Index flavor)
+  chips: [
+    { icon: '🏷️', label: 'Instrument Tags' },
+    { icon: '🗂️', label: 'Categories' },
+    { icon: '📊', label: 'Excel Export' },
+    { icon: '🔑', label: 'BYOK AI' },
+  ],
 };
+
+// ═════════════════════════════════════════════════════════════════════════════
+// EQ_T-style presentation layer — copied from EquipmentList.jsx (EQ_KEYFRAMES)
+// with the `eq` prefix renamed to `ii`. Purely visual: entrance animations,
+// sticky table header, button hover glow, KPI pop, hero ring/sheen.
+// ═════════════════════════════════════════════════════════════════════════════
+const II_KEYFRAMES = `
+  @keyframes iiGradShift { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
+  @keyframes ii-shimmer { 0%{transform:translateX(-100%)} 100%{transform:translateX(300%)} }
+  @keyframes ii-row-in { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes ii-fade-up { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes ii-kpi-count { from{opacity:0;transform:translateY(8px) scale(0.9)} to{opacity:1;transform:translateY(0) scale(1)} }
+  @keyframes iiChipPop { 0%{opacity:0;transform:scale(0.72) translateY(5px)} 62%{transform:scale(1.06) translateY(-1px)} 100%{opacity:1;transform:scale(1) translateY(0)} }
+  @keyframes iiNodeGlow { 0%,100%{box-shadow:0 0 10px rgba(59,130,246,0.12),0 4px 16px rgba(59,130,246,0.07)} 50%{box-shadow:0 0 26px rgba(59,130,246,0.26),0 4px 22px rgba(59,130,246,0.13)} }
+  @keyframes ii-pulse-badge { 0%,100%{opacity:1} 50%{opacity:0.55} }
+  @keyframes ii-hero-ring { to { transform: rotate(360deg); } }
+  @keyframes ii-hero-sheen { 0%{transform:translateX(-120%) skewX(-18deg)} 100%{transform:translateX(220%) skewX(-18deg)} }
+  @keyframes ii-glow-light { 0%,100%{box-shadow:0 0 6px rgba(59,130,246,0.18)} 50%{box-shadow:0 0 18px rgba(59,130,246,0.38),0 0 36px rgba(59,130,246,0.1)} }
+  @keyframes ii-spin-slow { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+  @keyframes iiSpinSlowRev { from{transform:rotate(360deg)} to{transform:rotate(0deg)} }
+  .ii-row-animate { animation: ii-row-in 0.3s ease forwards; opacity: 0; }
+  .ii-section { animation: ii-fade-up 0.5s ease both; }
+  .ii-filter-input::placeholder { color: #94a3b8; }
+  .ii-th-sticky { position: sticky; top: 0; z-index: 10; }
+  .ii-upload-zone:hover { border-color: rgba(59,130,246,0.55) !important; background: rgba(59,130,246,0.06) !important; }
+  .ii-action-btn:hover:not(:disabled) { box-shadow: 0 6px 24px rgba(59,130,246,0.42) !important; transform: translateY(-1px); }
+  .ii-export-btn:hover { background: rgba(59,130,246,0.14) !important; border-color: rgba(59,130,246,0.4) !important; }
+  .ii-kpi-card { animation: ii-kpi-count 0.45s ease both; }
+  .ii-chip { animation: iiChipPop 0.4s ease both; }
+  .ii-kpi-node { animation: iiNodeGlow 2.6s ease infinite; }
+`;
 
 const KEYFRAMES_INST = `
   @keyframes instFloatA { 0%,100%{transform:translate(0,0) scale(1)} 50%{transform:translate(40px,-30px) scale(1.06)} }
@@ -113,7 +161,7 @@ const KEYFRAMES_INST = `
 
 // Soft-coded hero capability badges (instrument flavor)
 const INST_HERO_BADGES = [
-  { label: 'ISA 5.1 compliant',   icon: '🏷️', cls: 'bg-violet-50 text-violet-700 border-violet-200' },
+  { label: 'ISA 5.1 compliant',   icon: '🏷️', cls: 'bg-blue-50 text-blue-700 border-blue-200' },
   { label: 'AI Vision multi-pass', icon: '🤖', cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
   { label: 'Legend cross-check',   icon: '🔍', cls: 'bg-blue-50 text-blue-700 border-blue-200' },
   { label: 'Excel export',         icon: '📊', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
@@ -124,26 +172,35 @@ const INST_HOW_IT_WORKS = [
   {
     step: '1',
     title: 'Upload P&ID PDF',
-    desc:  'Drop your P&ID drawing. Single or multi-page supported, with optional legend sheet for symbol cross-verification.',
+    desc:  'Drag & drop or browse — single or multi-page. Your draft is auto-saved per project, so you can pause and continue anytime.',
     icon:  CloudArrowUpIcon,
-    accent: '#7c3aed',
+    accent: '#3b82f6',
     border: '#ddd6fe',
     bg: 'linear-gradient(135deg,#faf5ff,#f5f3ff)',
   },
   {
     step: '2',
     title: 'AI Vision Multi-Pass Scan',
-    desc:  '7-pass scan: standard + 90°/270° rotations + 4 quadrant tiles. Catches every instrument bubble, no matter the orientation.',
+    desc:  '7-pass scan: standard + 90°/270° rotations + 4 quadrant tiles. Catches every instrument bubble, no matter the orientation. Optionally bring your own Claude / OpenAI key (BYOK) for maximum accuracy — never stored.',
     icon:  CpuChipIcon,
-    accent: '#4f46e5',
+    accent: '#6366f1',
     border: '#c7d2fe',
     bg: 'linear-gradient(135deg,#eef2ff,#e0e7ff)',
   },
   {
     step: '3',
-    title: 'Indexed & Ready to Export',
-    desc:  'Categorised by ISA 5.1, deduplicated, cross-checked against the legend, and one-click Excel export with summary sheet.',
+    title: 'Conditional Legend Cross-Check',
+    desc:  'When a legend is configured in the Legends Manager — or a matching sheet is found in AWS S3 — extracted symbols are cross-verified against it. Without a legend, extraction still runs normally.',
     icon:  ShieldCheckIcon,
+    accent: '#0f766e',
+    border: '#99f6e4',
+    bg: 'linear-gradient(135deg,#f0fdfa,#ccfbf1)',
+  },
+  {
+    step: '4',
+    title: 'Indexed & Ready to Export',
+    desc:  'Categorised by ISA 5.1 and deduplicated. Review in the table, category charts or ISA matrix, edit rows inline, then one-click Excel export with summary sheet.',
+    icon:  TagIcon,
     accent: '#0891b2',
     border: '#a5f3fc',
     bg: 'linear-gradient(135deg,#ecfeff,#e0f2fe)',
@@ -159,8 +216,8 @@ const InstBg = ({ children, fullscreen = false }) => (
     className={`min-h-screen relative overflow-hidden${fullscreen ? ' inst-fullscreen-wrap' : ''}`}
     style={{ background: T_INST.bg }}
   >
-    <style>{KEYFRAMES_INST}</style>
-    <div className="absolute inset-0 pointer-events-none"
+    <style>{KEYFRAMES_INST + II_KEYFRAMES}</style>
+    <div className="fixed inset-0 pointer-events-none"
       style={{ backgroundImage: T_INST.gridDot, backgroundSize: '44px 44px' }} />
     {T_INST.blobs.map((b, i) => (
       <div key={i} className="absolute rounded-full pointer-events-none"
@@ -378,7 +435,7 @@ const CONN_RESET_HELP_MSG =
 // Mirrors the panel used on /engineering/process/pid-verification and
 // /engineering/piping/pms.  Set `enabled: false` to hide without touching JSX.
 const AI_DOC_ASSIST_CONFIG = {
-  enabled:         true,
+  enabled:         false,   // hidden — upload works directly via drop zone
   title:           'AI Document Assist',
   subtitleTag:     '(Wrench · optional)',
   subtitle:        'Let RAD AI pick & recommend the right P&ID PDF for this project from Wrench DMS',
@@ -388,6 +445,201 @@ const AI_DOC_ASSIST_CONFIG = {
   // Instrument Index extraction accepts ONLY PDF P&IDs.
   acceptedExts:    ['pdf'],
 };
+
+// ─── Stage-by-stage User Instructions & gating (soft-coded) ─────────────────
+// Four-stage guided flow inside the upload card. Each stage carries its own
+// instruction panel and an `isUnlocked(state)` gate — a stage's content stays
+// hidden until the previous stage is completed (or explicitly skipped when
+// optional). Edit text/links/gates here without touching JSX or core logic.
+const STAGE_FLOW = [
+  {
+    id: 'upload',
+    num: 1,
+    title: 'Upload P&ID Drawing (PDF)',
+    optional: false,
+    isComplete: (s) => Boolean(s.pidFile),
+    isUnlocked: () => true,
+    instruction: {
+      heading: 'How to provide your P&ID — pick any ONE option',
+      bullets: [
+        'Drag & drop the P&ID PDF onto the drop zone below.',
+        'Click the drop zone to browse and select the PDF from your computer.',
+      ],
+      note: 'Single-page and multi-page PDFs are supported.',
+    },
+  },
+  {
+    id: 'legend',
+    num: 2,
+    title: 'Attach Legend / Symbol Sheet',
+    optional: true,
+    isComplete: (s) => Boolean(s.legendFile),
+    isUnlocked: (s) => Boolean(s.pidFile),
+    instruction: {
+      heading: 'Cross-check your legends in the Legends Manager',
+      bullets: [
+        'Open the Legends Manager to review and cross-check the symbol legends configured for this project.',
+        'Extracted values are automatically verified against your active project legends (and matching sheets in AWS S3 when available).',
+        'Facing any difficulty with legends? Raise a request with the ICT department via My Enquiries.',
+      ],
+      action: { label: 'Open Legend Manager', route: '/engineering/legends?section=instrument_index&returnTo=/engineering/instrument/index&from=Instrument%20Index' },
+      note: 'Optional — you may skip this step, but a configured legend improves verification accuracy. After aligning legends, use the "Return" banner in the Legend Manager to come back here.',
+    },
+  },
+  {
+    id: 'metadata',
+    num: 3,
+    title: 'Drawing Info',
+    optional: true,
+    isComplete: (s) => Boolean(s.drawingNumber || s.drawingTitle),
+    isUnlocked: (s) => Boolean(s.pidFile) && (Boolean(s.legendFile) || Boolean(s.skipped.legend)),
+    instruction: {
+      heading: 'Fill in the drawing details',
+      bullets: [
+        'Enter the drawing number, title, revision and project name.',
+        'These details are stamped on the exported Excel workbook and reports.',
+      ],
+      note: 'Optional — you may skip this step if the drawing number was auto-filled on upload.',
+    },
+  },
+  {
+    id: 'byok',
+    num: 4,
+    title: 'AI Extraction Key — BYOK',
+    optional: true,
+    isComplete: (s) => Boolean(s.byokApiKey && s.byokApiKey.trim()),
+    isUnlocked: (s) =>
+      Boolean(s.pidFile) &&
+      (Boolean(s.legendFile) || Boolean(s.skipped.legend)) &&
+      (Boolean(s.drawingNumber || s.drawingTitle) || Boolean(s.skipped.metadata)),
+    instruction: {
+      heading: 'Add your AI extraction key (BYOK)',
+      bullets: [
+        'Provide your own OpenAI or Claude API key for the most accurate extraction — it is used before the shared engines and is never stored.',
+        "Don't have a key? Raise a ticket with the ICT department via My Enquiries to get one issued.",
+      ],
+      action: { label: 'Raise a ticket with ICT', route: '/my-enquiries' },
+      note: 'Optional — leave empty to use the shared engines (which can be quota-limited).',
+    },
+  },
+];
+
+// ─── Legend attach options (soft-coded) ─────────────────────────────────────
+// Legend PDF upload is currently unavailable — `enabled:false` swaps the
+// drop zone for a smart guidance card (Legends Manager + ICT request).
+// Flip to `true` to restore the PDF drop zone; no core logic changes either way.
+const LEGEND_ATTACH_CONFIG = {
+  pdfUploadEnabled: false,
+  unavailableTitle: 'Legend PDF upload is currently unavailable',
+  unavailableBody:
+    'Legends are managed centrally in the Legends Manager — cross-check or configure the symbol legends for this project there. ' +
+    'If you face any difficulty, raise a request with the ICT department and they will set it up for you.',
+  // `returnTo`/`from` query params let the Legend Manager render a
+  // "return to Instrument Index" banner so users can come back after aligning legends.
+  legendManager: { label: 'Open Legend Manager', route: '/engineering/legends?section=instrument_index&returnTo=/engineering/instrument/index&from=Instrument%20Index' },
+  raiseRequest:  { label: 'Raise a Request (ICT)', route: '/my-enquiries' },
+};
+
+// Smart guidance card shown when legend PDF upload is disabled (soft-coded).
+// onAction (optional) runs before navigating to the Legend Manager — marks
+// the legend stage addressed for the submit gate.
+function LegendGuidanceCard({ onAction }) {
+  const navigate = useNavigate();
+  return (
+    <div className="border border-dashed border-cyan-200 rounded-lg p-4 mb-4 bg-cyan-50/40">
+      <div className="flex items-start gap-3">
+        <span className="flex items-center justify-center h-8 w-8 rounded-full bg-cyan-100 text-cyan-700 text-sm shrink-0">
+          ℹ️
+        </span>
+        <div className="flex-1">
+          <p className="text-sm font-semibold text-cyan-900">{LEGEND_ATTACH_CONFIG.unavailableTitle}</p>
+          <p className="text-xs text-cyan-800/80 mt-1 leading-relaxed">{LEGEND_ATTACH_CONFIG.unavailableBody}</p>
+          <div className="flex flex-wrap gap-2 mt-3">
+            <button
+              type="button"
+              onClick={() => { onAction?.(); navigate(LEGEND_ATTACH_CONFIG.legendManager.route); }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white rounded-md transition-all hover:-translate-y-px"
+              style={{ background: 'linear-gradient(135deg,#0891b2,#0e7490)', boxShadow: '0 2px 8px rgba(8,145,178,0.3)' }}
+            >
+              {LEGEND_ATTACH_CONFIG.legendManager.label} <ArrowTopRightOnSquareIcon className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate(LEGEND_ATTACH_CONFIG.raiseRequest.route)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-cyan-700 bg-white hover:bg-cyan-50 border border-cyan-300 rounded-md transition-colors"
+            >
+              {LEGEND_ATTACH_CONFIG.raiseRequest.label} <ArrowTopRightOnSquareIcon className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Soft-coded per-stage "User Instruction" panel — purely presentational.
+// onAction (optional) runs before following the action route — used so the
+// Legend Manager redirect also marks the legend stage as addressed.
+function StageInstruction({ stage, onAction }) {
+  const navigate = useNavigate();
+  const { heading, bullets = [], note, action } = stage.instruction || {};
+  if (!heading) return null;
+  return (
+    <div className="mb-4 rounded-lg border border-sky-200 bg-sky-50/60 p-4">
+      <p className="text-xs font-bold uppercase tracking-wider text-sky-700 mb-2">
+        📘 User Instruction — {heading}
+      </p>
+      <ul className="list-disc list-inside space-y-1 text-xs text-slate-600">
+        {bullets.map((b, i) => <li key={i}>{b}</li>)}
+      </ul>
+      {action && (
+        <button
+          type="button"
+          onClick={() => { onAction?.(); navigate(action.route); }}
+          className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-sky-700 bg-white hover:bg-sky-50 border border-sky-300 rounded-md transition-colors"
+        >
+          {action.label} <ArrowTopRightOnSquareIcon className="w-3.5 h-3.5" />
+        </button>
+      )}
+      {note && <p className="mt-2 text-[11px] italic text-slate-400">{note}</p>}
+    </div>
+  );
+}
+
+// Soft-coded locked placeholder — shown in place of a stage's content until
+// its `isUnlocked(state)` gate passes (keeps later steps hidden, per UX rule).
+function StageGate({ stage }) {
+  return (
+    <div className="border border-dashed border-gray-200 rounded-lg p-4 mb-4 bg-gray-50/60 flex items-center gap-3 opacity-80">
+      <span className="flex items-center justify-center h-6 w-6 rounded-full bg-gray-100 text-gray-400 text-xs font-bold border border-gray-200 shrink-0">
+        🔒
+      </span>
+      <div>
+        <p className="text-sm font-semibold text-gray-400">
+          {stage.num}. {stage.title}
+          {stage.optional && <span className="ml-1 text-[10px] font-normal text-gray-400">(optional)</span>}
+        </p>
+        <p className="text-xs text-gray-400 mt-0.5">Complete the previous step to unlock this stage.</p>
+      </div>
+    </div>
+  );
+}
+
+// Soft-coded "skip" affordance for optional stages — skipping marks the stage
+// as addressed so the next stage unlocks. No effect on core extraction logic.
+function StageSkipButton({ stage, onSkip }) {
+  if (!stage.optional) return null;
+  return (
+    <button
+      type="button"
+      onClick={onSkip}
+      className="mb-4 inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-slate-500 hover:text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-md transition-colors"
+      title={`Continue without "${stage.title}"`}
+    >
+      Skip this step →
+    </button>
+  );
+}
 
 // ─── Related-tools recommendations (soft-coded) ──────────────────────────────
 // Each entry produces a cross-link pill in the hero, a quick-launch button in
@@ -424,7 +676,7 @@ const INST_RELATED_TOOLS = [
 // pages.  `enabled: false` hides the toggle button entirely.
 const INST_LAYOUT_CONFIG = {
   enabled:             true,
-  normalMaxWidth:      '96rem',   // tailwind max-w-screen-2xl ≈ 1536 px
+  normalMaxWidth:      '100%',    // full-width canvas like PID Verification V1
   normalPaddingX:      '1.5rem',
   normalPaddingY:      '2rem',
   fullscreenMaxWidth:  '100%',
@@ -450,6 +702,157 @@ const CATEGORY_COLOURS = {
   'Position':              { bg: '#FFFACC', text: '#554400' },
   'Restriction':           { bg: '#DDEEDD', text: '#224422' },
   'Special':               { bg: '#F0F0F0', text: '#333333' },
+};
+
+// ─── Soft-coded: in-memory session cache ────────────────────────────────────
+// Keeps stage inputs (uploaded File, drawing info, skipped stages) alive
+// across in-app route navigation — e.g. the Legend Manager round-trip in
+// step 2 unmounts this page; without this cache the upload would be lost.
+// Module-scope only: cleared on full browser reload (intentional — File
+// objects cannot be persisted to storage safely).
+const II_SESSION_CACHE = {
+  enabled: true,               // master switch — false restores legacy behaviour
+  projectId: null,             // cache is only honoured for the same project
+  pidFile: null,
+  legendFile: null,
+  drawingNumber: '',
+  drawingTitle: '',
+  revision: '0',
+  projectName: '',
+  skippedStages: {},
+  byokChoice: '',                // submit-gate choice — the API key itself is NEVER cached
+};
+
+// ─── Soft-coded: IndexedDB auto-save (per-project draft) ────────────────────
+// Persists the stage inputs — including the uploaded PDF File object — so a
+// user can leave while waiting (e.g. for an ICT-issued AI extraction key) and
+// later return to the project to continue exactly where they left off.
+// Survives page reloads and browser restarts. IndexedDB structured-clone
+// supports File/Blob natively.
+// SECURITY: the BYOK API key is NEVER persisted (see `excludeKeys`).
+const II_AUTOSAVE = {
+  enabled:      true,
+  dbName:       'radai_instrument_index',
+  storeName:    'session_drafts',
+  debounceMs:   500,
+  excludeKeys:  ['byokApiKey'],           // never write secrets to disk
+  savedLabel:   '💾 Draft auto-saved',    // small status chip in the UI
+};
+
+// Minimal promise-wrapped IndexedDB helpers (module scope, no dependencies).
+const iiIdb = {
+  open() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(II_AUTOSAVE.dbName, 1);
+      req.onupgradeneeded = () => req.result.createObjectStore(II_AUTOSAVE.storeName);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  },
+  async put(key, value) {
+    const db = await this.open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(II_AUTOSAVE.storeName, 'readwrite');
+      tx.objectStore(II_AUTOSAVE.storeName).put(value, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  },
+  async get(key) {
+    const db = await this.open();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction(II_AUTOSAVE.storeName, 'readonly')
+        .objectStore(II_AUTOSAVE.storeName).get(key);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+  },
+};
+
+// ─── Soft-coded: enterprise results presentation ────────────────────────────
+// Controls the results command bar, view-tab badges and status strips shown
+// after extraction. Purely presentational — edit copy/colours here.
+const II_RESULTS_UI = {
+  commandBar: {
+    enabled: true,
+    eyebrow: 'Extraction Complete',
+    title:   'Instrument Index Results',
+    // chips shown left→right when values are available
+    chips: [
+      { key: 'drawingNumber', label: 'DWG' },
+      { key: 'drawingTitle',  label: 'Title' },
+      { key: 'revision',      label: 'Rev' },
+      { key: 'projectName',   label: 'Project' },
+    ],
+    totalLabel: 'Instruments',
+  },
+  tabs: {
+    showCounts: true,   // count badges on the view tabs
+  },
+  statusBar: {
+    enabled: true,      // table footer: "Showing X of Y · Z selected"
+  },
+};
+
+// ─── Soft-coded: enterprise "register" presentation ─────────────────────────
+// Restyles the extraction results after the Deliverable_template register
+// pattern: breadcrumb header, register/rev/status chips, underline tabs,
+// white KPI stat cards, paginated table footer. Purely presentational.
+const II_REGISTER_UI = {
+  enabled:   true,
+  accent:    '#0f766e',          // enterprise teal (template accent)
+  accentSoft:'#f0fdfa',
+  statusChip:{ label: 'Extracted', bg: '#e0f2fe', text: '#0369a1' },
+  breadcrumbRoot: 'Projects',
+  subtitle:  'Engineering instrument register — AI-extracted and ready for validation',
+  pageSize:  10,                 // table rows per page (pagination footer)
+  pageSizeOptions: [10, 25, 50],
+  kpis: [
+    { id: 'total',      label: 'Total items',    color: '#0f766e' },
+    { id: 'categories', label: 'Categories',     color: '#0369a1' },
+    { id: 'warnings',   label: 'Warnings',       color: '#b45309' },
+    { id: 'inferred',   label: 'Inferred',       color: '#a21caf' },
+    { id: 'selected',   label: 'Selected',       color: '#475569' },
+  ],
+  // Innovative visualizations (recharts) — toggleable without touching JSX.
+  visuals: {
+    summaryDonut:   true,   // Category Summary: donut distribution chart
+    summaryBars:    true,   // Category Summary: horizontal ranked bars
+    bubbleMatrix:   true,   // ISA Layout Matrix: bubble-size heatmap cells
+    bubbleMinPx:    22,
+    bubbleMaxPx:    46,
+  },
+};
+
+// ─── Soft-coded: submit gate ─────────────────────────────────────────────────
+// "Extract Instrument Index" stays disabled until all four stages are
+// explicitly verified by the user. Stage 4 is a required CHOICE: a BYOK key
+// entered, or an explicit opt-in to the shared engines. Mirrors the IO List
+// submit gate. enabled:false restores legacy behaviour (file+project only).
+const II_SUBMIT_GATE = {
+  enabled: true,
+  choices: {
+    byok: {
+      id: 'byok',
+      label: 'Use my AI key (BYOK)',
+      desc: 'Best accuracy — paste your Claude / OpenAI key below. Never stored.',
+      icon: '🔑',
+    },
+    shared: {
+      id: 'shared',
+      label: 'Continue with shared engines',
+      desc: 'No key needed — uses the platform shared engines (can be quota-limited).',
+      icon: '⚙️',
+    },
+  },
+  checklistTitle: 'Verify each step to enable extraction:',
+  stages: [
+    { id: 'upload',   label: 'P&ID PDF uploaded' },
+    { id: 'legend',   label: 'Legend step addressed (cross-checked or skipped)' },
+    { id: 'metadata', label: 'Drawing info filled or skipped' },
+    { id: 'byok',     label: 'AI key choice confirmed' },
+  ],
+  byokKeyHint: 'Key choice selected — paste your API key below to complete.',
 };
 
 const DEFAULT_COLOUR = { bg: '#F5F5F5', text: '#333333' };
@@ -594,7 +997,7 @@ function EditInstrumentModal({ open, draft, fields, onChange, onClose, onSave })
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden"
            onClick={e => e.stopPropagation()}>
         {/* Header */}
-        <div className="px-5 py-4 border-b border-slate-200 bg-gradient-to-r from-indigo-50 to-violet-50 flex items-center justify-between">
+        <div className="px-5 py-4 border-b border-slate-200 bg-gradient-to-r from-indigo-50 to-blue-50 flex items-center justify-between">
           <div>
             <h2 className="text-base font-bold text-slate-800">Edit Instrument</h2>
             <p className="text-xs text-slate-500 font-mono mt-0.5">{tag}</p>
@@ -667,7 +1070,7 @@ function EditInstrumentModal({ open, draft, fields, onChange, onClose, onSave })
             Cancel
           </button>
           <button onClick={onSave}
-                  className="px-3.5 py-1.5 text-xs font-semibold rounded-md bg-gradient-to-r from-indigo-500 to-violet-600 text-white hover:from-indigo-600 hover:to-violet-700 shadow-sm transition">
+                  className="px-3.5 py-1.5 text-xs font-semibold rounded-md bg-gradient-to-r from-indigo-500 to-blue-600 text-white hover:from-indigo-600 hover:to-blue-700 shadow-sm transition">
             Save Changes
           </button>
         </div>
@@ -689,6 +1092,9 @@ const InstrumentIndex = () => {
   const [pmInitialView, setPmInitialView] = useState(null);
   const [pmInitialCategory, setPmInitialCategory] = useState(null);
 
+  // Shared project-legend panel (soft-coded — see INST_LEGEND_PANEL)
+  const [legendModalOpen, setLegendModalOpen] = useState(false);
+
   // Open the manager in a specific mode (used by ProjectSetupPanel quick-picks)
   const openManager = (opts = {}) => {
     setPmInitialView(opts.view || null);
@@ -697,12 +1103,133 @@ const InstrumentIndex = () => {
   };
 
   // Upload state
-  const [pidFile, setPidFile]             = useState(null);
-  const [legendFile, setLegendFile]       = useState(null);
-  const [drawingNumber, setDrawingNumber] = useState('');
-  const [drawingTitle, setDrawingTitle]   = useState('');
-  const [revision, setRevision]           = useState('0');
-  const [projectName, setProjectName]     = useState('');
+  // Stage inputs hydrate from II_SESSION_CACHE so they survive the
+  // Legend Manager round-trip (soft-coded; set cache.enabled=false to disable).
+  const [pidFile, setPidFile]             = useState(II_SESSION_CACHE.enabled ? II_SESSION_CACHE.pidFile : null);
+  const [legendFile, setLegendFile]       = useState(II_SESSION_CACHE.enabled ? II_SESSION_CACHE.legendFile : null);
+  const [drawingNumber, setDrawingNumber] = useState(II_SESSION_CACHE.enabled ? II_SESSION_CACHE.drawingNumber : '');
+  const [drawingTitle, setDrawingTitle]   = useState(II_SESSION_CACHE.enabled ? II_SESSION_CACHE.drawingTitle : '');
+  const [revision, setRevision]           = useState(II_SESSION_CACHE.enabled ? II_SESSION_CACHE.revision : '0');
+  const [projectName, setProjectName]     = useState(II_SESSION_CACHE.enabled ? II_SESSION_CACHE.projectName : '');
+
+  // BYOK (Bring Your Own Key) — optional user-supplied OpenAI/Claude key,
+  // tried BEFORE the shared/quota-limited engines for accurate extraction.
+  // Sent with the upload, never stored anywhere (state only, like the
+  // SLD Checker's key field).
+  const [byokProvider, setByokProvider]   = useState('claude');
+  const [byokApiKey, setByokApiKey]       = useState('');
+  const [byokModel, setByokModel]         = useState('');
+
+  // ── Stage-flow gating (soft-coded UI only — no core logic) ───────────────
+  // Tracks optional stages the user explicitly skipped so the next stage
+  // can unlock. Gating rules live in STAGE_FLOW above.
+  const [skippedStages, setSkippedStages] = useState(
+    II_SESSION_CACHE.enabled ? II_SESSION_CACHE.skippedStages : {}
+  );
+  const skipStage = (id) => setSkippedStages(prev => ({ ...prev, [id]: true }));
+  const stageFlowState = {
+    pidFile, legendFile, drawingNumber, drawingTitle, byokApiKey,
+    skipped: skippedStages,
+  };
+
+  // ── Submit gate (soft-coded; II_SUBMIT_GATE) ────────────────────────────
+  // Stage 4 is a required CHOICE: 'byok' (key entered) or 'shared'
+  // (explicit opt-in to shared engines). Extract stays disabled until all
+  // four stages are verified.
+  const [byokChoice, setByokChoice] = useState(
+    II_SESSION_CACHE.enabled ? (II_SESSION_CACHE.byokChoice || '') : ''
+  );  // '' | 'byok' | 'shared'
+  const iiStageVerified = {
+    upload:   Boolean(pidFile),
+    legend:   Boolean(legendFile) || Boolean(skippedStages.legend),
+    metadata: Boolean(drawingNumber || drawingTitle) || Boolean(skippedStages.metadata),
+    byok:     byokChoice === 'shared' || (byokChoice === 'byok' && Boolean(byokApiKey.trim())),
+  };
+  const iiAllStagesVerified =
+    !II_SUBMIT_GATE.enabled ||
+    II_SUBMIT_GATE.stages.every(s => iiStageVerified[s.id]);
+
+  // ── Auto-save: hydration + debounced persistence (soft-coded) ────────────
+  // hydratedProjectRef tracks which project id has been hydrated from
+  // IndexedDB, so we never overwrite a saved draft before restoring it.
+  const hydratedProjectRef = useRef(null);
+  const [draftSavedAt, setDraftSavedAt] = useState(null);
+
+  // 1) Hydrate the saved draft when the active project resolves.
+  useEffect(() => {
+    const pid = activeProject?.id;
+    if (!II_AUTOSAVE.enabled || !pid || hydratedProjectRef.current === pid) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const draft = await iiIdb.get(pid);
+        if (cancelled) return;
+        if (draft) {
+          // In-memory cache is authoritative for the reset guard below.
+          Object.assign(II_SESSION_CACHE, { ...draft, projectId: pid });
+          if (draft.pidFile)       setPidFile(draft.pidFile);
+          if (draft.legendFile)    setLegendFile(draft.legendFile);
+          if (draft.drawingNumber) setDrawingNumber(draft.drawingNumber);
+          if (draft.drawingTitle)  setDrawingTitle(draft.drawingTitle);
+          if (draft.revision)      setRevision(draft.revision);
+          if (draft.skippedStages) setSkippedStages(draft.skippedStages);
+          if (draft.byokChoice)    setByokChoice(draft.byokChoice);
+          if (draft.savedAt)       setDraftSavedAt(draft.savedAt);
+        }
+      } catch (_) { /* IDB unavailable (private mode etc.) — in-memory cache still works */ }
+      hydratedProjectRef.current = pid;
+    })();
+    return () => { cancelled = true; };
+  }, [activeProject?.id]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── BYOK cost estimate (soft-coded; BYOK_COST_CONFIG) ────────────────────
+  // Counts PDF pages client-side (pdfjs, no upload) so the BYOK panel can
+  // show an up-front cost estimate for accountability. Non-blocking — the
+  // estimate simply doesn't render if page counting fails.
+  const [pidPageCount, setPidPageCount] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    setPidPageCount(null);
+    if (!BYOK_COST_CONFIG.enabled || !pidFile) return undefined;
+    (async () => {
+      try {
+        const lib = await loadPdfLibrary();
+        const buf = await pidFile.arrayBuffer();
+        const doc = await lib.getDocument({ data: buf }).promise;
+        if (!cancelled) setPidPageCount(doc.numPages || null);
+        doc.destroy?.();
+      } catch (_) { /* estimate hidden — extraction unaffected */ }
+    })();
+    return () => { cancelled = true; };
+  }, [pidFile]);
+  const byokCostEstimate = estimateByokCost(
+    pidPageCount, BYOK_COST_CONFIG.tokensPerPage.instrumentIndex, byokProvider
+  );
+
+  // 2) Write-through: in-memory cache (sync) + IndexedDB (debounced).
+  useEffect(() => {
+    if (II_SESSION_CACHE.enabled) {
+      Object.assign(II_SESSION_CACHE, {
+        pidFile, legendFile, drawingNumber, drawingTitle, revision, projectName, skippedStages, byokChoice,
+        projectId: activeProject?.id || null,
+      });
+    }
+    if (!II_AUTOSAVE.enabled) return;
+    const pid = activeProject?.id;
+    if (!pid || hydratedProjectRef.current !== pid) return;  // wait for hydration
+    const t = setTimeout(() => {
+      const draft = {
+        pidFile, legendFile, drawingNumber, drawingTitle, revision, projectName, skippedStages, byokChoice,
+        savedAt: new Date().toISOString(),
+        // NOTE: II_AUTOSAVE.excludeKeys (e.g. byokApiKey) are intentionally
+        // omitted — secrets are never persisted.
+      };
+      iiIdb.put(pid, draft)
+        .then(() => setDraftSavedAt(draft.savedAt))
+        .catch(() => { /* non-fatal — in-memory cache still protects navigation */ });
+    }, II_AUTOSAVE.debounceMs);
+    return () => clearTimeout(t);
+  }, [pidFile, legendFile, drawingNumber, drawingTitle, revision, projectName, skippedStages, byokChoice, activeProject?.id]);
 
   // Processing state
   const [isProcessing, setIsProcessing]     = useState(false);
@@ -717,6 +1244,8 @@ const InstrumentIndex = () => {
   // Table filtering state
   const [filterCategory, setFilterCategory] = useState('All');
   const [filterText, setFilterText]         = useState('');
+  const [tablePage, setTablePage]           = useState(1);   // enterprise pagination (soft-coded)
+  const [tablePageSize, setTablePageSize]   = useState(II_REGISTER_UI.pageSize);
   const [activeView, setActiveView]         = useState('table'); // 'table' | 'summary' | 'layout'
   // Row selection (Set of zero-based instrument indices in result.instruments)
   const [selectedRows, setSelectedRows]     = useState(() => new Set());
@@ -776,6 +1305,17 @@ const InstrumentIndex = () => {
   // resetters below is the single place to extend if new per-project
   // state is added in the future.
   useEffect(() => {
+    // 0) Hydration guard (soft-coded): when the session cache holds state
+    //    for THIS SAME project — e.g. returning from the Legend Manager
+    //    round-trip — keep the restored upload/metadata instead of wiping it.
+    if (
+      II_SESSION_CACHE.enabled &&
+      II_SESSION_CACHE.projectId &&
+      II_SESSION_CACHE.projectId === activeProject?.id
+    ) {
+      return;
+    }
+
     // 1) Per-project state resetters (soft-coded list).
     const PROJECT_SCOPED_RESETTERS = [
       () => setPidFile(null),
@@ -954,6 +1494,13 @@ const InstrumentIndex = () => {
     // Explicit unit / area code (e.g. ADNOC Gas '562'). Drives the {unit}
     // prefix in tag-format normalisation when present.
     formData.append('project_unit', activeProject.unit || '');
+    // BYOK — optional user key for extraction accuracy (backend tries it
+    // before the shared engines; empty values are ignored server-side).
+    if (byokApiKey.trim()) {
+      formData.append('provider', byokProvider);
+      formData.append('api_key', byokApiKey.trim());
+      if (byokModel.trim()) formData.append('model', byokModel.trim());
+    }
 
     const token  = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
     const url    = `${API_BASE}/pid/instrument-index/analyze/`;
@@ -1000,6 +1547,42 @@ const InstrumentIndex = () => {
       }
 
       const data = await resp.json();
+
+      // ── Async path — the backend queues extraction (202 + upload_id)
+      // and the real result must be POLLED from the status endpoint.
+      // (Previously the response was assumed synchronous, so a queued
+      // job rendered nothing even though the worker finished fine.)
+      if (data?.upload_id && !data.instruments) {
+        const statusUrl = `${API_BASE}/pid/instrument-index/status/${data.upload_id}/`;
+        const deadline  = Date.now() + UPLOAD_TIMEOUT_MS;
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          if (Date.now() > deadline) {
+            throw new Error(`Extraction timed out after ${Math.round(UPLOAD_TIMEOUT_MS / 60000)} min. Try splitting the PDF into single-sheet files.`);
+          }
+          await new Promise(r => setTimeout(r, 4000));
+          let st;
+          try {
+            const sResp = await fetch(statusUrl, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+            if (!sResp.ok) continue; // transient — keep polling
+            st = await sResp.json();
+          } catch (_) {
+            continue; // network blip — keep polling until deadline
+          }
+          if (st?.status === 'failed') {
+            throw new Error(st.error || 'Extraction failed on the server.');
+          }
+          if (st?.status === 'completed' || st?.instruments) {
+            setProgress(100);
+            setStatusMessage('Extraction complete!');
+            setResult(st);
+            return; // finally block still runs (setIsProcessing(false))
+          }
+          if (typeof st?.progress === 'number') setProgress(st.progress);
+          if (st?.message) setStatusMessage(st.message);
+        }
+      }
+
       setProgress(100);
       setStatusMessage('Extraction complete!');
       setResult(data);
@@ -1216,18 +1799,37 @@ const InstrumentIndex = () => {
   if (!activeProject) {
     return (
       <InstBg>
-        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        {/* Full-width canvas — aligned with PID Verification V1 (w-full px-2/4/6) */}
+        <div className="w-full px-2 sm:px-4 lg:px-6 py-10">
 
-          {/* ── Hero ── */}
-          <div className="mb-10 flex flex-col lg:flex-row lg:items-center gap-8" style={{ animation: 'instFadeUp 0.6s ease-out both' }}>
+          {/* ── Hero — V1 light header card (aligned with Valve MTO / common design) ── */}
+          <div className="mb-10 rounded-3xl ii-section relative overflow-hidden" style={{
+            background: 'linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(238,242,255,0.94) 55%, rgba(240,249,255,0.96) 100%)',
+            border: '1px solid rgba(255,255,255,0.7)',
+            padding: '32px 36px',
+            boxShadow: '0 12px 40px rgba(59,130,246,0.14), 0 2px 8px rgba(15,23,42,0.05)',
+            backdropFilter: 'blur(8px)',
+          }}>
+          {/* Sheen sweep + soft inner glow orbs */}
+          <div className="pointer-events-none absolute top-0 bottom-0 w-1/3" aria-hidden
+            style={{ background: 'linear-gradient(105deg, transparent 0%, rgba(255,255,255,0.5) 50%, transparent 100%)', animation: 'ii-hero-sheen 5.5s ease-in-out infinite' }} />
+          <div className="pointer-events-none absolute -top-16 -right-10 w-64 h-64 rounded-full" aria-hidden
+            style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.18), transparent 70%)' }} />
+          <div className="pointer-events-none absolute -bottom-20 -left-10 w-64 h-64 rounded-full" aria-hidden
+            style={{ background: 'radial-gradient(circle, rgba(59,130,246,0.14), transparent 70%)' }} />
+          <div className="flex flex-col lg:flex-row lg:items-center gap-8 relative">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 mb-2">
-                <div className="w-1 h-7 rounded-full" style={{ background: 'linear-gradient(180deg,#7c3aed,#4f46e5)' }} />
+                <div className="w-1 h-7 rounded-full" style={{ background: 'linear-gradient(180deg,#3b82f6,#6366f1)' }} />
                 <span className="text-indigo-600 text-xs font-bold tracking-[0.3em] uppercase">AIFlow · Instrument Engineering</span>
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold"
+                  style={{ background: 'rgba(16,185,129,0.12)', color: '#047857', border: '1px solid rgba(16,185,129,0.25)' }}>
+                  ✓ Production Ready
+                </span>
               </div>
               <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-slate-900 tracking-tight leading-tight mb-3 whitespace-nowrap">
                 Instrument{' '}
-                <span style={{ background: 'linear-gradient(90deg,#7c3aed,#4f46e5)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
+                <span style={{ background: 'linear-gradient(90deg,#3b82f6,#6366f1)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
                   Index Extractor
                 </span>
               </h1>
@@ -1269,7 +1871,7 @@ const InstrumentIndex = () => {
                   const rad = (deg - 90) * Math.PI / 180;
                   const x1 = 88 + 80 * Math.cos(rad), y1 = 88 + 80 * Math.sin(rad);
                   const x2 = 88 + 72 * Math.cos(rad), y2 = 88 + 72 * Math.sin(rad);
-                  return <line key={deg} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#7c3aed" strokeWidth="1.5" strokeLinecap="round" />;
+                  return <line key={deg} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" />;
                 })}
               </svg>
               <svg className="absolute inset-0" width="176" height="176" viewBox="0 0 176 176"
@@ -1279,7 +1881,7 @@ const InstrumentIndex = () => {
                   const rad = (deg - 90) * Math.PI / 180;
                   const x1 = 88 + 58 * Math.cos(rad), y1 = 88 + 58 * Math.sin(rad);
                   const x2 = 88 + 50 * Math.cos(rad), y2 = 88 + 50 * Math.sin(rad);
-                  return <line key={deg} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#4f46e5" strokeWidth="1.5" strokeLinecap="round" />;
+                  return <line key={deg} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#6366f1" strokeWidth="1.5" strokeLinecap="round" />;
                 })}
               </svg>
               <div className="relative z-10 w-20 h-20 rounded-2xl flex flex-col items-center justify-center"
@@ -1288,6 +1890,7 @@ const InstrumentIndex = () => {
                 <span className="text-[10px] font-semibold text-indigo-100 tracking-wider uppercase mt-0.5">ISA 5.1</span>
               </div>
             </div>
+          </div>
           </div>
 
           {/* ── Projects header row ── */}
@@ -1343,7 +1946,7 @@ const InstrumentIndex = () => {
             <div className="flex-1 h-px" style={{ background: 'linear-gradient(90deg,transparent,#c7d2fe,transparent)' }} />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-10">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mb-10">
             {INST_HOW_IT_WORKS.map((step, i) => {
               const Icon = step.icon;
               return (
@@ -1442,13 +2045,102 @@ const InstrumentIndex = () => {
   return (
     <InstBg fullscreen={isFullscreen}>
       <div
-        className="mx-auto px-4 sm:px-6 lg:px-8"
+        className="w-full px-2 sm:px-4 lg:px-6"
         style={{
           maxWidth: isFullscreen ? INST_LAYOUT_CONFIG.fullscreenMaxWidth : INST_LAYOUT_CONFIG.normalMaxWidth,
           paddingTop:    isFullscreen ? INST_LAYOUT_CONFIG.fullscreenPaddingY : INST_LAYOUT_CONFIG.normalPaddingY,
           paddingBottom: isFullscreen ? INST_LAYOUT_CONFIG.fullscreenPaddingY : INST_LAYOUT_CONFIG.normalPaddingY,
         }}
       >
+
+        {/* ── Hero Header — elevated gradient card (EquipmentList EQ_T pattern) ── */}
+        <div className="mb-8 ii-section relative" style={{ animationDelay: '0s' }}>
+          {/* Glowing gradient border ring (rotating conic) */}
+          <div className="absolute -inset-[1.5px] rounded-3xl pointer-events-none overflow-hidden" aria-hidden>
+            <div style={{
+              position: 'absolute', inset: '-40%',
+              background: 'conic-gradient(from 0deg, rgba(59,130,246,0.55), rgba(99,102,241,0.55), rgba(245,158,11,0.45), rgba(16,185,129,0.45), rgba(59,130,246,0.55))',
+              animation: 'ii-hero-ring 9s linear infinite',
+            }} />
+          </div>
+          {/* Card body */}
+          <div className="relative rounded-3xl overflow-hidden" style={{
+            background: 'linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(238,242,255,0.94) 55%, rgba(240,249,255,0.96) 100%)',
+            border: '1px solid rgba(255,255,255,0.7)',
+            boxShadow: '0 12px 40px rgba(59,130,246,0.14), 0 2px 8px rgba(15,23,42,0.05)',
+            padding: '28px 32px',
+            backdropFilter: 'blur(8px)',
+          }}>
+            {/* Sheen sweep */}
+            <div className="pointer-events-none absolute top-0 bottom-0 w-1/3" aria-hidden
+              style={{ background: 'linear-gradient(105deg, transparent 0%, rgba(255,255,255,0.5) 50%, transparent 100%)', animation: 'ii-hero-sheen 5.5s ease-in-out infinite' }} />
+            {/* Soft inner glow orbs */}
+            <div className="pointer-events-none absolute -top-16 -right-10 w-64 h-64 rounded-full" aria-hidden
+              style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.18), transparent 70%)' }} />
+            <div className="pointer-events-none absolute -bottom-20 -left-10 w-64 h-64 rounded-full" aria-hidden
+              style={{ background: 'radial-gradient(circle, rgba(59,130,246,0.14), transparent 70%)' }} />
+
+            {/* Badge pill */}
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full mb-4 ii-chip"
+              style={{
+                background: 'linear-gradient(90deg, rgba(59,130,246,0.12), rgba(99,102,241,0.12))',
+                border: '1px solid rgba(59,130,246,0.30)',
+                animationDelay: '0.04s',
+                boxShadow: '0 2px 10px rgba(59,130,246,0.15)',
+              }}>
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500" style={{ animation: 'ii-pulse-badge 2s ease infinite' }} />
+              <span className="text-blue-700 text-xs font-bold tracking-widest uppercase">AI-Powered · P&amp;ID Instrument Analysis</span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold text-white"
+                style={{ background: 'linear-gradient(135deg,#10b981,#059669)' }}>
+                ✓ PRODUCTION READY
+              </span>
+            </div>
+
+            {/* Title */}
+            <h1 className="text-4xl font-bold text-slate-900 flex items-center gap-4 mb-3">
+              <div className="p-2.5 rounded-xl relative overflow-hidden flex-shrink-0"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(59,130,246,0.12) 0%, rgba(99,102,241,0.07) 100%)',
+                  border: '1px solid rgba(59,130,246,0.22)',
+                  animation: 'ii-glow-light 3s ease infinite',
+                }}>
+                <TagIcon className="h-7 w-7 text-blue-600" />
+              </div>
+              Instrument&nbsp;
+              <span style={{
+                background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 60%, #6366f1 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+              }}>
+                Index
+              </span>
+            </h1>
+
+            {/* Description */}
+            <p className="text-slate-500 text-base leading-relaxed max-w-2xl mb-6">
+              Extract every instrument tag from any P&amp;ID using AI Vision — Flow, Pressure,
+              Temperature, Level, SDV/BDV, MOV, PSV, RO &amp; more — categorised by ISA 5.1,
+              cross-checked against your project legend when one is available, and ready for one-click Excel export.
+            </p>
+
+            {/* Capability chips */}
+            <div className="flex flex-wrap gap-2">
+              {T_INST.chips.map((chip, i) => (
+                <span key={chip.label}
+                  className="ii-chip inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold"
+                  style={{
+                    background: 'rgba(59,130,246,0.06)',
+                    border: '1px solid rgba(59,130,246,0.18)',
+                    color: '#1e40af',
+                    animationDelay: `${0.08 + i * 0.06}s`,
+                  }}>
+                  <span>{chip.icon}</span>
+                  <span>{chip.label}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
 
         {/* ── Slim project header / breadcrumb ── */}
         <div className="mb-6 flex items-center justify-between flex-wrap gap-3" style={{ animation: 'instFadeUp 0.4s ease-out both' }}>
@@ -1507,12 +2199,29 @@ const InstrumentIndex = () => {
           </div>
         </div>
 
+        {/* ── Shared Project Legend panel — bridged by project NAME (soft-coded) ── */}
+        <ProjectLegendPanel
+          section="instrument_index"
+          projectName={activeProject?.name || ''}
+          onManage={() => setLegendModalOpen(true)}
+          refreshToken={legendModalOpen ? 0 : 1}
+        />
+
         {/* ── Step 2 · Upload P&ID Drawing card ── */}
-        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-6 mb-6">
+        <div className="rounded-2xl p-6 mb-6 ii-section" style={{ ...T_INST.cardEq, animationDelay: '0.08s' }}>
           <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-            <span className="h-6 w-6 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold flex items-center justify-center">1</span>
+            <span className="h-6 w-6 rounded-full text-xs font-bold flex items-center justify-center text-white" style={{ background: 'linear-gradient(135deg,#3b82f6,#2563eb)', boxShadow: '0 2px 8px rgba(59,130,246,0.35)' }}>1</span>
             Upload P&amp;ID Drawing (PDF)
+            {II_AUTOSAVE.enabled && draftSavedAt && (
+              <span className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200"
+                title={`Your upload and drawing details are auto-saved on this device.\nLast saved: ${new Date(draftSavedAt).toLocaleString()}\nYou can safely leave and continue later (e.g. after receiving your AI key from ICT).`}>
+                {II_AUTOSAVE.savedLabel} · {new Date(draftSavedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
           </h2>
+
+          {/* Stage 1 · User Instruction (soft-coded) */}
+          <StageInstruction stage={STAGE_FLOW[0]} />
 
           {/* ── AI Document Assist (Wrench) — soft-coded, optional ─── */}
           {AI_DOC_ASSIST_CONFIG.enabled && (
@@ -1549,10 +2258,10 @@ const InstrumentIndex = () => {
           <div
             onDrop={handleDrop}
             onDragOver={e => e.preventDefault()}
-            className={`border-2 border-dashed rounded-xl p-8 transition-all cursor-pointer mb-4 ${
+            className={`ii-upload-zone border-2 border-dashed rounded-xl p-8 transition-all cursor-pointer mb-4 ${
               pidFile
                 ? 'border-green-300 bg-gradient-to-br from-green-50 to-emerald-50'
-                : 'border-indigo-200 bg-gradient-to-br from-indigo-50/40 to-violet-50/40 hover:border-indigo-400 hover:from-indigo-50 hover:to-violet-50 hover:shadow-inner'
+                : 'border-indigo-200 bg-gradient-to-br from-indigo-50/40 to-blue-50/40 hover:border-indigo-400 hover:from-indigo-50 hover:to-blue-50 hover:shadow-inner'
             }`}
             onClick={() => fileInputRef.current?.click()}
           >
@@ -1604,11 +2313,23 @@ const InstrumentIndex = () => {
             </div>
           </div>
 
+          {/* ── Stage 2 · Attach Legend / Symbol Sheet (gated — soft-coded) ── */}
+          {!STAGE_FLOW[1].isUnlocked(stageFlowState) ? (
+            <StageGate stage={STAGE_FLOW[1]} />
+          ) : (
+          <>
           <h2 className={`text-lg font-semibold mb-3 flex items-center gap-2 ${pidFile ? 'text-gray-800' : 'text-gray-400'}`}>
             <span className={`h-6 w-6 rounded-full text-xs font-bold flex items-center justify-center ${pidFile ? 'bg-cyan-100 text-cyan-700' : 'bg-gray-100 text-gray-400'}`}>2</span>
             Attach Legend / Symbol Sheet <span className="text-xs font-normal text-gray-400">(optional)</span>
             {!pidFile && <span className="text-xs">🔒</span>}
           </h2>
+
+          {/* Stage 2 · User Instruction (soft-coded) — opening the Legend
+              Manager also marks this stage addressed for the submit gate */}
+          <StageInstruction stage={STAGE_FLOW[1]} onAction={() => skipStage('legend')} />
+
+          {/* Legend attach: PDF drop zone (soft-coded flag) or smart guidance card */}
+          {LEGEND_ATTACH_CONFIG.pdfUploadEnabled ? (
           <div
             className={`border border-dashed rounded-lg p-4 mb-4 transition-colors ${
               !pidFile
@@ -1637,13 +2358,30 @@ const InstrumentIndex = () => {
               {legendFile && <CheckCircleIcon className="h-6 w-6 text-cyan-600 shrink-0" />}
             </div>
           </div>
+          ) : (
+            <LegendGuidanceCard onAction={() => skipStage('legend')} />
+          )}
+          {!STAGE_FLOW[1].isComplete(stageFlowState) && (
+            <StageSkipButton stage={STAGE_FLOW[1]} onSkip={() => skipStage('legend')} />
+          )}
+          </>
+          )}
 
+          {/* ── Stage 3 · Drawing Info (gated — soft-coded) ── */}
+          {!STAGE_FLOW[2].isUnlocked(stageFlowState) ? (
+            <StageGate stage={STAGE_FLOW[2]} />
+          ) : (
+          <>
           {/* Metadata fields */}
           <h2 className={`text-lg font-semibold mb-3 flex items-center gap-2 ${pidFile ? 'text-gray-800' : 'text-gray-400'}`}>
             <span className={`h-6 w-6 rounded-full text-xs font-bold flex items-center justify-center ${pidFile ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-400'}`}>3</span>
             Drawing Info <span className="text-xs font-normal text-gray-400">(optional)</span>
             {!pidFile && <span className="text-xs">🔒</span>}
           </h2>
+
+          {/* Stage 3 · User Instruction (soft-coded) */}
+          <StageInstruction stage={STAGE_FLOW[2]} />
+
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
               { label: 'Drawing Number', val: drawingNumber, set: setDrawingNumber, placeholder: 'P16093-14-01-08-1602' },
@@ -1664,20 +2402,188 @@ const InstrumentIndex = () => {
               </div>
             ))}
           </div>
+          {!STAGE_FLOW[2].isComplete(stageFlowState) && (
+            <StageSkipButton stage={STAGE_FLOW[2]} onSkip={() => skipStage('metadata')} />
+          )}
+          </>
+          )}
+
+          {/* ── Stage 4 · BYOK — Bring Your Own AI Key (gated — soft-coded) ── */}
+          {!STAGE_FLOW[3].isUnlocked(stageFlowState) ? (
+            <StageGate stage={STAGE_FLOW[3]} />
+          ) : (
+          <>
+          <h2 className={`text-lg font-semibold mt-5 mb-3 flex items-center gap-2 ${pidFile ? 'text-gray-800' : 'text-gray-400'}`}>
+            <span className={`h-6 w-6 rounded-full text-xs font-bold flex items-center justify-center ${pidFile ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-400'}`}>4</span>
+            AI Extraction Key — BYOK <span className="text-xs font-normal text-gray-400">(optional, improves accuracy)</span>
+            {!pidFile && <span className="text-xs">🔒</span>}
+          </h2>
+
+          {/* Stage 4 · User Instruction (soft-coded) */}
+          <StageInstruction stage={STAGE_FLOW[3]} />
+
+          {/* ── Stage 4 · required key choice (soft-coded; II_SUBMIT_GATE) ──
+              Extract stays disabled until BYOK-vs-shared is decided. */}
+          {II_SUBMIT_GATE.enabled && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
+              {[II_SUBMIT_GATE.choices.byok, II_SUBMIT_GATE.choices.shared].map(c => {
+                const active = byokChoice === c.id;
+                const verified = c.id === 'shared' ? active : (active && Boolean(byokApiKey.trim()));
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    disabled={!pidFile}
+                    onClick={() => setByokChoice(c.id)}
+                    className={`text-left rounded-xl border p-3 transition-all ${
+                      verified
+                        ? 'border-emerald-400 bg-emerald-50/60 ring-2 ring-emerald-200'
+                        : active
+                          ? 'border-purple-400 bg-purple-50/60 ring-2 ring-purple-200'
+                          : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
+                    } ${!pidFile ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    <p className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <span>{c.icon}</span> {c.label}
+                      {verified && <CheckCircleIcon className="h-4 w-4 text-emerald-600 ml-auto" />}
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-1 leading-snug">{c.desc}</p>
+                    {active && c.id === 'byok' && !byokApiKey.trim() && (
+                      <p className="text-[11px] font-medium text-amber-700 mt-1.5">{II_SUBMIT_GATE.byokKeyHint}</p>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          <div className={`rounded-lg border p-4 ${pidFile ? 'border-purple-200 bg-purple-50/40' : 'border-gray-200 bg-gray-50 opacity-60'}`}>
+            <p className="text-xs text-gray-600 mb-3">
+              Provide your own <b>OpenAI</b> or <b>Claude</b> API key for the most accurate extraction —
+              it is used <b>before</b> the shared engines (which can be quota-limited) and is
+              <b> never stored</b>. Leave empty to use the shared engines.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Provider</label>
+                <select
+                  value={byokProvider}
+                  onChange={e => { setByokProvider(e.target.value); setByokModel(''); }}
+                  disabled={isProcessing || !pidFile}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-purple-500 disabled:bg-gray-100"
+                >
+                  <option value="claude">Claude (Anthropic)</option>
+                  <option value="openai">OpenAI (GPT-4o)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">API Key</label>
+                <input
+                  type="password"
+                  value={byokApiKey}
+                  onChange={e => setByokApiKey(e.target.value)}
+                  placeholder={byokProvider === 'claude' ? 'sk-ant-…' : 'sk-…'}
+                  autoComplete="off"
+                  disabled={isProcessing || !pidFile}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 disabled:bg-gray-100"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Model</label>
+                <select
+                  value={byokModel}
+                  onChange={e => setByokModel(e.target.value)}
+                  disabled={isProcessing || !pidFile}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-purple-500 disabled:bg-gray-100"
+                >
+                  {(byokProvider === 'claude'
+                    ? [
+                        ['', 'Claude default (auto)'],
+                        ['claude-sonnet-5', 'Claude Sonnet 5'],
+                        ['claude-opus-5', 'Claude Opus 5'],
+                        ['claude-sonnet-4-5-20250929', 'Claude Sonnet 4.5'],
+                      ]
+                    : [
+                        ['', 'OpenAI default (gpt-4o)'],
+                        ['gpt-4o', 'GPT-4o'],
+                        ['gpt-4o-mini', 'GPT-4o mini (cheaper)'],
+                      ]
+                  ).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* ── BYOK cost estimate (soft-coded; BYOK_COST_CONFIG) ── */}
+            {BYOK_COST_CONFIG.enabled && (
+              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2 flex items-start gap-2">
+                <span className="text-sm leading-none mt-0.5">💰</span>
+                <div className="text-[11px] text-amber-900">
+                  {byokCostEstimate ? (
+                    <p>
+                      <b>Estimated BYOK cost for this drawing: {byokCostEstimate.text}</b>
+                      {' '}· {BYOK_COST_CONFIG.pricing[byokProvider]?.label} · 7-pass scan
+                    </p>
+                  ) : (
+                    <p><b>Estimated BYOK cost</b> appears here once the drawing pages are counted ({BYOK_COST_CONFIG.pricing[byokProvider]?.label}, 7-pass scan).</p>
+                  )}
+                  <p className="text-amber-700/80 mt-0.5">{BYOK_COST_CONFIG.disclaimer}</p>
+                </div>
+              </div>
+            )}
+          </div>
+          </>
+          )}
         </div>
 
         {/* ── Action button ───────────────────────────────────────────── */}
-        <div className="flex flex-wrap gap-4 mb-6">
+        <div className="mb-6 ii-section" style={{ animationDelay: '0.15s' }}>
+        {/* ── Submit gate checklist (soft-coded; II_SUBMIT_GATE) ── */}
+        {II_SUBMIT_GATE.enabled && !iiAllStagesVerified && activeProject && (
+          <div className="rounded-xl border border-slate-200 bg-white/80 px-4 py-3 mb-3 shadow-sm">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+              {II_SUBMIT_GATE.checklistTitle}
+            </p>
+            <ul className="flex flex-wrap gap-x-4 gap-y-1.5">
+              {II_SUBMIT_GATE.stages.map(s => (
+                <li key={s.id} className={`inline-flex items-center gap-1.5 text-[11px] font-medium ${iiStageVerified[s.id] ? 'text-emerald-600' : 'text-slate-400'}`}>
+                  {iiStageVerified[s.id]
+                    ? <CheckCircleIcon className="h-3.5 w-3.5" />
+                    : <span className="inline-block h-3.5 w-3.5 rounded-full border border-slate-300" />}
+                  {s.label}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <div className="flex flex-wrap gap-3">
           <button
-            onClick={handleExtract}
-            disabled={!pidFile || isProcessing || !activeProject}
-            title={!activeProject ? 'Select or create an active project first' : ''}
-            className={`flex-1 sm:flex-none px-8 py-3.5 rounded-xl font-semibold text-white transition-all shadow-md ${
-              !pidFile || isProcessing || !activeProject
-                ? 'bg-gray-300 cursor-not-allowed'
-                : 'bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-700 hover:via-indigo-700 hover:to-blue-700 hover:shadow-xl hover:-translate-y-0.5'
-            }`}
+            onClick={() => {
+              if (II_SUBMIT_GATE.enabled && !iiAllStagesVerified) {
+                setError('Please verify all steps above (including the AI key choice) before extracting.');
+                return;
+              }
+              handleExtract();
+            }}
+            disabled={!pidFile || isProcessing || !activeProject || (II_SUBMIT_GATE.enabled && !iiAllStagesVerified)}
+            title={
+              !activeProject ? 'Select or create an active project first'
+              : (II_SUBMIT_GATE.enabled && !iiAllStagesVerified) ? II_SUBMIT_GATE.checklistTitle
+              : ''
+            }
+            className="ii-action-btn flex-1 sm:flex-none px-8 py-3.5 rounded-xl font-semibold text-sm relative overflow-hidden"
+            style={
+              !pidFile || isProcessing || !activeProject || (II_SUBMIT_GATE.enabled && !iiAllStagesVerified)
+                ? { background: '#f1f5f9', color: '#94a3b8', cursor: 'not-allowed', border: '1px solid #e2e8f0', transition: 'all 0.25s' }
+                : { background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', color: 'white', border: 'none', boxShadow: '0 4px 18px rgba(59,130,246,0.32)', transition: 'all 0.25s', cursor: 'pointer' }
+            }
           >
+            {/* Shimmer on active */}
+            {pidFile && !isProcessing && activeProject && (
+              <div className="absolute inset-0 pointer-events-none"
+                style={{ background: 'linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.18) 50%, transparent 60%)', animation: 'ii-shimmer 2.8s linear infinite' }} />
+            )}
             {isProcessing ? (
               <span className="flex items-center gap-2">
                 <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
@@ -1698,7 +2604,8 @@ const InstrumentIndex = () => {
             <>
               <button
                 onClick={handleDownloadClientExcel}
-                className="flex items-center gap-2 px-6 py-3.5 bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-xl font-semibold hover:from-emerald-600 hover:to-green-700 transition-all shadow-md hover:shadow-xl hover:-translate-y-0.5"
+                className="ii-export-btn flex items-center gap-2 px-6 py-3.5 rounded-xl font-semibold text-sm"
+                style={{ background: 'rgba(59,130,246,0.07)', color: '#065f46', border: '1px solid rgba(59,130,246,0.22)', boxShadow: '0 2px 8px rgba(59,130,246,0.08)', transition: 'all 0.2s', cursor: 'pointer' }}
               >
                 <ArrowDownTrayIcon className="h-5 w-5" />
                 Download Excel
@@ -1706,10 +2613,15 @@ const InstrumentIndex = () => {
             </>
           )}
         </div>
+        </div>{/* /ii-section action + gate wrapper */}
 
         {/* ── Progress bar ────────────────────────────────────────────── */}
         {isProcessing && (
-          <div className="bg-white rounded-xl shadow-sm p-5 mb-6">
+          <div className="rounded-2xl overflow-hidden mb-6"
+            style={{ background: 'white', border: '1px solid rgba(59,130,246,0.20)', boxShadow: '0 4px 24px rgba(59,130,246,0.10)', animation: 'ii-fade-up 0.35s ease forwards' }}>
+            {/* Gradient top strip */}
+            <div className="h-[3px]" style={{ backgroundImage: T_INST.gradBar, backgroundSize: '300% auto', animation: 'iiGradShift 2.5s linear infinite' }} />
+            <div className="p-5">
             <div className="flex justify-between items-center mb-2">
               <span className="text-sm font-medium text-gray-700">{statusMessage}</span>
               <div className="flex items-center gap-3">
@@ -1723,8 +2635,8 @@ const InstrumentIndex = () => {
             </div>
             <div className="w-full bg-gray-200 rounded-full h-3">
               <div
-                className="bg-purple-600 h-3 rounded-full transition-all duration-700"
-                style={{ width: `${Math.max(5, progress)}%` }}
+                className="h-3 rounded-full transition-all duration-700"
+                style={{ width: `${Math.max(5, progress)}%`, background: 'linear-gradient(90deg,#3b82f6,#6366f1)' }}
               />
             </div>
             <p className="text-xs text-gray-500 mt-2">
@@ -1736,6 +2648,7 @@ const InstrumentIndex = () => {
                 ? 'Processing multi-page P&ID — identifying all instrument tags…'
                 : `Still working (${formatElapsed(elapsedSeconds)}) — large drawings take longer. Please keep this tab open.`}
             </p>
+            </div>
           </div>
         )}
 
@@ -1767,59 +2680,101 @@ const InstrumentIndex = () => {
                 </div>
               </div>
             )}
-            {/* Stats bar */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-              <div className="relative overflow-hidden rounded-2xl p-5 text-white shadow-lg bg-gradient-to-br from-purple-600 to-indigo-700">
-                <div className="absolute -top-6 -right-6 h-24 w-24 rounded-full bg-white/10 blur-2xl" />
-                <div className="relative">
-                  <p className="text-[11px] uppercase tracking-wider text-purple-100 font-semibold">Total Instruments</p>
-                  <p className="text-4xl font-black mt-1 tabular-nums">{result.total}</p>
-                  <p className="text-[10px] text-purple-200 mt-1">across {Object.keys(result.category_summary || {}).length} categor{Object.keys(result.category_summary||{}).length===1?'y':'ies'}</p>
+            {/* ── Enterprise register header (soft-coded — Deliverable_template pattern) ── */}
+            {II_RESULTS_UI.commandBar.enabled && (
+              <div className="ii-section" style={{ animationDelay: '0s' }}>
+                {/* Breadcrumb + title + register chips */}
+                <p className="text-xs text-slate-400 mb-1">
+                  {II_REGISTER_UI.breadcrumbRoot} <span className="mx-1">/</span> <span className="text-slate-500 font-medium">{activeProject?.name || projectName || '—'}</span>
+                </p>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">Instrument Index</h2>
+                  <div className="flex flex-wrap items-center gap-2 ml-auto text-[11px]">
+                    {drawingNumber && (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white border border-slate-200 text-slate-600 font-semibold">
+                        <span className="text-slate-400 font-bold uppercase text-[9px] tracking-wider">Register</span>
+                        <span className="font-mono">{drawingNumber}</span>
+                      </span>
+                    )}
+                    {revision && (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white border border-slate-200 text-slate-600 font-semibold">
+                        <span className="text-slate-400 font-bold uppercase text-[9px] tracking-wider">Rev</span> {revision}
+                      </span>
+                    )}
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold"
+                      style={{ background: II_REGISTER_UI.statusChip.bg, color: II_REGISTER_UI.statusChip.text }}>
+                      {II_REGISTER_UI.statusChip.label}
+                    </span>
+                  </div>
+                </div>
+                <p className="text-xs text-slate-400 mt-1 mb-4">
+                  {activeProject?.name || projectName || ''}{activeProject || projectName ? ' — ' : ''}{II_REGISTER_UI.subtitle}
+                </p>
+
+                {/* ── Underline view tabs (template pattern) ── */}
+                <div className="flex gap-6 border-b border-slate-200 mb-5">
+                  {[
+                    { id: 'table',   label: 'Instrument Table',  count: (result.instruments || []).length },
+                    { id: 'summary', label: 'Category Summary',  count: Object.keys(result.category_summary || {}).length },
+                    { id: 'layout',  label: 'ISA Layout Matrix', count: result.total },
+                  ].map(tab => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveView(tab.id)}
+                      className={`relative pb-2.5 text-sm font-semibold transition-colors ${
+                        activeView === tab.id ? '' : 'text-slate-400 hover:text-slate-600'
+                      }`}
+                      style={activeView === tab.id ? { color: II_REGISTER_UI.accent } : {}}
+                    >
+                      {tab.label}
+                      {II_RESULTS_UI.tabs.showCounts && (
+                        <span className="ml-1.5 inline-flex items-center justify-center min-w-[1.25rem] px-1 h-5 rounded-full text-[10px] font-black tabular-nums align-middle"
+                          style={activeView === tab.id
+                            ? { background: II_REGISTER_UI.accentSoft, color: II_REGISTER_UI.accent }
+                            : { background: '#f1f5f9', color: '#94a3b8' }}>
+                          {tab.count}
+                        </span>
+                      )}
+                      {activeView === tab.id && (
+                        <span className="absolute left-0 right-0 -bottom-px h-[3px] rounded-t-full"
+                          style={{ background: II_REGISTER_UI.accent }} />
+                      )}
+                    </button>
+                  ))}
                 </div>
               </div>
-              {Object.entries(result.category_summary || {})
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 3)
-                .map(([cat, cnt]) => {
-                  const style = categoryStyle(cat);
-                  const pct = result.total > 0 ? (cnt / result.total) * 100 : 0;
-                  return (
-                    <div
-                      key={cat}
-                      className="relative overflow-hidden rounded-2xl p-5 border shadow-sm hover:shadow-md transition-shadow"
-                      style={{ backgroundColor: style.bg, borderColor: style.text + '30' }}
-                    >
-                      <p className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: style.text, opacity: 0.75 }}>{cat}</p>
-                      <p className="text-4xl font-black mt-1 tabular-nums" style={{ color: style.text }}>{cnt}</p>
-                      <div className="w-full h-1.5 rounded-full mt-2 bg-white/60 overflow-hidden">
-                        <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, backgroundColor: style.text, opacity: 0.6 }} />
-                      </div>
-                      <p className="text-[10px] mt-1" style={{ color: style.text, opacity: 0.7 }}>{pct.toFixed(1)}% of total</p>
+            )}
+
+            {/* ── KPI stat cards (soft-coded enterprise register pattern) ── */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-5">
+              {II_REGISTER_UI.kpis.map((k, kpiIdx) => {
+                const value =
+                  k.id === 'total'      ? result.total :
+                  k.id === 'categories' ? Object.keys(result.category_summary || {}).length :
+                  k.id === 'warnings'   ? (result.instruments || []).filter(i => Array.isArray(i.warnings) && i.warnings.length > 0).length :
+                  k.id === 'inferred'   ? (result.instruments || []).filter(i => i.inferred === true).length :
+                  /* selected */          selectedRows.size;
+                return (
+                  <div key={k.id}
+                    className="ii-kpi-card rounded-xl bg-white border border-slate-200 px-4 py-3 flex items-center gap-3 shadow-sm hover:shadow-md transition-shadow"
+                    style={{ animationDelay: `${kpiIdx * 0.05}s` }}>
+                    <span className="inline-flex items-center justify-center h-9 w-9 rounded-lg shrink-0"
+                      style={{ background: `${k.color}14`, color: k.color }}>
+                      {k.id === 'total'      && <ListBulletIcon className="h-5 w-5" />}
+                      {k.id === 'categories' && <ChartBarIcon className="h-5 w-5" />}
+                      {k.id === 'warnings'   && <span className="text-base font-black">⚠</span>}
+                      {k.id === 'inferred'   && <span className="text-base font-black">◈</span>}
+                      {k.id === 'selected'   && <CheckCircleIcon className="h-5 w-5" />}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-xl font-extrabold tabular-nums leading-none" style={{ color: value > 0 ? k.color : '#94a3b8' }}>{value}</p>
+                      <p className="text-[10px] font-medium text-slate-400 mt-1 truncate">{k.label}</p>
                     </div>
-                  );
-                })}
+                  </div>
+                );
+              })}
             </div>
 
-            {/* View tabs */}
-            <div className="flex gap-2 mb-4 p-1 bg-white rounded-xl shadow-sm border border-gray-100 w-fit">
-              {[
-                { id: 'table',   icon: <ListBulletIcon className="h-4 w-4" />,  label: 'Instrument Table' },
-                { id: 'summary', icon: <ChartBarIcon   className="h-4 w-4" />,  label: 'Category Summary' },
-                { id: 'layout',  icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>, label: 'ISA Layout Matrix' },
-              ].map(tab => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveView(tab.id)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                    activeView === tab.id
-                      ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  {tab.icon}{tab.label}
-                </button>
-              ))}
-            </div>
 
             {/* ── TABLE VIEW ─────────────────────────────────────────── */}
             {activeView === 'table' && (() => {
@@ -1828,14 +2783,24 @@ const InstrumentIndex = () => {
               const useTpl = tpl.id !== 'default'; // ADNOC Gas (and future bespoke templates)
               const dash = tpl.emptyDash || '—';
 
+              // ── Enterprise pagination (soft-coded) ─────────────────
+              // Slices the filtered rows into pages; selection logic still
+              // operates on the full filtered set (unchanged core behaviour).
+              const totalRows  = filteredInstruments.length;
+              const pageCount  = Math.max(1, Math.ceil(totalRows / tablePageSize));
+              const safePage   = Math.min(Math.max(1, tablePage), pageCount);
+              const pagedInstruments = II_REGISTER_UI.enabled
+                ? filteredInstruments.slice((safePage - 1) * tablePageSize, safePage * tablePageSize)
+                : filteredInstruments;
+
               // ── Build grouped row blocks when template requests it ──
               const buildBlocks = () => {
                 if (!useTpl || !tpl.groupBy) {
-                  return [{ key: '__all__', label: null, items: filteredInstruments }];
+                  return [{ key: '__all__', label: null, items: pagedInstruments }];
                 }
                 const groups = new Map();
                 const ungrouped = [];
-                filteredInstruments.forEach(i => {
+                pagedInstruments.forEach(i => {
                   const k = tpl.groupBy(i);
                   if (!k) { ungrouped.push(i); return; }
                   if (!groups.has(k)) groups.set(k, []);
@@ -1874,7 +2839,7 @@ const InstrumentIndex = () => {
               };
 
               return (
-              <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
+              <div className="rounded-2xl overflow-hidden ii-section" style={{ background: 'white', border: '1px solid rgba(59,130,246,0.12)', boxShadow: '0 4px 24px rgba(59,130,246,0.07)', animationDelay: '0s' }}>
                 {/* Filters + template badge + download */}
                 <div className="px-5 py-4 bg-gradient-to-r from-slate-50 via-white to-slate-50 border-b border-gray-200 flex flex-wrap gap-3 items-center">
                   <h3 className="text-base font-semibold text-gray-800 mr-2 flex items-center gap-2">
@@ -1907,13 +2872,13 @@ const InstrumentIndex = () => {
                       type="text"
                       placeholder="Filter by tag / service / type…"
                       value={filterText}
-                      onChange={e => setFilterText(e.target.value)}
-                      className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-400 focus:border-purple-400"
+                      onChange={e => { setFilterText(e.target.value); setTablePage(1); }}
+                      className="ii-filter-input w-full pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
                     />
                   </div>
                   <select
                     value={filterCategory}
-                    onChange={e => setFilterCategory(e.target.value)}
+                    onChange={e => { setFilterCategory(e.target.value); setTablePage(1); }}
                     className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-400 focus:border-purple-400 bg-white"
                   >
                     {uniqueCategories.map(c => (
@@ -1922,7 +2887,7 @@ const InstrumentIndex = () => {
                   </select>
                   {(filterText || filterCategory !== 'All') && (
                     <button
-                      onClick={() => { setFilterText(''); setFilterCategory('All'); }}
+                      onClick={() => { setFilterText(''); setFilterCategory('All'); setTablePage(1); }}
                       className="text-xs px-2 py-1 rounded-md text-gray-500 hover:text-gray-800 hover:bg-gray-100"
                     >
                       Clear
@@ -1931,7 +2896,8 @@ const InstrumentIndex = () => {
                   {/* Download Excel — exports selection if any, else everything */}
                   <button
                     onClick={handleDownloadClientExcel}
-                    className="ml-auto inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-gradient-to-r from-emerald-500 to-green-600 text-white hover:from-emerald-600 hover:to-green-700 shadow-sm hover:shadow transition-all"
+                    className="ii-export-btn ml-auto inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg text-white"
+                    style={{ background: II_REGISTER_UI.accent, border: `1px solid ${II_REGISTER_UI.accent}`, boxShadow: '0 2px 8px rgba(15,118,110,0.25)', transition: 'all 0.2s', cursor: 'pointer' }}
                     title={selectedRows.size > 0 ? `Download ${selectedRows.size} selected rows` : 'Download all rows'}
                   >
                     <ArrowDownTrayIcon className="h-4 w-4" />
@@ -1943,23 +2909,29 @@ const InstrumentIndex = () => {
                 {useTpl ? (
                   <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200 text-xs">
-                      <thead className="bg-gradient-to-b from-slate-100 to-slate-50 text-[10px] uppercase tracking-wider text-slate-700">
+                      {/* Header colours soft-coded: every <th> gets an EXPLICIT solid
+                          background — sticky cells cannot rely on the thead gradient,
+                          otherwise white text becomes invisible while scrolling. */}
+                      <thead className="ii-th-sticky text-[10px] uppercase tracking-wider text-white" style={{ background: '#065f46' }}>
                         {tpl.groupHeader && tpl.groupHeader.length > 0 && (
                           <tr>
                             {/* Empty span over checkbox + SL No */}
-                            <th colSpan={2} className="px-2 py-2 border-b border-slate-200" />
+                            <th colSpan={2} className="px-2 py-2 border-b border-emerald-800/40" style={{ background: '#065f46' }} />
                             {tpl.groupHeader.map((g, gi) => (
                               <th key={gi} colSpan={g.span || 1}
-                                className={`px-3 py-2 text-center font-bold border-b border-slate-200 ${g.label ? 'bg-emerald-50 text-emerald-800' : ''}`}>
+                                className="px-3 py-2 text-center font-bold border-b border-emerald-800/40"
+                                style={g.label
+                                  ? { background: '#0f766e', color: '#ffffff', boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.18)' }
+                                  : { background: '#065f46' }}>
                                 {g.label || ''}
                               </th>
                             ))}
                             {/* Empty span over the Action column */}
-                            <th className="px-2 py-2 border-b border-slate-200" />
+                            <th className="px-2 py-2 border-b border-emerald-800/40" style={{ background: '#2563eb' }} />
                           </tr>
                         )}
                         <tr>
-                          <th className="px-2 py-2.5 text-center font-semibold border-b border-slate-200 w-8 sticky left-0 bg-slate-100 z-10">
+                          <th className="px-2 py-2.5 text-center font-semibold border-b border-slate-200 w-8 sticky left-0 z-10" style={{ background: '#065f46' }}>
                             <input
                               type="checkbox"
                               className="h-3.5 w-3.5 accent-indigo-600 cursor-pointer"
@@ -1969,15 +2941,15 @@ const InstrumentIndex = () => {
                               title={allVisibleSelected ? 'Deselect all' : 'Select all'}
                             />
                           </th>
-                          <th className="px-2 py-2.5 text-center font-semibold border-b border-slate-200 w-10">SL No.</th>
+                          <th className="px-2 py-2.5 text-center font-semibold border-b border-slate-200 w-10" style={{ background: '#065f46' }}>SL No.</th>
                           {tpl.columns.map((c) => (
                             <th key={c.key}
                               className="px-3 py-2.5 text-left font-semibold whitespace-pre-line align-bottom border-b border-slate-200"
-                              style={{ minWidth: `${(c.width || 12) * 7}px` }}>
+                              style={{ minWidth: `${(c.width || 12) * 7}px`, background: '#047857', color: '#ffffff' }}>
                               {c.header}
                             </th>
                           ))}
-                          <th className="px-2 py-2.5 text-center font-semibold border-b border-slate-200 w-16 sticky right-0 bg-slate-100 z-10">
+                          <th className="px-2 py-2.5 text-center font-semibold border-b border-slate-200 w-16 sticky right-0 z-10" style={{ background: '#2563eb' }}>
                             Action
                           </th>
                         </tr>
@@ -2020,7 +2992,7 @@ const InstrumentIndex = () => {
                                               : isInferred ? 'bg-fuchsia-50/30'
                                               : hasWarnings ? 'bg-amber-50/40' : '';
                                 rows.push(
-                                  <tr key={`${block.key}-${gIdx}`} className={`${rowBg} hover:bg-emerald-50/40 transition-colors`}>
+                                  <tr key={`${block.key}-${gIdx}`} className={`${rowBg} ii-row-animate hover:bg-blue-50/60 transition-colors`} style={{ animationDelay: `${Math.min(sl * 0.035, 0.5)}s` }}>
                                     <td className="px-2 py-2 text-center sticky left-0 bg-inherit">
                                       <input
                                         type="checkbox"
@@ -2080,9 +3052,11 @@ const InstrumentIndex = () => {
                 ) : (
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200 text-sm">
-                    <thead className="bg-gradient-to-b from-gray-100 to-gray-50 text-xs uppercase tracking-wider text-gray-600">
+                    {/* Explicit solid cell backgrounds — sticky headers cannot rely
+                        on a thead gradient (white text becomes invisible on scroll). */}
+                    <thead className="ii-th-sticky text-xs uppercase tracking-wider text-white" style={{ background: '#065f46' }}>
                       <tr>
-                        <th className="px-2 py-3 text-center font-semibold w-8">
+                        <th className="px-2 py-3 text-center font-semibold w-8" style={{ background: '#065f46' }}>
                           <input
                             type="checkbox"
                             className="h-3.5 w-3.5 accent-indigo-600 cursor-pointer"
@@ -2092,15 +3066,15 @@ const InstrumentIndex = () => {
                             title={allVisibleSelected ? 'Deselect all' : 'Select all'}
                           />
                         </th>
-                        <th className="px-2 py-3 text-center font-semibold w-12">SL No.</th>
+                        <th className="px-2 py-3 text-center font-semibold w-12" style={{ background: '#065f46' }}>SL No.</th>
                         {['Tag Number', 'CS Tag', 'Instrument Type', 'Category', 'Service Description',
                           'Line No.', 'Equipment No.', 'Loop No.', 'Fail Safe', 'Signal',
                           'Set Point', 'P&ID No.', 'Rev.', 'Source'].map(h => (
-                          <th key={h} className="px-3 py-3 text-left whitespace-nowrap font-semibold">
+                          <th key={h} className="px-3 py-3 text-left whitespace-nowrap font-semibold" style={{ background: '#047857', color: '#ffffff' }}>
                             {h}
                           </th>
                         ))}
-                        <th className="px-2 py-3 text-center whitespace-nowrap font-semibold w-16">Action</th>
+                        <th className="px-2 py-3 text-center whitespace-nowrap font-semibold w-16" style={{ background: '#2563eb' }}>Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -2114,7 +3088,7 @@ const InstrumentIndex = () => {
                           </td>
                         </tr>
                       ) : (
-                        filteredInstruments.map((inst, idx) => {
+                        pagedInstruments.map((inst, idx) => {
                           const realIdx = indexOfInst(inst);
                           const isSelected = selectedRows.has(realIdx);
                           const style = categoryStyle(inst.category);
@@ -2141,7 +3115,7 @@ const InstrumentIndex = () => {
                               ? 'bg-amber-50/40'
                               : '';
                           return (
-                            <tr key={idx} className={`${rowBg} hover:bg-purple-50/40 transition-colors`}>
+                            <tr key={idx} className={`${rowBg} ii-row-animate hover:bg-blue-50/60 transition-colors`} style={{ animationDelay: `${Math.min(idx * 0.035, 0.5)}s` }}>
                               <td className="px-2 py-2.5 text-center">
                                 <input
                                   type="checkbox"
@@ -2150,8 +3124,8 @@ const InstrumentIndex = () => {
                                   onChange={() => toggleRow(realIdx)}
                                 />
                               </td>
-                              <td className="px-2 py-2.5 text-center text-gray-500 tabular-nums font-medium">{idx + 1}</td>
-                              <td className="px-3 py-2.5 font-bold whitespace-nowrap" style={{ color: style.text }}>
+                              <td className="px-2 py-2.5 text-center text-gray-500 tabular-nums font-medium">{(safePage - 1) * tablePageSize + idx + 1}</td>
+                              <td className="px-3 py-2.5 font-bold font-mono whitespace-nowrap" style={{ color: style.text }}>
                                 <div className="flex items-center gap-1.5">
                                   <span>{inst.tag_number || '—'}</span>
                                   {isInferred && (
@@ -2231,31 +3205,188 @@ const InstrumentIndex = () => {
                   </table>
                 </div>
                 )}
+
+                {/* ── Enterprise pagination footer (soft-coded — template pattern) ── */}
+                {II_RESULTS_UI.statusBar.enabled && (
+                  <div className="px-5 py-2.5 bg-white border-t border-slate-200 flex flex-wrap items-center gap-x-3 gap-y-2 text-[11px] text-slate-500">
+                    <span className="tabular-nums">
+                      {totalRows === 0 ? '0' : `${(safePage - 1) * tablePageSize + 1}–${Math.min(safePage * tablePageSize, totalRows)}`} of {totalRows}
+                    </span>
+                    {filterCategory !== 'All' && <span>· Category: <b className="text-slate-700">{filterCategory}</b></span>}
+                    {selectedRows.size > 0 && (
+                      <span className="font-semibold" style={{ color: II_REGISTER_UI.accent }}>· {selectedRows.size} selected</span>
+                    )}
+                    {useTpl && <span className="font-semibold text-emerald-700">· Template: {tpl.label}</span>}
+
+                    <div className="ml-auto flex items-center gap-1.5">
+                      <select
+                        value={tablePageSize}
+                        onChange={e => { setTablePageSize(Number(e.target.value)); setTablePage(1); }}
+                        className="px-1.5 py-1 text-[11px] border border-slate-200 rounded-md bg-white text-slate-600"
+                        title="Rows per page">
+                        {II_REGISTER_UI.pageSizeOptions.map(n => <option key={n} value={n}>{n} / page</option>)}
+                      </select>
+                      <button
+                        onClick={() => setTablePage(p => Math.max(1, p - 1))}
+                        disabled={safePage <= 1}
+                        className="h-6 w-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">
+                        ‹
+                      </button>
+                      {Array.from({ length: pageCount }, (_, i) => i + 1)
+                        .filter(p => p === 1 || p === pageCount || Math.abs(p - safePage) <= 2)
+                        .reduce((acc, p, i, arr) => {
+                          if (i > 0 && p - arr[i - 1] > 1) acc.push('…');
+                          acc.push(p);
+                          return acc;
+                        }, [])
+                        .map((p, i) => p === '…' ? (
+                          <span key={`gap-${i}`} className="px-1 text-slate-300">…</span>
+                        ) : (
+                          <button
+                            key={p}
+                            onClick={() => setTablePage(p)}
+                            className={`h-6 min-w-[1.5rem] px-1 rounded-md text-[11px] font-semibold tabular-nums transition-colors ${
+                              p === safePage ? 'text-white' : 'text-slate-500 border border-slate-200 hover:bg-slate-50'
+                            }`}
+                            style={p === safePage ? { background: II_REGISTER_UI.accent } : {}}>
+                            {p}
+                          </button>
+                        ))}
+                      <button
+                        onClick={() => setTablePage(p => Math.min(pageCount, p + 1))}
+                        disabled={safePage >= pageCount}
+                        className="h-6 w-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">
+                        ›
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
               );
             })()}
 
             {/* ── SUMMARY VIEW ───────────────────────────────────────── */}
             {activeView === 'summary' && (
-              <div className="bg-white rounded-xl shadow-sm p-6">
-                <h3 className="text-lg font-semibold text-gray-800 mb-4">
-                  Instruments by Category
-                </h3>
+              <div className="rounded-2xl p-6 ii-section" style={{ ...T_INST.cardEq, animationDelay: '0s' }}>
+                <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-800">
+                      Instruments by Category
+                    </h3>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      Visual distribution of {result.total} extracted instrument{result.total === 1 ? '' : 's'} across{' '}
+                      {Object.keys(result.category_summary || {}).length} categor{Object.keys(result.category_summary || {}).length === 1 ? 'y' : 'ies'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* ── Innovative visualizations (soft-coded, recharts) ── */}
+                {result.total > 0 && (II_REGISTER_UI.visuals.summaryDonut || II_REGISTER_UI.visuals.summaryBars) && (() => {
+                  const chartData = Object.entries(result.category_summary || {})
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([cat, cnt]) => ({
+                      name: cat,
+                      value: cnt,
+                      pct: ((cnt / result.total) * 100),
+                      color: categoryStyle(cat).text,
+                    }));
+                  const ChartTip = ({ active, payload }) => {
+                    if (!active || !payload || !payload.length) return null;
+                    const d = payload[0].payload;
+                    return (
+                      <div className="bg-white rounded-lg shadow-lg border border-slate-200 px-3 py-2 text-xs">
+                        <p className="font-bold" style={{ color: d.color }}>{d.name}</p>
+                        <p className="text-slate-600">{d.value} tags · {d.pct.toFixed(1)}%</p>
+                      </div>
+                    );
+                  };
+                  return (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+                      {/* Donut — share of total */}
+                      {II_REGISTER_UI.visuals.summaryDonut && (
+                        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Distribution share</p>
+                          <div className="relative" style={{ height: 260 }}>
+                            <ResponsiveContainer width="100%" height="100%">
+                              <PieChart>
+                                <Pie
+                                  data={chartData}
+                                  dataKey="value"
+                                  nameKey="name"
+                                  innerRadius="58%"
+                                  outerRadius="88%"
+                                  paddingAngle={2}
+                                  strokeWidth={2}
+                                  stroke="#ffffff"
+                                >
+                                  {chartData.map(d => <Cell key={d.name} fill={d.color} />)}
+                                </Pie>
+                                <RTooltip content={<ChartTip />} />
+                              </PieChart>
+                            </ResponsiveContainer>
+                            {/* Center total */}
+                            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                              <p className="text-3xl font-black tabular-nums text-slate-800">{result.total}</p>
+                              <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Instruments</p>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 mt-1">
+                            {chartData.map(d => (
+                              <span key={d.name} className="inline-flex items-center gap-1.5 text-[10px] text-slate-500">
+                                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: d.color }} />
+                                {d.name}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {/* Ranked horizontal bars */}
+                      {II_REGISTER_UI.visuals.summaryBars && (
+                        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Ranked by count</p>
+                          <div style={{ height: 260 }}>
+                            <ResponsiveContainer width="100%" height="100%">
+                              <BarChart data={chartData} layout="vertical" margin={{ top: 4, right: 44, left: 8, bottom: 4 }}>
+                                <XAxis type="number" hide />
+                                <YAxis
+                                  type="category" dataKey="name" width={110}
+                                  tick={{ fontSize: 10, fill: '#475569' }} axisLine={false} tickLine={false}
+                                />
+                                <RTooltip content={<ChartTip />} cursor={{ fill: 'rgba(15,118,110,0.05)' }} />
+                                <Bar dataKey="value" radius={[0, 6, 6, 0]} barSize={16}
+                                  label={{ position: 'right', fontSize: 10, fill: '#64748b', formatter: (v) => v }}>
+                                  {chartData.map(d => <Cell key={d.name} fill={d.color} />)}
+                                </Bar>
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {Object.entries(result.category_summary || {})
                     .sort((a, b) => b[1] - a[1])
-                    .map(([cat, cnt]) => {
+                    .map(([cat, cnt], rank) => {
                       const style = categoryStyle(cat);
                       const pct   = result.total > 0 ? (cnt / result.total) * 100 : 0;
                       return (
                         <div
                           key={cat}
-                          className="rounded-xl p-4 border"
-                          style={{ backgroundColor: style.bg, borderColor: style.bg }}
+                          className="rounded-xl p-4 border transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg cursor-default"
+                          style={{ backgroundColor: style.bg, borderColor: style.text + '35' }}
                         >
                           <div className="flex items-center justify-between mb-2">
-                            <span className="font-semibold text-sm" style={{ color: style.text }}>{cat}</span>
-                            <span className="text-2xl font-bold" style={{ color: style.text }}>{cnt}</span>
+                            <span className="font-semibold text-sm flex items-center gap-2" style={{ color: style.text }}>
+                              <span className="inline-flex items-center justify-center h-5 min-w-[1.25rem] px-1 rounded-md text-[10px] font-black text-white/95 tabular-nums"
+                                style={{ backgroundColor: style.text, opacity: 0.85 }}>
+                                #{rank + 1}
+                              </span>
+                              {cat}
+                            </span>
+                            <span className="text-2xl font-bold tabular-nums" style={{ color: style.text }}>{cnt}</span>
                           </div>
                           <div className="w-full bg-white bg-opacity-60 rounded-full h-2">
                             <div
@@ -2422,7 +3553,7 @@ const InstrumentIndex = () => {
               return (
                 <div>
                   {/* ── Header ── */}
-                  <div className="bg-white rounded-xl shadow-sm p-5 mb-4">
+                  <div className="rounded-2xl p-5 mb-4 ii-section" style={{ ...T_INST.cardEq, animationDelay: '0s' }}>
                     <div className="flex items-start justify-between flex-wrap gap-4 mb-4">
                       <div>
                         <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
@@ -2430,24 +3561,24 @@ const InstrumentIndex = () => {
                           ISA 5.1 Instrument Classification Matrix
                         </h3>
                         <p className="text-sm text-gray-500 mt-1">
-                          Each cell shows the count of instruments for a given
+                          Each bubble represents the instruments for a given
                           <strong> Measured Variable</strong> (row) ×
-                          <strong> Function Suffix</strong> (column).
-                          Click any cell to inspect the tag list. Colour intensity reflects count density.
+                          <strong> Function Suffix</strong> (column) —
+                          <strong> bubble size scales with count</strong>. Click any bubble to inspect the tag list.
                         </p>
                       </div>
                       <div className="flex gap-3 flex-shrink-0">
-                        <div className="text-center px-4 py-2 bg-purple-50 border border-purple-200 rounded-xl">
+                        <div className="ii-kpi-card text-center px-4 py-2 bg-purple-50 border border-purple-200 rounded-xl" style={{ animationDelay: '0s' }}>
                           <p className="text-2xl font-black text-purple-700">{totalInMatrix}</p>
                           <p className="text-xs text-purple-500 font-medium">Instruments</p>
                         </div>
-                        <div className="text-center px-4 py-2 bg-indigo-50 border border-indigo-200 rounded-xl">
+                        <div className="ii-kpi-card text-center px-4 py-2 bg-indigo-50 border border-indigo-200 rounded-xl" style={{ animationDelay: '0.06s' }}>
                           <p className="text-2xl font-black text-indigo-700">
                             {ISA_MEASURED.filter(m => rowTotal(m.letter) > 0).length}
                           </p>
                           <p className="text-xs text-indigo-500 font-medium">Variables</p>
                         </div>
-                        <div className="text-center px-4 py-2 bg-teal-50 border border-teal-200 rounded-xl">
+                        <div className="ii-kpi-card text-center px-4 py-2 bg-teal-50 border border-teal-200 rounded-xl" style={{ animationDelay: '0.12s' }}>
                           <p className="text-2xl font-black text-teal-700">{activeFns.length}</p>
                           <p className="text-xs text-teal-500 font-medium">Functions</p>
                         </div>
@@ -2466,6 +3597,23 @@ const InstrumentIndex = () => {
                             style={{ color:m.color }}>{rowTotal(m.letter)}</span>
                         </span>
                       ))}
+                      {/* Bubble scale legend (soft-coded) */}
+                      {II_REGISTER_UI.visuals.bubbleMatrix && (() => {
+                        const { bubbleMinPx, bubbleMaxPx } = II_REGISTER_UI.visuals;
+                        const sample = [bubbleMinPx, Math.round((bubbleMinPx + bubbleMaxPx) / 2), bubbleMaxPx];
+                        return (
+                          <span className="inline-flex items-center gap-2 ml-2 pl-3 border-l border-slate-200 text-[10px] text-slate-400 font-medium">
+                            Bubble size = count
+                            <span className="inline-flex items-center gap-1">
+                              {sample.map(sz => (
+                                <span key={sz} className="rounded-full bg-slate-300/70 inline-block"
+                                  style={{ width: Math.max(8, Math.round(sz * 0.45)), height: Math.max(8, Math.round(sz * 0.45)) }} />
+                              ))}
+                            </span>
+                            fewer → more
+                          </span>
+                        );
+                      })()}
                     </div>
                   </div>
 
@@ -2473,7 +3621,7 @@ const InstrumentIndex = () => {
                   <div className="flex gap-4 items-start">
 
                     {/* Matrix table */}
-                    <div className="flex-1 bg-white rounded-xl shadow-sm overflow-hidden" style={{ minWidth:0 }}>
+                    <div className="flex-1 rounded-2xl overflow-hidden ii-section" style={{ minWidth:0, ...T_INST.cardEq }}>
                       <div className="overflow-x-auto">
                         <table className="w-full border-collapse text-xs">
                           {/* Column headers */}
@@ -2552,10 +3700,35 @@ const InstrumentIndex = () => {
                                         onMouseEnter={() => cnt > 0 && setLayoutHovered({ measured: mv.letter, fn: fn.code })}
                                         onMouseLeave={() => setLayoutHovered(null)}>
                                         {cnt > 0 ? (
+                                          II_REGISTER_UI.visuals.bubbleMatrix ? (() => {
+                                            // Bubble size ∝ count (soft-coded range)
+                                            const { bubbleMinPx, bubbleMaxPx } = II_REGISTER_UI.visuals;
+                                            const size = Math.round(
+                                              bubbleMinPx + (cnt / maxCount) * (bubbleMaxPx - bubbleMinPx)
+                                            );
+                                            return (
+                                              <span
+                                                className="inline-flex items-center justify-center rounded-full font-black text-white transition-transform duration-150"
+                                                style={{
+                                                  width: size, height: size,
+                                                  fontSize: Math.max(9, Math.round(size * 0.32)),
+                                                  background: `radial-gradient(circle at 30% 30%, ${mv.color}cc, ${mv.color})`,
+                                                  boxShadow: isSelected
+                                                    ? `0 0 0 3px #ffffff, 0 0 0 5px ${mv.color}, 0 4px 10px ${mv.color}66`
+                                                    : `0 2px 6px ${mv.color}55`,
+                                                  transform: isSelected ? 'scale(1.12)' : undefined,
+                                                }}
+                                                title={`${cnt} instrument${cnt === 1 ? '' : 's'} — click to inspect`}>
+                                                {cnt}
+                                              </span>
+                                            );
+                                          })()
+                                          : (
                                           <span className={`font-black text-[11px] ${isSelected ? 'text-white' : ''}`}
                                             style={{ color: isSelected ? '#fff' : mv.color }}>
                                             {cnt}
                                           </span>
+                                        )
                                         ) : (
                                           <span className="text-gray-100 text-[10px]">·</span>
                                         )}
@@ -2595,7 +3768,7 @@ const InstrumentIndex = () => {
                     {/* Detail drawer */}
                     <div style={{ width: selectedCell ? '320px' : '200px', flexShrink:0, transition:'width 0.22s ease' }}>
                       {selectedCell ? (
-                        <div className="bg-white rounded-xl shadow-sm overflow-hidden" style={{ maxHeight:'75vh', display:'flex', flexDirection:'column' }}>
+                        <div className="rounded-2xl overflow-hidden" style={{ maxHeight:'75vh', display:'flex', flexDirection:'column', ...T_INST.cardEq }}>
                           {/* Drawer header */}
                           <div className="px-4 py-3 flex items-center justify-between gap-2 border-b"
                             style={{ background: selectedMvDef ? selectedMvDef.light : '#f8fafc' }}>
@@ -2647,7 +3820,7 @@ const InstrumentIndex = () => {
                                       </span>
                                     )}
                                     {inst.equipment_number && (
-                                      <span className="text-[9px] bg-violet-50 text-violet-700 px-1.5 py-0.5 rounded border border-violet-100 font-mono">
+                                      <span className="text-[9px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-100 font-mono">
                                         Equip: {inst.equipment_number}
                                       </span>
                                     )}
@@ -2677,8 +3850,8 @@ const InstrumentIndex = () => {
                           </div>
                         </div>
                       ) : (
-                        <div className="bg-white rounded-xl shadow-sm p-5 flex flex-col items-center text-center gap-3"
-                          style={{ minHeight:'140px' }}>
+                        <div className="rounded-2xl p-5 flex flex-col items-center text-center gap-3"
+                          style={{ minHeight:'140px', ...T_INST.cardEq }}>
                           <div className="w-12 h-12 rounded-2xl flex items-center justify-center"
                             style={{ background:'linear-gradient(135deg,#f5f3ff,#ede9fe)', border:'1px solid #c4b5fd' }}>
                             <span className="text-2xl">🔬</span>
@@ -2694,7 +3867,7 @@ const InstrumentIndex = () => {
                   </div>
 
                   {/* ── ISA Reference Quick Guide ── */}
-                  <div className="bg-white rounded-xl shadow-sm p-5 mt-4">
+                  <div className="rounded-2xl p-5 mt-4 ii-section" style={{ ...T_INST.cardEq, animationDelay: '0.05s' }}>
                     <p className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-3">
                       ISA 5.1 Quick Reference — Instrument Identification Letters
                     </p>
@@ -2801,6 +3974,13 @@ const InstrumentIndex = () => {
         onChange={(next) => setEditingRow(prev => prev ? { ...prev, draft: next } : prev)}
         onClose={() => setEditingRow(null)}
         onSave={handleSaveEditedRow}
+      />
+
+      {/* ── Shared Legend Sheets modal (bridged by project NAME) ── */}
+      <LegendSheetsModal
+        open={legendModalOpen}
+        onClose={() => setLegendModalOpen(false)}
+        section="instrument_index"
       />
     </InstBg>
   );

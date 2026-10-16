@@ -49,10 +49,10 @@ export const ROUTES = {
   PFD_QUALITY_CHECKER: '/engineering/process/pfd-quality',
 
   /**
-   * HMB Extractor
-   * Standalone Heat & Material Balance stream data extraction
+   * HMB Stream Table Consolidator
+   * Cross-case HYSYS workbook comparison with optional project archive
    */
-  HMB_EXTRACTOR: '/engineering/process/hmb-extractor',
+  HMB_STREAM_TABLE_CONSOLIDATOR: '/engineering/process/hmb-stream-table-consolidator',
 
   /**
    * Manage Projects
@@ -79,6 +79,8 @@ export const ROUTES = {
   SMART_PLANT_3D: '/engineering/digitization/smart-plant-3d',
   VALVE_STANDARDS: '/engineering/digitization/valve-standards',
   DOCUMENT_VALIDATION: '/engineering/process/pid-checker-v2',
+  // 1.8 Legend Manager — central legend-sheet library
+  LEGEND_MANAGER: '/engineering/legends',
 };
 
 /**

@@ -23,8 +23,9 @@ const THEME_BG_SOFT = '#f8fafc'
  * Props:
  *   activeEquipmentList  — currently-active EL (or null)
  *   onChange()           — called after activate / delete / refresh
+ *   projectId            — active project's UUID, scopes the listed history to it
  */
-export default function EquipmentListHistoryPopover({ activeEquipmentList, onChange }) {
+export default function EquipmentListHistoryPopover({ activeEquipmentList, onChange, projectId }) {
   const [open, setOpen] = useState(false)
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(false)
@@ -33,14 +34,14 @@ export default function EquipmentListHistoryPopover({ activeEquipmentList, onCha
   const refresh = useCallback(async () => {
     setLoading(true)
     try {
-      const rows = await listEquipmentLists()
+      const rows = await listEquipmentLists(projectId)
       setHistory(Array.isArray(rows) ? rows : (rows?.results || []))
     } catch (err) {
       console.warn('[EquipmentListHistoryPopover] refresh failed', err)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [projectId])
 
   useEffect(() => { if (open) refresh() }, [open, refresh])
 

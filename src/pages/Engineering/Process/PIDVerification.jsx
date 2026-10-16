@@ -1,17 +1,25 @@
-﻿import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import useAIProviderStatus from '../../../hooks/useAIProviderStatus';
+import PlatformAIStatus from '../../../components/ai/PlatformAIStatus';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { API_BASE_URL } from '../../../config/api.config';
 import CrossRecommendationPanel from '../../../components/recommendations/CrossRecommendationPanel';
 import LegendSheetsModal from './components/LegendSheetsModal';
+import PIDCheckManagement from './components/PIDCheckManagement';
+import { PID_CHECK_SCOPE_REGISTER } from '../../../data/pidCheckScopeRegister';
+
+// Soft-coded check-register size — single source of truth is the generated
+// scope register; never hardcode the count in labels.
+const PID_CHECK_TOTAL = PID_CHECK_SCOPE_REGISTER.length;
 import { listLegends, testApiKey, MODE_OCR, MODE_VISION, VISION_PROVIDERS, CLAUDE_VISION_MODELS, LEGEND_SECTIONS } from '../../../services/pidCheckerV2API';
 import {
   Upload as UploadIcon, FileText, CheckCircle, AlertTriangle,
   Loader, X, Download, Activity, Shield, GitBranch, Cpu, Clock,
   RefreshCw, FolderPlus, Package, Layers, ChevronRight, Edit,
-  Trash2, ArrowLeft, BarChart2, Save, Zap, Tag, Link, Sliders,
+  Trash2, BarChart2, Save, Zap, Tag, Link, Sliders,
   Ruler, ScanLine, Brain, CircleDot, Type, ChevronDown, ChevronUp,
-  Lightbulb, Eye, EyeOff, Hash, ClipboardList, Boxes, MapPin, Wrench, Network, Database, GripVertical,
+  Lightbulb, Eye, EyeOff, Hash, ClipboardList, ClipboardCheck, Boxes, MapPin, Wrench, Network, Database, GripVertical,
   Search, ExternalLink, Sparkles, Maximize2, Minimize2, Wind,
   Gauge, CheckSquare, Factory, Droplet, Flame, Settings, Award, Waves, Cog, CircleDot as Valve,
   BookOpen, HelpCircle, List, Star, FileCheck, PlayCircle, Key,
@@ -77,6 +85,7 @@ const KEYFRAMES = `
 const ENABLE_INNOVATIVE_LAYOUT   = false; // DISABLED: Use original single-column layout
 // WORKFLOW_WIDTH_PERCENT moved to "INNOVATIVE WORKFLOW LAYOUT Configuration" section below
 const DOCUMENTATION_ENABLED      = false; // DISABLED: Hide Workflow Documentation panel to maximize canvas space
+const WORKFLOW_SECTION_ENABLED   = false; // DISABLED: Workflow diagram + Smart Documentation moved to the global Help drawer (helpContextRegistry → pid-verification-v1)
 const PROJECTS_PANEL_ENABLED     = true;  // NEW: Project navigator for managing multiple P&IDs
 const LAYOUT_GAP_PX              = 12;    // Tighter gap for dashboard density
 const LAYOUT_RESPONSIVE_BREAKPT  = 'xl';  // stacks on mobile, 3-column on xl+ screens
@@ -483,6 +492,16 @@ const HIDDEN_CATEGORIES = new Set(['notes', 'connectivity']);
 // noise to the report and are hidden by default.  Add other severity labels here
 // to suppress them globally without touching any rule logic.
 const HIDDEN_SEVERITIES = new Set(['info']);
+
+// Soft-coded: finding statuses eliminated from the drawing-canvas overlay.
+// Once a finding is aligned/closed (e.g. marked 'resolved' from the Findings
+// table or via the Checks register), its marker disappears from the Drawing
+// Visualisation so only actionable points remain.  The Findings table itself
+// is unaffected — resolved findings stay listed and filterable there.
+// Effective status = engineer override (overrides[f.id]) else stored status.
+const HIDDEN_OVERLAY_STATUSES = new Set(['resolved']);
+const isOverlayHiddenStatus = (f, overrides) =>
+  HIDDEN_OVERLAY_STATUSES.has(((overrides?.[f.id]?.status) || f.status || 'open').toLowerCase());
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Soft-coded ACCURACY FILTERS (frontend safety-net mirroring backend filters).
@@ -1424,6 +1443,24 @@ const PIDVerification = () => {
   // ── Active panel (right-rail navigation) ─────────────────────────────────
   // 'drawing' | 'findings' | 'lines' | 'naming' | 'comparison' | 'cross'
   const [activePanel, setActivePanel] = useState('drawing');
+  // ── 358-Check Management workspace (enterprise register UI) ───────────────
+  // Available without running an analysis; toggled from the hero header.
+  const [showManagement, setShowManagement] = useState(false);
+  // ── Register summary — interconnects Overview ↔ Checks 358 tabs ──────────
+  // Fetched once per project so the Overview tab and tab badge can reflect
+  // check-execution progress that lives in the management workspace.
+  const [checkMgmtSummary, setCheckMgmtSummary] = useState(null);
+  useEffect(() => {
+    if (!selectedProject?.project_id) { setCheckMgmtSummary(null); return; }
+    axios.get(`${API_PREFIX}/projects/${selectedProject.project_id}/check-management/`, { headers: authHeader() })
+      .then(res => setCheckMgmtSummary(res.data))
+      .catch(() => setCheckMgmtSummary(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProject?.project_id]);
+  const checkMgmtExecuted = useMemo(() => {
+    const rowsObj = checkMgmtSummary?.rows || {};
+    return Object.values(rowsObj).filter(r => r && r.result).length;
+  }, [checkMgmtSummary]);
   // generalChecklist: tracks which GENERAL_CHECKLIST_ITEMS are ticked by the reviewer,
   // keyed by item id. Persists in component state; resets on new upload.
   const [generalChecklist, setGeneralChecklist] = useState({});
@@ -1502,9 +1539,10 @@ const PIDVerification = () => {
     () => sessionStorage.getItem(SS_KEY_CLAUDE_MODEL) || CLAUDE_VISION_MODELS[0].id
   );
   const [visionApiKey, setVisionApiKey] = useState(
-    () => sessionStorage.getItem(SS_KEY_APIKEY) || ''
+    () => null || ''
   );
   const [showApiKey, setShowApiKey] = useState(false);
+  const centralAI = useAIProviderStatus(visionProvider);
   // 2026-09-08: "Remember Key" checkbox removed — a successfully-tested
   // key is now ALWAYS auto-saved per project (see handleTestConnection
   // below), no manual opt-in step needed. SS_KEY_REMEMBER/rememberKey
@@ -1543,7 +1581,7 @@ const PIDVerification = () => {
     if (storedProvider) setVisionProvider(storedProvider);
     const storedModel = sessionStorage.getItem(SS_KEY_CLAUDE_MODEL);
     if (storedModel) setVisionClaudeModel(storedModel);
-    const storedKey = sessionStorage.getItem(SS_KEY_APIKEY);
+    const storedKey = null;
     if (storedKey) setVisionApiKey(storedKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProject?.project_id]);
@@ -1562,7 +1600,7 @@ const PIDVerification = () => {
       // the project-switch effect above). An untested or failed key is
       // never persisted — only ever a confirmed-working one.
       if (res?.valid) {
-        sessionStorage.setItem(SS_KEY_APIKEY, visionApiKey.trim());
+        undefined;
       }
     } catch (err) {
       setConnectionTestResult({ valid: false, message: err?.response?.data?.message || 'Connection test failed. Please try again.' });
@@ -1783,8 +1821,10 @@ const PIDVerification = () => {
     try {
       const res = await axios.get(`${API_PREFIX}/list/?project_id=${projectId}`, { headers: authHeader() });
       setHistory(res.data || []);
+      return res.data || [];
     } catch (e) {
       // non-fatal
+      return [];
     } finally {
       setLoadingHistory(false);
     }
@@ -2020,7 +2060,18 @@ const PIDVerification = () => {
     setSelectedProject(p);
     resetUpload();
     setResults(null);
-    fetchHistory(p.project_id);
+    // Align Overview + Checks 358 with the project's stored analysis: if a
+    // completed document exists, auto-load its cached results (no re-run) so
+    // the KPI strip and the check-management banner reflect real data instead
+    // of zeros. List is newest-first, so the first completed row is latest.
+    fetchHistory(p.project_id).then(list => {
+      const latestCompleted = (list || []).find(d => d.status === 'completed');
+      if (latestCompleted) {
+        setDocumentId(latestCompleted.document_id);
+        setDocStatus('completed');
+        fetchResults(latestCompleted.document_id);
+      }
+    });
     fetchLegendKnowledge(p.project_id);
     // fetchLegendSheets(p.project_id); // OLD V1 system - commented out
     fetchInstrumentSymbols(p.project_id);
@@ -2351,8 +2402,10 @@ const PIDVerification = () => {
     if (!file) { setError('Please select a P&ID file first.'); return; }
     
     // SOFT-CODED: Validation for AI Vision mode requiring API key
-    if (extractionMode === MODE_VISION && !visionApiKey.trim()) {
-      setError('Please provide your API key for AI Vision analysis.');
+    // BYOK: a user-typed key satisfies the requirement even when the server
+    // has no platform key configured for the provider.
+    if (extractionMode === MODE_VISION && !centralAI.canUseAI && !visionApiKey.trim()) {
+      setError('Enter your API key below (BYOK), or ask your administrator to configure the selected AI provider.');
       return;
     }
     
@@ -2390,13 +2443,13 @@ const PIDVerification = () => {
     // of which mode toggle is selected — "I typed a working key" is a
     // clearer signal of intent than a separate, easy-to-miss toggle click.
     // extractionMode still governs the true OCR-only case: no key entered.
-    if (visionApiKey.trim()) {
+    if (extractionMode === MODE_VISION) {
       if (visionProvider === 'openai') {
         fd.append('analysis_mode', 'enhanced_openai');
-        fd.append('openai_api_key', visionApiKey.trim());
+        if (visionApiKey.trim()) fd.append('openai_api_key', visionApiKey.trim());
       } else if (visionProvider === 'claude') {
         fd.append('analysis_mode', 'deep_claude');
-        fd.append('claude_api_key', visionApiKey.trim());
+        if (visionApiKey.trim()) fd.append('claude_api_key', visionApiKey.trim());
       }
     } else {
       // No key provided — standard OCR mode, no AI enhancement.
@@ -2451,14 +2504,14 @@ const PIDVerification = () => {
   // extraction.
   const handleIdentifySymbols = async () => {
     if (!documentId) { setSymbolsError('Upload and analyze a P&ID first.'); return; }
-    if (!visionApiKey.trim()) { setSymbolsError('Provide your API key below to identify symbols.'); return; }
+    if (!centralAI.canUseAI) { setSymbolsError('Ask your administrator to configure the selected AI provider.'); return; }
 
     setSymbolsError(''); setIdentifyingSymbols(true); setSymbolsResult(null);
     const fd = new FormData();
     fd.append('pid_document_id', documentId);
     fd.append('provider', visionProvider);
     if (visionProvider === 'claude') fd.append('model', visionClaudeModel);
-    fd.append('api_key', visionApiKey.trim());
+    if (visionApiKey.trim()) fd.append('api_key', visionApiKey.trim());
     fd.append('thorough', thoroughScan ? 'true' : 'false');
 
     try {
@@ -2608,13 +2661,13 @@ const PIDVerification = () => {
       // Tesseract OR add a Claude API key" failure on Re-check as on a
       // fresh upload. A present key is used regardless of that toggle.
       const reprocessBody = {};
-      if (visionApiKey.trim()) {
+      if (extractionMode === MODE_VISION) {
         if (visionProvider === 'openai') {
           reprocessBody.analysis_mode = 'enhanced_openai';
-          reprocessBody.openai_api_key = visionApiKey.trim();
+          if (visionApiKey.trim()) reprocessBody.openai_api_key = visionApiKey.trim();
         } else if (visionProvider === 'claude') {
           reprocessBody.analysis_mode = 'deep_claude';
-          reprocessBody.claude_api_key = visionApiKey.trim();
+          if (visionApiKey.trim()) reprocessBody.claude_api_key = visionApiKey.trim();
         }
       } else {
         reprocessBody.analysis_mode = 'standard';
@@ -3171,7 +3224,8 @@ const PIDVerification = () => {
     (activeDrawingData?.issues || []).filter(f =>
       !isFindingNoisy(f) &&
       !HIDDEN_CATEGORIES.has(f.category) &&
-      !HIDDEN_SEVERITIES.has((f.severity || '').toLowerCase())
+      !HIDDEN_SEVERITIES.has((f.severity || '').toLowerCase()) &&
+      !isOverlayHiddenStatus(f, overrides)
     )
   );
   const visibleOverlayNodes = overlayNodes.filter(n => showUncertainHighlights || n.band !== 'low');
@@ -3431,7 +3485,10 @@ const PIDVerification = () => {
             </div>
           </div>
 
-          {/* ═══ SMART WORKFLOW SECTION (Collapsible + Split-Screen Mode) ═══ */}
+          {/* ═══ SMART WORKFLOW SECTION (Collapsible + Split-Screen Mode) ═══
+              Removed from the page — now available via the top-header Help button.
+              Set WORKFLOW_SECTION_ENABLED = true to restore this section. */}
+          {WORKFLOW_SECTION_ENABLED && (
           <div style={{
             display: WORKFLOW_SPLIT_SCREEN ? 'grid' : 'block',
             gridTemplateColumns: WORKFLOW_SPLIT_SCREEN 
@@ -5093,6 +5150,7 @@ const PIDVerification = () => {
             )}
 
           </div>
+          )}
 
           <FlashBanner />
 
@@ -5609,47 +5667,126 @@ const PIDVerification = () => {
     <DarkBg>
       <div className="w-full px-2 sm:px-4 lg:px-6 pb-14 pt-6">
 
-        {/* ── Dashboard hero header ────────────────────────────────────────── */}
-        <div className="rounded-2xl mb-6 overflow-hidden" style={{ background:'linear-gradient(135deg,rgba(239,246,255,0.98),rgba(238,242,255,0.98))', border:'1px solid #bfdbfe', backdropFilter:'blur(16px)', boxShadow:'0 1px 3px rgba(0,0,0,0.04)', animation:'fadeUp 0.4s ease-out both' }}>
-          <div className="px-5 py-4 flex items-center gap-4 flex-wrap">
-            {/* Back */}
-            <button onClick={handleBackToProjects}
-              className="flex items-center gap-2 px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 rounded-xl transition-all text-sm shadow-sm flex-shrink-0">
-              <ArrowLeft className="w-4 h-4" />Projects
-            </button>
-            <div className="w-px h-8 bg-blue-200 flex-shrink-0 hidden sm:block" />
-            {/* Project icon */}
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-              style={{ background:'linear-gradient(135deg,#3b82f6,#6366f1)', boxShadow:'0 4px 12px rgba(99,102,241,0.3)' }}>
-              <Layers className="w-5 h-5 text-white" />
+        {/* ── Workspace header — flush full-width, mirrors Equipment List ── */}
+        <header className="-mx-2 sm:-mx-4 lg:-mx-6 -mt-6 mb-0" style={{ background:'#fff', borderBottom:'1px solid #dbe4ee' }}>
+          <div style={{ padding:'14px 32px 0' }}>
+            <div className="flex items-start justify-between gap-6 flex-wrap">
+              <div>
+                <button type="button" onClick={handleBackToProjects}
+                  className="text-sm font-semibold mb-1" style={{ color:'#087f91' }}>
+                  ← Back to Projects list
+                </button>
+                <div className="text-sm" style={{ color:'#667892' }}>
+                  <button type="button" onClick={handleBackToProjects} className="hover:underline">Projects</button>
+                  <span className="mx-2">/</span>
+                  {selectedProject.project_name}
+                </div>
+                <h1 style={{ fontSize:30, lineHeight:1.15, margin:'4px 0 2px', fontWeight:750, letterSpacing:'-.02em', color:'#132746' }}>
+                  P&amp;ID Quality Checker
+                </h1>
+                <p className="text-sm" style={{ color:'#667892', margin:0 }}>
+                  {selectedProject.project_name} <span className="mx-3">—</span> AI-powered P&ID verification and quality compliance
+                </p>
+              </div>
+              <div className="flex items-center gap-3 pt-2 flex-wrap justify-end">
+                <span className="text-sm font-semibold" style={{ color:'#132746' }}>
+                  Checks: {PID_CHECK_TOTAL}
+                </span>
+                <span style={{ color:'#9aa9ba' }}>|</span>
+                <span className="text-sm font-semibold" style={{ color:'#132746' }}>
+                  Standard: ISA-5.1
+                </span>
+                <span className="px-3 py-1 rounded-full text-sm font-semibold"
+                  style={{ background:'#e4f1ff', color:'#1269b0' }}>
+                  {polling || docStatus === 'processing' ? 'Processing' : results ? 'Analyzed' : 'Draft'}
+                </span>
+                <button type="button" onClick={() => fetchHistory(selectedProject.project_id)}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold"
+                  style={{ border:'1px solid #087f91', background:'#fff', color:'#087f91' }}>
+                  History
+                </button>
+                <button type="button" onClick={handleBackToProjects}
+                  className="px-3 py-2 rounded-lg border bg-white text-sm font-semibold"
+                  style={{ borderColor:'#dbe4ee', color:'#132746' }}>
+                  Back to Projects
+                </button>
+                <button type="button" onClick={() => setShowManagement(v => !v)}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold text-white"
+                  style={{ background:'#087f91' }}>
+                  {PID_CHECK_TOTAL} Checks
+                </button>
+              </div>
             </div>
-            {/* Title */}
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-blue-600 font-bold tracking-widest uppercase leading-none mb-0.5">P&amp;ID Quality Review · Engineering Suite</p>
-              <h1 className="text-xl font-black text-slate-900 truncate leading-tight">{selectedProject.project_name}</h1>
-            </div>
-            {/* Feature pills */}
-            <div className="hidden lg:flex items-center gap-2 flex-shrink-0">
+            {/* Section tabs — same pattern as Equipment List workspace nav */}
+            <nav className="flex gap-8 mt-5" aria-label="P&ID Checker sections">
               {[
-                { label:'20+ Checks', cls:'text-blue-700 bg-blue-50 border-blue-200' },
-                { label:'ISA-5.1',    cls:'text-indigo-700 bg-indigo-50 border-indigo-200' },
-                { label:'AI Vision',  cls:'text-purple-700 bg-purple-50 border-purple-200' },
-              ].map(p => (
-                <span key={p.label} className={`text-xs font-semibold border px-2.5 py-1 rounded-full ${p.cls}`}>{p.label}</span>
+                { id:'overview', label:'Overview' },
+                { id:'checks',   label:`Checks ${PID_CHECK_TOTAL}` },
+              ].map(tab => {
+                const active = (tab.id === 'checks') === showManagement;
+                return (
+                  <button key={tab.id} type="button"
+                    aria-current={active ? 'page' : undefined}
+                    onClick={() => {
+                      const toChecks = tab.id === 'checks';
+                      if (!toChecks && showManagement) {
+                        // Returning to Overview — refresh the shared register summary
+                        axios.get(`${API_PREFIX}/projects/${selectedProject.project_id}/check-management/`, { headers: authHeader() })
+                          .then(res => setCheckMgmtSummary(res.data))
+                          .catch(() => {});
+                      }
+                      setShowManagement(toChecks);
+                    }}
+                    className="pb-3 text-sm font-semibold flex items-center gap-2"
+                    style={{
+                      color: active ? '#132746' : '#40536d',
+                      borderBottom: active ? '3px solid #087f91' : '3px solid transparent',
+                    }}>
+                    {tab.label}
+                    {tab.id === 'checks' && checkMgmtExecuted > 0 && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold"
+                        style={{ background: active ? '#e0f2f3' : '#f1f5f9', color: '#087f91' }}>
+                        {checkMgmtExecuted}/{PID_CHECK_TOTAL}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
+        </header>
+
+        {/* ── KPI strip — Equipment List style stat cells ── */}
+        {!showManagement && (() => {
+          const allIssues = (results?.drawings ?? []).flatMap(d => d.issues ?? []);
+          const critical = allIssues.filter(i => i.severity === 'critical').length;
+          const warnings = allIssues.filter(i => i.severity === 'major' || i.severity === 'minor').length;
+          const cells = [
+            { icon: Layers,          value: (results?.drawings ?? []).length, label: 'P&ID drawings', color: '#50647e' },
+            { icon: BarChart2,       value: allIssues.length,                 label: 'Findings',      color: '#087f91' },
+            { icon: AlertTriangle,   value: critical,                         label: 'Critical',      color: '#c9252d' },
+            { icon: AlertTriangle,   value: warnings,                         label: 'Warnings',      color: '#a55a00' },
+            { icon: ClipboardCheck,  value: checkMgmtExecuted,                label: `Checks executed (of ${PID_CHECK_TOTAL})`, color: '#50647e' },
+          ];
+          return (
+            <div className="grid grid-cols-5 mb-4 mt-4 rounded-lg overflow-hidden" style={{ background:'#fff', border:'1px solid #e1e9f1' }}>
+              {cells.map((c, i) => (
+                <div key={c.label} className="flex items-center gap-3 px-5 py-4"
+                  style={{ borderRight: i < cells.length - 1 ? '1px solid #e1e9f1' : 'none' }}>
+                  <c.icon className="w-5 h-5 flex-shrink-0" style={{ color: c.color }} />
+                  <div>
+                    <div style={{ fontSize:22, fontWeight:750, color:'#132746', lineHeight:1.1 }}>{c.value}</div>
+                    <div className="text-xs" style={{ color:'#667892' }}>{c.label}</div>
+                  </div>
+                </div>
               ))}
             </div>
-            {/* History */}
-            <button onClick={() => fetchHistory(selectedProject.project_id)}
-              className="flex items-center gap-2 px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 rounded-xl transition-all text-sm shadow-sm flex-shrink-0">
-              <BarChart2 className="w-4 h-4" />History
-            </button>
-          </div>
-          {/* Animated accent line */}
-          <div className="h-0.5" style={{ background:'linear-gradient(90deg,#3b82f6,#6366f1,#a855f7,#3b82f6)', backgroundSize:'200% auto', animation:'gradShift 4s linear infinite' }} />
-        </div>
+          );
+        })()}
 
         {/* ========== PROJECT-LEVEL LEGEND CONFIGURATION ========== */}
-        <div className="max-w-5xl mx-auto mb-6" style={{ animation:'fadeUp 0.5s ease-out 0.1s both' }}>
+        {!showManagement && (
+        <div className="mb-6" style={{ animation:'fadeUp 0.5s ease-out 0.1s both' }}>
           <div className="rounded-xl overflow-hidden border border-slate-200 bg-white shadow-lg">
             <div className="px-5 py-3.5 bg-gradient-to-r from-purple-50 to-pink-50 border-b border-slate-200 flex items-center gap-3">
               <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center shadow-lg shadow-purple-500/30">
@@ -5722,25 +5859,26 @@ const PIDVerification = () => {
             </div>
           </div>
         </div>
+        )}
 
         <FlashBanner />
 
         {/* ========== SMART WORKFLOW: STEP-BY-STEP UPLOAD ========== */}
-        {!results && (
-          <div className="max-w-5xl mx-auto">
+        {!results && !showManagement && (
+          <div className="w-full">
             {/* Progress Steps Indicator */}
             <div className="mb-8 relative">
               <div className="flex items-center justify-between">
                 {[
                   { num: 1, label: 'Upload Drawing', icon: UploadIcon, active: !file },
                   { num: 2, label: 'Choose Engine', icon: Zap, active: file && !extractionMode },
-                  { num: 3, label: 'Start Analysis', icon: PlayCircle, active: file && extractionMode && (extractionMode === MODE_OCR || visionApiKey) }
+                  { num: 3, label: 'Start Analysis', icon: PlayCircle, active: file && extractionMode && (extractionMode === MODE_OCR || centralAI.canUseAI) }
                 ].map((step, idx) => (
                   <div key={step.num} className="flex flex-col items-center flex-1 relative z-10">
                     <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm transition-all duration-500 ${
                       step.active 
                         ? 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-lg shadow-blue-500/50 scale-110' 
-                        : (file && step.num === 1) || (file && extractionMode && step.num === 2) || (file && extractionMode && (extractionMode === MODE_OCR || visionApiKey) && step.num === 3)
+                        : (file && step.num === 1) || (file && extractionMode && step.num === 2) || (file && extractionMode && (extractionMode === MODE_OCR || centralAI.canUseAI) && step.num === 3)
                           ? 'bg-emerald-500 text-white shadow-md' 
                           : 'bg-slate-200 text-slate-400'
                     }`}>
@@ -5951,7 +6089,7 @@ const PIDVerification = () => {
                         style={{ animation:'fadeUp 0.3s ease-out both' }}>
                         <div className="flex items-center gap-2 pb-2 border-b border-purple-200">
                           <Key className="w-4 h-4 text-purple-600" />
-                          <span className="text-xs font-bold text-purple-700 uppercase tracking-wide">API Configuration</span>
+                          <span className="text-xs font-bold text-purple-700 uppercase tracking-wide">AI configuration — BYOK</span>
                         </div>
 
                         <div>
@@ -5980,47 +6118,42 @@ const PIDVerification = () => {
                           </div>
                         )}
 
+                        <PlatformAIStatus provider={visionProvider} />
+
+                        {/* BYOK API key — user-provided key, held in memory only
+                            (never written to storage or sent anywhere except the
+                            analysis request). Overrides the server-configured key. */}
                         <div>
-                          <label className="block text-xs font-semibold text-slate-700 mb-2">API Key</label>
+                          <label className="block text-xs font-semibold text-slate-700 mb-2">
+                            API Key <span className="font-normal text-slate-400">(BYOK — optional if server key is configured)</span>
+                          </label>
                           <div className="relative">
                             <input
                               type={showApiKey ? 'text' : 'password'}
                               value={visionApiKey}
                               onChange={(e) => { setVisionApiKey(e.target.value); setConnectionTestResult(null); }}
-                              placeholder="sk-proj-..."
-                              className="w-full px-3 py-2.5 pr-10 text-sm border-2 border-purple-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                              placeholder={visionProvider === 'claude' ? 'sk-ant-…' : 'sk-…'}
+                              autoComplete="off"
+                              className="w-full px-3 py-2.5 pr-10 text-sm border-2 border-purple-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
                             />
-                            <button
-                              type="button"
-                              onClick={() => setShowApiKey(v => !v)}
-                              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
+                            <button type="button" onClick={() => setShowApiKey(v => !v)}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                              title={showApiKey ? 'Hide key' : 'Show key'}>
                               {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                             </button>
                           </div>
-
-                          {/* Test Connection — quick BYOK ping, independent of the main analysis */}
-                          <button
-                            type="button"
-                            onClick={handleTestConnection}
-                            disabled={testingConnection || !visionApiKey.trim()}
-                            className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-purple-300 bg-white text-xs font-semibold text-purple-700 hover:bg-purple-50 disabled:opacity-50 disabled:cursor-not-allowed">
-                            {testingConnection
-                              ? <><Loader className="w-3.5 h-3.5 animate-spin" /> Testing…</>
-                              : <><Zap className="w-3.5 h-3.5" /> Test Connection</>}
-                          </button>
-                          {connectionTestResult && (
-                            <p className={`mt-1.5 text-xs font-medium ${connectionTestResult.valid ? 'text-emerald-600' : 'text-red-600'}`}>
-                              {connectionTestResult.valid ? '✅ ' : '❌ '}{connectionTestResult.message}
-                            </p>
-                          )}
-
-                          {/* 2026-09-08: "Remember Key" checkbox removed — a
-                              successfully-tested key is now auto-saved for
-                              this project automatically (handleTestConnection),
-                              no manual opt-in needed. */}
-                          <p className="text-xs text-purple-600 mt-2 flex items-center gap-1">
-                            <Shield className="w-3 h-3" /> A verified key is saved automatically for this project — cleared when the tab closes
-                          </p>
+                          <div className="flex items-center gap-2 mt-2 flex-wrap">
+                            <button type="button" onClick={handleTestConnection}
+                              disabled={testingConnection || !visionApiKey.trim()}
+                              className="px-3 py-1.5 text-xs font-bold rounded-lg border border-purple-300 text-purple-700 hover:bg-purple-50 disabled:opacity-40 transition-colors">
+                              {testingConnection ? 'Testing…' : 'Test Connection'}
+                            </button>
+                            {connectionTestResult && (
+                              <span className={`text-xs font-semibold ${connectionTestResult.valid ? 'text-emerald-600' : 'text-red-600'}`}>
+                                {connectionTestResult.valid ? '✓ ' : '✕ '}{connectionTestResult.message}
+                              </span>
+                            )}
+                          </div>
                         </div>
 
                         {/* AI Vision Recommendations */}
@@ -6071,7 +6204,7 @@ const PIDVerification = () => {
             )}
 
             {/* ========== STEP 3: START ANALYSIS (CTA) ========== */}
-            {file && extractionMode && (extractionMode === MODE_OCR || visionApiKey) && (
+            {file && extractionMode && (extractionMode === MODE_OCR || centralAI.canUseAI || visionApiKey.trim()) && (
               <div className="mt-8 text-center" style={{ animation:'fadeUp 0.5s ease-out 0.3s both' }}>
                 <button
                   onClick={handleUpload}
@@ -6329,9 +6462,24 @@ const PIDVerification = () => {
           </div>
         )}
 
+        {/* ══ 358-CHECK MANAGEMENT WORKSPACE — after Legend + Upload phase ══ */}
+        {showManagement && (
+          <div className="mb-6">
+            <PIDCheckManagement
+              projectName={selectedProject?.project_name}
+              projectId={selectedProject?.project_id}
+              analysisContext={{
+                hasResults: !!results,
+                drawings: (results?.drawings ?? []).length,
+                issues: (results?.drawings ?? []).reduce((s, d) => s + (d.issues?.length ?? 0), 0),
+                status: polling || docStatus === 'processing' ? 'processing' : results ? 'completed' : 'none',
+              }}
+            />
+          </div>
+        )}
+
         {/* ========== ERROR BANNER (IF ANY) ========== */}
-        {!results && error && (
-          <div className="max-w-5xl mx-auto mt-5">
+        {!results && error && (          <div className="mt-5">
             <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 flex items-start gap-3 shadow-lg">
               <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
               <div className="flex-1">
@@ -6344,13 +6492,13 @@ const PIDVerification = () => {
 
         {/* ========== ANALYSIS LOADER ========== */}
         {!results && (polling || docStatus === 'processing') && (
-          <div className="max-w-5xl mx-auto mt-8">
+          <div className="mt-8">
             <AnalysisLoader elapsedSec={elapsedSec} fileName={file?.name} />
           </div>
         )}
 
         {/* Results panel — icon rail navigation */}
-        {results && (() => {
+        {results && !showManagement && (() => {
           // ── Soft-coded panel definitions ──────────────────────────────────
           // Add a new entry here to add a new panel tab. No other code changes needed.
           const PANELS = [
@@ -6476,6 +6624,14 @@ const PIDVerification = () => {
               badgeCls: 'bg-indigo-500 text-white',
               accent: '#6366f1',
               glow: 'rgba(99,102,241,0.25)',
+            },
+            {
+              id: 'management',
+              label: 'Checks',
+              icon: ({ cls }) => <ClipboardCheck className={cls} />,
+              badge: null,
+              accent: '#0f766e',
+              glow: 'rgba(15,118,110,0.25)',
             },
             {
               id: 'performance',
@@ -7718,7 +7874,8 @@ const PIDVerification = () => {
                                 const _allIssuesHL = (activeDrawingData?.issues || []).filter(f =>
                                   !isFindingNoisy(f) &&
                                   !HIDDEN_CATEGORIES.has(f.category) &&
-                                  !HIDDEN_SEVERITIES.has((f.severity || '').toLowerCase())
+                                  !HIDDEN_SEVERITIES.has((f.severity || '').toLowerCase()) &&
+                                  !isOverlayHiddenStatus(f, overrides)
                                 );
                                 const _dupHLConfirmed = DUP_OVERLAY_REQUIRE_FINDING
                                   ? new Set(
@@ -7822,7 +7979,8 @@ const PIDVerification = () => {
                                 const _allIssuesOcc = (activeDrawingData?.issues || []).filter(f =>
                                   !isFindingNoisy(f) &&
                                   !HIDDEN_CATEGORIES.has(f.category) &&
-                                  !HIDDEN_SEVERITIES.has((f.severity || '').toLowerCase())
+                                  !HIDDEN_SEVERITIES.has((f.severity || '').toLowerCase()) &&
+                                  !isOverlayHiddenStatus(f, overrides)
                                 );
                                 const _dupOccConfirmed = DUP_OVERLAY_REQUIRE_FINDING
                                   ? new Set(
@@ -16530,6 +16688,19 @@ const PIDVerification = () => {
             {/* ═══════════════════════════════════════════════════════════ */}
             {/* SYMBOL RECOGNITION PANEL (BYOK Vision) — separate, best-effort feature */}
             {/* ═══════════════════════════════════════════════════════════ */}
+            {activePanel === 'management' && (
+              <PIDCheckManagement
+                projectName={selectedProject?.project_name}
+                projectId={selectedProject?.project_id}
+                analysisContext={{
+                  hasResults: !!results,
+                  drawings: (results?.drawings ?? []).length,
+                  issues: (results?.drawings ?? []).reduce((s, d) => s + (d.issues?.length ?? 0), 0),
+                  status: polling || docStatus === 'processing' ? 'processing' : results ? 'completed' : 'none',
+                }}
+              />
+            )}
+
             {activePanel === 'symbols' && (
               <div className="rounded-2xl overflow-hidden border border-slate-200 bg-white" style={{ animation:'panelSlide 0.25s ease-out both' }}>
                 <div className="px-6 py-4 border-b border-slate-200/50 bg-gradient-to-r from-fuchsia-500/10 to-purple-500/10">
@@ -16551,7 +16722,7 @@ const PIDVerification = () => {
                   {/* Compact BYOK key field — this feature needs a key regardless of
                       which mode (OCR/Vision) was picked for the main P&ID analysis
                       above, so it carries its own field here instead of depending on
-                      the Processing Engine card's API Configuration box (which only
+                      the Processing Engine card's Server AI configuration box (which only
                       shows in AI Vision mode). Shares the same visionApiKey/visionProvider
                       state, so filling it in here or there is the same value everywhere. */}
                   <div className="p-3 rounded-xl border border-purple-200 bg-purple-50/50 space-y-2">
@@ -16578,24 +16749,10 @@ const PIDVerification = () => {
                           ))}
                         </select>
                       )}
-                      <div className="relative flex-1 min-w-[180px]">
-                        <input
-                          type={showApiKey ? 'text' : 'password'}
-                          value={visionApiKey}
-                          onChange={(e) => setVisionApiKey(e.target.value)}
-                          placeholder="sk-proj-..."
-                          className="w-full px-3 py-2 pr-9 text-xs border-2 border-purple-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowApiKey(v => !v)}
-                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
-                          {showApiKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                        </button>
-                      </div>
+                      <PlatformAIStatus provider={visionProvider} />
                     </div>
                     <p className="text-[11px] text-purple-600 flex items-center gap-1">
-                      <Shield className="w-3 h-3" /> A verified key is saved automatically for this project — cleared when the tab closes
+                      <Shield className="w-3 h-3" /> AI credentials are managed on the server by your administrator
                     </p>
                   </div>
 
@@ -18066,6 +18223,7 @@ const PIDVerification = () => {
         section={LEGEND_SECTION}
         onActiveChange={onLegendActiveChange}
         projectId={selectedProject?.project_id}
+        filterOutMTOLegends
       />
 
     </DarkBg>

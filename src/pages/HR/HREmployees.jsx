@@ -47,6 +47,7 @@ import {
   HR_DEFAULT_VIEW_MODE,
   HR_CARD_FIELDS,
   HR_TABLE_COLUMNS,
+  sortEmployeesById,
   HR_DETAIL_TABS,
   HR_DEFAULT_DETAIL_TAB,
   HR_DRAWER_WIDTH_DEFAULT,
@@ -75,6 +76,7 @@ import {
   HR_SALARY_CONFIG,
   HR_EDITABLE_FIELDS,
   HR_EDIT_VALIDATION,
+  HR_EDIT_VALIDATION_POLICY,
   HR_EDIT_COPY,
   HR_STATUSES,
   formatYearsOfService,
@@ -824,7 +826,7 @@ const EmployeeCard = ({ emp, onSelect, onAction }) => (
 // ─────────────────────────────────────────────────────────────────────────────
 // Sub-component: Employees Table (Table view)
 // ─────────────────────────────────────────────────────────────────────────────
-const EmployeesTable = ({ employees, onSelect, onAction }) => (
+const EmployeesTable = ({ employees, onSelect, onAction, employeeIdSort, onEmployeeIdSort }) => (
   <div className="w-full min-w-0 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
     <div className="w-full overflow-x-auto">
       <table className="w-full min-w-full divide-y divide-slate-200">
@@ -833,9 +835,24 @@ const EmployeesTable = ({ employees, onSelect, onAction }) => (
             {HR_TABLE_COLUMNS.map((c) => (
               <th
                 key={c.id}
+                scope="col"
+                aria-sort={c.sortable ? employeeIdSort || "none" : undefined}
                 className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500"
               >
-                {c.label}
+                {c.sortable ? (
+                  <button
+                    type="button"
+                    onClick={onEmployeeIdSort}
+                    aria-label={`Sort ${c.label} ${employeeIdSort === "ascending" ? "descending" : "ascending"}`}
+                    className="inline-flex items-center gap-1.5 rounded hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  >
+                    {c.label}
+                    <span className="inline-flex flex-col" aria-hidden="true">
+                      <HeroIcons.ChevronUpIcon className={`h-3 w-3 ${employeeIdSort === "ascending" ? "text-blue-600" : "text-slate-400"}`} />
+                      <HeroIcons.ChevronDownIcon className={`-mt-1 h-3 w-3 ${employeeIdSort === "descending" ? "text-blue-600" : "text-slate-400"}`} />
+                    </span>
+                  </button>
+                ) : c.label}
               </th>
             ))}
             <th className="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">
@@ -1018,6 +1035,692 @@ const WorkforceHierarchy = ({ employees, onSelect, onAction }) => {
         )}
       </div>
     </section>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sub-component: Organisation Demography — dynamic org tree rooted at the CEO.
+// Derived purely from live employee data (job titles + manager assignments),
+// so the chart reshapes itself automatically as people join, move or leave.
+const CEO_TITLE_RE = /\b(ceo|chief executive(?: officer)?|managing director)\b/i;
+
+const empDisplayTitle = (emp) =>
+  emp.job_title || emp.position || emp.designation || emp.title || "";
+
+const countSubtree = (node) =>
+  1 + node.children.reduce((sum, child) => sum + countSubtree(child), 0);
+
+const DemographyNode = ({
+  node,
+  depth,
+  onSelect,
+  onAction,
+  onFocus,
+  collapsed,
+  onToggle,
+  visited,
+}) => {
+  if (visited.has(String(node.emp.id))) return null;
+  const nextVisited = new Set(visited);
+  nextVisited.add(String(node.emp.id));
+  const nodeId = String(node.emp.id);
+  const isCollapsed = collapsed.has(nodeId);
+  const isCeo = CEO_TITLE_RE.test(empDisplayTitle(node.emp));
+  return (
+    <div
+      className={depth ? "ml-5 border-l border-indigo-100 pl-4 sm:ml-7" : ""}
+    >
+      <div
+        className={`relative mb-2 flex min-w-0 items-center gap-3 rounded-xl border bg-white p-3 shadow-sm ${
+          isCeo
+            ? "border-indigo-300 ring-1 ring-indigo-100"
+            : "border-slate-200"
+        }`}
+      >
+        {depth > 0 && (
+          <span className="absolute -left-4 top-1/2 h-px w-4 bg-indigo-100" />
+        )}
+        {node.children.length > 0 && (
+          <button
+            type="button"
+            onClick={() => onToggle(nodeId)}
+            aria-label={isCollapsed ? "Expand reports" : "Collapse reports"}
+            className="shrink-0 rounded-full border border-slate-200 p-1 text-slate-500 hover:border-indigo-300 hover:text-indigo-600"
+          >
+            <HeroIcons.ChevronDownIcon
+              className={`h-3.5 w-3.5 transition-transform ${isCollapsed ? "-rotate-90" : ""}`}
+            />
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => onSelect(node.emp)}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        >
+          <Avatar emp={node.emp} size="sm" />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-bold text-slate-900">
+              {fullName(node.emp)}
+            </span>
+            <span
+              className="block truncate text-xs text-slate-500"
+              title={`${empDisplayTitle(node.emp) || "Role not assigned"} · ${node.emp.department || "No department"}`}
+            >
+              {empDisplayTitle(node.emp) || "Role not assigned"} ·{" "}
+              {node.emp.department || "No department"}
+            </span>
+          </span>
+        </button>
+        {isCeo && (
+          <span className="shrink-0 rounded-full bg-indigo-600 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-white">
+            CEO
+          </span>
+        )}
+        {node.children.length > 0 && (
+          <span className="hidden shrink-0 rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-700 sm:inline">
+            {node.children.length} direct
+          </span>
+        )}
+        {node.children.length > 0 && (
+          <button
+            type="button"
+            title={`View ${fullName(node.emp)}'s subtree`}
+            aria-label="Focus on this subtree"
+            onClick={(e) => {
+              e.stopPropagation();
+              onFocus(nodeId);
+            }}
+            className="shrink-0 rounded-full border border-slate-200 p-1 text-slate-400 hover:border-indigo-300 hover:text-indigo-600"
+          >
+            <HeroIcons.ArrowsPointingInIcon className="h-3.5 w-3.5" />
+          </button>
+        )}
+        <EmployeeQuickActions emp={node.emp} onAction={onAction} compact />
+      </div>
+      {!isCollapsed &&
+        node.children.map((child) => (
+          <DemographyNode
+            key={child.emp.id}
+            node={child}
+            depth={depth + 1}
+            onSelect={onSelect}
+            onAction={onAction}
+            onFocus={onFocus}
+            collapsed={collapsed}
+            onToggle={onToggle}
+            visited={nextVisited}
+          />
+        ))}
+    </div>
+  );
+};
+
+const OrgDemographyView = ({ employees, onSelect, onAction }) => {
+  const [collapsed, setCollapsed] = useState(new Set());
+  const [layout, setLayout] = useState("nested"); // 'nested' | 'topdown'
+  const toggleNode = useCallback(
+    (id) =>
+      setCollapsed((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      }),
+    [],
+  );
+
+  const tree = useMemo(() => {
+    const nodes = new Map(
+      employees.map((emp) => [String(emp.id), { emp, children: [] }]),
+    );
+    const top = [];
+    nodes.forEach((node) => {
+      const managerNode = nodes.get(managerIdOf(node.emp));
+      if (managerNode && managerNode !== node) managerNode.children.push(node);
+      else top.push(node);
+    });
+    const sortNodes = (list) =>
+      list
+        .sort((a, b) => fullName(a.emp).localeCompare(fullName(b.emp)))
+        .map((node) => ({ ...node, children: sortNodes(node.children) }));
+    const sortedTop = sortNodes(top);
+
+    // Locate the CEO dynamically by title anywhere in the chart.
+    let ceo = null;
+    nodes.forEach((node) => {
+      if (!ceo && CEO_TITLE_RE.test(empDisplayTitle(node.emp))) ceo = node;
+    });
+
+    // Split people reachable from the CEO vs. those outside that line.
+    const reachable = new Set();
+    const walk = (node) => {
+      if (!node || reachable.has(String(node.emp.id))) return;
+      reachable.add(String(node.emp.id));
+      node.children.forEach(walk);
+    };
+    walk(ceo);
+    const outside = ceo
+      ? sortedTop.filter((root) => !reachable.has(String(root.emp.id)))
+      : sortedTop;
+
+    const deptCount = new Set(
+      employees.map((e) => (e.department || "").trim()).filter(Boolean),
+    ).size;
+    let maxDepth = 0;
+    let managers = 0;
+    let reportSum = 0;
+    nodes.forEach((node) => {
+      if (node.children.length) {
+        managers += 1;
+        reportSum += node.children.length;
+      }
+      let d = 0;
+      let cursor = node;
+      const guard = new Set([String(node.emp.id)]);
+      while (d <= employees.length) {
+        const parent = nodes.get(managerIdOf(cursor.emp));
+        if (!parent || parent === cursor || guard.has(String(parent.emp.id)))
+          break;
+        guard.add(String(parent.emp.id));
+        cursor = parent;
+        d += 1;
+      }
+      if (d > maxDepth) maxDepth = d;
+    });
+
+    return {
+      ceoNode: ceo,
+      otherRoots: outside,
+      stats: {
+        people: employees.length,
+        departments: deptCount,
+        levels: employees.length ? maxDepth + 1 : 0,
+        avgSpan: managers ? (reportSum / managers).toFixed(1) : "0",
+      },
+      byId: nodes,
+    };
+  }, [employees]);
+
+  const { ceoNode, otherRoots, stats, byId } = tree;
+
+  // Drill-down: focus on one person's subtree (e.g. Rafat → HODs → engineers).
+  const [focusId, setFocusId] = useState(null);
+  const focusedNode = focusId ? byId.get(focusId) : null;
+  const focusNode = useCallback((id) => {
+    setFocusId(id);
+    setLevelDepth(null);
+    setCollapsed(new Set());
+  }, []);
+
+  const chartRoots = useMemo(() => {
+    if (focusedNode) return [focusedNode];
+    return ceoNode ? [ceoNode, ...otherRoots] : otherRoots;
+  }, [focusedNode, ceoNode, otherRoots]);
+
+  // Full-demography mode: every level expanded, no fan-grid truncation, with
+  // zoom-out scaling so the complete top-to-bottom chart fits on one canvas.
+  const [fullMode, setFullMode] = useState(false);
+  const [zoom, setZoom] = useState(0.6);
+  const enterFullMode = useCallback(() => {
+    setFullMode(true);
+    setLevelDepth(null);
+    setCollapsed(new Set()); // expand every node incl. fan-grid expanders
+  }, []);
+  const zoomIn = () => setZoom((z) => Math.min(1.5, +(z + 0.15).toFixed(2)));
+  const zoomOut = () => setZoom((z) => Math.max(0.25, +(z - 0.15).toFixed(2)));
+
+  // Soft-coded level control: collapse every node AT or BEYOND the chosen
+  // depth so the chart reveals one level at a time (CEO → HODs → engineers).
+  // levelDepth = null → show all levels.
+  const [levelDepth, setLevelDepth] = useState(null);
+  const setLevel = useCallback(
+    (depth) => {
+      setLevelDepth(depth);
+      if (depth === null) {
+        setCollapsed(new Set());
+        return;
+      }
+      const ids = new Set();
+      const walk = (node, d) => {
+        if (!node) return;
+        if (d >= depth && node.children.length) ids.add(String(node.emp.id));
+        node.children.forEach((child) => walk(child, d + 1));
+      };
+      chartRoots.forEach((root) => walk(root, 0));
+      setCollapsed(ids);
+    },
+    [chartRoots],
+  );
+
+  const renderTree = (node) =>
+    layout === "topdown" ? (
+      <TopDownNode
+        key={node.emp.id}
+        node={node}
+        depth={0}
+        onSelect={onSelect}
+        onAction={onAction}
+        onFocus={focusNode}
+        collapsed={collapsed}
+        onToggle={toggleNode}
+        visited={new Set()}
+        fullMode={fullMode}
+      />
+    ) : (
+      <DemographyNode
+        key={node.emp.id}
+        node={node}
+        depth={0}
+        onSelect={onSelect}
+        onAction={onAction}
+        onFocus={focusNode}
+        collapsed={collapsed}
+        onToggle={toggleNode}
+        visited={new Set()}
+      />
+    );
+
+  return (
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-sm">
+      <div className="flex flex-col gap-2 border-b border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="flex items-center gap-2 font-bold text-slate-900">
+            <HeroIcons.UserGroupIcon className="h-5 w-5 text-indigo-600" />{" "}
+            Organisation Demography
+          </h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Live organisational structure derived from reporting lines —
+            starting from the CEO.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex overflow-hidden rounded-lg bg-slate-100 p-1">
+            {[
+              { id: "nested", label: "Nested", icon: "Bars3BottomLeftIcon" },
+              { id: "topdown", label: "Top-Down", icon: "Squares2X2Icon" },
+            ].map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => setLayout(opt.id)}
+                aria-pressed={layout === opt.id}
+                className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                  layout === opt.id
+                    ? "bg-white text-indigo-700 shadow-sm"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                <Icon name={opt.icon} className="h-3.5 w-3.5" />
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          {/* Complete demography: every level, zoomable to fit one canvas */}
+          <div className="inline-flex items-center overflow-hidden rounded-lg bg-slate-100 p-1">
+            <button
+              type="button"
+              onClick={() => (fullMode ? setFullMode(false) : enterFullMode())}
+              aria-pressed={fullMode}
+              title="Show the complete demography — every level fully expanded"
+              className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                fullMode
+                  ? "bg-indigo-600 text-white shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              <Icon name="SquaresPlusIcon" className="h-3.5 w-3.5" />
+              Full
+            </button>
+            {fullMode && (
+              <>
+                <button
+                  type="button"
+                  onClick={zoomOut}
+                  aria-label="Zoom out"
+                  className="rounded-md px-1.5 py-1 text-slate-500 hover:text-indigo-700"
+                >
+                  <HeroIcons.MagnifyingGlassMinusIcon className="h-3.5 w-3.5" />
+                </button>
+                <span className="min-w-[38px] text-center text-[10px] font-bold text-slate-500">
+                  {Math.round(zoom * 100)}%
+                </span>
+                <button
+                  type="button"
+                  onClick={zoomIn}
+                  aria-label="Zoom in"
+                  className="rounded-md px-1.5 py-1 text-slate-500 hover:text-indigo-700"
+                >
+                  <HeroIcons.MagnifyingGlassPlusIcon className="h-3.5 w-3.5" />
+                </button>
+              </>
+            )}
+          </div>
+          {/* Level stepper — walk the chart one level at a time */}
+          <div className="inline-flex items-center overflow-hidden rounded-lg bg-slate-100 p-1 text-[11px] font-bold">
+            <span className="px-1.5 text-slate-400">Levels</span>
+            {[0, 1, 2, 3].map((lvl) => (
+              <button
+                key={lvl}
+                type="button"
+                onClick={() => setLevel(lvl + 1)}
+                aria-pressed={levelDepth === lvl + 1}
+                title={`Show up to level ${lvl + 1}`}
+                className={`rounded-md px-2 py-1 transition-colors ${
+                  levelDepth === lvl + 1
+                    ? "bg-white text-indigo-700 shadow-sm"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                {lvl + 1}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setLevel(null)}
+              aria-pressed={levelDepth === null}
+              title="Show all levels"
+              className={`rounded-md px-2 py-1 transition-colors ${
+                levelDepth === null
+                  ? "bg-white text-indigo-700 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              All
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1.5 text-[10px] font-bold">
+            <span className="rounded-full bg-indigo-50 px-3 py-1 text-indigo-700">
+              {stats.people} people
+            </span>
+            <span className="rounded-full bg-sky-50 px-3 py-1 text-sky-700">
+              {stats.departments} departments
+            </span>
+            <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700">
+              {stats.levels} levels
+            </span>
+            <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-700">
+              {stats.avgSpan} avg span
+            </span>
+          </div>
+        </div>
+      </div>
+      <div
+        className={`max-h-[70vh] overflow-auto p-4 sm:p-5 ${layout === "topdown" ? "" : "space-y-4"}`}
+      >
+        {focusedNode && (
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2">
+            <span className="text-xs text-indigo-800">
+              Viewing subtree of{" "}
+              <strong>{fullName(focusedNode.emp)}</strong> ·{" "}
+              {countSubtree(focusedNode)} people ·{" "}
+              {empDisplayTitle(focusedNode.emp) || "Role not assigned"}
+            </span>
+            <button
+              type="button"
+              onClick={() => setFocusId(null)}
+              className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 text-[11px] font-bold text-indigo-700 shadow-sm hover:bg-indigo-100"
+            >
+              <HeroIcons.XMarkIcon className="h-3.5 w-3.5" />
+              Show full chart
+            </button>
+          </div>
+        )}
+        {!ceoNode && !focusedNode && (
+          <p className="mb-4 rounded-lg border border-dashed border-slate-300 bg-white px-4 py-3 text-center text-xs text-slate-500">
+            No employee with a CEO title found — showing top-level reporting
+            lines instead.
+          </p>
+        )}
+        {chartRoots.length > 0 ? (
+          <div
+            className={
+              fullMode
+                ? "origin-top-left"
+                : layout === "topdown"
+                  ? "flex items-start justify-center gap-10 pb-6"
+                  : ""
+            }
+            style={
+              fullMode
+                ? {
+                    transform: `scale(${zoom})`,
+                    width: `${100 / zoom}%`,
+                  }
+                : undefined
+            }
+          >
+            <div className={fullMode && layout === "topdown" ? "flex items-start justify-center gap-10 pb-6" : ""}>
+              {layout === "topdown" ? (
+                chartRoots.map(renderTree)
+              ) : (
+                <>
+                  {ceoNode && renderTree(ceoNode)}
+                  {otherRoots.length > 0 && (
+                    <div>
+                      {ceoNode && (
+                        <p className="mb-2 mt-4 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                          Outside the CEO reporting line
+                        </p>
+                      )}
+                      {otherRoots.map(renderTree)}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        ) : (
+          <p className="py-10 text-center text-sm text-slate-500">
+            No employees match the current filters.
+          </p>
+        )}
+      </div>
+    </section>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sub-component: Top-Down node — classic org-chart card with connector lines.
+// Smart arrangement: teams wider than FAN_GRID_VISIBLE render as a compact
+// fan grid (first N cards + a "+N more" expander) so large HOD teams stay on
+// one canvas instead of stretching into an endless horizontal row.
+const FAN_GRID_VISIBLE = 6;
+
+const TopDownChildCard = ({
+  child,
+  depth,
+  onSelect,
+  onAction,
+  onFocus,
+  collapsed,
+  onToggle,
+  visited,
+  fullMode,
+}) => (
+  <div className="relative flex flex-col items-center">
+    <span className="absolute -top-4 h-4 w-px bg-indigo-200" aria-hidden="true" />
+    <TopDownNode
+      node={child}
+      depth={depth + 1}
+      onSelect={onSelect}
+      onAction={onAction}
+      onFocus={onFocus}
+      collapsed={collapsed}
+      onToggle={onToggle}
+      visited={visited}
+      fullMode={fullMode}
+    />
+  </div>
+);
+
+const TopDownNode = ({
+  node,
+  depth,
+  onSelect,
+  onAction,
+  onFocus,
+  collapsed,
+  onToggle,
+  visited,
+  fullMode = false,
+}) => {
+  if (visited.has(String(node.emp.id))) return null;
+  const nextVisited = new Set(visited);
+  nextVisited.add(String(node.emp.id));
+  const nodeId = String(node.emp.id);
+  const isCollapsed = collapsed.has(nodeId);
+  const isCeo = CEO_TITLE_RE.test(empDisplayTitle(node.emp));
+  const showChildren = !isCollapsed && node.children.length > 0;
+  // In Full mode every child is always visible — no fan-grid truncation.
+  const isWideTeam = !fullMode && node.children.length > FAN_GRID_VISIBLE;
+  const isExpanded = collapsed.has(`expand-${nodeId}`);
+  const visibleChildren =
+    isWideTeam && !isExpanded
+      ? node.children.slice(0, FAN_GRID_VISIBLE)
+      : node.children;
+  const hiddenCount = node.children.length - visibleChildren.length;
+  return (
+    <div className="flex flex-col items-center">
+      <div
+        className={`relative flex w-56 flex-col items-center rounded-xl border bg-white p-3 text-center shadow-sm ${
+          isCeo
+            ? "border-indigo-300 ring-1 ring-indigo-100"
+            : "border-slate-200"
+        }`}
+      >
+        {isCeo && (
+          <span className="absolute -top-2 rounded-full bg-indigo-600 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+            CEO
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={() => onSelect(node.emp)}
+          className="flex w-full min-w-0 flex-col items-center gap-1.5"
+        >
+          <Avatar emp={node.emp} size="sm" />
+          <span className="w-full min-w-0">
+            <span className="block w-full truncate text-sm font-bold text-slate-900">
+              {fullName(node.emp)}
+            </span>
+            <span
+              className="block w-full truncate text-[11px] text-slate-500"
+              title={empDisplayTitle(node.emp) || "Role not assigned"}
+            >
+              {empDisplayTitle(node.emp) || "Role not assigned"}
+            </span>
+            <span
+              className="block w-full truncate text-[10px] text-slate-400"
+              title={node.emp.department || "No department"}
+            >
+              {node.emp.department || "No department"}
+            </span>
+          </span>
+        </button>
+        <div className="mt-1 flex items-center gap-1.5">
+          {node.children.length > 0 && (
+            <>
+              <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[9px] font-bold text-indigo-700">
+                {node.children.length} direct
+              </span>
+              <button
+                type="button"
+                onClick={() => onToggle(nodeId)}
+                aria-label={isCollapsed ? "Expand reports" : "Collapse reports"}
+                className="rounded-full border border-slate-200 p-0.5 text-slate-500 hover:border-indigo-300 hover:text-indigo-600"
+              >
+                <HeroIcons.ChevronDownIcon
+                  className={`h-3 w-3 transition-transform ${isCollapsed ? "-rotate-90" : ""}`}
+                />
+              </button>
+            </>
+          )}
+          <EmployeeQuickActions emp={node.emp} onAction={onAction} compact />
+          {node.children.length > 0 && (
+            <button
+              type="button"
+              title={`View ${fullName(node.emp)}'s subtree`}
+              aria-label="Focus on this subtree"
+              onClick={(e) => {
+                e.stopPropagation();
+                onFocus(nodeId);
+              }}
+              className="rounded-full border border-slate-200 p-0.5 text-slate-400 hover:border-indigo-300 hover:text-indigo-600"
+            >
+              <HeroIcons.ArrowsPointingInIcon className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      </div>
+      {showChildren && (
+        <>
+          <span className="h-4 w-px bg-indigo-200" aria-hidden="true" />
+          <div
+            className={`relative pt-4 ${
+              isWideTeam
+                ? "grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-3"
+                : "flex items-start gap-6"
+            }`}
+          >
+            {node.children.length > 1 && !isWideTeam && (
+              <span
+                className="absolute top-0 h-px bg-indigo-200"
+                style={{
+                  left: `${100 / (node.children.length * 2)}%`,
+                  right: `${100 / (node.children.length * 2)}%`,
+                }}
+                aria-hidden="true"
+              />
+            )}
+            {visibleChildren.map((child) => (
+              <TopDownChildCard
+                key={child.emp.id}
+                child={child}
+                depth={depth}
+                onSelect={onSelect}
+                onAction={onAction}
+                onFocus={onFocus}
+                collapsed={collapsed}
+                onToggle={onToggle}
+                visited={nextVisited}
+                fullMode={fullMode}
+              />
+            ))}
+            {hiddenCount > 0 && (
+              <div className="relative flex flex-col items-center">
+                <span className="absolute -top-4 h-4 w-px bg-indigo-200" aria-hidden="true" />
+                <button
+                  type="button"
+                  onClick={() => onToggle(`expand-${nodeId}`)}
+                  className="flex w-56 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-indigo-300 bg-indigo-50/50 p-3 text-center transition-colors hover:border-indigo-400 hover:bg-indigo-50"
+                >
+                  <HeroIcons.EllipsisHorizontalCircleIcon className="h-5 w-5 text-indigo-500" />
+                  <span className="text-xs font-bold text-indigo-700">
+                    +{hiddenCount} more
+                  </span>
+                  <span className="text-[10px] text-slate-500">
+                    Expand the full team
+                  </span>
+                </button>
+              </div>
+            )}
+            {isWideTeam && isExpanded && (
+              <div className="relative flex flex-col items-center">
+                <span className="absolute -top-4 h-4 w-px bg-indigo-200" aria-hidden="true" />
+                <button
+                  type="button"
+                  onClick={() => onToggle(`expand-${nodeId}`)}
+                  className="flex w-56 items-center justify-center gap-1 rounded-xl border border-slate-200 bg-white p-2 text-[11px] font-bold text-slate-500 transition-colors hover:border-indigo-300 hover:text-indigo-600"
+                >
+                  <HeroIcons.ArrowsPointingOutIcon className="h-3.5 w-3.5" />
+                  Compact view
+                </button>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
   );
 };
 
@@ -2866,6 +3569,9 @@ const DetailDrawer = ({
   const [tab, setTab] = useState(initialTab || HR_DEFAULT_DETAIL_TAB);
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({});
+  // Snapshot of the values loaded into the form — lets validation distinguish
+  // "user blanked a required field" from "field was already blank in the DB".
+  const initialFormDataRef = useRef({});
   const [formErrors, setFormErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
@@ -3005,7 +3711,7 @@ const DetailDrawer = ({
     if (!isEditing || !emp) return;
     const ep = emp.engineer_profile || {};
     const user = emp.user || {};
-    setFormData({
+    const initial = {
       // User fields
       first_name: user.first_name || "",
       last_name: user.last_name || "",
@@ -3036,7 +3742,9 @@ const DetailDrawer = ({
       "payroll.grade": "",
       "payroll.joining_date": "",
       "payroll.notes": "",
-    });
+    };
+    initialFormDataRef.current = initial;
+    setFormData(initial);
     setFormErrors({});
     setSaveError(null);
     setSaveSuccess(false);
@@ -3054,53 +3762,61 @@ const DetailDrawer = ({
     setSaveSuccess(false);
   }, []);
 
-  // Validate form before save
+  // Validate form before save. Returns the error map (empty = valid).
   const validateForm = useCallback(() => {
     const errors = {};
-    const allFields = [
-      ...(HR_EDITABLE_FIELDS.overview || []),
-      ...(HR_EDITABLE_FIELDS.employment || []),
-      ...(HR_EDITABLE_FIELDS.competency || []),
-    ];
+    const policy = HR_EDIT_VALIDATION_POLICY || {};
+    const initial = initialFormDataRef.current || {};
+    // Tab id === HR_EDITABLE_FIELDS group key (overview / employment / competency)
+    const allFields = ["overview", "employment", "competency"].flatMap((tabId) =>
+      (HR_EDITABLE_FIELDS[tabId] || []).map((field) => ({ ...field, tabId })),
+    );
+    // Booleans (false) and numbers (0) are real values; only null/undefined,
+    // whitespace-only strings and empty arrays count as missing.
+    const isMissing = (v) =>
+      v === null ||
+      v === undefined ||
+      (typeof v === "string" && !v.trim()) ||
+      (Array.isArray(v) && v.length === 0);
 
     allFields.forEach((field) => {
+      if (policy.skipReadOnly && field.readOnly) return;
       const value = formData[field.id];
+      const strValue = typeof value === "string" ? value : value == null ? "" : String(value);
+      const initialStr = initial[field.id] == null ? "" : String(initial[field.id]);
+      const checkFormat = policy.validateUnchangedFormats !== false || strValue !== initialStr;
 
       // Required field validation
-      if (
-        field.required &&
-        (!value || (typeof value === "string" && !value.trim()))
-      ) {
-        errors[field.id] = HR_EDIT_VALIDATION.required(field.label);
+      if (field.required && isMissing(value)) {
+        const wasAlreadyBlank = isMissing(initial[field.id]);
+        if (!(policy.allowLegacyBlankRequired && wasAlreadyBlank)) {
+          errors[field.id] = HR_EDIT_VALIDATION.required(field.label);
+        }
       }
 
       // Email validation
       if (
+        checkFormat &&
         field.type === "email" &&
-        value &&
-        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+        strValue &&
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(strValue)
       ) {
         errors[field.id] = HR_EDIT_VALIDATION.email;
       }
 
       // Phone validation (basic)
-      if (
-        field.type === "tel" &&
-        value &&
-        value.length > 0 &&
-        value.length < 7
-      ) {
+      if (checkFormat && field.type === "tel" && strValue && strValue.length < 7) {
         errors[field.id] = HR_EDIT_VALIDATION.phone;
       }
 
-      // Min/max length
-      if (field.minLength && value && value.length < field.minLength) {
+      // Min/max length (maxLength mirrors the DB column size — always enforced)
+      if (checkFormat && field.minLength && strValue && strValue.length < field.minLength) {
         errors[field.id] = HR_EDIT_VALIDATION.minLength(
           field.label,
           field.minLength,
         );
       }
-      if (field.maxLength && value && value.length > field.maxLength) {
+      if (field.maxLength && strValue && strValue.length > field.maxLength) {
         errors[field.id] = HR_EDIT_VALIDATION.maxLength(
           field.label,
           field.maxLength,
@@ -3109,7 +3825,16 @@ const DetailDrawer = ({
     });
 
     setFormErrors(errors);
-    return Object.keys(errors).length === 0;
+    const errorIds = Object.keys(errors);
+    if (errorIds.length && policy.focusFirstErrorTab) {
+      const firstTab = allFields.find((f) => errors[f.id])?.tabId;
+      if (firstTab) setTab(firstTab);
+    }
+    return Object.fromEntries(
+      allFields
+        .filter((f) => errors[f.id])
+        .map((f) => [f.id, { message: errors[f.id], tabId: f.tabId }]),
+    );
   }, [formData]);
 
   // Check if user has edit permission
@@ -3137,8 +3862,17 @@ const DetailDrawer = ({
 
   // Handle save
   const handleSave = useCallback(async () => {
-    if (!validateForm()) {
-      setSaveError("Please fix validation errors before saving");
+    const validationErrors = validateForm();
+    const invalidIds = Object.keys(validationErrors);
+    if (invalidIds.length) {
+      const tabLabel = (id) => HR_DETAIL_TABS.find((t) => t.id === id)?.label || id;
+      setSaveError(
+        HR_EDIT_VALIDATION.summary(
+          invalidIds.map(
+            (id) => `${validationErrors[id].message} (${tabLabel(validationErrors[id].tabId)} tab)`,
+          ),
+        ),
+      );
       return;
     }
 
@@ -3313,9 +4047,30 @@ const DetailDrawer = ({
       }, 3000);
     } catch (err) {
       console.error("[HR] Failed to update employee:", err);
+      // DRF returns field errors as { field: ["msg", ...] } — map them onto
+      // the form so the offending input is highlighted, and show them inline.
+      const data = err?.response?.data;
+      const fieldErrors = {};
+      if (data && typeof data === "object" && !Array.isArray(data)) {
+        Object.entries(data).forEach(([key, val]) => {
+          if (["error", "detail", "message"].includes(key)) return;
+          const msg = Array.isArray(val) ? val.join(" ") : typeof val === "string" ? val : null;
+          if (msg) fieldErrors[key === "manager_id" ? "manager" : key] = msg;
+        });
+      }
+      if (Object.keys(fieldErrors).length) {
+        setFormErrors((prev) => ({ ...prev, ...fieldErrors }));
+      }
+      const fieldSummary = Object.entries(fieldErrors)
+        .map(([key, msg]) => {
+          const label = Object.values(HR_EDITABLE_FIELDS).flat().find((f) => f.id === key)?.label || key;
+          return `${label}: ${msg}`;
+        })
+        .join("; ");
       setSaveError(
-        err?.response?.data?.error ||
-          err?.response?.data?.detail ||
+        data?.error ||
+          data?.detail ||
+          fieldSummary ||
           err?.message ||
           HR_EDIT_COPY.errorMessage,
       );
@@ -4091,6 +4846,7 @@ export default function HREmployees() {
   const [viewMode, setViewMode] = useState(HR_DEFAULT_VIEW_MODE);
   const [pageSize, setPageSize] = useState(HR_DEFAULT_PAGE_SIZE);
   const [pageIndex, setPageIndex] = useState(0);
+  const [employeeIdSort, setEmployeeIdSort] = useState(null);
   const [selectedEmp, setSelectedEmp] = useState(null);
   const [selectedTab, setSelectedTab] = useState(null); // optional initial tab when opening drawer
   const [selectedEdit, setSelectedEdit] = useState(false);
@@ -4293,17 +5049,24 @@ export default function HREmployees() {
     });
   }, [employees, filterValues, searchTerm, activeKpi]);
 
+  const sortedEmployees = useMemo(
+    () => viewMode === "table" && employeeIdSort
+      ? sortEmployeesById(filteredEmployees, employeeIdSort)
+      : filteredEmployees,
+    [filteredEmployees, employeeIdSort, viewMode],
+  );
+
   // ──────── Pagination (cards/table modes only) ────────
   useEffect(() => {
     setPageIndex(0);
-  }, [searchTerm, filterValues, viewMode, pageSize, selectedKpi]);
+  }, [searchTerm, filterValues, viewMode, pageSize, selectedKpi, employeeIdSort]);
 
   const paginated = useMemo(() => {
     if (viewMode === "dept" || viewMode === "hierarchy")
       return filteredEmployees;
     const start = pageIndex * pageSize;
-    return filteredEmployees.slice(start, start + pageSize);
-  }, [filteredEmployees, pageIndex, pageSize, viewMode]);
+    return sortedEmployees.slice(start, start + pageSize);
+  }, [filteredEmployees, sortedEmployees, pageIndex, pageSize, viewMode]);
 
   const totalPages = Math.max(
     1,
@@ -4558,13 +5321,15 @@ export default function HREmployees() {
                     employees={paginated}
                     onSelect={openEmp}
                     onAction={handleEmployeeAction}
+                    employeeIdSort={employeeIdSort}
+                    onEmployeeIdSort={() => setEmployeeIdSort(previous => previous === "ascending" ? "descending" : "ascending")}
                   />
                 )}
                 {viewMode === "dept" && (
-                  <DepartmentsView
+                  <OrgDemographyView
                     employees={filteredEmployees}
                     onSelect={openEmp}
-                    navigate={navigate}
+                    onAction={handleEmployeeAction}
                   />
                 )}
                 {viewMode === "hierarchy" && (

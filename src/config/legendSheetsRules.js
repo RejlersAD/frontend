@@ -92,6 +92,22 @@ export const LEGEND_SECTION_RULES = [
         detail: 'Instruments on P&ID but not indexed = MISSING; indexed but not on P&ID = EXTRA.' },
     ],
   },
+  {
+    id: 'electrical',
+    label: 'Electrical',
+    icon: '⚡',
+    accent: '#F59E0B',
+    dataSource: 'Master Electrical Index (Excel)',
+    matchKey: 'electrical',
+    rules: [
+      { id: 'EL-R1', name: 'Tag pattern',
+        detail: 'Electrical tag must match the legend format: area code (digits) + type code (letters) + sequence number with optional letter suffix (e.g. 285-PM-411B, 285-U-S05A).' },
+      { id: 'EL-R2', name: 'Area code',
+        detail: 'Area code must be a valid numeric area/platform code (1–5 digits) as defined in the project area register.' },
+      { id: 'EL-R3', name: 'Missing / extra',
+        detail: 'Electrical equipment on drawing but not in the index = MISSING; in the index but not on the drawing = EXTRA.' },
+    ],
+  },
 ]
 
 // Convenience lookup by section id

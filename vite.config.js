@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
 import { createProxyAgent } from './scripts/vite-proxy-agent.mjs'
+import { officePreviewAliases, officePreviewDependencies } from './scripts/office-preview-aliases.mjs'
 
 // Soft-coded proxy timeouts (override via env vars when needed)
 // Default raised to 20 min to accommodate long-running AI extractions on
@@ -153,8 +154,10 @@ export default defineConfig(({ mode }) => {
         }
       })
     ],
+    worker: { format: 'es' },
     resolve: {
       alias: {
+        ...officePreviewAliases,
         '@': path.resolve(__dirname, './src'),
       },
       // Force a single instance of emotion so all chunks share the
@@ -249,7 +252,9 @@ export default defineConfig(({ mode }) => {
               proxyReq.setHeader('X-Forwarded-For', req.socket.remoteAddress)
               // SOFT-CODED: Host derives from target URL — works for both localhost and Railway
               proxyReq.setHeader('Host', targetHost)
-              console.log('📤 Proxy request:', req.method, req.url, '→', apiUrl + req.url)
+              // Search text, message cursors and OAuth codes stay out of diagnostics.
+              const requestPath = (req.url || '').split('?')[0]
+              console.log('📤 Proxy request:', req.method, requestPath, '→', apiUrl + requestPath)
             })
           }
         },
@@ -286,6 +291,7 @@ export default defineConfig(({ mode }) => {
       // node_modules/.vite bundle can never survive a branch pull/restart.
       force: true,
       include: [
+        ...officePreviewDependencies,
         '@emotion/styled',
         '@emotion/react',
         '@mui/styled-engine',

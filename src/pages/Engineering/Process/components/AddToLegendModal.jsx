@@ -20,6 +20,7 @@ const AddToLegendModal = ({
   isOpen, onClose, onSaved,
   initialSection = '', initialCode = '', initialDescription = '',
   mode = 'add', lockSection = false, lockCode = false,
+  localDraft = false,
 }) => {
   const [section, setSection] = useState(initialSection)
   const [code, setCode] = useState(initialCode)
@@ -57,6 +58,10 @@ const AddToLegendModal = ({
 
   useEffect(() => {
     if (!isOpen) return
+    if (localDraft) {
+      setLookupSections([initialSection])
+      return
+    }
     let cancelled = false
     listLookupSections().then((secs) => {
       if (cancelled) return
@@ -66,7 +71,7 @@ const AddToLegendModal = ({
       }
     }).catch(() => { if (!cancelled) setLookupSections([]) })
     return () => { cancelled = true }
-  }, [isOpen]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isOpen, localDraft]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!isOpen) return null
 
@@ -82,10 +87,16 @@ const AddToLegendModal = ({
     }
     setSaving(true); setError('')
     try {
-      const call = mode === 'edit' ? editLegendLookupEntry : addLegendLookupEntry
       const payload = { section, code: code.trim(), description: description.trim() }
-      const result = await call(payload)
-      toast.success(`"${payload.code}" saved to the legend.`)
+      let result
+      if (localDraft) {
+        result = { draft: true }
+        toast.info(`"${payload.code}" updated in the draft. Save changes to persist the legend.`)
+      } else {
+        const call = mode === 'edit' ? editLegendLookupEntry : addLegendLookupEntry
+        result = await call(payload)
+        toast.success(`"${payload.code}" saved to the legend.`)
+      }
       onSaved?.(result, payload)
       onClose()
     } catch (err) {

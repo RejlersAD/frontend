@@ -63,7 +63,9 @@ async function expectSharedHeader(page, project, activeLabel, view) {
   await expect(tabs(page).getByRole('button', { name: activeLabel, exact: true })).toHaveAttribute('aria-current', 'page')
   await expect(header(page)).toContainText(project.code)
   await expect(header(page)).toContainText(project.client_name)
-  await expect(header(page)).toContainText('Baseline not approved')
+  const baseline = header(page).locator('.pd-baseline')
+  await expect(baseline.getByText('Baseline', { exact: true })).toBeVisible()
+  await expect(baseline.getByText(view === 'plan-baseline' ? 'Not approved' : 'Baseline not approved', { exact: true })).toBeVisible()
   await expect(page.locator('header.pp-header')).toHaveCount(0)
   await expect(page.locator('nav.pp-tabs')).toHaveCount(0)
   for (const title of ['Project Performance', 'Schedule Performance', 'Cost & Commercial Performance', 'Milestone Control', 'Risk & Change Control', 'Project Estimates', 'Project Documents']) {

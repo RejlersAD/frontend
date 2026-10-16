@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import {
   NavLink,
@@ -27,6 +27,22 @@ import {
 
 import salesService from "../../services/sales.service";
 import SalesActionDialog from "./SalesActionDialog";
+import SalesOpportunityHistory from "./SalesOpportunityHistory";
+import SalesOpportunityRegistrationDialog from "./SalesOpportunityRegistrationDialog";
+import SalesLetterModal from "./SalesLetterModal.jsx";
+import { opportunityMoney } from "./salesOpportunityRegistration";
+import SalesOpportunityRegister from "./SalesOpportunityRegister.jsx";
+import { loadOpportunityRegister, typeLabel as opportunityTypeLabel } from "./salesOpportunityRegister.js";
+import SalesProposalRegister from "./SalesProposalRegister.jsx";
+import SalesClientRegister from "./SalesClientRegister.jsx";
+import { loadClientPages } from "./salesClientRegister.js";
+import { loadProposalRegister } from "./salesProposalRegister.js";
+import SalesForecastWorkspace from "./SalesForecastWorkspace.jsx";
+import { loadForecastRegister } from "./salesForecastWorkspace.js";
+import SalesFrameworkRegister from "./SalesFrameworkRegister.jsx";
+import { loadFrameworkRegister } from "./salesFrameworkRegister.js";
+import SalesProposalTextField from './SalesProposalTextField';
+import { proposalText, proposalTextFields, proposalEditPayload, proposalLines } from './salesProposalDraft';
 
 const AREAS = {
   opportunities: {
@@ -40,7 +56,7 @@ const AREAS = {
       "Proposal work follows minimum qualification",
       "Lost work requires a recorded reason",
     ],
-    load: () => salesService.getDeals({ page_size: 500 }),
+    load: () => loadOpportunityRegister((params) => salesService.getDeals(params)),
     loadCount: () => salesService.getDeals({ page_size: 1 }),
     get: (id) => salesService.getDeal(id),
     update: (id, payload) => salesService.patchDeal(id, payload),
@@ -51,44 +67,40 @@ const AREAS = {
     details: [
       "deal_code",
       "deal_name",
-      "stage",
-      "probability",
-      "estimated_value",
-      "currency",
-      "scope_type",
-      "risk_level",
+      "opportunity_type",
+      "open_date",
       "submission_due_date",
-      "expected_close_date",
-      "next_action",
+      "owner_name",
+      "client_reference",
+      "stage",
     ],
     editFields: [
       ["deal_name", "Opportunity name"],
-      ["next_action", "Next action"],
-      ["next_action_date", "Next-action date", "date"],
-      ["submission_due_date", "Proposal deadline", "date"],
-      ["expected_close_date", "Expected award date", "date"],
-      ["priority", "Priority", "select", ["low", "medium", "high", "critical"]],
-      [
-        "risk_level",
-        "Risk level",
-        "select",
-        ["low", "medium", "high", "critical"],
-      ],
+      ["opportunity_type", "Opportunity type", "select", ["", "eio", "budgetary", "technical", "commercial", "techno_commercial", "other", "tender", "rfq", "eoi", "direct_enquiry"]],
+      ["open_date", "Open date", "date"],
+      ["submission_due_date", "Due date", "date"],
+      ["client_reference", "Client reference"],
     ],
     columns: [
-      "Opportunity",
+      "VF code",
+      "Title",
       "Client",
+      "Open date",
+      "Submission deadline",
       "Stage",
       "Owner",
       "Value",
       "Next action",
     ],
     cells: (row) => [
-      row.deal_code || row.deal_name,
+      row.deal_code || "Not provided",
+      row.deal_name,
       row.client_name,
-      row.stage_display || row.stage,
+      dateLabel(row.open_date),
+      dateLabel(row.submission_due_date),
+      row.stage === "lead" ? "Open" : row.stage_display || row.stage,
       row.owner_name || "Unassigned",
-      money(row.estimated_value, row.currency),
+      opportunityMoney(row.estimated_value, row.currency),
       row.next_action || dateLabel(row.next_action_date),
     ],
   },
@@ -103,7 +115,7 @@ const AREAS = {
       "Submitted versions are immutable",
       "Proposal owners can review and approve their own revisions",
     ],
-    load: () => salesService.getQuotes({ page_size: 500 }),
+    load: () => loadProposalRegister((params) => salesService.getQuotes(params)),
     loadCount: () => salesService.getQuotes({ page_size: 1 }),
     get: (id) => salesService.getQuote(id),
     update: (id, payload) => salesService.patchQuote(id, payload),
@@ -134,6 +146,9 @@ const AREAS = {
     ],
     editFields: [
       ["scope", "Scope", "textarea"],
+      ["deliverables", "Deliverables", "textarea"],
+      ["assumptions", "Assumptions", "textarea"],
+      ["exclusions", "Exclusions", "textarea"],
       ["total_amount", "Proposed price", "number"],
       ["estimated_cost", "Estimated cost", "number"],
       ["valid_until", "Valid until", "date"],
@@ -167,7 +182,7 @@ const AREAS = {
       "Inactive records retain their history",
       "Client status controls whether new proposals are permitted",
     ],
-    load: () => salesService.getClients({ page_size: 500 }),
+    load: () => loadClientPages((params) => salesService.getClients(params)),
     loadCount: () => salesService.getClients({ page_size: 1 }),
     get: (id) => salesService.getClient(id),
     update: (id, payload) => salesService.patchClient(id, payload),
@@ -228,7 +243,7 @@ const AREAS = {
       "Rate versions retain effective dates",
       "Committed, invoiced, and remaining values stay distinct",
     ],
-    load: () => salesService.getFrameworks({ page_size: 500 }),
+    load: () => loadFrameworkRegister(params => salesService.getFrameworks(params)),
     loadCount: () => salesService.getFrameworks({ page_size: 1 }),
     get: (id) => salesService.getFramework(id),
     update: (id, payload) => salesService.patchFramework(id, payload),
@@ -284,7 +299,7 @@ const AREAS = {
       "Manual adjustments require evidence",
       "Approved snapshots cannot be overwritten",
     ],
-    load: () => salesService.getForecasts({ page_size: 500 }),
+    load: () => loadForecastRegister((params) => salesService.getForecasts(params)),
     loadCount: () => salesService.getForecasts({ page_size: 1 }),
     get: (id) => salesService.getForecast(id),
     update: (id, payload) => salesService.patchForecast(id, payload),
@@ -428,39 +443,80 @@ const money = (value, currency = "AED") =>
         maximumFractionDigits: 0,
       }).format(Number(value || 0));
 
-const auditEventLabel = (value) =>
-  ({
-    opportunity_created: "Opportunity created",
-    opportunity_created_from_email: "Opportunity created from incoming email",
-    qualification_submitted: "Qualification submitted",
-    bid_decision: "Bid decision recorded",
-    proposal_revision_created: "Proposal revision created",
-    proposal_revision_approved: "Proposal revision approved",
-    proposal_revision_issued: "Proposal revision issued to client",
-    negotiation_entered: "Negotiation started",
-    award_submitted: "Award submitted for approval",
-    award_approved: "Award approved",
-    award_rejected: "Award rejected",
-    handover_submitted: "Project handover submitted",
-    handover_accepted: "Project handover accepted",
-    handover_returned: "Project handover returned",
-    project_converted: "Converted to project",
-    opportunity_closed: "Opportunity closed",
-  })[value] || label(value);
+const opportunityTypeText = (typeValue) => {
+  const value = String(typeValue || "").toLowerCase();
+  if (value === "eoi") return "EOI (Expression of Interest)";
+  if (value === "rfq") return "RFQ";
+  return label(typeValue || "Not provided");
+};
 
-const auditTimestamp = (value) =>
-  value
-    ? new Intl.DateTimeFormat("en-GB", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        timeZone: "Asia/Dubai",
-        timeZoneName: "short",
-      }).format(new Date(value))
-    : "Time unavailable";
+const dateTimeText = (value, fallbackTime = "12:00 PM") => {
+  if (!value) return "Not provided";
+  const raw = String(value);
+  const dateOnly = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnly) {
+    const year = Number(dateOnly[1]);
+    const month = Number(dateOnly[2]) - 1;
+    const day = Number(dateOnly[3]);
+    const date = new Date(year, month, day);
+    if (Number.isNaN(date.getTime())) return "Not provided";
+    const datePart = new Intl.DateTimeFormat("en-GB", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    }).format(date);
+    return `${datePart} at ${fallbackTime}`;
+  }
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return "Not provided";
+  const datePart = new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(parsed);
+  const timePart = new Intl.DateTimeFormat("en-GB", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  })
+    .format(parsed)
+    .replace("am", "AM")
+    .replace("pm", "PM");
+  return `${datePart} at ${timePart}`;
+};
+
+const buildQualificationSpecialNote = (record) => {
+  const eventType =
+    record?.qualification_data?.event_type ||
+    record?.custom_fields?.event_type ||
+    record?.qualification_data?.request_type ||
+    record?.custom_fields?.request_type ||
+    opportunityTypeText(record?.opportunity_type);
+  const publishedAt =
+    record?.qualification_data?.published_at ||
+    record?.custom_fields?.published_at ||
+    record?.created_at;
+  const submissionDeadline =
+    record?.qualification_data?.submission_deadline_at ||
+    record?.custom_fields?.submission_deadline_at ||
+    record?.submission_due_date;
+  const dueDate =
+    record?.qualification_data?.due_date ||
+    record?.custom_fields?.due_date ||
+    submissionDeadline;
+  const owner = record?.owner_name || "Not assigned";
+  return [
+    `A new ${opportunityTypeText(record?.opportunity_type)} has been received from ${record?.client_name || "Not provided"}.`,
+    `Opportunity/Reference Number: ${record?.deal_code || "Not provided"}`,
+    `Project Name: ${record?.deal_name || "Not provided"}`,
+    `Submission Deadline: ${dateTimeText(submissionDeadline)}`,
+    `Owner: ${owner}`,
+    `Event Type: ${eventType}`,
+    `Published: ${dateTimeText(publishedAt)}`,
+    `Due Date: ${dateTimeText(dueDate)}`,
+    "Special Note: Prioritize this for Monday kickoff.",
+  ].join("\n");
+};
 
 function Metric({ label: metricLabel, value, tone = "blue" }) {
   const tones =
@@ -481,7 +537,7 @@ function Metric({ label: metricLabel, value, tone = "blue" }) {
   );
 }
 
-const fieldLabel = (key) => label(key);
+const fieldLabel = (key) => ({ deal_code: "VF code", deal_name: "Title", client_name: "Client", owner_name: "Owner", created_by_name: "Created by", created_at: "Created date", submission_due_date: "Submission deadline", expected_close_date: "Expected award date", description: "Scope summary" })[key] || label(key);
 const displayValue = (value) => {
   if (value === null || value === undefined || value === "") return "Not set";
   if (typeof value === "boolean") return value ? "Yes" : "No";
@@ -498,6 +554,8 @@ const lifecycleActions = (area, record) => {
     if (record.stage === "qualified")
       actions.push({ id: "bid_decision", label: "Record bid/no-bid" });
     if (record.stage === "proposal")
+      actions.push({ id: "ceo_decision", label: "Record CEO go/no-go" });
+    if (record.stage === "proposal")
       actions.push({ id: "negotiate", label: "Enter negotiation" });
     if (record.stage === "negotiation")
       actions.push({ id: "submit_award", label: "Submit award" });
@@ -508,6 +566,16 @@ const lifecycleActions = (area, record) => {
       );
     if (record.stage === "awarded")
       actions.push({ id: "convert_project", label: "Convert to project" });
+    // Prepare Letter actions - available after bid decision
+    if (record.bid_decision === "bid" || record.bid_decision === "conditional_bid") {
+      actions.push({ id: "prepare_letter_eoi", label: "Prepare EOI Letter" });
+    }
+    if (record.bid_decision === "no_bid") {
+      actions.push(
+        { id: "prepare_letter_regret_expertise", label: "Prepare Regret Letter (Expertise)" },
+        { id: "prepare_letter_regret_manpower", label: "Prepare Regret Letter (Manpower)" },
+      );
+    }
     if (
       !["awarded", "converted", "lost", "no_bid", "cancelled"].includes(
         record.stage,
@@ -516,6 +584,13 @@ const lifecycleActions = (area, record) => {
       actions.push({
         id: "close_opportunity",
         label: "Close opportunity",
+        danger: true,
+      });
+    // RBAC-gated hard delete (see DealViewSet.destroy / can_delete).
+    if (record.can_delete)
+      actions.push({
+        id: "delete_opportunity",
+        label: "Delete opportunity",
         danger: true,
       });
     return actions;
@@ -609,9 +684,12 @@ function RecordDrawer({
   onCancelEdit,
   onChange,
   onSave,
-  error,
+  error = "",
+  loadError = "",
+  onRetry,
   actions,
   onAction,
+  editEpoch = 0,
 }) {
   const locked = record ? config.locked(record) : false;
   useEffect(() => {
@@ -632,14 +710,14 @@ function RecordDrawer({
         role="dialog"
         aria-modal="true"
         aria-label={`${config.title} record`}
-        className="flex h-full w-full max-w-xl flex-col border-l border-slate-200 bg-white"
+        className="flex h-full w-full min-w-0 max-w-xl flex-col border-l border-slate-200 bg-white"
       >
-        <header className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-          <div>
+        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
+          <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
               {config.title} record
             </p>
-            <h2 className="text-xl font-bold text-[#102a47]">
+            <h2 className="text-xl font-bold text-[#102a47] [overflow-wrap:anywhere]">
               {record ? displayValue(record[config.details[0]]) : "Loading..."}
             </h2>
           </div>
@@ -647,13 +725,13 @@ function RecordDrawer({
             type="button"
             onClick={onClose}
             aria-label="Close record"
-            className="rounded-md p-2 text-slate-500 hover:bg-slate-100"
+            className="shrink-0 rounded-md p-2 text-slate-500 hover:bg-slate-100"
           >
             <XMarkIcon className="h-5 w-5" />
           </button>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-5">
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-5">
           {error && (
             <div className="mb-4 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
               {error}
@@ -663,14 +741,22 @@ function RecordDrawer({
             <p className="py-12 text-center text-sm text-slate-500">
               Loading record...
             </p>
+          ) : loadError ? (
+            <div className="space-y-3 py-10 text-center text-sm text-slate-600">
+              <p>The full record is unavailable. Reload it before editing or taking an action.</p>
+              <button type="button" className="rounded-md border border-slate-300 px-4 py-2 font-semibold text-blue-700" onClick={onRetry}>Retry record</button>
+            </div>
           ) : editing ? (
             <form
               id="sales-record-form"
               onSubmit={onSave}
               className="space-y-4"
             >
+              <fieldset disabled={saving} className="space-y-4">
               {config.editFields.map(
-                ([key, text, type = "text", options = []]) => (
+                ([key, text, type = "text", options = []]) => config.title === 'Proposal' && proposalTextFields.includes(key) ? (
+                  <SalesProposalTextField key={key} field={key} label={text} value={draft[key] || ''} values={draft} opportunityId={String(record.deal || record.deal_details?.id || '')} quoteId={String(record.id)} contextVersion={`${record.updated_at || ''}:${editEpoch}`} busy={saving} enabled={['draft', 'scope_development', 'estimation', 'internal_review', 'approval'].includes(record.status) && !record.approved_at} onChange={(value, metadata) => onChange(key, value, metadata)} />
+                ) : (
                   <label
                     key={key}
                     className={
@@ -711,9 +797,9 @@ function RecordDrawer({
                             }
                             className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
                           >
-                            {options.map((option) => (
+                            {[...new Set([...(draft[key] ? [draft[key]] : []), ...options])].map((option) => (
                               <option key={option} value={option}>
-                                {label(option)}
+                                {key === "opportunity_type" && option ? opportunityTypeLabel(option) : label(option)}
                               </option>
                             ))}
                           </select>
@@ -733,25 +819,26 @@ function RecordDrawer({
                   </label>
                 ),
               )}
+              </fieldset>
             </form>
           ) : (
             <dl className="divide-y divide-slate-200 rounded-md border border-slate-200">
               {config.details.map((key) => (
                 <div
                   key={key}
-                  className="grid gap-1 px-4 py-3 sm:grid-cols-[10rem_1fr]"
+                  className="grid min-w-0 gap-1 px-4 py-3 sm:grid-cols-[10rem_minmax(0,1fr)]"
                 >
                   <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                     {fieldLabel(key)}
                   </dt>
-                  <dd className="whitespace-pre-wrap break-words text-sm text-slate-900">
-                    {displayValue(record?.[key])}
+                  <dd className="min-w-0 whitespace-pre-wrap text-sm leading-6 text-slate-900 [overflow-wrap:anywhere]">
+                    {key === "stage" && record?.stage === "lead" ? "Open" : key === "estimated_value" ? opportunityMoney(record?.estimated_value, record?.currency) : displayValue(record?.[key])}
                   </dd>
                 </div>
               ))}
             </dl>
           )}
-          {!editing && actions.length > 0 && (
+          {!loading && !editing && !loadError && actions.length > 0 && (
             <section className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-4">
               <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">
                 Governed actions
@@ -770,58 +857,10 @@ function RecordDrawer({
               </div>
             </section>
           )}
-          {!editing &&
-            config.title === "Opportunity" &&
-            record?.stage_history?.length > 0 && (
-              <section className="mt-4 rounded-md border border-slate-200 bg-white p-4">
-                <h3 className="text-sm font-bold text-[#102a47]">
-                  Action history
-                </h3>
-                <p className="mt-1 text-xs text-slate-500">
-                  Incoming source and lifecycle actions · newest first
-                </p>
-                <ol className="mt-4 space-y-4 border-l-2 border-blue-100 pl-4">
-                  {record.stage_history.map((event) => (
-                    <li key={event.id} className="relative">
-                      <span className="absolute -left-[1.31rem] top-1 h-2.5 w-2.5 rounded-full border-2 border-white bg-blue-600" />
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <p className="text-sm font-semibold text-slate-900">
-                          {auditEventLabel(event.event_type)}
-                        </p>
-                        <time className="text-xs font-medium text-slate-500">
-                          {auditTimestamp(event.occurred_at)}
-                        </time>
-                      </div>
-                      <p className="mt-1 text-xs text-slate-600">
-                        By {event.actor_name || "System"}
-                        {event.from_stage || event.to_stage
-                          ? ` · ${event.from_stage ? label(event.from_stage) : "Created"} → ${event.to_stage ? label(event.to_stage) : "No stage change"}`
-                          : ""}
-                      </p>
-                      {event.reason && (
-                        <p className="mt-1 whitespace-pre-wrap text-xs text-slate-700">
-                          {event.reason}
-                        </p>
-                      )}
-                      {event.data && Object.keys(event.data).length > 0 && (
-                        <dl className="mt-2 grid gap-x-3 gap-y-1 rounded bg-slate-50 p-2 text-xs sm:grid-cols-[9rem_1fr]">
-                          {Object.entries(event.data).map(([key, value]) => (
-                            <div key={key} className="contents">
-                              <dt className="font-semibold text-slate-500">
-                                {fieldLabel(key)}
-                              </dt>
-                              <dd className="break-all text-slate-700">
-                                {displayValue(value)}
-                              </dd>
-                            </div>
-                          ))}
-                        </dl>
-                      )}
-                    </li>
-                  ))}
-                </ol>
-              </section>
-            )}
+          {!loading && !editing && !loadError && config.title === "Proposal" && <NavLink to={`/sales/proposals/${encodeURIComponent(record.id)}/preview`} className="mt-4 inline-flex items-center gap-2 rounded-md border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-800"><EyeIcon className="h-4 w-4" />Preview &amp; comment</NavLink>}
+          {!loading && !editing && !loadError && config.title === "Opportunity" && (
+            <SalesOpportunityHistory events={record?.stage_history} />
+          )}
           {!editing && locked && (
             <div className="mt-4 flex gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
               <LockClosedIcon className="h-5 w-5 shrink-0" />
@@ -834,17 +873,20 @@ function RecordDrawer({
         </div>
 
         {!loading && (
-          <footer className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4">
+          <footer className="flex shrink-0 justify-end gap-2 border-t border-slate-200 px-5 py-4">
             {editing ? (
               <>
                 <button
+                  key="cancel-edit"
                   type="button"
                   onClick={onCancelEdit}
+                  disabled={saving}
                   className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold"
                 >
                   Cancel
                 </button>
                 <button
+                  key="save-record"
                   type="submit"
                   form="sales-record-form"
                   disabled={saving}
@@ -856,14 +898,16 @@ function RecordDrawer({
             ) : (
               <>
                 <button
+                  key="close-record"
                   type="button"
                   onClick={onClose}
                   className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold"
                 >
                   Close
                 </button>
-                {!locked && (
+                {!locked && !loadError && (
                   <button
+                    key="edit-record"
                     type="button"
                     onClick={onEdit}
                     className="inline-flex items-center gap-2 rounded-md bg-blue-700 px-4 py-2 text-sm font-semibold text-white"
@@ -891,38 +935,78 @@ export default function SalesLifecycleArea() {
   const [error, setError] = useState("");
   const [record, setRecord] = useState(null);
   const [recordLoading, setRecordLoading] = useState(false);
+  const [recordError, setRecordError] = useState("");
+  const [fullRecordOpen, setFullRecordOpen] = useState(false);
+  const recordRequest = useRef(0);
+  const listRequest = useRef(0);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({});
+  const [editEpoch, setEditEpoch] = useState(0);
+  const editBaseline = useRef(null);
   const [saving, setSaving] = useState(false);
   const [workspaceCounts, setWorkspaceCounts] = useState({});
+  const [registrationOpen, setRegistrationOpen] = useState(false);
   const [actionDialog, setActionDialog] = useState(null);
   const [actionValues, setActionValues] = useState({});
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState("");
+  const [actionWarnings, setActionWarnings] = useState([]);
+  const [letterModal, setLetterModal] = useState({ open: false, letterType: null });
+
+  const handleLetterAction = useCallback((actionId) => {
+    if (actionId.startsWith("prepare_letter_")) {
+      const letterType = actionId.replace("prepare_letter_", "");
+      const typeMap = {
+        eoi: "eoi",
+        regret_expertise: "regret_expertise",
+        regret_manpower: "regret_manpower",
+      };
+      setLetterModal({ open: true, letterType: typeMap[letterType] });
+      return true;
+    }
+    return false;
+  }, []);
+
+  useEffect(() => {
+    ++recordRequest.current;
+    setRecord(null); setRecordError(""); setRecordLoading(false); setFullRecordOpen(false);
+    setRows([]); setQuery(""); setError(""); setEditing(false); setSaving(false);
+    setRegistrationOpen(false); setActionDialog(null); setActionWarnings([]);
+  }, [area]);
 
   const load = useCallback(async () => {
     if (!config) return;
+    const request = ++listRequest.current;
     setLoading(true);
     setError("");
     try {
       const data = await config.load();
+      if (request !== listRequest.current) return;
       setRows(list(data));
       setWorkspaceCounts((current) => ({ ...current, [area]: count(data) }));
+      return list(data);
     } catch (requestError) {
+      if (request !== listRequest.current) return;
+      setRows([]);
+      if (["opportunities", "proposals", "clients", "forecasts", "frameworks"].includes(area)) { ++recordRequest.current; setRecord(null); setRecordLoading(false); setFullRecordOpen(false); }
       setError(
         requestError?.response?.data?.detail ||
+          requestError?.message ||
           `${config.title} records could not be loaded.`,
       );
     } finally {
-      setLoading(false);
+      if (request === listRequest.current) setLoading(false);
     }
   }, [area, config]);
 
   useEffect(() => {
+    const requests = [listRequest, recordRequest];
     load();
+    return () => { requests.forEach((request) => { ++request.current; }); };
   }, [load]);
 
   useEffect(() => {
+    if (["opportunities", "proposals", "clients", "forecasts", "frameworks"].includes(area)) return undefined;
     let mounted = true;
     Promise.allSettled(
       FLOW.map(async ([id]) => [id, count(await AREAS[id].loadCount())]),
@@ -939,46 +1023,100 @@ export default function SalesLifecycleArea() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [area]);
 
   const openRecord = useCallback(
-    async (rowOrId) => {
+    async (rowOrId, showFull = true, workspaceView = null) => {
       if (!config) return;
       const id = typeof rowOrId === "string" ? rowOrId : rowOrId.id;
+      const request = ++recordRequest.current;
       setRecord(typeof rowOrId === "string" ? { id } : rowOrId);
       setRecordLoading(true);
+      setRecordError("");
+      setFullRecordOpen(showFull);
       setEditing(false);
-      setSearchParams({ record: id }, { replace: true });
+      setSaving(false);
+      setSearchParams(previous => {
+        const next = new URLSearchParams(previous);
+        next.set('record', id);
+        if (workspaceView?.open) { next.set('workspace', '1'); if (workspaceView.folder) next.set('folder', workspaceView.folder); else next.delete('folder'); }
+        else if (workspaceView || previous.get('record') !== id) { next.delete('workspace'); next.delete('folder'); }
+        return next;
+      }, { replace: true });
       try {
-        setRecord(await config.get(id));
+        const detail = await config.get(id);
+        if (request === recordRequest.current) setRecord(detail);
       } catch (requestError) {
-        setError(
+        if (request !== recordRequest.current) return;
+        setRecordError(
           requestError?.response?.data?.detail ||
             `${config.title} record could not be loaded.`,
         );
       } finally {
-        setRecordLoading(false);
+        if (request === recordRequest.current) setRecordLoading(false);
       }
     },
     [config, setSearchParams],
   );
 
+  const selectOpportunity = useCallback((row) => openRecord(row, false, { open: false }), [openRecord]);
+  // Row clicks in the opportunities register open the full record drawer
+  // (where lifecycle actions like Prepare Letter live); the auto-select
+  // effect keeps using the selection-only handler above.
+  const openOpportunityRecord = useCallback((row) => openRecord(row, true, { open: false }), [openRecord]);
+  const selectProposal = useCallback((row) => openRecord(row, false), [openRecord]);
+  const selectClient = useCallback((row) => openRecord(row, false), [openRecord]);
+  const selectForecast = useCallback((row) => openRecord(row, false), [openRecord]);
+  const selectFramework = useCallback((row) => openRecord(row, false), [openRecord]);
+  const openOpportunityWorkspace = useCallback((row, folder = '') => {
+    if (!row) return;
+    if (record?.id !== row.id) openRecord(row, false, { open: true, folder });
+    else { setFullRecordOpen(false); setSearchParams(previous => { const next = new URLSearchParams(previous); next.set('record', row.id); next.set('workspace', '1'); if (folder) next.set('folder', folder); else next.delete('folder'); return next; }); }
+  }, [openRecord, record?.id, setSearchParams]);
+  const closeOpportunityWorkspace = () => setSearchParams(previous => { const next = new URLSearchParams(previous); next.delete('workspace'); next.delete('folder'); return next; });
+
+  const refreshOpportunities = async () => {
+    const selectedId = record?.id;
+    const request = recordRequest.current;
+    const refreshed = await load();
+    if (!refreshed || !selectedId || request !== recordRequest.current) return;
+    if (refreshed.some((row) => row.id === selectedId)) {
+      await openRecord(selectedId, fullRecordOpen);
+    } else {
+      ++recordRequest.current;
+      setRecord(null); setRecordError(""); setFullRecordOpen(false); setEditing(false);
+      setSearchParams({}, { replace: true });
+    }
+  };
+
+  const refreshPreparedProposal = async (proposalId) => {
+    const request = recordRequest.current;
+    const detail = await salesService.getQuote(proposalId);
+    if (request !== recordRequest.current) return;
+    setRecord(current => current?.id === proposalId ? detail : current);
+    await load();
+  };
+
   useEffect(() => {
     const recordId = searchParams.get("record");
-    if (recordId && record?.id !== recordId) openRecord(recordId);
-  }, [openRecord, record?.id, searchParams]);
+    if (recordId && record?.id !== recordId) openRecord(recordId, !['proposals', 'clients', 'forecasts', 'frameworks'].includes(area) && searchParams.get('workspace') !== '1', { open: searchParams.get('workspace') === '1', folder: searchParams.get('folder') || '' });
+  }, [area, openRecord, record?.id, searchParams]);
 
   const closeRecord = useCallback(() => {
+    if (["opportunities", "proposals", "clients", "forecasts", "frameworks"].includes(area)) { setFullRecordOpen(false); setEditing(false); return; }
+    ++recordRequest.current;
     setRecord(null);
     setEditing(false);
     setSearchParams({}, { replace: true });
-  }, [setSearchParams]);
+  }, [area, setSearchParams]);
 
   const beginEdit = () => {
+    if (recordLoading || recordError) return;
     setError("");
+    editBaseline.current = structuredClone(record);
     setDraft(
       Object.fromEntries(
-        config.editFields.map(([key]) => [key, record?.[key] ?? ""]),
+        config.editFields.map(([key]) => [key, area === 'proposals' && proposalTextFields.includes(key) ? proposalText(record?.[key]) : record?.[key] ?? ""]),
       ),
     );
     setEditing(true);
@@ -986,17 +1124,48 @@ export default function SalesLifecycleArea() {
 
   const saveRecord = async (event) => {
     event.preventDefault();
+    if (saving) return;
+    const request = recordRequest.current;
+    const selectedId = record.id;
     setSaving(true);
     setError("");
     try {
-      const updated = await config.update(record.id, draft);
+      let payload;
+      if (area === "opportunities") {
+        payload = { ...draft };
+        if (Object.prototype.hasOwnProperty.call(draft, "estimated_value")) {
+          payload.estimated_value = draft.estimated_value === "" ? null : draft.estimated_value;
+        }
+        if (Object.prototype.hasOwnProperty.call(draft, "expected_close_date")) {
+          payload.expected_close_date = draft.expected_close_date || null;
+        }
+        if (Object.prototype.hasOwnProperty.call(draft, "submission_due_date")) {
+          payload.submission_due_date = draft.submission_due_date || null;
+        }
+        if (Object.prototype.hasOwnProperty.call(draft, "open_date")) {
+          payload.open_date = draft.open_date || null;
+        }
+        if (Object.prototype.hasOwnProperty.call(draft, "next_action_date")) {
+          payload.next_action_date = draft.next_action_date || null;
+        }
+      } else if (area === "proposals") {
+        payload = proposalEditPayload(draft, editBaseline.current || record);
+      } else {
+        payload = draft;
+      }
+      const updated = await config.update(selectedId, payload);
+      if (request !== recordRequest.current) return;
       setRecord(updated);
       setEditing(false);
       await load();
+      if (area === "clients" && request === recordRequest.current) {
+        try { const detail = await config.get(selectedId); if (request === recordRequest.current) setRecord(detail); }
+        catch { if (request === recordRequest.current) setRecordError("Client saved, but its details could not be refreshed. Please retry."); }
+      }
     } catch (requestError) {
-      setError(apiError(requestError, `${config.title} could not be updated.`));
+      if (request === recordRequest.current) setError(apiError(requestError, `${config.title} could not be updated.`));
     } finally {
-      setSaving(false);
+      if (request === recordRequest.current) setSaving(false);
     }
   };
 
@@ -1004,9 +1173,21 @@ export default function SalesLifecycleArea() {
     setActionDialog(definition);
     setActionValues(initialValues);
     setActionError("");
+    setActionWarnings([]);
   };
 
-  const openCreate = async () => {
+  const deleteOpportunity = (row) => {
+    showAction({
+      title: "Delete opportunity",
+      submitLabel: "Delete opportunity",
+      description: `Permanently delete ${row.deal_code} — ${row.deal_name}? This cannot be undone. Opportunities with a linked document workspace or project handover cannot be deleted.`,
+      fields: [],
+      deleteId: row.id,
+      execute: () => salesService.deleteDeal(row.id),
+    });
+  };
+
+  const openCreate = async (preselectedOpportunity = null) => {
     const suffix = Date.now().toString().slice(-6);
     try {
       if (area === "clients") {
@@ -1068,7 +1249,8 @@ export default function SalesLifecycleArea() {
         return;
       }
 
-      if (area === "frameworks" || area === "opportunities") {
+      if (area === "opportunities") { setRegistrationOpen(true); return; }
+      if (area === "frameworks") {
         const clients = list(
           await salesService.getClients({ status: "active", page_size: 500 }),
         );
@@ -1147,158 +1329,22 @@ export default function SalesLifecycleArea() {
           );
           return;
         }
-        const frameworks = list(
-          await salesService.getFrameworks({
-            status: "active",
-            page_size: 500,
-          }),
-        );
-        showAction(
-          {
-            title: "Register opportunity",
-            submitLabel: "Create opportunity",
-            description:
-              "Capture the lead first; qualification and bid/no-bid are separate governed decisions.",
-            fields: [
-              {
-                name: "deal_name",
-                label: "Opportunity name",
-                required: true,
-                full: true,
-              },
-              {
-                name: "client",
-                label: "Client",
-                type: "select",
-                required: true,
-                options: clientOptions,
-              },
-              {
-                name: "framework",
-                label: "Framework (optional)",
-                type: "select",
-                options: frameworks.map((item) => ({
-                  value: item.id,
-                  label: `${item.framework_number} - ${item.client_name}`,
-                })),
-              },
-              {
-                name: "scope_type",
-                label: "Scope type",
-                type: "select",
-                required: true,
-                options: [
-                  "conceptual",
-                  "pre_feed",
-                  "feed",
-                  "basic_engineering",
-                  "detailed_engineering",
-                  "epcm",
-                  "pmc",
-                  "owner_engineer",
-                  "feasibility",
-                  "other",
-                ],
-              },
-              {
-                name: "estimated_value",
-                label: "Estimated value",
-                type: "number",
-                min: 0,
-                required: true,
-              },
-              {
-                name: "currency",
-                label: "Currency",
-                type: "select",
-                required: true,
-                options: ["AED", "USD", "EUR", "GBP", "SAR", "QAR"],
-              },
-              {
-                name: "submission_due_date",
-                label: "Proposal deadline",
-                type: "date",
-                required: true,
-              },
-              {
-                name: "expected_close_date",
-                label: "Expected award date",
-                type: "date",
-                required: true,
-              },
-              {
-                name: "estimated_hours",
-                label: "Estimated hours",
-                type: "number",
-                min: 0,
-              },
-              {
-                name: "project_duration_months",
-                label: "Duration in months",
-                type: "number",
-                min: 1,
-              },
-              {
-                name: "description",
-                label: "Scope summary",
-                type: "textarea",
-                full: true,
-              },
-            ],
-            execute: (values) =>
-              salesService.createDeal({
-                ...values,
-                framework: values.framework || null,
-                estimated_hours: values.estimated_hours || null,
-                project_duration_months: values.project_duration_months || null,
-                priority: "medium",
-                risk_level: "medium",
-              }),
-          },
-          { currency: "AED", scope_type: "detailed_engineering" },
-        );
-        return;
       }
 
       if (area === "proposals") {
-        const [dealResponse, clientResponse] = await Promise.all([
-          salesService.getDeals({ stage: "proposal", page_size: 500 }),
-          salesService.getClients({ page_size: 500 }),
-        ]);
-        const deals = list(dealResponse);
-        const clientsById = new Map(
-          list(clientResponse).map((client) => [String(client.id), client]),
-        );
         showAction(
           {
             title: "Create proposal from opportunity",
+            requiresOpportunity: true,
             submitLabel: "Create draft proposal",
             description:
-              "Only opportunities with an approved bid decision are available. Client identity is inherited.",
+              "Choose an opportunity with a Go decision. Client identity is inherited and current eligibility is checked.",
             fields: [
               {
                 name: "deal",
                 label: "Qualified opportunity",
-                type: "select",
+                type: "proposal_candidate",
                 required: true,
-                options: deals.map((deal) => ({
-                  value: deal.id,
-                  label: (() => {
-                    const client = clientsById.get(String(deal.client));
-                    const eligible =
-                      client?.status === "active" &&
-                      client?.new_proposals_permitted;
-                    return `${deal.deal_code} - ${deal.deal_name} · ${deal.client_name || client?.company_name || "Unknown client"}${eligible ? "" : " (client not eligible)"}`;
-                  })(),
-                  disabled: (() => {
-                    const client = clientsById.get(String(deal.client));
-                    return !(
-                      client?.status === "active" &&
-                      client?.new_proposals_permitted
-                    );
-                  })(),
-                })),
-                help: "Only opportunities whose inherited client is active and permitted for new proposals can be selected.",
               },
               {
                 name: "quote_number",
@@ -1342,14 +1388,14 @@ export default function SalesLifecycleArea() {
               {
                 name: "scope",
                 label: "Scope and execution approach",
-                type: "textarea",
+                type: "proposal_text",
                 required: true,
                 full: true,
               },
               {
                 name: "deliverables",
                 label: "Deliverables",
-                type: "textarea",
+                type: "proposal_text",
                 required: true,
                 full: true,
                 help: "Enter one deliverable per line.",
@@ -1357,27 +1403,22 @@ export default function SalesLifecycleArea() {
               {
                 name: "assumptions",
                 label: "Assumptions",
-                type: "textarea",
+                type: "proposal_text",
                 full: true,
               },
               {
                 name: "exclusions",
                 label: "Exclusions",
-                type: "textarea",
+                type: "proposal_text",
                 full: true,
               },
             ],
             execute: (values) => {
-              const deal = deals.find(
-                (item) => String(item.id) === String(values.deal),
-              );
-              const lines = (value) =>
-                String(value || "")
-                  .split("\n")
-                  .map((item) => item.trim())
-                  .filter(Boolean);
+              const deal = values._opportunity;
+              const payload = Object.fromEntries(Object.entries(values).filter(([key]) => !key.startsWith('_')));
+              if (!deal?.can_create_proposal || String(deal.id) !== String(values.deal)) throw new Error('Choose an eligible opportunity before creating the proposal.');
               return salesService.createQuote({
-                ...values,
+                ...payload,
                 client: deal.client,
                 version: 1,
                 status: "draft",
@@ -1385,15 +1426,17 @@ export default function SalesLifecycleArea() {
                 tax_amount: 0,
                 discount_amount: 0,
                 estimated_hours: { total: Number(values.estimated_hours) },
-                deliverables: lines(values.deliverables),
-                assumptions: lines(values.assumptions),
-                exclusions: lines(values.exclusions),
+                deliverables: proposalLines(values.deliverables),
+                assumptions: proposalLines(values.assumptions),
+                exclusions: proposalLines(values.exclusions),
               });
             },
           },
           {
             quote_number: `PROP-${new Date().getFullYear()}-${suffix}`,
-            currency: "AED",
+            currency: preselectedOpportunity?.currency || "AED",
+            deal: preselectedOpportunity?.id ? String(preselectedOpportunity.id) : '',
+            _opportunity: null,
           },
         );
         return;
@@ -1436,13 +1479,44 @@ export default function SalesLifecycleArea() {
   };
 
   const openLifecycleAction = (actionId) => {
+    if (!record || recordLoading || recordError) return;
+    // Handle prepare_letter_* actions by opening the letter modal
+    if (handleLetterAction(actionId)) return;
     const confirm = (title, description, execute, submitLabel = title) =>
       showAction({ title, description, execute, submitLabel, fields: [] });
+    if (actionId === "delete_opportunity")
+      return showAction({
+        title: "Delete opportunity",
+        submitLabel: "Delete opportunity",
+        danger: true,
+        description: `Permanently delete ${record.deal_code} — ${record.deal_name}? Generated letters and activity history are removed with it. This cannot be undone.`,
+        fields: [],
+        deleteId: record.id,
+        execute: () => salesService.deleteDeal(record.id),
+      });
     if (actionId === "qualify")
-      return confirm(
-        "Submit qualification",
-        "Validates scope, value, owner and key dates before moving the lead to qualification.",
-        () => salesService.submitQualification(record.id),
+      return showAction(
+        {
+          title: "Submit qualification",
+          submitLabel: "Submit qualification",
+          description:
+            "Submits the opportunity for Internal Sales Review. Missing scope type or attachments are reported as warnings and do not block submission.",
+          fields: [
+            {
+              name: "special_note",
+              label: "Special note to Sales team",
+              type: "textarea",
+              rows: 4,
+              full: true,
+              placeholder: "Add context, urgency, or handover notes for the team.",
+            },
+          ],
+          execute: (values) =>
+            salesService.submitQualification(record.id, {
+              special_note: (values.special_note || "").trim(),
+            }),
+        },
+        { special_note: buildQualificationSpecialNote(record) },
       );
     if (actionId === "bid_decision")
       return showAction(
@@ -1450,19 +1524,23 @@ export default function SalesLifecycleArea() {
           title: "Record bid/no-bid decision",
           submitLabel: "Record decision",
           description:
-            "High-risk or high-value pursuits require an independent manager.",
+            "Choose a decision and explain the reason. AI can help draft or rewrite your justification.",
           fields: [
             {
               name: "decision",
-              label: "Decision",
+              label: "Decision*",
               type: "select",
               required: true,
-              options: ["bid", "conditional_bid", "no_bid"],
+              options: [
+                { value: "bid", label: "Go" },
+                { value: "no_bid", label: "No-go" },
+              ],
             },
             {
               name: "reason",
               label: "Decision justification",
-              type: "textarea",
+              type: "bid_justification",
+              opportunityId: String(record.id),
               full: true,
             },
           ],
@@ -1474,6 +1552,38 @@ export default function SalesLifecycleArea() {
             ),
         },
         { decision: "bid" },
+      );
+    if (actionId === "ceo_decision")
+      return showAction(
+        {
+          title: "Record CEO go/no-go",
+          submitLabel: "Record CEO decision",
+          description:
+            "CEO decision is required before proposal drafting can proceed for this opportunity.",
+          fields: [
+            {
+              name: "decision",
+              label: "CEO decision",
+              type: "select",
+              required: true,
+              options: ["go", "no_go"],
+            },
+            {
+              name: "reason",
+              label: "Reason",
+              type: "textarea",
+              full: true,
+              placeholder: "Required when CEO decides no-go.",
+            },
+          ],
+          execute: (values) =>
+            salesService.recordCeoDecision(
+              record.id,
+              values.decision,
+              values.reason,
+            ),
+        },
+        { decision: "go" },
       );
     if (actionId === "negotiate")
       return showAction({
@@ -1728,13 +1838,44 @@ export default function SalesLifecycleArea() {
 
   const submitAction = async (event) => {
     event.preventDefault();
+    if (actionBusy) return;
     setActionBusy(true);
     setActionError("");
+    const selectedId = record?.id;
+    const request = recordRequest.current;
     try {
-      await actionDialog.execute(actionValues);
+      const result = await actionDialog.execute(actionValues);
+      setActionWarnings((result?.warnings || [])
+        .map(warning => typeof warning === 'string' ? warning : warning?.message)
+        .filter(Boolean));
+      if (actionDialog.title === 'Submit qualification') {
+        window.dispatchEvent(new Event('notifications-updated'));
+      }
       setActionDialog(null);
+      if (actionDialog.deleteId) {
+        if (record?.id === actionDialog.deleteId) {
+          ++recordRequest.current;
+          setRecord(null); setRecordError(""); setRecordLoading(false);
+          setFullRecordOpen(false); setEditing(false);
+          setSearchParams(previous => {
+            const next = new URLSearchParams(previous);
+            next.delete('record'); next.delete('workspace'); next.delete('folder');
+            return next;
+          }, { replace: true });
+        }
+        await load();
+        return;
+      }
       await load();
-      if (record) setRecord(await config.get(record.id));
+      if (area === 'proposals' && actionDialog.requiresOpportunity && result?.id) { await openRecord(String(result.id), false); return; }
+      if (selectedId && request === recordRequest.current) {
+        if (area === "frameworks") {
+          await openRecord(selectedId, fullRecordOpen);
+          return;
+        }
+        const updated = await config.get(selectedId);
+        if (request === recordRequest.current) setRecord(updated);
+      }
     } catch (requestError) {
       setActionError(
         apiError(requestError, `${actionDialog.title} could not be completed.`),
@@ -1776,7 +1917,75 @@ export default function SalesLifecycleArea() {
   ).length;
 
   return (
-    <div className="min-h-full bg-slate-100 p-4 text-slate-950 sm:p-5">
+    <div className={area === "opportunities" ? "sales-opportunities-route" : area === "proposals" ? "sales-proposals-route" : area === "clients" ? "sales-clients-route" : area === "forecasts" ? "sales-forecasts-route" : area === "frameworks" ? "sales-frameworks-route" : "min-h-full bg-slate-100 p-4 text-slate-950 sm:p-5"}>
+      {actionWarnings.length > 0 && (
+        <div role="status" className="m-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {actionWarnings.map(warning => <p key={warning}>{warning}</p>)}
+        </div>
+      )}
+      {area === "opportunities" ? (
+        <SalesOpportunityRegister
+          rows={rows} loading={loading} error={error}
+          record={record} recordLoading={recordLoading} recordError={recordError}
+          onRefresh={refreshOpportunities} onSelect={selectOpportunity}
+          onOpenRecord={openOpportunityRecord}
+          explorer={searchParams.get('workspace') === '1'} explorerFolder={searchParams.get('folder') || ''}
+          onOpenWorkspace={openOpportunityWorkspace} onCloseWorkspace={closeOpportunityWorkspace}
+          onRetryRecord={() => record && openRecord(record, false)}
+          onOpenFullRecord={(row) => row && openRecord(row, true)}
+          onDelete={deleteOpportunity}
+          onEdit={() => { setFullRecordOpen(true); beginEdit(); }}
+          onCreate={openCreate} onAction={openLifecycleAction}
+          actions={lifecycleActions(area, record)} locked={!record || config.locked(record)}
+        />
+      ) : area === "proposals" ? (
+        <SalesProposalRegister
+          rows={rows} loading={loading} error={error}
+          record={record} recordLoading={recordLoading} recordError={recordError}
+          selectedId={searchParams.get('record') || ''}
+          onRefresh={refreshOpportunities} onSelect={selectProposal}
+          onPrepared={refreshPreparedProposal}
+          onRetryRecord={() => record && openRecord(record, false)}
+          onOpenFullRecord={(row) => row && openRecord(row, true)}
+          onEdit={() => { setFullRecordOpen(true); beginEdit(); }}
+          onCreate={openCreate} onAction={openLifecycleAction}
+          actions={lifecycleActions(area, record)} locked={!record || config.locked(record)}
+        />
+      ) : area === "clients" ? (
+        <SalesClientRegister
+          rows={rows} loading={loading} error={error}
+          record={record} recordLoading={recordLoading} recordError={recordError}
+          selectedId={searchParams.get('record') || ''}
+          onRefresh={refreshOpportunities} onSelect={selectClient}
+          onRetryRecord={() => record && openRecord(record, false)}
+          onOpenFullRecord={(row) => row && openRecord(row, true)}
+          onEdit={() => { setFullRecordOpen(true); beginEdit(); }} onCreate={openCreate}
+        />
+      ) : area === "frameworks" ? (
+        <SalesFrameworkRegister
+          rows={rows} loading={loading} error={error}
+          record={record} recordLoading={recordLoading} recordError={recordError}
+          selectedId={searchParams.get('record') || ''}
+          onRefresh={refreshOpportunities} onSelect={selectFramework}
+          onRetryRecord={() => record && openRecord(record, false)}
+          onOpenFullRecord={(row) => row && openRecord(row, true)}
+          onEdit={() => { setFullRecordOpen(true); beginEdit(); }}
+          onCreate={openCreate} onAction={openLifecycleAction}
+          actions={recordError ? [] : lifecycleActions(area, record)} locked={!record || config.locked(record)}
+        />
+      ) : area === "forecasts" ? (
+        <SalesForecastWorkspace
+          rows={rows} loading={loading} error={error}
+          record={record} recordLoading={recordLoading} recordError={recordError}
+          selectedId={searchParams.get('record') || ''}
+          onRefresh={refreshOpportunities} onSelect={selectForecast}
+          onRetryRecord={() => record && openRecord(record, false)}
+          onOpenFullRecord={() => record && openRecord(record, true)}
+          onEdit={() => { setFullRecordOpen(true); beginEdit(); }}
+          onCreate={openCreate} onAction={openLifecycleAction}
+          actions={recordError ? [] : lifecycleActions(area, record)} locked={!record || config.locked(record)}
+        />
+      ) : <>
       <header className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
         <div className="flex items-start gap-3">
           <Icon
@@ -1908,6 +2117,7 @@ export default function SalesLifecycleArea() {
                       </td>
                     ))}
                     <td className="px-4 py-3 text-right">
+                      {area === "proposals" && <NavLink to={`/sales/proposals/${encodeURIComponent(row.id)}/preview`} className="mr-2 inline-flex items-center gap-1.5 rounded-md border border-violet-200 bg-white px-3 py-1.5 text-xs font-semibold text-violet-800 hover:bg-violet-50">Preview &amp; comment</NavLink>}
                       <button
                         type="button"
                         onClick={() => openRecord(row)}
@@ -1965,7 +2175,9 @@ export default function SalesLifecycleArea() {
           </div>
         </aside>
       </div>
-      {record && (
+      </>}
+      {registrationOpen && <SalesOpportunityRegistrationDialog onClose={() => setRegistrationOpen(false)} onCreated={(created) => { setRegistrationOpen(false); load(); openRecord(created); }} />}
+      {record && (!["opportunities", "proposals", "clients", "forecasts", "frameworks"].includes(area) || fullRecordOpen) && (
         <RecordDrawer
           config={config}
           record={record}
@@ -1976,26 +2188,32 @@ export default function SalesLifecycleArea() {
           onClose={closeRecord}
           onEdit={beginEdit}
           onCancelEdit={() => setEditing(false)}
-          onChange={(key, value) =>
-            setDraft((current) => ({ ...current, [key]: value }))
-          }
+          onChange={(key, value, metadata) => { setDraft(current => ({ ...current, [key]: value })); if (!metadata?.ai) setEditEpoch(epoch => epoch + 1); }}
+          editEpoch={editEpoch}
           onSave={saveRecord}
-          error={error}
-          actions={lifecycleActions(area, record)}
+          error={recordError || error}
+          loadError={recordError}
+          onRetry={() => openRecord(record, true)}
+          actions={recordError ? [] : lifecycleActions(area, record)}
           onAction={openLifecycleAction}
         />
       )}
+      <SalesLetterModal
+        open={letterModal.open}
+        onClose={() => setLetterModal({ open: false, letterType: null })}
+        deal={record}
+        initialLetterType={letterModal.letterType}
+      />
       {actionDialog && (
         <SalesActionDialog
           action={actionDialog}
           values={actionValues}
           busy={actionBusy}
           error={actionError}
-          onChange={(key, value) =>
-            setActionValues((current) => ({ ...current, [key]: value }))
-          }
+          onChange={(key, value, metadata) => setActionValues(current => ({ ...current, [key]: value, ...(actionDialog.requiresOpportunity ? { _editEpoch: (current._editEpoch || 0) + (metadata?.ai || key === '_opportunity' ? 0 : 1), ...(key === 'currency' ? { _currencyTouched: true } : {}), ...(key === '_opportunity' && value?.currency && !current._currencyTouched && !current._currencyInitialized ? { currency: value.currency, _currencyInitialized: true } : {}) } : {}) }))}
           onClose={() => setActionDialog(null)}
           onSubmit={submitAction}
+          currentRecordId={record?.id}
         />
       )}
     </div>
@@ -2027,6 +2245,8 @@ RecordDrawer.propTypes = {
   onChange: PropTypes.func.isRequired,
   onSave: PropTypes.func.isRequired,
   error: PropTypes.string,
+  loadError: PropTypes.string,
+  onRetry: PropTypes.func,
   actions: PropTypes.arrayOf(
     PropTypes.shape({
       id: PropTypes.string.isRequired,
@@ -2035,5 +2255,5 @@ RecordDrawer.propTypes = {
     }),
   ).isRequired,
   onAction: PropTypes.func.isRequired,
+  editEpoch: PropTypes.number,
 };
-RecordDrawer.defaultProps = { error: "" };

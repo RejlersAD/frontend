@@ -106,9 +106,10 @@ export default function Payroll({ module = 'payroll' }) {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className={`min-h-screen bg-slate-50 ${module === 'attendance' ? 'attendance-page' : ''}`}>
+      {module === 'attendance' && <h1 className="sr-only">Attendance Management</h1>}
       {/* Page Header */}
-      <div className="border-b border-slate-200 bg-white">
+      {module !== 'attendance' && <div className="border-b border-slate-200 bg-white">
         <div className="px-4 py-5 sm:px-6 lg:px-8">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
@@ -145,10 +146,10 @@ export default function Payroll({ module = 'payroll' }) {
             })}
           </div>}
         </div>
-      </div>
+      </div>}
 
       {/* Module Content */}
-      <div className={`px-4 py-5 sm:px-6 lg:px-8 ${effectiveTab !== 'dashboard' ? 'radai-payroll-module' : ''}`}>
+      <div className={`px-4 py-5 sm:px-6 lg:px-8 ${effectiveTab !== 'dashboard' ? 'radai-payroll-module' : ''} ${module === 'attendance' ? 'attendance-page-content' : ''}`}>
         {ActiveModule ? (
           <ActiveModule
             headerActions={headerActions}

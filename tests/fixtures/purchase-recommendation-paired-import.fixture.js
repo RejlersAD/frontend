@@ -57,6 +57,7 @@ export async function pairedImportHarness(page, options = {}) {
         success: true, preview_only: true, pr_number: extracted.pr_number,
         database_match: state.props.requisitions.some(row => row.pr_number === extracted.pr_number),
         extracted_data: extracted, approval_detection: approval, document_signed_off: true,
+        source_approval_review: state.sourceApprovalReview,
         mapping_issues: [], workflow_issues: [],
         po_preview: { extracted_data: poFields, reconciliation_issues: options.poPreviewIssues || [], approval_evidence: {
           signature_detected: true, stamp_detected: true, approved_by_name: 'PO Approver Only', approved_by_title: 'PO Director', approved_date: '2026-09-12', issues: [],
@@ -66,6 +67,7 @@ export async function pairedImportHarness(page, options = {}) {
     }
     state.pairSaves.push(body)
     if (state.pairError) return reply(route, state.pairError.body, state.pairError.status)
+    if (body.source_approval_review) state.sourceApprovalReview = JSON.parse(body.source_approval_review)
     const fields = JSON.parse(body.manual_overrides || '{}')
     const reviewedPo = JSON.parse(body.po_reviewed_fields || '{}')
     const number = body.expected_pr_number || fields.pr_number || extracted.pr_number
@@ -76,6 +78,7 @@ export async function pairedImportHarness(page, options = {}) {
     const response = {
       success: true, created: !previous, requisition_id: prId, pr_number: number, status: 'converted',
       document_signed_off: true, approval_detection: approval, po_link: poLink, purchase_order_id: poId,
+      source_approval_review: state.sourceApprovalReviewResponse === undefined ? state.sourceApprovalReview : state.sourceApprovalReviewResponse,
       purchase_order: { purchase_order_id: poId, po_number: poLink.po_number, pr_id: prId, po_link: poLink, operation: options.poOperation || 'created', reconciliation_issues: options.poIssues || [], workflow_issues: options.poWorkflowIssues || [] }, mapping_issues: [], workflow_issues: [],
     }
     if (state.incompleteResponse) return reply(route, { ...response, purchase_order_id: null, purchase_order: null, po_link: { status: 'not_linked', manual_link_required: true } })

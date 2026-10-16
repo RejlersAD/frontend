@@ -33,12 +33,24 @@ test('recorded final approval takes precedence over stale pending log entries', 
   assert.equal(record.nextStep, 'Ready to issue');
 });
 
-test('unconfirmed issued orders show awaiting acknowledgement without an invented deadline', () => {
-  const issued = normalize({ status: 'sent', po_date: '2026-09-01' });
-  assert.equal(issued.awaitingAcknowledgement, true);
-  assert.equal(issued.nextStep, 'Confirm supplier acknowledgement');
-  assert.equal(issued.isDeliveryOverdue, false);
-  assert.equal(normalize({ status: 'sent', confirmation_date: '2026-09-12' }).awaitingAcknowledgement, false);
+test('issue ends the PO work queue while preserving canonical later-stage records', () => {
+  const statuses = ['sent', 'acknowledged', 'in_progress', 'partially_received', 'completed'];
+  const records = statuses.map(status => normalize({ id: status, status, created_by: 42, expected_delivery: '2026-09-01' }));
+  for (const [index, record] of records.entries()) {
+    assert.equal(record.status, statuses[index]);
+    assert.equal(record.raw.status, statuses[index]);
+    assert.equal(record.statusLabel, 'Issued');
+    assert.equal(record.nextStep, 'View issued order');
+    assert.equal(record.mine, false);
+    assert.equal(record.isDeliveryOverdue, false);
+    assert.equal(record.approvalSummary, 'not_recorded');
+  }
+  assert.equal(filterRegisterRecords(records, { status: 'issued' }, 42, now).length, 5);
+  assert.equal(filterRegisterRecords(records, { savedView: 'open' }, 42, now).length, 0);
+  assert.equal(filterRegisterRecords(records, { myActions: true }, 42, now).length, 0);
+  const metrics = registerMetrics(records);
+  assert.deepEqual(metrics.map(metric => metric.key), ['all', 'draft', 'review', 'issued', 'value']);
+  assert.equal(metrics.find(metric => metric.key === 'issued').value, 5);
 });
 
 test('currency totals stay separate and invalid imported currencies are disclosed', () => {
@@ -54,16 +66,16 @@ test('currency totals stay separate and invalid imported currencies are disclose
   assert.equal(formatRegisterMoney('', 'AED'), '—');
 });
 
-test('delivery filters respect date-only deadlines, missing dates, and closed orders', () => {
+test('PO commercial delivery dates remain available without generating delivery follow-up', () => {
   const records = [normalize({ id: 'yesterday', expected_delivery: '2026-09-14' }), normalize({ id: 'today', expected_delivery: '2026-09-15' }), normalize({ id: 'future', expected_delivery: '2026-09-29' }), normalize({ id: 'far', expected_delivery: '2026-10-10' }), normalize({ id: 'closed', status: 'cancelled', expected_delivery: '2026-09-10' }), normalize({ id: 'undated' })];
   const ids = filters => filterRegisterRecords(records, filters, 42, now).map(record => record.id);
-  assert.deepEqual(ids({ delivery: 'overdue' }), ['yesterday']);
+  assert.deepEqual(ids({ delivery: 'overdue' }), []);
   assert.deepEqual(ids({ delivery: 'next14' }), ['today', 'future']);
   assert.deepEqual(ids({ delivery: 'undated' }), ['undated']);
 });
 
 test('search, saved view, owner and project filters compose', () => {
-  const records = [normalize({ id: 'mine', status: 'sent', title: 'Software', vendor_name: 'Global Supplier', enterprise_project: 15, enterprise_project_code: '5900985', created_by: 42 }), normalize({ id: 'other', status: 'sent', title: 'Software', created_by: 43 }), normalize({ id: 'closed', status: 'completed', title: 'Software', created_by: 42 })];
+  const records = [normalize({ id: 'mine', status: 'draft', title: 'Software', vendor_name: 'Global Supplier', enterprise_project: 15, enterprise_project_code: '5900985', created_by: 42 }), normalize({ id: 'other', status: 'draft', title: 'Software', created_by: 43 }), normalize({ id: 'closed', status: 'sent', title: 'Software', created_by: 42 })];
   assert.deepEqual(filterRegisterRecords(records, { search: 'software', savedView: 'open', myActions: true, project: 'core:15' }, 42, now).map(record => record.id), ['mine']);
   assert.equal(filterRegisterRecords(records, { myActions: true }, null, now).length, 0);
 });

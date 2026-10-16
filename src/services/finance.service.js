@@ -10,6 +10,9 @@ const API_BASE = '/finance';
 const invoicePreviewRequests = new Map();
 
 const financeService = {
+  async getAwaitingPurchaseOrders(params = {}) { return (await apiClient.get(`${API_BASE}/invoices/awaiting-purchase-orders/`, { params })).data; },
+  async getPurchaseOrderOptions(params = {}) { return (await apiClient.get(`${API_BASE}/invoices/purchase-order-options/`, { params })).data; },
+  async allocatePurchaseOrder(id, payload) { return (await apiClient.post(`${API_BASE}/invoices/${encodeURIComponent(id)}/allocate-purchase-order/`, payload)).data; },
   /**
    * Upload a new invoice
    */
@@ -163,15 +166,16 @@ const financeService = {
 
   /**
    * Preview invoice PDF
+   * Uses backend-provided preview_url (relative path) with token for iframe auth
    */
-  getInvoicePreviewUrl(id) {
-    // Use centralized API config for consistent backend URL
-    // Remove /api/v1 from API_BASE_URL for full domain
-    const backendUrl = API_BASE_URL.replace('/api/v1', '');
-    
-    // Get auth token for authenticated PDF access
+  getInvoicePreviewUrl(invoice) {
+    const previewPath = invoice?.preview_url;
+    if (!previewPath) return '';
     const token = localStorage.getItem('radai_access_token');
-    return `${backendUrl}/api/v1/finance/invoices/${id}/preview/?token=${token}`;
+    const params = new URLSearchParams();
+    if (token) params.set('token', token);
+    const query = params.toString();
+    return `${previewPath}${query ? `?${query}` : ''}`;
   },
 
   /**

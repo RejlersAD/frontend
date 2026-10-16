@@ -19,7 +19,7 @@ import projectOrganizerService from '../../services/projectOrganizerService';
 import { ProjectCard, ProjectFormModal } from '../../components/ProjectOrganizer';
 
 const T = PROJECT_ORGANIZER_CONFIG.defaultTheme;
-const DEFAULT_OPEN_TARGET_ROUTE = '/engineering/process/hmb-extractor';
+const DEFAULT_OPEN_TARGET_ROUTE = '/engineering/process/hmb-stream-table-consolidator';
 const DEFAULT_ACTIVE_PROJECT_STORAGE_KEY = 'hmbExtractorActiveProject';
 
 const ManageProjectsPage = () => {
@@ -232,7 +232,7 @@ const ManageProjectsPage = () => {
               <p style={{ margin: '6px 0 0', fontSize: 13, color: T.muted }}>
                 {isPickerMode
                   ? 'Select a project to return to your tool and continue working.'
-                  : 'Open a project to continue in HMB Extractor and upload documents.'}
+                  : 'Open a project to continue in HMB Stream Table Consolidator.'}
               </p>
             </div>
             <button

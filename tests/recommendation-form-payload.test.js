@@ -16,6 +16,36 @@ test('cleared optional values persist as null while blank text and zero amounts 
   assert.equal(prepareRecommendationPayload({ total_price: '0.00' }).total_price, '0.00');
 });
 
+test('native project saves normalize the writable CSV and preserve matching enterprise selections', () => {
+  const project = { project_id: 17, project_number: '5901001', project_name: 'Enterprise project', source: 'enterprise' };
+  const source = { project: ' 5901001, PRJ-02, 5901001 ', project_numbers: ['STALE'], project_details: [project] };
+  const result = prepareRecommendationPayload(source);
+  assert.equal(result.project, '5901001, PRJ-02');
+  assert.equal('project_numbers' in result, false);
+  assert.deepEqual(result.project_details, [project, { type: 'project', project_number: 'PRJ-02', value: 'PRJ-02' }]);
+  assert.equal(result.project_details[0], project);
+  assert.equal(source.project, ' 5901001, PRJ-02, 5901001 ');
+  assert.deepEqual(source.project_numbers, ['STALE']);
+});
+
+test('cleared project CSV removes explicit references without changing unrelated evidence or amounts', () => {
+  const record = { project: '', project_details: [{ project_number: 'OLD-1', project_id: 17 }],
+    total_price: '2100.00', price_remarks_data: { signed_approval_evidence: { signatures: { pm: true } } } };
+  const result = prepareRecommendationPayload(record);
+  assert.equal(result.project, '');
+  assert.deepEqual(result.project_details, []);
+  assert.equal(result.total_price, record.total_price);
+  assert.deepEqual(result.price_remarks_data, record.price_remarks_data);
+});
+
+test('project payload never truncates overlong input before server validation or mutates a failed-save retry', () => {
+  const source = Object.freeze({ project: `${'A'.repeat(190)}, ${'B'.repeat(30)}`, project_details: Object.freeze([]) });
+  const first = prepareRecommendationPayload(source);
+  assert.equal(first.project, source.project);
+  assert.deepEqual(prepareRecommendationPayload(source), first);
+  assert.equal(first.project.length, 222);
+});
+
 test('omits a blank row and keeps VAT, supplier and budget aligned to the retained row', () => {
   const result = prepareRecommendationPayload({
     items: [blankLine(), pricedLine('Engineering services')],

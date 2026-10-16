@@ -49,8 +49,11 @@ function snapshot(record, historicalVersion, decorate) {
 }
 
 export async function masterScheduleHarness(page, options = {}) {
+  const query = new URLSearchParams(options.query || 'project=17&view=plan-baseline&shell=true')
+  if (!query.has('scheduleMode')) query.set('scheduleMode', 'planner')
   return scheduleHarness(page, {
-    query: options.query || 'project=17&view=plan-baseline&shell=true',
+    query: query.toString(),
+    harnessPath: options.harnessPath,
     prepare(state) {
       Object.assign(state, { writes: [], pageErrors: [], unknownWrites: [], saveError: null, uploadError: null, analysisError: null, projectListError: Boolean(options.projectListError), missingPlanning: Boolean(options.noWorkspace), nextTaskId: 3100 })
       for (const record of Object.values(state.records)) {

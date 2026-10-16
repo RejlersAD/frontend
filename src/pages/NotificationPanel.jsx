@@ -36,45 +36,33 @@ import {
   WrenchScrewdriverIcon,
   XCircleIcon,
   XMarkIcon,
-} from "@heroicons/react/24/outline";
-import notificationService from "../services/notification.service";
-import apiClient from "../services/api.service";
-import { resolveNotificationTarget } from "../utils/notificationNavigation";
-import {
-  notificationCategory,
-  notificationPriority,
-  isApprovalNotification,
-  isUrgentNotification,
-  notificationSourceKey,
-  notificationDateGroup,
-  notificationTimeLabel,
-} from "../utils/notificationCenter";
-import NotificationPurchaseOrderPreview from "../components/notifications/NotificationPurchaseOrderPreview";
-import PurchaseRequisitionDocumentPreview from "./Procurement/PurchaseRequisitionDocumentPreview";
-import { canDecideProcurement } from "../utils/procurementApproval";
-import "../components/notifications/NotificationRecordPreview.css";
-import "./NotificationPanel.css";
+} from '@heroicons/react/24/outline'
+import notificationService from '../services/notification.service'
+import apiClient from '../services/api.service'
+import { resolveNotificationTarget } from '../utils/notificationNavigation'
+import { loadNotificationInbox } from '../utils/notificationInbox'
+import { notificationCategory, notificationPriority, isApprovalNotification, isUrgentNotification, notificationSourceKey, notificationDateGroup, notificationTimeLabel } from '../utils/notificationCenter'
+import NotificationPurchaseOrderPreview from '../components/notifications/NotificationPurchaseOrderPreview'
+import PurchaseRequisitionDocumentPreview from './Procurement/PurchaseRequisitionDocumentPreview'
+import { canDecideProcurement } from '../utils/procurementApproval'
+import '../components/notifications/NotificationRecordPreview.css'
+import './NotificationPanel.css'
 
 const FILTERS = [
-  { id: "all", label: "All" },
-  { id: "unread", label: "Unread" },
-  { id: "urgent", label: "Urgent" },
-  { id: "approvals", label: "Approvals" },
-];
+  { id: 'all', label: 'All' },
+  { id: 'unread', label: 'Unread' },
+  { id: 'urgent', label: 'Urgent' },
+  { id: 'approvals', label: 'Approvals' },
+]
 
-const PAGE_SIZE = 10;
-const EMPTY_NOTIFICATIONS = [];
+const PAGE_SIZE = 10
+const EMPTY_NOTIFICATIONS = []
 
 const requestErrorMessage = (error) => {
-  if (error?.notificationMessage) return error.notificationMessage;
-  const status =
-    error?.response?.status || error?.originalError?.response?.status;
-  if (
-    error?.isTimeout ||
-    error?.code === "ECONNABORTED" ||
-    /timeout/i.test(error?.message || "")
-  ) {
-    return "Notification refresh timed out. The existing inbox remains available; select Retry when the server is less busy.";
+  if (error?.notificationMessage) return error.notificationMessage
+  const status = error?.response?.status || error?.originalError?.response?.status
+  if (error?.isTimeout || error?.code === 'ECONNABORTED' || /timeout/i.test(error?.message || '')) {
+    return 'Notification refresh timed out. The existing inbox remains available; select Retry when the server is less busy.'
   }
   if (status === 401)
     return "Your session has expired. Sign in again to refresh notifications.";
@@ -85,17 +73,8 @@ const requestErrorMessage = (error) => {
   if (error?.isNetworkError || !error?.response) {
     return "The notification service could not be reached. Check the connection and select Retry.";
   }
-  return (
-    error?.response?.data?.detail ||
-    "Notifications could not be refreshed. The existing inbox remains available."
-  );
-};
-
-const incompleteInboxError = () =>
-  Object.assign(new Error("Incomplete notification snapshot"), {
-    notificationMessage:
-      "The complete notification inbox could not be loaded. Please retry.",
-  });
+  return error?.response?.data?.detail || 'Notifications could not be refreshed. The existing inbox remains available.'
+}
 
 const PRIORITY_STYLES = {
   CRITICAL: {
@@ -160,99 +139,75 @@ const CATEGORY_ICONS = {
   ALERT: ExclamationTriangleIcon,
   INFO: DocumentTextIcon,
   PROCUREMENT: DocumentTextIcon,
-};
+}
 
-const categoryName = notificationCategory;
+const categoryName = notificationCategory
 
 const NotificationPanel = () => {
-  const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const { isAuthenticated, user } = useSelector((state) => state.auth);
-  const notificationUserId = user?.user?.id ?? user?.id;
-  const [inboxNotifications, setNotifications] = useState([]);
-  const [loadedInboxContext, setLoadedInboxContext] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState("all");
-  const [search, setSearch] = useState("");
-  const [category, setCategory] = useState("all");
-  const [priorityFilter, setPriorityFilter] = useState("all");
-  const [sortOrder, setSortOrder] = useState("newest");
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const [selectedId, setSelectedId] = useState(null);
-  const [detailsClosed, setDetailsClosed] = useState(false);
-  const [menuId, setMenuId] = useState(null);
-  const [menuUpwards, setMenuUpwards] = useState(false);
-  const [relatedOpen, setRelatedOpen] = useState(true);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [error, setError] = useState("");
-  const [busyId, setBusyId] = useState(null);
-  const [bulkLoading, setBulkLoading] = useState(false);
-  const [recordPreview, setRecordPreview] = useState({
-    loading: false,
-    data: null,
-    error: "",
-  });
-  const [previewDecision, setPreviewDecision] = useState({
-    loading: false,
-    mode: null,
-    reason: "",
-    message: "",
-    error: "",
-  });
-  const refreshAbortRef = useRef(null);
-  const hasLoadedInboxRef = useRef(false);
-  const actionPendingRef = useRef(false);
-  const accountKey = `${Boolean(isAuthenticated)}:${notificationUserId ?? ""}`;
-  const accountGenerationRef = useRef({ key: accountKey, generation: 0 });
+  const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const { isAuthenticated, user } = useSelector((state) => state.auth)
+  const notificationUserId = user?.user?.id ?? user?.id
+  const [inboxNotifications, setNotifications] = useState([])
+  const [loadedInboxContext, setLoadedInboxContext] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [filter, setFilter] = useState('all')
+  const [search, setSearch] = useState('')
+  const [category, setCategory] = useState('all')
+  const [priorityFilter, setPriorityFilter] = useState('all')
+  const [sortOrder, setSortOrder] = useState('newest')
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [selectedId, setSelectedId] = useState(null)
+  const [detailsClosed, setDetailsClosed] = useState(false)
+  const [menuId, setMenuId] = useState(null)
+  const [menuUpwards, setMenuUpwards] = useState(false)
+  const [relatedOpen, setRelatedOpen] = useState(true)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [error, setError] = useState('')
+  const [busyId, setBusyId] = useState(null)
+  const [bulkLoading, setBulkLoading] = useState(false)
+  const [recordPreview, setRecordPreview] = useState({ loading: false, data: null, error: '' })
+  const [previewDecision, setPreviewDecision] = useState({ loading: false, mode: null, reason: '', message: '', error: '' })
+  const refreshAbortRef = useRef(null)
+  const hasLoadedInboxRef = useRef(false)
+  const actionPendingRef = useRef(false)
+  const accountKey = `${Boolean(isAuthenticated)}:${notificationUserId ?? ''}`
+  const accountGenerationRef = useRef({ key: accountKey, generation: 0 })
   if (accountGenerationRef.current.key !== accountKey) {
-    accountGenerationRef.current = {
-      key: accountKey,
-      generation: accountGenerationRef.current.generation + 1,
-    };
+    accountGenerationRef.current = { key: accountKey, generation: accountGenerationRef.current.generation + 1 }
   }
-  const inboxContextRef = useRef("");
-  inboxContextRef.current = `${accountKey}:${accountGenerationRef.current.generation}`;
-  const notifications =
-    loadedInboxContext === inboxContextRef.current
-      ? inboxNotifications
-      : EMPTY_NOTIFICATIONS;
-  const rowButtonRefs = useRef(new Map());
-  const previewDialogRef = useRef(null);
-  const previewDecisionPendingRef = useRef(false);
-  previewDecisionPendingRef.current = previewDecision.loading;
+  const inboxContextRef = useRef('')
+  inboxContextRef.current = `${accountKey}:${accountGenerationRef.current.generation}`
+  const notifications = loadedInboxContext === inboxContextRef.current ? inboxNotifications : EMPTY_NOTIFICATIONS
+  const rowButtonRefs = useRef(new Map())
+  const previewDialogRef = useRef(null)
+  const previewDecisionPendingRef = useRef(false)
+  previewDecisionPendingRef.current = previewDecision.loading
 
-  const previewType = searchParams.get("preview");
-  const previewId = searchParams.get("id");
-  const previewContextRef = useRef("");
-  previewContextRef.current = `${previewType}:${previewId}:${inboxContextRef.current}`;
-  const canDecidePreview = canDecideProcurement(
-    recordPreview.data,
-    user,
-    previewType,
-  );
-  const previewNeedsReload =
-    previewType === "pr" &&
-    (previewDecision.stale ||
-      (recordPreview.data && !recordPreview.data.updated_at));
+  const previewType = searchParams.get('preview')
+  const previewId = searchParams.get('id')
+  const previewContextRef = useRef('')
+  previewContextRef.current = `${previewType}:${previewId}:${inboxContextRef.current}`
+  const canDecidePreview = canDecideProcurement(recordPreview.data, user, previewType)
+  const previewNeedsReload = previewType === 'pr' && (previewDecision.stale || (recordPreview.data && !recordPreview.data.updated_at))
 
   const fetchNotifications = useCallback(async ({ quiet = false } = {}) => {
-    if (actionPendingRef.current) return;
-    if (refreshAbortRef.current) refreshAbortRef.current.abort();
-    const context = inboxContextRef.current;
-    const controller = new AbortController();
-    refreshAbortRef.current = controller;
-    if (!quiet) setLoading(true);
+    if (actionPendingRef.current) return
+    if (refreshAbortRef.current) refreshAbortRef.current.abort()
+    const context = inboxContextRef.current
+    const controller = new AbortController()
+    refreshAbortRef.current = controller
+    if (!quiet) setLoading(true)
     try {
       const [listResult, statsResult] = await Promise.allSettled([
-        notificationService.getNotifications(
-          { ordering: "-created_at", page_size: 100 },
+        loadNotificationInbox(page => notificationService.getNotifications(
+          { ordering: '-created_at', page_size: 100, ...(page > 1 ? { page } : {}) },
           { signal: controller.signal },
-        ),
+        ), { signal: controller.signal }),
         notificationService.getStats({ signal: controller.signal }),
       ]);
 
-      if (controller.signal.aborted || inboxContextRef.current !== context)
-        return;
+      if (controller.signal.aborted || inboxContextRef.current !== context) return
 
       if (listResult.status === "rejected") {
         console.error(
@@ -265,86 +220,14 @@ const NotificationPanel = () => {
         return;
       }
 
-      const listData = listResult.value;
-      if (!Array.isArray(listData) && !Array.isArray(listData?.results))
-        throw incompleteInboxError();
-      if (
-        listData?.count !== undefined &&
-        (!Number.isInteger(listData.count) || listData.count < 0)
-      )
-        throw incompleteInboxError();
-      const expectedCount = listData?.count;
-      let nextNotifications = Array.isArray(listData?.results)
-        ? listData.results
-        : Array.isArray(listData)
-          ? listData
-          : [];
-      let nextPage = listData?.next;
-      const maximumPages = Number.isInteger(listData?.count)
-        ? Math.max(1, listData.count)
-        : 1000;
-      const visitedPages = new Set([1]);
-      while (nextPage) {
-        const page = Number(
-          new URL(nextPage, window.location.origin).searchParams.get("page"),
-        );
-        if (
-          !Number.isInteger(page) ||
-          page !== visitedPages.size + 1 ||
-          visitedPages.has(page) ||
-          visitedPages.size >= maximumPages
-        )
-          throw incompleteInboxError();
-        visitedPages.add(page);
-        const data = await notificationService.getNotifications(
-          { ordering: "-created_at", page_size: 100, page },
-          { signal: controller.signal },
-        );
-        if (controller.signal.aborted || inboxContextRef.current !== context)
-          return;
-        if (
-          data?.count !== undefined &&
-          expectedCount !== undefined &&
-          data.count !== expectedCount
-        )
-          throw incompleteInboxError();
-        if (
-          !Array.isArray(data?.results) ||
-          !data.results.length ||
-          !data.results.some(
-            (item) =>
-              !nextNotifications.some((current) => current.id === item.id),
-          )
-        )
-          throw incompleteInboxError();
-        nextNotifications = nextNotifications.concat(data.results);
-        nextPage = data?.next;
-      }
-      nextNotifications = [
-        ...new Map(nextNotifications.map((item) => [item.id, item])).values(),
-      ];
-      if (
-        expectedCount !== undefined &&
-        nextNotifications.length !== expectedCount
-      )
-        throw incompleteInboxError();
-      setNotifications(nextNotifications);
-      setLoadedInboxContext(context);
-      hasLoadedInboxRef.current = true;
-      setError("");
+      setNotifications(listResult.value)
+      setLoadedInboxContext(context)
+      hasLoadedInboxRef.current = true
+      setError('')
 
-      if (statsResult.status === "rejected")
-        console.warn(
-          "[NotificationPanel] Supplementary statistics unavailable:",
-          statsResult.reason,
-        );
+      if (statsResult.status === 'rejected') console.warn('[NotificationPanel] Supplementary statistics unavailable:', statsResult.reason)
     } catch (requestError) {
-      if (
-        !controller.signal.aborted &&
-        inboxContextRef.current === context &&
-        (!quiet || !hasLoadedInboxRef.current)
-      )
-        setError(requestErrorMessage(requestError));
+      if (!controller.signal.aborted && inboxContextRef.current === context && (!quiet || !hasLoadedInboxRef.current)) setError(requestErrorMessage(requestError))
     } finally {
       if (refreshAbortRef.current === controller) {
         refreshAbortRef.current = null;
@@ -354,28 +237,25 @@ const NotificationPanel = () => {
   }, []);
 
   useEffect(() => {
-    setNotifications([]);
-    setLoadedInboxContext(null);
-    setSelectedId(null);
-    setDetailsClosed(false);
-    setError("");
-    setMenuId(null);
-    setBusyId(null);
-    setBulkLoading(false);
-    setCurrentPage(1);
-    hasLoadedInboxRef.current = false;
-    actionPendingRef.current = false;
-    if (!isAuthenticated) return undefined;
-    fetchNotifications();
-    const interval = setInterval(
-      () => fetchNotifications({ quiet: true }),
-      60000,
-    );
+    setNotifications([])
+    setLoadedInboxContext(null)
+    setSelectedId(null)
+    setDetailsClosed(false)
+    setError('')
+    setMenuId(null)
+    setBusyId(null)
+    setBulkLoading(false)
+    setCurrentPage(1)
+    hasLoadedInboxRef.current = false
+    actionPendingRef.current = false
+    if (!isAuthenticated) return undefined
+    fetchNotifications()
+    const interval = setInterval(() => fetchNotifications({ quiet: true }), 60000)
     return () => {
-      clearInterval(interval);
-      refreshAbortRef.current?.abort();
-    };
-  }, [fetchNotifications, isAuthenticated, notificationUserId]);
+      clearInterval(interval)
+      refreshAbortRef.current?.abort()
+    }
+  }, [fetchNotifications, isAuthenticated, notificationUserId])
 
   useEffect(() => {
     if (!isAuthenticated || !["po", "pr"].includes(previewType) || !previewId) {
@@ -506,13 +386,8 @@ const NotificationPanel = () => {
       return;
     }
 
-    const context = previewContextRef.current;
-    setPreviewDecision((current) => ({
-      ...current,
-      loading: true,
-      error: "",
-      message: "",
-    }));
+    const context = previewContextRef.current
+    setPreviewDecision((current) => ({ ...current, loading: true, error: '', message: '' }))
     try {
       const isPurchaseOrder = previewType === "po";
       const endpoint = isPurchaseOrder
@@ -526,24 +401,15 @@ const NotificationPanel = () => {
             note: reason,
             reason,
           }
-        : decision === "approve"
-          ? {
-              signature: "",
-              expected_updated_at: recordPreview.data.updated_at,
-            }
-          : { reason, expected_updated_at: recordPreview.data.updated_at };
+        : decision === 'approve'
+          ? { signature: '', expected_updated_at: recordPreview.data.updated_at }
+          : { reason, expected_updated_at: recordPreview.data.updated_at }
 
-      const response = await apiClient.post(endpoint, payload);
-      if (previewContextRef.current !== context) return;
-      const updatedRecord =
-        response.data?.purchase_order ||
-        response.data?.requisition ||
-        response.data;
-      if (updatedRecord && typeof updatedRecord === "object") {
-        setRecordPreview((current) => ({
-          ...current,
-          data: { ...current.data, ...updatedRecord },
-        }));
+      const response = await apiClient.post(endpoint, payload)
+      if (previewContextRef.current !== context) return
+      const updatedRecord = response.data?.purchase_order || response.data?.requisition || response.data
+      if (updatedRecord && typeof updatedRecord === 'object') {
+        setRecordPreview((current) => ({ ...current, data: { ...current.data, ...updatedRecord } }))
       }
       setPreviewDecision({
         loading: false,
@@ -555,7 +421,7 @@ const NotificationPanel = () => {
       window.dispatchEvent(new Event("procurement-approval-updated"));
       void fetchNotifications({ quiet: true });
     } catch (requestError) {
-      if (previewContextRef.current !== context) return;
+      if (previewContextRef.current !== context) return
       setPreviewDecision((current) => ({
         ...current,
         loading: false,
@@ -635,185 +501,101 @@ const NotificationPanel = () => {
   }, [closeRecordPreview, previewId, previewType]);
 
   const filteredNotifications = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return notifications
-      .filter((notification) => {
-        const priority = notificationPriority(notification);
-        if (filter === "unread" && notification.is_read) return false;
-        if (filter === "urgent" && !isUrgentNotification(notification))
-          return false;
-        if (filter === "approvals" && !isApprovalNotification(notification))
-          return false;
-        if (category !== "all" && categoryName(notification) !== category)
-          return false;
-        if (priorityFilter !== "all" && priority !== priorityFilter)
-          return false;
-        return (
-          !query ||
-          [
-            notification.title,
-            notification.message,
-            categoryName(notification),
-            priority,
-          ].some((value) =>
-            String(value || "")
-              .toLowerCase()
-              .includes(query),
-          )
-        );
-      })
-      .sort((a, b) => {
-        const first = new Date(a.created_at).getTime() || 0;
-        const second = new Date(b.created_at).getTime() || 0;
-        return sortOrder === "oldest" ? first - second : second - first;
-      });
-  }, [filter, notifications, search, category, priorityFilter, sortOrder]);
+    const query = search.trim().toLowerCase()
+    return notifications.filter((notification) => {
+      const priority = notificationPriority(notification)
+      if (filter === 'unread' && notification.is_read) return false
+      if (filter === 'urgent' && !isUrgentNotification(notification)) return false
+      if (filter === 'approvals' && !isApprovalNotification(notification)) return false
+      if (category !== 'all' && categoryName(notification) !== category) return false
+      if (priorityFilter !== 'all' && priority !== priorityFilter) return false
+      return !query || [notification.title, notification.message, categoryName(notification), priority]
+        .some(value => String(value || '').toLowerCase().includes(query))
+    }).sort((a, b) => {
+      const first = new Date(a.created_at).getTime() || 0
+      const second = new Date(b.created_at).getTime() || 0
+      return sortOrder === 'oldest' ? first - second : second - first
+    })
+  }, [filter, notifications, search, category, priorityFilter, sortOrder])
 
-  const totalPages = Math.max(
-    1,
-    Math.ceil(filteredNotifications.length / PAGE_SIZE),
-  );
-  const activePage = Math.min(currentPage, totalPages);
+  const totalPages = Math.max(1, Math.ceil(filteredNotifications.length / PAGE_SIZE))
+  const activePage = Math.min(currentPage, totalPages)
   const paginatedNotifications = useMemo(() => {
     const start = (activePage - 1) * PAGE_SIZE;
     return filteredNotifications.slice(start, start + PAGE_SIZE);
   }, [activePage, filteredNotifications]);
   const visiblePages = useMemo(() => {
-    const start = Math.max(1, Math.min(activePage - 2, totalPages - 4));
-    const end = Math.min(totalPages, start + 4);
-    return Array.from({ length: end - start + 1 }, (_, index) => start + index);
-  }, [activePage, totalPages]);
-  const categories = useMemo(
-    () => [...new Set(notifications.map(categoryName))].sort(),
-    [notifications],
-  );
-  const selectedNotification = detailsClosed
-    ? null
-    : paginatedNotifications.find((item) => item.id === selectedId) ||
-      paginatedNotifications[0] ||
-      null;
-  const selectedTarget =
-    selectedNotification && resolveNotificationTarget(selectedNotification);
-  const SelectedIcon =
-    CATEGORY_ICONS[
-      selectedNotification && categoryName(selectedNotification)
-    ] || DocumentTextIcon;
-  const sourceKey =
-    selectedNotification && notificationSourceKey(selectedNotification);
-  const relatedNotifications = useMemo(
-    () =>
-      sourceKey
-        ? notifications.filter(
-            (item) =>
-              item.id !== selectedNotification?.id &&
-              notificationSourceKey(item) === sourceKey,
-          )
-        : [],
-    [notifications, sourceKey, selectedNotification?.id],
-  );
-  const actionBusy = busyId !== null || bulkLoading;
-  const selectedBusy =
-    selectedNotification && busyId === selectedNotification.id;
-  const hasFilters =
-    filter !== "all" ||
-    search ||
-    category !== "all" ||
-    priorityFilter !== "all";
+    const start = Math.max(1, Math.min(activePage - 2, totalPages - 4))
+    const end = Math.min(totalPages, start + 4)
+    return Array.from({ length: end - start + 1 }, (_, index) => start + index)
+  }, [activePage, totalPages])
+  const categories = useMemo(() => [...new Set(notifications.map(categoryName))].sort(), [notifications])
+  const selectedNotification = detailsClosed ? null : paginatedNotifications.find(item => item.id === selectedId) || paginatedNotifications[0] || null
+  const selectedTarget = selectedNotification && resolveNotificationTarget(selectedNotification)
+  const SelectedIcon = CATEGORY_ICONS[selectedNotification && categoryName(selectedNotification)] || DocumentTextIcon
+  const sourceKey = selectedNotification && notificationSourceKey(selectedNotification)
+  const relatedNotifications = useMemo(() => sourceKey ? notifications.filter(item => item.id !== selectedNotification?.id && notificationSourceKey(item) === sourceKey) : [], [notifications, sourceKey, selectedNotification?.id])
+  const actionBusy = busyId !== null || bulkLoading
+  const selectedBusy = selectedNotification && busyId === selectedNotification.id
+  const hasFilters = filter !== 'all' || search || category !== 'all' || priorityFilter !== 'all'
 
+  useEffect(() => { setCurrentPage(1); setMenuId(null) }, [filter, search, category, priorityFilter, sortOrder])
+  useEffect(() => { setCurrentPage(page => Math.min(page, totalPages)); setMenuId(null) }, [totalPages, currentPage])
   useEffect(() => {
-    setCurrentPage(1);
-    setMenuId(null);
-  }, [filter, search, category, priorityFilter, sortOrder]);
-  useEffect(() => {
-    setCurrentPage((page) => Math.min(page, totalPages));
-    setMenuId(null);
-  }, [totalPages, currentPage]);
-  useEffect(() => {
-    if (menuId === null) return undefined;
-    const closeMenu = (event) => {
-      if (event.type === "keydown" && event.key !== "Escape") return;
-      if (
-        event.type !== "keydown" &&
-        event.target.closest(".notification-center__row-actions")
-      )
-        return;
-      setMenuId(null);
-      if (event.type === "keydown") rowButtonRefs.current.get(menuId)?.focus();
-    };
-    document.addEventListener("pointerdown", closeMenu);
-    document.addEventListener("keydown", closeMenu);
+    if (menuId === null) return undefined
+    const closeMenu = event => {
+      if (event.type === 'keydown' && event.key !== 'Escape') return
+      if (event.type !== 'keydown' && event.target.closest('.notification-center__row-actions')) return
+      setMenuId(null)
+      if (event.type === 'keydown') rowButtonRefs.current.get(menuId)?.focus()
+    }
+    document.addEventListener('pointerdown', closeMenu)
+    document.addEventListener('keydown', closeMenu)
     return () => {
-      document.removeEventListener("pointerdown", closeMenu);
-      document.removeEventListener("keydown", closeMenu);
-    };
-  }, [menuId]);
+      document.removeEventListener('pointerdown', closeMenu)
+      document.removeEventListener('keydown', closeMenu)
+    }
+  }, [menuId])
 
-  const unreadCount = notifications.filter((item) => !item.is_read).length;
-  const urgentCount = notifications.filter(isUrgentNotification).length;
-  const approvalCount = notifications.filter(isApprovalNotification).length;
-  const countsReady =
-    hasLoadedInboxRef.current && loadedInboxContext === inboxContextRef.current;
-  const resetFilters = () => {
-    setFilter("all");
-    setSearch("");
-    setCategory("all");
-    setPriorityFilter("all");
-  };
-  const selectNotification = (notification) => {
-    setSelectedId(notification.id);
-    setDetailsClosed(false);
-    setMenuId(null);
-  };
-  const selectRelated = (notification) => {
-    resetFilters();
-    const sorted = [...notifications].sort(
-      (a, b) => new Date(b.created_at) - new Date(a.created_at),
-    );
-    setSortOrder("newest");
-    selectNotification(notification);
+  const unreadCount = notifications.filter(item => !item.is_read).length
+  const urgentCount = notifications.filter(isUrgentNotification).length
+  const approvalCount = notifications.filter(isApprovalNotification).length
+  const countsReady = hasLoadedInboxRef.current && loadedInboxContext === inboxContextRef.current
+  const resetFilters = () => { setFilter('all'); setSearch(''); setCategory('all'); setPriorityFilter('all') }
+  const selectNotification = notification => { setSelectedId(notification.id); setDetailsClosed(false); setMenuId(null) }
+  const selectRelated = notification => {
+    resetFilters()
+    const sorted = [...notifications].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    setSortOrder('newest')
+    selectNotification(notification)
     // Selection can refer to a later page in the unfiltered inbox.
-    setTimeout(
-      () =>
-        setCurrentPage(
-          Math.floor(
-            sorted.findIndex((item) => item.id === notification.id) / PAGE_SIZE,
-          ) + 1,
-        ),
-      0,
-    );
-  };
+    setTimeout(() => setCurrentPage(Math.floor(sorted.findIndex(item => item.id === notification.id) / PAGE_SIZE) + 1), 0)
+  }
   const closeDetails = () => {
-    setDetailsClosed(true);
-    if (selectedNotification)
-      rowButtonRefs.current.get(selectedNotification.id)?.focus();
-  };
+    setDetailsClosed(true)
+    if (selectedNotification) rowButtonRefs.current.get(selectedNotification.id)?.focus()
+  }
 
-  const runNotificationAction = async (
-    id,
-    action,
-    onSuccess,
-    failureMessage,
-  ) => {
-    if (actionPendingRef.current || !isAuthenticated) return;
-    const context = inboxContextRef.current;
-    actionPendingRef.current = true;
-    refreshAbortRef.current?.abort();
-    setBusyId(id);
-    setError("");
-    setMenuId(null);
+  const runNotificationAction = async (id, action, onSuccess, failureMessage) => {
+    if (actionPendingRef.current || !isAuthenticated) return
+    const context = inboxContextRef.current
+    actionPendingRef.current = true
+    refreshAbortRef.current?.abort()
+    setBusyId(id)
+    setError('')
+    setMenuId(null)
     try {
-      await action();
-      if (inboxContextRef.current !== context) return;
-      onSuccess();
-      window.dispatchEvent(new Event("notifications-updated"));
+      await action()
+      if (inboxContextRef.current !== context) return
+      onSuccess()
+      window.dispatchEvent(new Event('notifications-updated'))
     } catch (requestError) {
-      if (inboxContextRef.current === context)
-        setError(requestError.response?.data?.detail || failureMessage);
+      if (inboxContextRef.current === context) setError(requestError.response?.data?.detail || failureMessage)
     } finally {
       if (inboxContextRef.current === context) {
-        actionPendingRef.current = false;
-        setBusyId(null);
-        setBulkLoading(false);
+        actionPendingRef.current = false
+        setBusyId(null)
+        setBulkLoading(false)
       }
     }
   };
@@ -839,49 +621,42 @@ const NotificationPanel = () => {
     );
   };
 
+  const handleMarkAsRead = async id => {
+    if (id === null || id === undefined || !notifications.some(item => item.id === id && !item.is_read)) return
+    await runNotificationAction(id, () => notificationService.markAsRead(id), () => {
+      setNotifications(current => current.map(item => item.id === id ? { ...item, is_read: true } : item))
+    }, 'The notification could not be marked as read. Please retry.')
+  }
+
   const handleMarkAllAsRead = async () => {
-    if (actionPendingRef.current) return;
-    setBulkLoading(true);
-    await runNotificationAction(
-      "all",
-      () => notificationService.markAllAsRead(),
-      () => {
-        setNotifications((current) =>
-          current.map((item) => ({ ...item, is_read: true })),
-        );
-      },
-      "Notifications could not be marked as read. Please retry.",
-    );
-  };
+    if (actionPendingRef.current) return
+    setBulkLoading(true)
+    await runNotificationAction('all', () => notificationService.markAllAsRead(), () => {
+      setNotifications(current => current.map(item => ({ ...item, is_read: true })))
+    }, 'Notifications could not be marked as read. Please retry.')
+  }
 
-  const handleDelete = async (id) => {
-    if (id === null || id === undefined) return;
-    await runNotificationAction(
-      id,
-      () => notificationService.deleteNotification(id),
-      () => {
-        setNotifications((current) => current.filter((item) => item.id !== id));
-      },
-      "The notification could not be dismissed. Please retry.",
-    );
-  };
+  const handleDelete = async id => {
+    if (id === null || id === undefined) return
+    await runNotificationAction(id, () => notificationService.deleteNotification(id), () => {
+      setNotifications(current => current.filter(item => item.id !== id))
+    }, 'The notification could not be dismissed. Please retry.')
+  }
 
-  const openNotification = (notification) => {
-    const target = resolveNotificationTarget(notification);
-    if (!target) return;
-    if (!notification.is_read) void handleMarkAsRead(notification.id);
-    if (target.isExternal) window.location.assign(target.href);
-    else
-      navigate(target.href, { state: { fromNotificationId: notification.id } });
-  };
+  const openNotification = notification => {
+    const target = resolveNotificationTarget(notification)
+    if (!target) return
+    if (!notification.is_read) void handleMarkAsRead(notification.id)
+    if (target.isExternal) window.location.assign(target.href)
+    else navigate(target.href, { state: { fromNotificationId: notification.id } })
+  }
 
-  const openLabel = (notification) => {
-    const target = resolveNotificationTarget(notification);
-    if (target?.href.includes("preview=po")) return "Open purchase order";
-    if (target?.href.includes("preview=pr"))
-      return "Open purchase recommendation";
-    return notification.action_label || "Open notification";
-  };
+  const openLabel = notification => {
+    const target = resolveNotificationTarget(notification)
+    if (target?.href.includes('preview=po')) return 'Open purchase order'
+    if (target?.href.includes('preview=pr')) return 'Open purchase recommendation'
+    return notification.action_label || 'Open notification'
+  }
 
   if (!isAuthenticated) {
     return (
@@ -898,370 +673,114 @@ const NotificationPanel = () => {
 
   return (
     <div className="notification-center">
-      <section
-        className="notification-center__overview"
-        aria-labelledby="notification-center-title"
-      >
+      <section className="notification-center__overview" aria-labelledby="notification-center-title">
         <div className="notification-center__heading-row">
           <div>
-            <h1 id="notification-center-title">Notification</h1>
+            <h1 id="notification-center-title">Notification Center</h1>
             <p>Review updates, approvals and items requiring your attention.</p>
           </div>
-          
-        </div>
-     
-        {filtersOpen && (
-          <div
-            id="notification-center-filters"
-            className="notification-center__expanded-filters"
-          >
-            <label>
-              Priority
-              <select
-                aria-label="Priority"
-                value={priorityFilter}
-                onChange={(event) => setPriorityFilter(event.target.value)}
-              >
-                <option value="all">All priorities</option>
-                {["LOW", "NORMAL", "HIGH", "URGENT", "CRITICAL"].map(
-                  (priority) => (
-                    <option key={priority} value={priority}>
-                      {PRIORITY_STYLES[priority].label}
-                    </option>
-                  ),
-                )}
-              </select>
-            </label>
-            <button
-              type="button"
-              className="notification-center__button"
-              onClick={resetFilters}
-              disabled={!hasFilters}
-            >
-              Clear filters
-            </button>
-            <button
-              type="button"
-              className="notification-center__button"
-              onClick={() => fetchNotifications()}
-              disabled={loading || actionBusy}
-            >
-              <ArrowPathIcon
-                className={loading ? "notification-center__spin" : ""}
-              />
-              Refresh
-            </button>
+          <div className="notification-center__header-actions">
+            <div className="notification-center__search">
+              <MagnifyingGlassIcon aria-hidden="true" />
+              <input type="search" aria-label="Search notifications" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search notifications..." />
+              {search && <button type="button" onClick={() => setSearch('')} aria-label="Clear search"><XMarkIcon /></button>}
+            </div>
+            <button type="button" className={`notification-center__button${filtersOpen ? ' is-active' : ''}`} aria-expanded={filtersOpen} aria-controls="notification-center-filters" onClick={() => setFiltersOpen(current => !current)}><FunnelIcon />Filters{priorityFilter !== 'all' && <span className="notification-center__filter-dot" />}</button>
+            <button type="button" className="notification-center__button notification-center__button--link" disabled={actionBusy || !unreadCount || loading} onClick={handleMarkAllAsRead}><EnvelopeIcon />{bulkLoading ? 'Updating...' : 'Mark all as read'}</button>
           </div>
-        )}
+        </div>
+        <div className="notification-center__metrics">
+          {[
+            { id: 'all', label: 'All', accessible: 'All notifications', value: notifications.length, icon: BellIcon, tone: 'blue' },
+            { id: 'unread', label: 'Unread', accessible: 'Unread notifications', value: unreadCount, icon: EnvelopeIcon, tone: 'purple' },
+            { id: 'urgent', label: 'Urgent & critical', accessible: 'Urgent notifications', value: urgentCount, icon: ExclamationTriangleIcon, tone: 'red' },
+            { id: 'approvals', label: 'Approvals', accessible: 'Approval notifications', value: approvalCount, icon: UsersIcon, tone: 'amber' },
+          ].map(metric => <button type="button" key={metric.id} aria-label={`${metric.accessible}: ${countsReady ? metric.value : 'unavailable'}`} aria-pressed={filter === metric.id} title={metric.id === 'urgent' ? 'High, urgent and critical priority notifications' : undefined} onClick={() => setFilter(metric.id)} className={`notification-center__metric notification-center__metric--${metric.tone}${filter === metric.id ? ' is-selected' : ''}`}>
+            <span className="notification-center__metric-icon"><metric.icon aria-hidden="true" /></span>
+            <span><span className="notification-center__metric-label metric-label">{metric.label}</span><strong className="metric-value">{countsReady ? metric.value : '—'}</strong></span>
+          </button>)}
+        </div>
+        {filtersOpen && <div id="notification-center-filters" className="notification-center__expanded-filters">
+          <label>Priority<select aria-label="Priority" value={priorityFilter} onChange={event => setPriorityFilter(event.target.value)}><option value="all">All priorities</option>{['LOW', 'NORMAL', 'HIGH', 'URGENT', 'CRITICAL'].map(priority => <option key={priority} value={priority}>{PRIORITY_STYLES[priority].label}</option>)}</select></label>
+          <button type="button" className="notification-center__button" onClick={resetFilters} disabled={!hasFilters}>Clear filters</button>
+          <button type="button" className="notification-center__button" onClick={() => fetchNotifications()} disabled={loading || actionBusy}><ArrowPathIcon className={loading ? 'notification-center__spin' : ''} />Refresh</button>
+        </div>}
       </section>
 
-      {error && (
-        <div className="notification-center__error" role="alert">
-          <ExclamationTriangleIcon />
-          <span>{error}</span>
-          <button
-            type="button"
-            onClick={() => fetchNotifications()}
-            disabled={loading || actionBusy}
-          >
-            {loading ? "Retrying..." : "Retry"}
-          </button>
-          <button
-            type="button"
-            aria-label="Dismiss error"
-            onClick={() => setError("")}
-          >
-            <XMarkIcon />
-          </button>
-        </div>
-      )}
+      {error && <div className="notification-center__error" role="alert"><ExclamationTriangleIcon /><span>{error}</span><button type="button" onClick={() => fetchNotifications()} disabled={loading || actionBusy}>{loading ? 'Retrying...' : 'Retry'}</button><button type="button" aria-label="Dismiss error" onClick={() => setError('')}><XMarkIcon /></button></div>}
 
-      <div
-        className={`notification-center__workspace${selectedNotification ? "" : " notification-center__workspace--no-details"}`}
-      >
-        <section
-          className="notification-center__inbox"
-          aria-label="Notifications"
-          aria-busy={loading}
-        >
+      <div className={`notification-center__workspace${selectedNotification ? '' : ' notification-center__workspace--no-details'}`}>
+        <section className="notification-center__inbox" aria-label="Notifications" aria-busy={loading}>
           <div className="notification-center__list-toolbar">
-            <div
-              className="notification-center__tabs"
-              aria-label="Notification views"
-              role="group"
-            >
-              {FILTERS.map((option) => (
-                <button
-                  type="button"
-                  key={option.id}
-                  aria-pressed={filter === option.id}
-                  onClick={() => setFilter(option.id)}
-                  className={filter === option.id ? "is-active" : ""}
-                >
-                  {option.label}
-                </button>
-              ))}
+            <div className="notification-center__tabs" aria-label="Notification views" role="group">
+              {FILTERS.map(option => <button type="button" key={option.id} aria-pressed={filter === option.id} onClick={() => setFilter(option.id)} className={filter === option.id ? 'is-active' : ''}>{option.label}</button>)}
             </div>
             <div className="notification-center__list-selects">
-              <span className="notification-center__select">
-                <select
-                  aria-label="Category"
-                  value={category}
-                  onChange={(event) => setCategory(event.target.value)}
-                >
-                  <option value="all">Category</option>
-                  {categories.map((value) => (
-                    <option key={value} value={value}>
-                      {value.replaceAll("_", " ")}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDownIcon />
-              </span>
-              <span className="notification-center__select">
-                <select
-                  aria-label="Sort notifications"
-                  value={sortOrder}
-                  onChange={(event) => setSortOrder(event.target.value)}
-                >
-                  <option value="newest">Newest first</option>
-                  <option value="oldest">Oldest first</option>
-                </select>
-                <ChevronDownIcon />
-              </span>
+              <span className="notification-center__select"><select aria-label="Category" value={category} onChange={event => setCategory(event.target.value)}><option value="all">Category</option>{categories.map(value => <option key={value} value={value}>{value.replaceAll('_', ' ')}</option>)}</select><ChevronDownIcon /></span>
+              <span className="notification-center__select"><select aria-label="Sort notifications" value={sortOrder} onChange={event => setSortOrder(event.target.value)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select><ChevronDownIcon /></span>
             </div>
           </div>
           <div className="notification-center__list-body">
-            {loading && !notifications.length ? (
-              <div className="notification-center__loading" role="status">
-                <ArrowPathIcon className="notification-center__spin" />
-                <span>Loading notifications...</span>
-                {[1, 2, 3, 4, 5, 6].map((item) => (
-                  <div key={item} className="notification-center__skeleton" />
-                ))}
-              </div>
-            ) : !paginatedNotifications.length ? (
-              <div className="notification-center__empty">
-                <InboxIcon />
-                <h2>
-                  {hasFilters
-                    ? "No matching notifications"
-                    : error
-                      ? "Notifications unavailable"
-                      : "You are all caught up"}
-                </h2>
-                <p>
-                  {hasFilters
-                    ? "Try another search or clear your filters."
-                    : error
-                      ? "Retry to load your notifications."
-                      : "New updates will appear here."}
-                </p>
-                {hasFilters && (
-                  <button
-                    type="button"
-                    className="notification-center__button"
-                    onClick={resetFilters}
-                  >
-                    Clear filters
-                  </button>
-                )}
-              </div>
-            ) : (
-              paginatedNotifications.map((notification, index) => {
-                const priority = notificationPriority(notification);
-                const category = categoryName(notification);
-                const CategoryIcon =
-                  CATEGORY_ICONS[category] || DocumentTextIcon;
-                const group = notificationDateGroup(notification.created_at);
-                const showGroup =
-                  index === 0 ||
-                  notificationDateGroup(
-                    paginatedNotifications[index - 1].created_at,
-                  ) !== group;
-                const selected = selectedNotification?.id === notification.id;
-                return (
-                  <React.Fragment key={notification.id}>
-                    {showGroup && (
-                      <h2 className="notification-center__date-group">
-                        {group}
-                      </h2>
-                    )}
-                    <article
-                      className={`notification-center__row${selected ? " is-selected" : ""}${notification.is_read ? "" : " is-unread"}`}
-                    >
-                      <button
-                        type="button"
-                        ref={(element) => {
-                          if (element)
-                            rowButtonRefs.current.set(notification.id, element);
-                          else rowButtonRefs.current.delete(notification.id);
-                        }}
-                        className="notification-center__row-main"
-                        aria-label={`View notification: ${notification.title}`}
-                        aria-pressed={selected}
-                        onClick={() => selectNotification(notification)}
-                      >
-                        <span className="notification-center__row-icon">
-                          <CategoryIcon aria-hidden="true" />
-                        </span>
-                        <span
-                          className={`notification-center__unread-dot${notification.is_read ? " is-read" : ""}${["HIGH", "URGENT", "CRITICAL"].includes(priority) ? " is-urgent" : ""}`}
-                          title={notification.is_read ? "Read" : "Unread"}
-                        />
-                        <span className="notification-center__row-copy">
-                          <strong title={notification.title}>
-                            {notification.title}
-                          </strong>
-                          <span title={notification.message}>
-                            {notification.message}
-                          </span>
-                        </span>
-                        <span className="notification-center__row-category">
-                          <span
-                            className={`notification-center__category${category === "APPROVAL" ? " is-approval" : ""}`}
-                          >
-                            {category.replaceAll("_", " ")}
-                          </span>
-                        </span>
-                        <span className="notification-center__row-priority">
-                          <span
-                            className={`notification-center__priority notification-center__priority--${priority.toLowerCase()}`}
-                          >
-                            {PRIORITY_STYLES[priority]?.label || priority}
-                          </span>
-                        </span>
-                        <time
-                          className="notification-center__row-time"
-                          dateTime={notification.created_at}
-                          title={
-                            notification.created_at &&
-                            new Date(notification.created_at).toLocaleString()
-                          }
-                        >
-                          {notificationTimeLabel(notification)}
-                        </time>
-                        <span className="notification-center__sr-only">
-                          {notification.is_read ? "Read" : "Unread"}
-                        </span>
+            {loading && !notifications.length ? <div className="notification-center__loading" role="status"><ArrowPathIcon className="notification-center__spin" /><span>Loading notifications...</span>{[1, 2, 3, 4, 5, 6].map(item => <div key={item} className="notification-center__skeleton" />)}</div>
+              : !paginatedNotifications.length ? <div className="notification-center__empty"><InboxIcon /><h2>{hasFilters ? 'No matching notifications' : error ? 'Notifications unavailable' : 'You are all caught up'}</h2><p>{hasFilters ? 'Try another search or clear your filters.' : error ? 'Retry to load your notifications.' : 'New updates will appear here.'}</p>{hasFilters && <button type="button" className="notification-center__button" onClick={resetFilters}>Clear filters</button>}</div>
+                : paginatedNotifications.map((notification, index) => {
+                  const priority = notificationPriority(notification)
+                  const category = categoryName(notification)
+                  const CategoryIcon = CATEGORY_ICONS[category] || DocumentTextIcon
+                  const group = notificationDateGroup(notification.created_at)
+                  const showGroup = index === 0 || notificationDateGroup(paginatedNotifications[index - 1].created_at) !== group
+                  const selected = selectedNotification?.id === notification.id
+                  return <React.Fragment key={notification.id}>
+                    {showGroup && <h2 className="notification-center__date-group">{group}</h2>}
+                    <article className={`notification-center__row${selected ? ' is-selected' : ''}${notification.is_read ? '' : ' is-unread'}`}>
+                      <button type="button" ref={element => { if (element) rowButtonRefs.current.set(notification.id, element); else rowButtonRefs.current.delete(notification.id) }} className="notification-center__row-main" aria-label={`View notification: ${notification.title}`} aria-pressed={selected} onClick={() => selectNotification(notification)}>
+                        <span className="notification-center__row-icon"><CategoryIcon aria-hidden="true" /></span>
+                        <span className={`notification-center__unread-dot${notification.is_read ? ' is-read' : ''}${['HIGH', 'URGENT', 'CRITICAL'].includes(priority) ? ' is-urgent' : ''}`} title={notification.is_read ? 'Read' : 'Unread'} />
+                        <span className="notification-center__row-copy"><strong title={notification.title}>{notification.title}</strong><span title={notification.message}>{notification.message}</span></span>
+                        <span className="notification-center__row-category"><span className={`notification-center__category${category === 'APPROVAL' ? ' is-approval' : ''}`}>{category.replaceAll('_', ' ')}</span></span>
+                        <span className="notification-center__row-priority"><span className={`notification-center__priority notification-center__priority--${priority.toLowerCase()}`}>{PRIORITY_STYLES[priority]?.label || priority}</span></span>
+                        <time className="notification-center__row-time" dateTime={notification.created_at} title={notification.created_at && new Date(notification.created_at).toLocaleString()}>{notificationTimeLabel(notification)}</time>
+                        <span className="notification-center__sr-only">{notification.is_read ? 'Read' : 'Unread'}</span>
                       </button>
                       <div className="notification-center__row-actions">
-                        <button
-                          type="button"
-                          aria-label={`Actions for ${notification.title}`}
-                          aria-expanded={menuId === notification.id}
-                          aria-controls={`notification-actions-${notification.id}`}
-                          className="notification-center__more"
-                          onClick={(event) => {
-                            const button = event.currentTarget;
-                            const listBounds = button
-                              .closest(".notification-center__list-body")
-                              .getBoundingClientRect();
-                            setMenuUpwards(
-                              listBounds.bottom -
-                                button.getBoundingClientRect().bottom <
-                                140,
-                            );
-                            setMenuId((current) =>
-                              current === notification.id
-                                ? null
-                                : notification.id,
-                            );
-                          }}
-                        >
-                          <EllipsisHorizontalIcon />
-                        </button>
-                        {menuId === notification.id && (
-                          <div
-                            id={`notification-actions-${notification.id}`}
-                            className={`notification-center__menu${menuUpwards ? " opens-upwards" : ""}`}
-                          >
-                            {resolveNotificationTarget(notification) && (
-                              <button
-                                type="button"
-                                disabled={actionBusy}
-                                onClick={() => {
-                                  setMenuId(null);
-                                  openNotification(notification);
-                                }}
-                              >
-                                <ArrowTopRightOnSquareIcon />
-                                {openLabel(notification)}
-                              </button>
-                            )}
-                            {!notification.is_read && (
-                              <button
-                                type="button"
-                                disabled={actionBusy}
-                                onClick={() =>
-                                  handleMarkAsRead(notification.id)
-                                }
-                              >
-                                <EnvelopeOpenIcon />
-                                Mark as read
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              disabled={actionBusy}
-                              onClick={() => handleDelete(notification.id)}
-                            >
-                              <TrashIcon />
-                              Dismiss
-                            </button>
-                          </div>
-                        )}
+                        <button type="button" aria-label={`Actions for ${notification.title}`} aria-expanded={menuId === notification.id} aria-controls={`notification-actions-${notification.id}`} className="notification-center__more" onClick={event => {
+                          const button = event.currentTarget
+                          const listBounds = button.closest('.notification-center__list-body').getBoundingClientRect()
+                          setMenuUpwards(listBounds.bottom - button.getBoundingClientRect().bottom < 140)
+                          setMenuId(current => current === notification.id ? null : notification.id)
+                        }}><EllipsisHorizontalIcon /></button>
+                        {menuId === notification.id && <div id={`notification-actions-${notification.id}`} className={`notification-center__menu${menuUpwards ? ' opens-upwards' : ''}`}>
+                          {resolveNotificationTarget(notification) && <button type="button" disabled={actionBusy} onClick={() => { setMenuId(null); openNotification(notification) }}><ArrowTopRightOnSquareIcon />{openLabel(notification)}</button>}
+                          {!notification.is_read && <button type="button" disabled={actionBusy} onClick={() => handleMarkAsRead(notification.id)}><EnvelopeOpenIcon />Mark as read</button>}
+                          <button type="button" disabled={actionBusy} onClick={() => handleDelete(notification.id)}><TrashIcon />Dismiss</button>
+                        </div>}
                       </div>
                     </article>
                   </React.Fragment>
-                );
-              })
-            )}
+                })}
           </div>
           <footer className="notification-center__pagination">
-            <p>
-              Showing{" "}
-              <strong>
-                {filteredNotifications.length
-                  ? `${(activePage - 1) * PAGE_SIZE + 1}–${Math.min(activePage * PAGE_SIZE, filteredNotifications.length)}`
-                  : "0"}
-              </strong>{" "}
-              of <strong>{filteredNotifications.length}</strong>
-            </p>
-            <nav aria-label="Notification pagination">
-              <button
-                type="button"
-                disabled={activePage === 1}
-                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-              >
-                <ChevronLeftIcon />
-                Previous
-              </button>
-              {visiblePages.map((page) => (
-                <button
-                  type="button"
-                  key={page}
-                  aria-label={`Page ${page}`}
-                  aria-current={activePage === page ? "page" : undefined}
-                  className={activePage === page ? "is-active" : ""}
-                  onClick={() => setCurrentPage(page)}
-                >
-                  {page}
-                </button>
-              ))}
-              <button
-                type="button"
-                disabled={activePage === totalPages}
-                onClick={() =>
-                  setCurrentPage((page) => Math.min(totalPages, page + 1))
-                }
-              >
-                Next
-                <ChevronRightIcon />
-              </button>
-            </nav>
+            <p>Showing <strong>{filteredNotifications.length ? `${(activePage - 1) * PAGE_SIZE + 1}–${Math.min(activePage * PAGE_SIZE, filteredNotifications.length)}` : '0'}</strong> of <strong>{filteredNotifications.length}</strong></p>
+            <nav aria-label="Notification pagination"><button type="button" disabled={activePage === 1} onClick={() => setCurrentPage(page => Math.max(1, page - 1))}><ChevronLeftIcon />Previous</button>{visiblePages.map(page => <button type="button" key={page} aria-label={`Page ${page}`} aria-current={activePage === page ? 'page' : undefined} className={activePage === page ? 'is-active' : ''} onClick={() => setCurrentPage(page)}>{page}</button>)}<button type="button" disabled={activePage === totalPages} onClick={() => setCurrentPage(page => Math.min(totalPages, page + 1))}>Next<ChevronRightIcon /></button></nav>
           </footer>
         </section>
+
+        {selectedNotification && <aside className="notification-center__details" aria-labelledby="notification-details-heading">
+          <header className="notification-center__details-heading"><h2 id="notification-details-heading">Notification details</h2><button type="button" onClick={closeDetails} aria-label="Close notification details"><XMarkIcon /></button></header>
+          <div className="notification-center__details-scroll">
+            <div className="notification-center__detail-identity"><span className="notification-center__detail-icon"><SelectedIcon /></span><div><h3>{selectedNotification.title}</h3><div className="notification-center__detail-badges"><span className={`notification-center__priority notification-center__priority--${notificationPriority(selectedNotification).toLowerCase()}`}>{PRIORITY_STYLES[notificationPriority(selectedNotification)]?.label || notificationPriority(selectedNotification)}</span><span className="notification-center__category">{categoryName(selectedNotification).replaceAll('_', ' ')}</span></div></div></div>
+            <div className="notification-center__received"><ClockIcon /><div><span>Received</span><strong>{notificationTimeLabel(selectedNotification)}</strong></div></div>
+            <section className="notification-center__detail-section"><h3>Description</h3><p className="notification-center__description">{selectedNotification.message || 'No description provided.'}</p></section>
+            <section className="notification-center__detail-section"><h3>Details</h3><dl><div><dt><DocumentTextIcon />Category</dt><dd>{categoryName(selectedNotification).replaceAll('_', ' ')}</dd></div><div><dt><FlagIcon />Priority</dt><dd>{PRIORITY_STYLES[notificationPriority(selectedNotification)]?.label || notificationPriority(selectedNotification)}</dd></div><div><dt><ClockIcon />Received</dt><dd title={new Date(selectedNotification.created_at).toLocaleString()}>{notificationTimeLabel(selectedNotification)}</dd></div></dl></section>
+            <section className="notification-center__detail-section notification-center__related"><button type="button" aria-expanded={relatedOpen} aria-controls="notification-related-updates" onClick={() => setRelatedOpen(current => !current)}><span>Related updates ({relatedNotifications.length})</span><ChevronDownIcon className={relatedOpen ? 'is-open' : ''} /></button>{relatedOpen && <div id="notification-related-updates">{relatedNotifications.length ? relatedNotifications.map(notification => <button type="button" className="notification-center__related-item" key={notification.id} onClick={() => selectRelated(notification)}><span><DocumentTextIcon /></span><span><strong>{notification.title}</strong><time dateTime={notification.created_at}>{notificationTimeLabel(notification)}</time></span></button>) : <p className="notification-center__related-empty">No related updates.</p>}</div>}</section>
+          </div>
+          <footer className="notification-center__detail-actions">
+            {selectedTarget && <button type="button" className="notification-center__button notification-center__button--primary" disabled={actionBusy} onClick={() => openNotification(selectedNotification)}><ArrowTopRightOnSquareIcon />{openLabel(selectedNotification)}</button>}
+            <button type="button" className="notification-center__button" disabled={actionBusy || selectedNotification.is_read} onClick={() => handleMarkAsRead(selectedNotification.id)}><EnvelopeIcon />{selectedBusy ? 'Updating...' : selectedNotification.is_read ? 'Read' : 'Mark as read'}</button>
+            <button type="button" className="notification-center__button" disabled={actionBusy} onClick={() => handleDelete(selectedNotification.id)}><TrashIcon />Dismiss</button>
+          </footer>
+        </aside>}
+      </div>
 
         {selectedNotification && (
           <aside

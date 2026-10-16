@@ -25,7 +25,7 @@ const sourceText = fact => {
   const location = [['page', 'p.'], ['sheet', 'sheet'], ['row', 'row'], ['line', 'line'], ['paragraph', 'paragraph']]
     .filter(([key]) => locator[key] !== undefined && locator[key] !== null)
     .map(([key, label]) => `${label} ${locator[key]}`).join(' · ')
-  return [fact.source_filename || (fact.extraction_method === 'manual' ? 'Planner input' : 'Source document'), location].filter(Boolean).join(' · ')
+  return [fact.source_filename || (locator.source === 'project_record' ? 'Project input' : fact.extraction_method === 'manual' ? 'Planner input' : 'Source document'), location].filter(Boolean).join(' · ')
 }
 function SourceDeliverables({ deliverables }) {
   if (!deliverables.length) return null
@@ -71,36 +71,43 @@ async function allRecords(endpoint, params, signal) {
 }
 
 async function latestCompletedRun(projectId, signal) {
-  // Runs are returned newest first. Avoid loading older, fully compiled previews
-  // once the completed analysis used by this panel has been found.
-  for (let page = 1; page <= 1000; page += 1) {
-    const response = await apiClient.get(PLANNING_ENDPOINTS.intelligenceRuns, { params: { project: projectId, page }, signal })
-    const run = (response.data?.results ?? response.data ?? []).find(item => item.status === 'succeeded')
-    if (run || !response.data?.next) return run || null
-  }
-  throw new Error('The latest completed input analysis could not be loaded.')
+  const { data: latest } = await apiClient.get(PLANNING_ENDPOINTS.latestIntelligenceRun, { params: { project: projectId }, signal })
+  if (!latest) return null
+  if (!latest.id || String(latest.project?.id ?? latest.project) !== String(projectId) || latest.status !== 'succeeded') throw new Error('The latest completed input analysis could not be verified for this project.')
+  const { data: run } = await apiClient.get(PLANNING_ENDPOINTS.intelligenceRun(latest.id), { signal })
+  if (String(run?.id) !== String(latest.id) || String(run.project?.id ?? run.project) !== String(projectId) || run.status !== 'succeeded') throw new Error('The selected document analysis is unavailable for this project.')
+  return run
 }
 
-function InputReviewDialog({ facts, conflicts, busy, error, stale, previewAvailable, onPreview, onReview, onResolve, onClose }) {
+function InputReviewDialog({ titleId, facts, conflicts, busy, loading, error, notice, stale, previewAvailable, onPreview, onReview, onResolve, onClose, onRetry }) {
   const ref = useRef(null)
   useEffect(() => {
     const dialog = ref.current, opener = document.activeElement
     dialog.showModal()
     return () => { dialog.close(); if (opener?.isConnected) opener.focus({ preventScroll: true }) }
   }, [])
-  return <dialog ref={ref} className="planning-input-dialog" aria-labelledby="planning-review-title" onCancel={event => { if (busy) event.preventDefault(); else onClose() }}>
-    <header><div><h2 id="planning-review-title">Review &amp; confirm inputs</h2><p>Review the source evidence before confirming each finding.</p></div><button type="button" className="pln-icon-button" aria-label="Close input review" disabled={busy} onClick={onClose}><X size={20} /></button></header>
-    <div className="pln-dialog-body">
-      {error && <p className="pln-error" role="alert">{error}</p>}
+  return <dialog ref={ref} className="planning-input-dialog" aria-labelledby={titleId} onCancel={event => { if (busy) event.preventDefault(); else onClose() }}>
+    <header><div><h2 id={titleId}>Review &amp; confirm inputs</h2><p>Each Confirm or Reject decision is saved immediately.</p></div><button type="button" className="pln-icon-button" aria-label="Close input review" disabled={busy} onClick={onClose}><X size={20} /></button></header>
+    <div className="pln-dialog-body" aria-busy={busy || loading}>
+      {error && <div><p className="pln-error" role="alert">{error}</p><button type="button" className="pln-button" disabled={busy || loading} onClick={onRetry}>Retry input review</button></div>}
+      {notice && <p role="status">{notice}</p>}
+      {busy && <p role="status"><Loader2 size={16} className="animate-spin" />Saving review…</p>}
+      {loading && <p role="status"><Loader2 size={16} className="animate-spin" />{facts.length ? 'Refreshing saved findings… You can close this window.' : 'Loading extracted inputs…'}</p>}
       {stale && <p className="pln-error">Source documents have changed. Close this review and analyze the documents again before continuing.</p>}
-      {conflicts.length > 0 && <section className="pln-clarification"><h3><AlertTriangle size={19} />Clarifications required</h3>{conflicts.map(conflict => <div className="pln-conflict" key={conflict.id}><p>{conflict.description}</p>{(conflict.facts || facts.filter(fact => conflict.fact_ids?.includes(fact.id))).map(fact => <div className="pln-conflict-value" key={fact.id}><div><strong>{factText(fact)}</strong><small>{sourceText(fact)}</small></div><button type="button" className="pln-button" disabled={busy} onClick={() => onResolve(conflict.id, fact.id)}>Use this value</button></div>)}</div>)}</section>}
-      <ul className="pln-review-list">{facts.map(fact => <li key={fact.id}><FileText size={19} aria-hidden="true" /><div><strong>{factText(fact)}</strong><small>{sourceText(fact)}</small>{fact.source_excerpt && <blockquote>{fact.source_excerpt}</blockquote>}<span className={`pln-status ${fact.status === 'confirmed' ? 'is-done' : ''}`}>{fact.status.replaceAll('_', ' ')}</span></div><div className="pln-review-actions"><button type="button" className="pln-button" disabled={busy || fact.status === 'confirmed' || fact.status === 'conflicted' || fact.status === 'superseded'} onClick={() => onReview(fact.id, 'confirmed')}><Check size={14} />Confirm</button><button type="button" className="pln-text-button" disabled={busy || fact.status === 'rejected' || fact.status === 'conflicted' || fact.status === 'superseded'} onClick={() => onReview(fact.id, 'rejected')}>Reject</button></div></li>)}</ul>
-      {!facts.length && <p className="pln-empty">No extracted inputs yet. Analyze the reference documents to begin.</p>}
-    </div><footer><button type="button" className="pln-button" disabled={busy} onClick={onClose}>Close</button><button type="button" className="pln-button" disabled={busy || !previewAvailable} onClick={onPreview}><FileText size={16} />Document Intelligence Preview</button></footer>
+      {conflicts.length > 0 && <section className="pln-clarification"><h3><AlertTriangle size={19} />Clarifications required</h3>{conflicts.map(conflict => <div className="pln-conflict" key={conflict.id}><p>{conflict.description}</p>{(conflict.facts || facts.filter(fact => conflict.fact_ids?.includes(fact.id))).map(fact => <div className="pln-conflict-value" key={fact.id}><div><strong>{factText(fact)}</strong><small>{sourceText(fact)}</small></div><button type="button" className="pln-button" disabled={busy || loading || Boolean(error) || stale} onClick={() => onResolve(conflict.id, fact.id)}>Use this value</button></div>)}</div>)}</section>}
+      <ul className="pln-review-list">{facts.map(fact => <li key={fact.id}><FileText size={19} aria-hidden="true" /><div><strong>{factText(fact)}</strong><small>{sourceText(fact)}</small>{fact.source_excerpt && <blockquote>{fact.source_excerpt}</blockquote>}<span className={`pln-status ${fact.status === 'confirmed' ? 'is-done' : ''}`}>{fact.status.replaceAll('_', ' ')}</span></div><div className="pln-review-actions"><button type="button" className="pln-button" disabled={busy || loading || Boolean(error) || stale || fact.status === 'confirmed' || fact.status === 'conflicted' || fact.status === 'superseded'} onClick={() => onReview(fact.id, 'confirmed')}><Check size={14} />Confirm</button><button type="button" className="pln-text-button" disabled={busy || loading || Boolean(error) || stale || fact.status === 'rejected' || fact.status === 'conflicted' || fact.status === 'superseded'} onClick={() => onReview(fact.id, 'rejected')}>Reject</button></div></li>)}</ul>
+      {!loading && !error && !facts.length && <p className="pln-empty">No extracted inputs were found in this analysis.</p>}
+    </div><footer><button type="button" className="pln-button" disabled={busy} onClick={onClose}>Close</button><button type="button" className="pln-button" disabled={busy || loading || Boolean(error) || !previewAvailable} onClick={onPreview}><FileText size={16} />Document Intelligence Preview</button></footer>
   </dialog>
 }
 
-export default function PlanningInputsPanel({ project, enterpriseProject, contract, loadingContract, files, uploading, analyzing, creatingProgrammatic = false, analysisRevision, analysisResult, programmaticSummary, documentDeliverables = [], uploadCategory, onUploadCategory, onUpload, onDeleteFile, onAnalyze, onCreateProgrammatic, onSaved, onOpenWorkBreakdown, onOpenIntelligencePreview, onPreviewStaleChanged, onReviewStateChanged, reviewRequest = 0, onReadinessChanged, onBack, onAiSettings, onRevealInputs, onIntelligenceLoaded, hidden = false, simple = false, generateSchedule = false }) {
+export default function PlanningInputsPanel({ project, enterpriseProject, contract, loadingContract, files, uploading, analyzing, creatingProgrammatic = false, busy = false, analysisRevision, analysisRunId = null, analysisResult, programmaticSummary, documentDeliverables = [], uploadCategory, onUploadCategory, onUpload, onDeleteFile, onAnalyze, onCreateProgrammatic, onSaved, onOpenWorkBreakdown, onOpenIntelligencePreview, onPreviewStaleChanged, onReviewStateChanged, reviewRequest = 0, onReadinessChanged, onBack, onAiSettings, onRevealInputs, onIntelligenceLoaded, hidden = false, simple = false, generateSchedule = false, idPrefix = 'planning' }) {
+  const inputIds = {
+    form: `project-${idPrefix}-inputs-form`, methodHeading: `${idPrefix}-method-heading`,
+    documentsHeading: `${idPrefix}-documents-heading`, start: `${idPrefix}-project-start`,
+    end: `${idPrefix}-project-end`, duration: `${idPrefix}-calculated-duration`,
+    reviewHeading: `${idPrefix}-ai-heading`, reviewTitle: `${idPrefix}-review-title`,
+  }
   const [draft, setDraft] = useState(() => draftFrom(project, enterpriseProject))
   const [saving, setSaving] = useState(false)
   const [preparingUpload, setPreparingUpload] = useState(false)
@@ -110,16 +117,23 @@ export default function PlanningInputsPanel({ project, enterpriseProject, contra
   const [reviewError, setReviewError] = useState('')
   const [reviewOpen, setReviewOpen] = useState(false)
   const [reviewBusy, setReviewBusy] = useState(false)
+  const [reviewNotice, setReviewNotice] = useState('')
   const [analysisNeeded, setAnalysisNeeded] = useState(false)
   const inputRef = useRef(null), endDateRef = useRef(null), requestSequence = useRef(0), saveInFlight = useRef(false)
   const uploadDraftRef = useRef(null)
   const reviewController = useRef(null)
+  const reviewMutation = useRef(null)
+  const reviewContext = `${project?.id ?? ''}:${analysisRunId ?? 'latest'}`
+  const reviewContextRef = useRef(reviewContext)
+  reviewContextRef.current = reviewContext
+  const reviewRunRef = useRef(review.run?.id)
+  reviewRunRef.current = review.run?.id
   const baselineLocked = Boolean(contract?.baseline_locked)
   const manual = draft.planning_mode === 'manual'
   const duration = calculatePlanningDuration(draft.effective_date, draft.planned_end_date)
   const savedDraft = draftFrom(project, enterpriseProject)
   const hasChanges = Object.keys(draft).some(key => String(draft[key]) !== String(savedDraft[key]))
-  const editingDisabled = saving || analyzing || creatingProgrammatic || preparingUpload
+  const editingDisabled = saving || analyzing || creatingProgrammatic || preparingUpload || busy
   const documentsProcessing = files.some(file => ['pending', 'processing'].includes(file.parse_status))
   useEffect(() => {
     const pending = uploadDraftRef.current
@@ -139,25 +153,34 @@ export default function PlanningInputsPanel({ project, enterpriseProject, contra
     reviewController.current = controller
     const sequence = ++requestSequence.current
     if (!project?.id) { setReview({ run: null, facts: [], conflicts: [] }); setReviewLoading(false); setReviewError(''); return }
-    setReviewLoading(true); setReviewError(''); setReview({ run: null, facts: [], conflicts: [] })
+    const context = `${project.id}:${analysisRunId ?? 'latest'}`
+    setReviewLoading(true); setReviewError('')
+    setReview(previous => previous.context === context ? previous : { context, run: null, facts: [], conflicts: [] })
     try {
-      const run = await latestCompletedRun(project.id, controller.signal)
+      const run = analysisRunId
+        ? (await apiClient.get(PLANNING_ENDPOINTS.intelligenceRun(analysisRunId), { signal: controller.signal })).data
+        : await latestCompletedRun(project.id, controller.signal)
       if (sequence !== requestSequence.current || controller.signal.aborted) return
+      if (analysisRunId && (String(run?.id) !== String(analysisRunId) || String(run.project?.id ?? run.project) !== String(project.id) || run.status !== 'succeeded')) throw new Error('The selected document analysis is unavailable for this project.')
       // Parsing and analysis are different states. A completed run already proves
       // these files were analyzed, even while its large findings list is loading.
-      setReview({ run, facts: [], conflicts: [] })
+      setReview(previous => previous.context === context && previous.run?.id === run?.id
+        ? { ...previous, run } : { context, run, facts: [], conflicts: [] })
       const [facts, conflicts] = run ? await Promise.all([
         allRecords(PLANNING_ENDPOINTS.intelligenceFacts, { run: run.id }, controller.signal),
         allRecords(PLANNING_ENDPOINTS.intelligenceConflicts, { run: run.id, status: 'open' }, controller.signal),
       ]) : [[], []]
       if (sequence === requestSequence.current) {
-        setReview({ run, facts, conflicts: conflicts.filter(item => item.status === 'open') })
+        setReview({ context, run, facts, conflicts: conflicts.filter(item => item.status === 'open') })
         onIntelligenceLoaded?.(run?.intelligence || null, run?.preview_confirmation || null)
       }
     } catch (error) {
       if (sequence === requestSequence.current && !controller.signal.aborted) setReviewError(errorText(error, 'Input review could not be loaded. Please retry.'))
     } finally { if (sequence === requestSequence.current) setReviewLoading(false) }
-  }, [project?.id, onIntelligenceLoaded])
+  }, [project?.id, onIntelligenceLoaded, analysisRunId])
+  useEffect(() => () => { reviewMutation.current = null }, [])
+  useEffect(() => { setReviewNotice('') }, [review.run?.id])
+  useEffect(() => { reviewMutation.current = null; setReviewBusy(false); setReviewNotice(''); setReviewOpen(false) }, [reviewContext])
   useEffect(() => { loadReview(); return () => { requestSequence.current += 1; reviewController.current?.abort() } }, [loadReview, analysisRevision])
   useEffect(() => { if (reviewRequest) setReviewOpen(true) }, [reviewRequest])
 
@@ -178,7 +201,7 @@ export default function PlanningInputsPanel({ project, enterpriseProject, contra
     try {
       const payload = { ...draft, effective_date: draft.effective_date || null, planned_end_date: draft.planned_end_date || null, budgeted_effort_hours: draft.budgeted_effort_hours === '' ? null : draft.budgeted_effort_hours }
       if (baselineLocked) { delete payload.effective_date; delete payload.planned_end_date }
-      const response = project?.id ? (runAnalysis || createProgrammatic) && !hasChanges ? { data: project } : await apiClient.patch(PLANNING_ENDPOINTS.project(project.id), payload) : await apiClient.post(PLANNING_ENDPOINTS.projects, {
+      const response = project?.id ? !hasChanges ? { data: project } : await apiClient.patch(PLANNING_ENDPOINTS.project(project.id), payload) : await apiClient.post(PLANNING_ENDPOINTS.projects, {
         ...payload, enterprise_project: enterpriseProject.id, name: enterpriseProject.name,
         client: enterpriseProject.client_name || '', location: enterpriseProject.location || '',
       })
@@ -239,10 +262,25 @@ export default function PlanningInputsPanel({ project, enterpriseProject, contra
     } finally { setPreparingUpload(false); saveInFlight.current = false }
   }
   const reviewAction = async operation => {
-    setReviewBusy(true); setReviewError('')
-    try { await operation(); await loadReview() }
-    catch (error) { setReviewError(errorText(error, 'The review could not be saved. Please retry.')) }
-    finally { setReviewBusy(false) }
+    if (reviewMutation.current || reviewLoading) return
+    const mutation = { context: reviewContext, runId: review.run?.id }
+    reviewMutation.current = mutation
+    setReviewBusy(true); setReviewError(''); setReviewNotice('')
+    try {
+      const saved = await operation()
+      if (reviewContextRef.current !== mutation.context || reviewMutation.current !== mutation || reviewRunRef.current !== mutation.runId) return
+      if (saved?.fact_type && String(saved.run) === String(mutation.runId)) {
+        setReview(previous => ({ ...previous, facts: previous.facts.map(fact => fact.id === saved.id ? saved : fact) }))
+      }
+      setReviewNotice('Review saved. You can close this window.')
+      // The write is complete. Reloading a large findings list must not lock
+      // Close or erase the evidence that was just saved.
+      void loadReview()
+    } catch (error) {
+      if (reviewContextRef.current === mutation.context && reviewMutation.current === mutation && reviewRunRef.current === mutation.runId) setReviewError(errorText(error, 'The review could not be saved. Please retry.'))
+    } finally {
+      if (reviewMutation.current === mutation) { reviewMutation.current = null; setReviewBusy(false) }
+    }
   }
   const requirements = review.facts.filter(fact => ['requirement', 'deliverable', 'hse_study', 'milestone'].includes(fact.fact_type) && !['rejected', 'superseded'].includes(fact.status))
   const needsReview = review.facts.some(fact => ['detected', 'conflicted'].includes(fact.status)) || review.conflicts.length > 0
@@ -256,14 +294,14 @@ export default function PlanningInputsPanel({ project, enterpriseProject, contra
     ? Boolean(project?.id && project.planning_mode === 'manual' && duration && draft.scope_summary.trim() && draft.phase.trim()) && !hasChanges
     : Boolean(review.run) && !unknown && !stale && !analysisNeeded && !hasChanges && !savedAfterAnalysis && !documentsProcessing && Boolean(duration)
   useEffect(() => { onReadinessChanged?.(canOpenWorkBreakdown && !editingDisabled && !uploading) }, [canOpenWorkBreakdown, editingDisabled, uploading, onReadinessChanged])
-  useEffect(() => { onReviewStateChanged?.({ conflicts: review.conflicts.length, unavailable: unknown }) }, [review.conflicts.length, unknown, onReviewStateChanged])
-  const openReview = () => { setReviewOpen(true) }
+  useEffect(() => { onReviewStateChanged?.({ conflicts: review.conflicts.length, unavailable: unknown, runId: review.run?.id }) }, [review.conflicts.length, review.run?.id, unknown, onReviewStateChanged])
+  const openReview = () => { setReviewNotice(''); setReviewOpen(true) }
   return <div className={`planning-inputs${simple ? ' planning-inputs-simple' : ''}`} hidden={hidden}>
     <div className="pln-metrics" aria-label="Planning input summary"><span><ClipboardList size={21} /><strong>{unknown ? '—' : analyzedCount}</strong>documents analyzed</span><span><ListChecks size={22} /><strong>{unknown ? '—' : requirements.length}</strong>requirements extracted</span><span className={review.conflicts.length ? 'pln-warning' : ''}><AlertTriangle size={21} /><strong>{unknown ? '—' : review.conflicts.length}</strong>{review.conflicts.length === 1 ? 'clarification open' : 'clarifications open'}</span></div>
     {notice && <div className={notice.error ? 'pln-error' : 'pln-success'} role={notice.error ? 'alert' : 'status'}>{notice.text}</div>}
     <div className="pln-columns"><div className="pln-main-column">
-      {!simple && <section className="pln-card pln-method" aria-labelledby="planning-method-heading"><div><h2 id="planning-method-heading">Planning method</h2><p>{manual ? 'Create tasks and assign employees. Reference documents are optional.' : 'Extract inputs from documents, then review and confirm the full preview.'}</p></div><label>Plan from<select aria-label="Planning method" value={draft.planning_mode} disabled={editingDisabled || uploading} onChange={change('planning_mode')}><option value="manual">Scope and tasks — no upload required</option><option value="document">Reference documents</option></select></label></section>}
-      <section className="pln-card pln-documents" aria-labelledby="planning-documents-heading"><header className="pln-card-heading"><div><h2 id="planning-documents-heading">Reference documents</h2></div></header>
+      {!simple && <section className="pln-card pln-method" aria-labelledby={inputIds.methodHeading}><div><h2 id={inputIds.methodHeading}>Planning method</h2><p>{manual ? 'Create tasks and assign employees. Reference documents are optional.' : 'Extract inputs from documents, then review and confirm the full preview.'}</p></div><label>Plan from<select aria-label="Planning method" value={draft.planning_mode} disabled={editingDisabled || uploading} onChange={change('planning_mode')}><option value="manual">Scope and tasks — no upload required</option><option value="document">Reference documents</option></select></label></section>}
+      <section className="pln-card pln-documents" aria-labelledby={inputIds.documentsHeading}><header className="pln-card-heading"><div><h2 id={inputIds.documentsHeading}>Reference documents</h2></div></header>
         <div className="pln-upload-controls"><label className="pln-category">Document type<select value={uploadCategory} onChange={event => onUploadCategory(event.target.value)} disabled={uploading || editingDisabled}>{PLANNING_FILE_CATEGORIES.map(category => <option key={category.value} value={category.value}>{category.label}</option>)}</select></label><button type="button" className="pln-button" disabled={(!project?.id && !enterpriseProject?.id) || uploading || editingDisabled} onClick={() => inputRef.current?.click()}><Upload size={17} />{uploading ? 'Uploading…' : preparingUpload ? 'Preparing upload…' : 'Upload'}</button></div>
         <input ref={inputRef} type="file" aria-label="Upload reference documents" multiple accept=".pdf,.docx,.xlsx,.xlsm,.csv,.xer,.txt" className="sr-only" disabled={(!project?.id && !enterpriseProject?.id) || uploading || editingDisabled} onChange={event => { upload(event.target.files); event.target.value = '' }} />
         <div className="pln-doc-table-wrap"><table className="pln-doc-table"><thead><tr><th>Document</th><th>Type</th><th>Status</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{files.map(file => {
@@ -273,11 +311,11 @@ export default function PlanningInputsPanel({ project, enterpriseProject, contra
         })}{!files.length && <tr><td colSpan={4}><p className="pln-empty">No reference documents uploaded yet.</p></td></tr>}</tbody></table></div>
       </section>
       <section className="pln-card pln-registration" aria-label="Project scope">
-        <form id="project-planning-inputs-form" onSubmit={save} onInvalid={onRevealInputs} aria-busy={saving}>
+        <form id={inputIds.form} onSubmit={save} onInvalid={onRevealInputs} aria-busy={saving}>
           <fieldset disabled={editingDisabled}>
             <label>Scope summary<textarea rows={2} value={draft.scope_summary} required={manual || simple} onChange={change('scope_summary')} placeholder="Describe the project objective and expected deliverables" /></label>
             <div className="pln-phase-row"><label>Phase<input type="text" maxLength={100} required={manual} value={draft.phase} onChange={change('phase')} placeholder="e.g. Phase 1, implementation, detailed engineering" /></label><label>Budgeted effort<span className="pln-input-unit"><input type="number" min="0" step="0.01" value={draft.budgeted_effort_hours} onChange={change('budgeted_effort_hours')} placeholder="Enter hours" /><span>hours</span></span></label></div>
-            <div className="pln-scope-dates"><label htmlFor="planning-project-start"><span>Project start date <span className="pln-required" aria-hidden="true">*</span></span><input id="planning-project-start" aria-label="Project start date" required type="date" value={draft.effective_date} max={draft.planned_end_date || undefined} disabled={baselineLocked || Boolean(project && (loadingContract || !contract))} onChange={change('effective_date')} /></label><label htmlFor="planning-project-end"><span>Project end date <span className="pln-required" aria-hidden="true">*</span></span><input ref={endDateRef} id="planning-project-end" aria-label="Project end date" required type="date" value={draft.planned_end_date} min={draft.effective_date || undefined} disabled={baselineLocked || Boolean(project && (loadingContract || !contract))} onChange={change('planned_end_date')} /></label><div className="pln-duration-field"><label htmlFor="planning-calculated-duration">Calculated project duration</label><output id="planning-calculated-duration" htmlFor="planning-project-start planning-project-end" className="pln-duration" aria-live="polite"><Calculator size={17} aria-hidden="true" /><span><strong>{duration ? `${duration.days.toLocaleString('en-GB')} calendar ${duration.days === 1 ? 'day' : 'days'}` : 'Select project dates'}</strong><small>{duration ? `${duration.months.toLocaleString('en-GB', { maximumFractionDigits: 2 })} calendar months` : 'Calculated automatically'}</small></span></output></div></div>
+            <div className="pln-scope-dates"><label htmlFor={inputIds.start}><span>Project start date <span className="pln-required" aria-hidden="true">*</span></span><input id={inputIds.start} aria-label="Project start date" required type="date" value={draft.effective_date} max={draft.planned_end_date || undefined} disabled={baselineLocked || Boolean(project && (loadingContract || !contract))} onChange={change('effective_date')} /></label><label htmlFor={inputIds.end}><span>Project end date <span className="pln-required" aria-hidden="true">*</span></span><input ref={endDateRef} id={inputIds.end} aria-label="Project end date" required type="date" value={draft.planned_end_date} min={draft.effective_date || undefined} disabled={baselineLocked || Boolean(project && (loadingContract || !contract))} onChange={change('planned_end_date')} /></label><div className="pln-duration-field"><label htmlFor={inputIds.duration}>Calculated project duration</label><output id={inputIds.duration} htmlFor={`${inputIds.start} ${inputIds.end}`} className="pln-duration" aria-live="polite"><Calculator size={17} aria-hidden="true" /><span><strong>{duration ? `${duration.days.toLocaleString('en-GB')} calendar ${duration.days === 1 ? 'day' : 'days'}` : 'Select project dates'}</strong><small>{duration ? `${duration.months.toLocaleString('en-GB', { maximumFractionDigits: 2 })} calendar months` : 'Calculated automatically'}</small></span></output></div></div>
             <p className="pln-date-help">Duration is calculated from the start and end dates, including weekends.</p>
             <label>Exclusions<input value={draft.exclusions} onChange={change('exclusions')} placeholder="Record activities outside the project scope" /></label>
           </fieldset>
@@ -286,7 +324,7 @@ export default function PlanningInputsPanel({ project, enterpriseProject, contra
           {!project && <p className="pln-note"><Info size={15} />Save draft to create this project’s planning workspace.</p>}
         </form>
       </section>
-    </div><aside className="pln-card pln-review-card" aria-labelledby="planning-ai-heading" aria-busy={reviewLoading}><header><h2 id="planning-ai-heading">AI input review</h2><span className={`pln-review-badge ${review.run && !unknown && !needsReview && !stale ? 'is-confirmed' : ''}`}>{reviewLoading ? 'Loading review' : reviewError ? 'Review unavailable' : stale ? 'Analysis out of date' : review.run ? needsReview ? 'Needs confirmation' : 'Inputs reviewed' : 'Awaiting documents'}</span></header>
+    </div><aside className="pln-card pln-review-card" aria-labelledby={inputIds.reviewHeading} aria-busy={reviewLoading}><header><h2 id={inputIds.reviewHeading}>AI input review</h2><span className={`pln-review-badge ${review.run && !unknown && !needsReview && !stale ? 'is-confirmed' : ''}`}>{reviewLoading ? 'Loading review' : reviewError ? 'Review unavailable' : stale ? 'Analysis out of date' : review.run ? needsReview ? 'Needs confirmation' : 'Inputs reviewed' : 'Awaiting documents'}</span></header>
       <p>{reviewLoading ? 'Loading extracted inputs…' : review.run ? `Extracted from ${analyzedCount} source ${analyzedCount === 1 ? 'document' : 'documents'}` : 'Analyze source documents to extract project requirements.'}</p>
       {reviewError && <div className="pln-error" role="alert">{reviewError}<button type="button" className="pln-text-button" onClick={loadReview}>Retry input review</button></div>}
       {stale && <p className="pln-note"><Info size={15} />Documents have changed. Analyze again to refresh the findings.</p>}
@@ -294,7 +332,7 @@ export default function PlanningInputsPanel({ project, enterpriseProject, contra
       <h3>Requirements found</h3><ul className="pln-requirements">{requirements.slice(0, 3).map(fact => <li key={fact.id}><span className="pln-evidence-icon"><FileText size={19} /></span><div><strong>{factText(fact)}</strong><small>{sourceText(fact)}</small></div></li>)}</ul>
       {!requirements.length && <div className="pln-empty pln-review-empty"><FileText size={25} /><p>{reviewLoading ? 'Loading extracted requirements…' : reviewError ? 'Requirements could not be loaded. Retry input review.' : review.run ? 'No requirements were extracted. Review the source documents and other findings.' : 'Your extracted requirements will appear here with their source references.'}</p></div>}
       {review.facts.length > 0 && <button type="button" className="pln-text-button pln-view-all" onClick={openReview}>View all {requirements.length || review.facts.length} {requirements.length ? 'requirements' : 'findings'}<ArrowRight size={15} /></button>}
-      {simple && onCreateProgrammatic && requirements.length > 0 && <div className="pln-clarification"><h3>Create a draft from these requirements</h3><p>Create all {requirements.length} statements as draft activities, including contract clauses. Dates are distributed within your project dates as provisional planning assumptions. No AI connection is needed.</p><button type="submit" form="project-planning-inputs-form" name="planning-action" value="programmatic" className="pln-button" disabled={editingDisabled || uploading || unknown || stale || documentsProcessing || Boolean(project && (loadingContract || !contract))}>{creatingProgrammatic ? <Loader2 size={17} className="animate-spin" /> : <ListChecks size={17} />}{creatingProgrammatic ? 'Creating draft…' : 'Create draft without AI'}</button></div>}
+      {simple && onCreateProgrammatic && requirements.length > 0 && <div className="pln-clarification"><h3>Create a draft from these requirements</h3><p>Create all {requirements.length} statements as draft activities, including contract clauses. Dates are distributed within your project dates as provisional planning assumptions. No AI connection is needed.</p><button type="submit" form={inputIds.form} name="planning-action" value="programmatic" className="pln-button" disabled={editingDisabled || uploading || unknown || stale || documentsProcessing || Boolean(project && (loadingContract || !contract))}>{creatingProgrammatic ? <Loader2 size={17} className="animate-spin" /> : <ListChecks size={17} />}{creatingProgrammatic ? 'Creating draft…' : 'Create draft without AI'}</button></div>}
       {programmaticSummary && <p className="pln-note"><Info size={16} />{programmaticSummary.activity_count} draft activities were created from {programmaticSummary.requirement_count} requirement statements without AI. Dates and durations are provisional; review each activity before approval.</p>}
       <SourceDeliverables deliverables={documentDeliverables} />
       <div className={`pln-clarification ${!review.conflicts.length && !unknown ? 'is-clear' : ''}`}><h3>{review.conflicts.length ? <AlertTriangle size={21} /> : reviewLoading ? <Loader2 size={20} className="animate-spin" /> : reviewError ? <Info size={20} /> : <CheckCircle2 size={20} />}{review.conflicts.length ? 'Clarification required' : 'Clarifications'}</h3>{review.conflicts.length ? <><p>{review.conflicts[0].description}</p>{review.conflicts[0].facts?.[0] && <small><FileText size={14} />{sourceText(review.conflicts[0].facts[0])}</small>}<button type="button" className="pln-button" onClick={openReview}>Review clarification<ArrowRight size={14} /></button></> : <p>{reviewLoading ? 'Loading clarification status…' : reviewError ? 'Clarification status is unavailable.' : review.run ? 'No open clarifications in the latest analysis.' : 'Any missing or conflicting inputs will be listed after analysis.'}</p>}</div>
@@ -302,7 +340,7 @@ export default function PlanningInputsPanel({ project, enterpriseProject, contra
       <button type="button" className="pln-text-button pln-ai-settings" disabled={!project} onClick={onAiSettings}><Settings2 size={14} />AI settings</button>
     </aside></div>
     {simple && generateSchedule && <p className="pln-note">Build a new draft from the schedule’s source inputs. Review the preview before applying; existing schedule versions are retained.</p>}
-    {simple ? <footer className="pln-bottom-bar"><button type="button" className="pln-button" disabled={editingDisabled || uploading} onClick={onBack}><ArrowLeft size={17} />Back to schedule</button><div className="pln-stage-actions"><button type="submit" form="project-planning-inputs-form" className="pln-button" disabled={editingDisabled || uploading}>Save inputs</button><button type="submit" form="project-planning-inputs-form" name="planning-action" value="analyze" className="pln-button pln-primary" disabled={editingDisabled || uploading || documentsProcessing || Boolean(project && (loadingContract || !contract))}>{analyzing ? <Loader2 size={17} className="animate-spin" /> : <ListChecks size={17} />}{generateSchedule ? analyzing ? 'Opening plan generation…' : 'Generate new schedule draft' : analyzing ? 'Analyzing…' : files.length ? 'Analyze & update schedule' : 'Open schedule'}</button></div></footer> : <footer className="pln-bottom-bar"><button type="button" className="pln-button" onClick={onBack}><ArrowLeft size={17} />Back to portfolio</button><div><span>Scope &amp; inputs</span><small>{analyzing ? 'Document Intelligence is running…' : saving ? 'Saving draft…' : manual ? 'Define scope → Add tasks → Build schedule' : 'Register project → Upload documents → Analyze'}</small></div><div className="pln-stage-actions">{manual ? <button type="submit" form="project-planning-inputs-form" name="planning-action" value="manual-continue" className="pln-button pln-primary" disabled={editingDisabled || uploading || Boolean(project && (loadingContract || !contract))}>{saving ? <Loader2 size={17} className="animate-spin" /> : null}Save &amp; continue to Work breakdown<ArrowRight size={17} /></button> : <><button type="submit" form="project-planning-inputs-form" name="planning-action" value="analyze" className="pln-button pln-primary" disabled={!project || loadingContract || !contract || editingDisabled || uploading || documentsProcessing || !files.some(file => file.parse_status === 'done')}>{analyzing ? <Loader2 size={17} className="animate-spin" /> : <ListChecks size={17} />}{analyzing ? 'Running Document Intelligence…' : 'Run Document Intelligence'}</button><button type="button" className="pln-button" disabled={!review.run?.intelligence || unknown || editingDisabled || uploading} onClick={onOpenIntelligencePreview}>Next: Document Intelligence Preview<ArrowRight size={17} /></button></>}</div></footer>}
-    {reviewOpen && createPortal(<InputReviewDialog facts={review.facts} conflicts={review.conflicts} busy={reviewBusy} error={reviewError} stale={stale} previewAvailable={Boolean(review.run?.intelligence)} onPreview={() => { setReviewOpen(false); onOpenIntelligencePreview() }} onClose={() => setReviewOpen(false)} onReview={(id, status) => reviewAction(() => planningService.reviewIntelligenceFact(id, status))} onResolve={(id, factId) => reviewAction(() => planningService.resolveIntelligenceConflict(id, { action: 'select_fact', selected_fact_id: factId }))} />, document.body)}
+    {simple ? <footer className="pln-bottom-bar"><button type="button" className="pln-button" disabled={editingDisabled || uploading} onClick={onBack}><ArrowLeft size={17} />Back to schedule</button><div className="pln-stage-actions"><button type="submit" form={inputIds.form} className="pln-button" disabled={editingDisabled || uploading}>Save inputs</button><button type="submit" form={inputIds.form} name="planning-action" value="analyze" className="pln-button pln-primary" disabled={editingDisabled || uploading || documentsProcessing || Boolean(project && (loadingContract || !contract))}>{analyzing ? <Loader2 size={17} className="animate-spin" /> : <ListChecks size={17} />}{generateSchedule ? analyzing ? 'Opening plan generation…' : 'Generate new schedule draft' : analyzing ? 'Analyzing…' : files.length ? 'Analyze & update schedule' : 'Open schedule'}</button></div></footer> : <footer className="pln-bottom-bar"><button type="button" className="pln-button" onClick={onBack}><ArrowLeft size={17} />Back to portfolio</button><div><span>Scope &amp; inputs</span><small>{analyzing ? 'Document Intelligence is running…' : saving ? 'Saving draft…' : manual ? 'Define scope → Add tasks → Build schedule' : 'Register project → Upload documents → Analyze'}</small></div><div className="pln-stage-actions">{manual ? <button type="submit" form={inputIds.form} name="planning-action" value="manual-continue" className="pln-button pln-primary" disabled={editingDisabled || uploading || Boolean(project && (loadingContract || !contract))}>{saving ? <Loader2 size={17} className="animate-spin" /> : null}Save &amp; continue to Work breakdown<ArrowRight size={17} /></button> : <><button type="submit" form={inputIds.form} name="planning-action" value="analyze" className="pln-button pln-primary" disabled={!project || loadingContract || !contract || editingDisabled || uploading || documentsProcessing || !files.some(file => file.parse_status === 'done')}>{analyzing ? <Loader2 size={17} className="animate-spin" /> : <ListChecks size={17} />}{analyzing ? 'Running Document Intelligence…' : 'Run Document Intelligence'}</button><button type="button" className="pln-button" disabled={!review.run?.intelligence || unknown || editingDisabled || uploading} onClick={onOpenIntelligencePreview}>Next: Document Intelligence Preview<ArrowRight size={17} /></button></>}</div></footer>}
+    {reviewOpen && createPortal(<InputReviewDialog titleId={inputIds.reviewTitle} facts={review.facts} conflicts={review.conflicts} busy={reviewBusy} loading={reviewLoading} error={reviewError} notice={reviewNotice} stale={stale} previewAvailable={Boolean(review.run?.intelligence)} onRetry={loadReview} onPreview={() => { setReviewOpen(false); onOpenIntelligencePreview() }} onClose={() => setReviewOpen(false)} onReview={(id, status) => reviewAction(() => planningService.reviewIntelligenceFact(id, status))} onResolve={(id, factId) => reviewAction(() => planningService.resolveIntelligenceConflict(id, { action: 'select_fact', selected_fact_id: factId }))} />, document.body)}
   </div>
 }

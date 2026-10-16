@@ -2,6 +2,7 @@ import { financeCount, financeNumber } from '../../components/Finance/financeCom
 import { receivableCustomerRows, receivableRawValue, receivableReadable } from '../../components/Finance/financeReceivablesPresentation.js';
 import { invoicePerformanceModel } from './invoicePerformancePresentation.js';
 import { workbookMetric } from './overviewPresentation.js';
+import { financeSource } from './financeSourcePresentation.js';
 
 /** The Financial board uses the same audited invoice periods as the Overview. */
 export function financialInvoiceModel(data, currency = 'AED', mode = 'monthly', month = '') {
@@ -28,7 +29,7 @@ export function financialInvoiceModel(data, currency = 'AED', mode = 'monthly', 
   const definition = scoped?.definitions?.balance_basis || 'Current outstanding customer invoice balances in their original currency. Blank receipts count as zero for this collection register; missing invoice amounts remain unknown.';
   const pendingMetric = { id: 'amount_pending', label: 'Total amount pending', value: financeNumber(receivableRawValue(pending)),
     unit: 'currency', currency, status: receivablesReadable ? pending?.partial ? 'partial' : 'available' : scoped?.sources?.receivables?.status || 'unavailable',
-    description: definition, definition, source: 'Current authorised customer invoice register', route: '/finance/outgoing-invoices' };
+    description: definition, definition, source: financeSource(scoped).label, route: financeSource(scoped).route };
   return { ...invoicing, amount, received, pending: pendingMetric, pendingSource: pending, receivablesReadable,
     workbookReadable, projectCount: workbookReadable ? financeCount(summary.totals?.project_count) : null,
     amountCoverage: cells ? (financeCount(amountCoverage.numeric_count) || 0) / cells * 100 : null,

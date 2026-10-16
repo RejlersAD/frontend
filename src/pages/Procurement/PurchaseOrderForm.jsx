@@ -1,4 +1,4 @@
-import { radaiPrompt } from '../../services/radaiDialog'
+import PurchaseOrderNarrativeEditor from './PurchaseOrderNarrativeEditor';
 /**
  * Purchase Order Form Component
  * Aligned with RAD-PRJ-PUR-0014 Template (7-page format)
@@ -18,8 +18,9 @@ import { toast } from 'react-toastify';
 import apiClient from '../../services/api.service';
 import { createPurchaseOrderDraftRecovery, purchaseOrderRecoveryKey, currentPurchaseOrderDraftUser } from '../../services/purchaseOrderDraftRecovery';
 import PurchaseOrderPreviewPane from './PurchaseOrderPreviewPane';
+import { PurchaseOrderNumberCorrection } from './PurchaseOrderNumberEditor';
 import './PurchaseOrderForm.css';
-import { Save as SaveIcon, ArrowRight, ArrowLeft, AlertCircle, X } from 'lucide-react';
+import { Save as SaveIcon, ArrowRight, ArrowLeft, AlertCircle, FolderOpen, RefreshCw, X } from 'lucide-react';
 import PurchaseOrderPriceSpreadsheet from './PurchaseOrderPriceSpreadsheet';
 import { employeeDisplayName } from '../../utils/employeeDisplayName';
 import { canConfigurePurchaseOrderRoute } from './purchaseOrderApprovalRouting';
@@ -27,16 +28,15 @@ import { PROCUREMENT_VAT_OPTIONS, sumProcurementMoney } from '../../utils/procur
 import { purchaseOrderLineNet, purchaseOrderVat } from './purchaseOrderVat';
 import { purchaseOrderProjectSelections, withPurchaseOrderProjects, requisitionProjectNumbers, requisitionProjectReference } from './purchaseOrderProjects';
 import { purchaseOrderLifecycleBlockReason, purchaseOrderCommercialLockReason } from '../../utils/procurementApproval';
-import { defaultPurchaseOrderIntroduction, ORDER_INTRODUCTION_MAX_LENGTH } from './purchaseOrderIntroduction';
+import { defaultPurchaseOrderIntroduction, purchaseOrderIntroductionVisible, ORDER_INTRODUCTION_MAX_LENGTH } from './purchaseOrderIntroduction';
+import { mergeSavedPurchaseOrder, mergeSavedPurchaseOrderAttachments, purchaseOrderAttachmentKey, purchaseOrderAttachmentSlots, purchaseOrderSavedValues } from './purchaseOrderSaveState';
 import {
   DocumentTextIcon,
   PaperClipIcon,
   CheckCircleIcon,
   CloudArrowUpIcon,
   InformationCircleIcon,
-  BuildingOfficeIcon,
   UserGroupIcon,
-  CurrencyDollarIcon,
   CalendarIcon,
   DocumentCheckIcon,
 } from '@heroicons/react/24/outline';
@@ -73,203 +73,6 @@ const DEFAULT_ITEMS_TABLE_HEADERS = {
   unit_price: 'Unit Price',
   discount: 'Discount',
   total_price: 'Total Price',
-};
-
-const RichTextEditor = ({ value, onChange }) => {
-  const editorRef = useRef(null);
-  const savedRangeRef = useRef(null);
-  const [ribbonTab, setRibbonTab] = useState('home');
-  const [showTableDialog, setShowTableDialog] = useState(false);
-  const [tableRows, setTableRows] = useState(3);
-  const [tableColumns, setTableColumns] = useState(3);
-  const [tableHeaderRow, setTableHeaderRow] = useState(true);
-  const [selectedFont, setSelectedFont] = useState('Arial');
-  const [selectedSize, setSelectedSize] = useState(10.5);
-  const fontSizes = { 1: 7.5, 2: 9.75, 3: 12, 4: 13.5, 5: 18, 6: 24, 7: 36 };
-
-  useEffect(() => {
-    if (editorRef.current && editorRef.current.innerHTML !== (value || '')) {
-      editorRef.current.innerHTML = value || '';
-    }
-  }, [value]);
-
-  const rememberSelection = () => {
-    const selection = window.getSelection();
-    if (selection?.rangeCount && editorRef.current?.contains(selection.anchorNode)) {
-      savedRangeRef.current = selection.getRangeAt(0).cloneRange();
-      const node = selection.focusNode?.nodeType === Node.ELEMENT_NODE ? selection.focusNode : selection.focusNode?.parentElement;
-      if (node) {
-        const style = window.getComputedStyle(node);
-        setSelectedFont(style.fontFamily.split(',')[0].replaceAll(/["']/g, '').trim());
-        setSelectedSize(Math.round(Number.parseFloat(style.fontSize) * 0.75 * 100) / 100);
-      }
-    }
-  };
-
-  const restoreSelection = () => {
-    if (!savedRangeRef.current) return;
-    const selection = window.getSelection();
-    selection.removeAllRanges();
-    selection.addRange(savedRangeRef.current);
-  };
-
-  const runCommand = (command, commandValue = null) => {
-    editorRef.current?.focus({ preventScroll: true });
-    restoreSelection();
-    document.execCommand(command, false, commandValue);
-    rememberSelection();
-    onChange(editorRef.current?.innerHTML || '');
-  };
-
-  const selectedBlocks = () => {
-    const editor = editorRef.current;
-    const range = savedRangeRef.current;
-    if (!editor || !range) return [];
-    const candidates = [...editor.querySelectorAll('p, div, h1, h2, h3, h4, blockquote, li')]
-      .filter((node) => {
-        try { return range.intersectsNode(node); } catch { return false; }
-      });
-    return candidates.filter((node) => !candidates.some((other) => other !== node && node.contains(other)));
-  };
-
-  const changeIndent = (direction) => {
-    editorRef.current?.focus({ preventScroll: true });
-    restoreSelection();
-    let blocks = selectedBlocks();
-    if (!blocks.length) {
-      document.execCommand('formatBlock', false, 'p');
-      rememberSelection();
-      blocks = selectedBlocks();
-    }
-    blocks.forEach((block) => {
-      const currentIndent = Number.parseFloat(block.style.marginLeft || '0') || 0;
-      block.style.marginLeft = `${Math.max(0, currentIndent + (direction * 24))}px`;
-    });
-    rememberSelection();
-    onChange(editorRef.current?.innerHTML || '');
-  };
-
-  const ribbonButton = (label, command, commandValue = null, extraClass = '') => (
-    <button
-      type="button"
-      title={label}
-      onMouseDown={(event) => event.preventDefault()}
-      onClick={() => runCommand(command, commandValue)}
-      className={`min-w-8 rounded px-2 py-1.5 text-xs text-slate-700 hover:bg-blue-100 active:bg-blue-200 ${extraClass}`}
-    >
-      {label}
-    </button>
-  );
-
-  const actionButton = (label, action, extraClass = '') => (
-    <button
-      type="button"
-      title={label}
-      onMouseDown={(event) => event.preventDefault()}
-      onClick={action}
-      className={`min-w-8 rounded px-2 py-1.5 text-xs text-slate-700 hover:bg-blue-100 active:bg-blue-200 ${extraClass}`}
-    >
-      {label}
-    </button>
-  );
-
-  const addImage = (event) => {
-    const imageFile = event.target.files?.[0];
-    if (!imageFile) return;
-    const reader = new FileReader();
-    reader.onload = () => runCommand('insertImage', reader.result);
-    reader.readAsDataURL(imageFile);
-    event.target.value = '';
-  };
-
-  const insertLink = async () => {
-    const url = (await radaiPrompt('Enter the link URL'));
-    if (url) runCommand('createLink', url);
-  };
-
-  const insertCustomTable = () => {
-    const rows = Math.min(30, Math.max(1, Number(tableRows) || 1));
-    const columns = Math.min(12, Math.max(1, Number(tableColumns) || 1));
-    const cells = (rowIndex) => Array.from({ length: columns }, (_, columnIndex) => {
-      const isHeader = tableHeaderRow && rowIndex === 0;
-      const tag = isHeader ? 'th' : 'td';
-      const label = isHeader ? `Heading ${columnIndex + 1}` : 'Cell';
-      const style = isHeader ? 'background:#f1f5f9;font-weight:700;' : '';
-      return `<${tag} style="border:1px solid #64748b;padding:6px;${style}">${label}</${tag}>`;
-    }).join('');
-    const body = Array.from({ length: rows }, (_, rowIndex) => `<tr>${cells(rowIndex)}</tr>`).join('');
-    runCommand('insertHTML', `<table style="border-collapse:collapse;width:100%"><tbody>${body}</tbody></table><p><br></p>`);
-    setShowTableDialog(false);
-  };
-
-  return (
-    <div className="relative mt-1 overflow-visible rounded-lg border border-slate-300 bg-white shadow-sm focus-within:border-[#2b579a] focus-within:ring-1 focus-within:ring-[#2b579a]">
-      <div className="sticky top-0 z-20 rounded-t-lg shadow-md">
-      <div className="rounded-t-lg bg-[#2b579a] px-3 pt-2 text-white">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold">PO Narrative Editor</span>
-          <span className="text-[10px] text-blue-100">Microsoft-style formatting</span>
-        </div>
-        <div className="mt-2 flex gap-1">
-          {['home', 'insert'].map((tab) => <button key={tab} type="button" onClick={() => setRibbonTab(tab)} className={`rounded-t px-4 py-1.5 text-xs font-semibold capitalize ${ribbonTab === tab ? 'bg-white text-[#2b579a]' : 'text-white hover:bg-white/10'}`}>{tab}</button>)}
-        </div>
-      </div>
-
-      <div className="min-h-[76px] border-b border-slate-300 bg-[#f5f6f8] px-2 py-2">
-        {ribbonTab === 'home' ? <div className="flex flex-wrap items-stretch gap-2">
-          <div className="flex items-center gap-0.5 border-r border-slate-300 pr-2">
-            {ribbonButton('↶', 'undo')}{ribbonButton('↷', 'redo')}{ribbonButton('Clear', 'removeFormat')}
-          </div>
-          <div className="flex flex-col justify-between border-r border-slate-300 pr-2">
-            <div className="flex gap-1">
-              <select aria-label="Font family" value={selectedFont} onChange={(event) => runCommand('fontName', event.target.value)} className="h-7 w-36 rounded border-slate-300 bg-white px-2 py-0 text-xs">{!['Arial', 'Calibri', 'Georgia', 'Times New Roman', 'Verdana'].includes(selectedFont) && <option>{selectedFont}</option>}<option>Arial</option><option>Calibri</option><option>Georgia</option><option>Times New Roman</option><option>Verdana</option></select>
-              <select aria-label="Font size" value={Object.keys(fontSizes).find(key => fontSizes[key] === selectedSize) || 'current'} onChange={(event) => runCommand('fontSize', event.target.value)} className="h-7 w-16 rounded border-slate-300 bg-white px-1 py-0 text-xs">{!Object.values(fontSizes).includes(selectedSize) && <option value="current" disabled>{selectedSize}</option>}{Object.entries(fontSizes).map(([value, size]) => <option key={value} value={value}>{size}</option>)}</select>
-            </div>
-            <div className="flex items-center gap-0.5">
-              {ribbonButton('B', 'bold', null, 'font-black')}{ribbonButton('I', 'italic', null, 'italic')}{ribbonButton('U', 'underline', null, 'underline')}{ribbonButton('x₂', 'subscript')}{ribbonButton('x²', 'superscript')}
-              <label title="Font colour" className="flex h-7 cursor-pointer items-center gap-1 rounded px-2 text-xs hover:bg-blue-100">A<input type="color" aria-label="Font colour" onChange={(event) => runCommand('foreColor', event.target.value)} className="h-4 w-4 border-0 bg-transparent p-0" /></label>
-              <label title="Highlight colour" className="flex h-7 cursor-pointer items-center gap-1 rounded px-2 text-xs hover:bg-blue-100">Highlight<input type="color" aria-label="Highlight colour" defaultValue="#fff2cc" onChange={(event) => runCommand('hiliteColor', event.target.value)} className="h-4 w-4 border-0 bg-transparent p-0" /></label>
-            </div>
-          </div>
-          <div className="flex flex-col justify-between border-r border-slate-300 pr-2">
-            <div className="flex gap-0.5">{ribbonButton('• List', 'insertUnorderedList')}{ribbonButton('1. List', 'insertOrderedList')}{actionButton('←', () => changeIndent(-1))}{actionButton('→', () => changeIndent(1))}</div>
-            <div className="flex gap-0.5">{actionButton('Left', () => runCommand('justifyLeft'))}{actionButton('Centre', () => runCommand('justifyCenter'))}{actionButton('Right', () => runCommand('justifyRight'))}{actionButton('Justify', () => runCommand('justifyFull'))}</div>
-          </div>
-          <div className="flex items-center gap-1">
-            <select aria-label="Text style" defaultValue="p" onChange={(event) => runCommand('formatBlock', event.target.value)} className="h-8 rounded border-slate-300 bg-white px-2 py-0 text-xs"><option value="p">Normal</option><option value="h1">Heading 1</option><option value="h2">Heading 2</option><option value="h3">Heading 3</option><option value="blockquote">Quote</option></select>
-          </div>
-        </div> : <div className="flex flex-wrap items-stretch gap-2">
-          <div className="flex items-center gap-1 border-r border-slate-300 pr-3">
-            <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => setShowTableDialog(true)} className="rounded px-3 py-2 text-xs text-slate-700 hover:bg-blue-100">▦ Table</button>
-            <label className="cursor-pointer rounded px-3 py-2 text-xs text-slate-700 hover:bg-blue-100">▧ Picture<input type="file" accept="image/*" onChange={addImage} className="hidden" /></label>
-            <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={insertLink} className="rounded px-3 py-2 text-xs text-slate-700 hover:bg-blue-100">🔗 Link</button>
-          </div>
-          <div className="flex items-center gap-1">{ribbonButton('Horizontal line', 'insertHorizontalRule')}{ribbonButton('Page Break', 'insertHTML', '<div data-po-page-break="true" contenteditable="false" style="page-break-after:always;border-top:2px dashed #94a3b8;margin:16px 0;padding-top:4px;color:#64748b;font-size:11px">Page Break</div><p><br></p>')}</div>
-        </div>}
-      </div>
-      </div>
-
-      {showTableDialog && <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-900/30 p-4" role="dialog" aria-modal="true" aria-label="Insert table">
-        <div className="w-full max-w-sm rounded-lg border border-slate-300 bg-white shadow-2xl">
-          <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-            <div><h4 className="text-sm font-semibold text-slate-900">Insert Table</h4><p className="text-xs text-slate-500">Choose the table dimensions.</p></div>
-            <button type="button" onClick={() => setShowTableDialog(false)} className="rounded px-2 py-1 text-slate-500 hover:bg-slate-100" aria-label="Close table dialog">×</button>
-          </div>
-          <div className="space-y-4 p-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div><label className="block text-xs font-semibold text-slate-700">Rows</label><input type="number" min="1" max="30" aria-label="Table rows" value={tableRows} onChange={(event) => setTableRows(event.target.value)} className="mt-1 block w-full rounded-md border-slate-300 px-3 py-2 text-sm focus:border-[#2b579a] focus:ring-[#2b579a]" /><p className="mt-1 text-[10px] text-slate-400">1–30 rows</p></div>
-              <div><label className="block text-xs font-semibold text-slate-700">Columns</label><input type="number" min="1" max="12" aria-label="Table columns" value={tableColumns} onChange={(event) => setTableColumns(event.target.value)} className="mt-1 block w-full rounded-md border-slate-300 px-3 py-2 text-sm focus:border-[#2b579a] focus:ring-[#2b579a]" /><p className="mt-1 text-[10px] text-slate-400">1–12 columns</p></div>
-            </div>
-            <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={tableHeaderRow} onChange={(event) => setTableHeaderRow(event.target.checked)} className="rounded border-slate-300 text-[#2b579a] focus:ring-[#2b579a]" />Use first row as a header</label>
-            <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-center text-xs text-slate-600">Preview: <b>{Math.min(30, Math.max(1, Number(tableRows) || 1))} × {Math.min(12, Math.max(1, Number(tableColumns) || 1))}</b> table</div>
-          </div>
-          <div className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3"><button type="button" onClick={() => setShowTableDialog(false)} className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">Cancel</button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={insertCustomTable} className="rounded-md bg-[#2b579a] px-4 py-1.5 text-xs font-semibold text-white hover:bg-[#244b87]">Insert Table</button></div>
-        </div>
-      </div>}
-
-      <div ref={editorRef} contentEditable data-table-typography="preserve" role="textbox" aria-label="PO Narrative" aria-multiline="true" suppressContentEditableWarning onMouseUp={rememberSelection} onKeyUp={rememberSelection} onInput={(event) => { rememberSelection(); onChange(event.currentTarget.innerHTML); }} className="po-narrative-document min-h-80 rounded-b-lg bg-white px-8 py-6 outline-none empty:before:text-slate-400 empty:before:content-[attr(data-placeholder)]" data-placeholder="Enter the complete PO narrative..." />
-    </div>
-  );
 };
 
 const employeeDesignation = (employee) => {
@@ -364,7 +167,7 @@ const buildPurchaseOrderPayload = (formData, status) => Object.fromEntries(
     !READ_ONLY_PO_FIELDS.has(key)
     && value !== null
     && value !== undefined
-    && value !== ''
+    && (value !== '' || key === 'description' || key === 'scope_of_services')
   ))
 );
 
@@ -412,12 +215,16 @@ const normalizeRequisitionItems = (requisition) => {
   });
 };
 
-const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editData = null, prReference = null, initialProject = null }) => {
+const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editData: suppliedEditData = null, prReference = null, initialProject = null }) => {
+  const [savedOrder, setSavedOrder] = useState(null);
+  const editData = savedOrder || suppliedEditData;
   const [draftRecovery] = useState(() => createPurchaseOrderDraftRecovery({ key: purchaseOrderRecoveryKey({
     userId: currentPurchaseOrderDraftUser(), orderId: editData?.id,
     requisitionId: prReference?.id, projectId: initialProject?.id,
   }) }));
   const [recoveryReady, setRecoveryReady] = useState(false);
+  const [recoveryError, setRecoveryError] = useState('');
+  const [recoveryAttempt, setRecoveryAttempt] = useState(0);
   const approvalRouteEditable = canConfigurePurchaseOrderRoute(editData);
   const approvalSelectionEditedRef = useRef(false);
   const [projectPreset, setProjectPreset] = useState(!editData && initialProject?.id ? initialProject : null);
@@ -556,6 +363,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
       buyer_references: [],
       delivery_date_type: 'delivery',
       attachment_details: [],
+      ...(!editData ? { show_order_introduction: false } : {}),
     },
     
     // Additional
@@ -576,14 +384,12 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     summary: editData?.summary || editData?.contact_persons?.purchase_summary || '',
     status: editData?.status || 'draft',
   });
+  const [initialIntroductionVisible, setInitialIntroductionVisible] = useState(() => purchaseOrderIntroductionVisible(editData || formData));
+  const showOrderIntroduction = typeof formData.contact_persons?.show_order_introduction === 'boolean'
+    ? formData.contact_persons.show_order_introduction
+    : initialIntroductionVisible;
   
-  const [attachmentSlots, setAttachmentSlots] = useState((editData?.attachments || []).map((attachment, index) => ({
-    title: attachment.title || attachment.filename || `Item ${index + 1}`,
-    description: attachment.description || '',
-    file: null,
-    existingAttachment: attachment,
-    existingAttachmentIndex: index,
-  })));
+  const [attachmentSlots, setAttachmentSlots] = useState(() => purchaseOrderAttachmentSlots(editData?.attachments));
   const previewFiles = useMemo(() => attachmentSlots.filter(slot => slot.file || slot.existingAttachment), [attachmentSlots]);
   const files = attachmentSlots.map((slot) => slot.file).filter(Boolean);
   const initialAttachmentSlots = useRef(attachmentSlots);
@@ -601,23 +407,36 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   const [approverLoadError, setApproverLoadError] = useState('');
   const [employeeLoadError, setEmployeeLoadError] = useState('');
   const initialFormData = useRef(formData);
+  const latestFormData = useRef(formData);
+  latestFormData.current = formData;
   const recoveryContext = useRef({ editData, prReference });
   const submittingRef = useRef(false);
 
   useEffect(() => {
     let active = true;
-    draftRecovery.load().then(saved => {
+    setRecoveryError('');
+    draftRecovery.load().then(async saved => {
       if (!active) return;
-      const { editData, prReference } = recoveryContext.current;
+      const { editData: originalOrder, prReference } = recoveryContext.current;
+      let editData = originalOrder;
+      if (!editData && saved?.draftId) {
+        const response = await apiClient.get(`/procurement/orders/${saved.draftId}/`, { suppressErrorToast: true });
+        if (!active) return;
+        editData = response.data;
+        setSavedOrder(editData);
+      }
       if (saved?.formData) {
+        setInitialIntroductionVisible(purchaseOrderIntroductionVisible(editData || saved.formData));
         const restoreRoute = canConfigurePurchaseOrderRoute(editData);
         approvalSelectionEditedRef.current = restoreRoute && Boolean(saved.approvalSelectionEdited);
+        const baseline = editData ? purchaseOrderSavedValues({ ...initialFormData.current, ...saved.initialFormData }, editData) : initialFormData.current;
+        initialFormData.current = baseline;
         setFormData(previous => {
           // Reapply only unsaved edits over the latest server record. A refresh
           // must not restore old approval evidence or overwrite newer metadata.
           const changes = Object.fromEntries(Object.entries(saved.formData).filter(([key, value]) => (
             !['id', 'status', 'management_approver', 'approval_log', 'approval_signature', 'approved_by_name', 'approved_by_title', 'approved_at', 'approved_date'].includes(key)
-            && (!editData || JSON.stringify(value) !== JSON.stringify(saved.initialFormData?.[key]))
+            && (!editData || !saved.initialFormData || JSON.stringify(value) !== JSON.stringify(saved.initialFormData[key]))
           )));
           if (restoreRoute && (!editData || saved.approvalSelectionEdited)) {
             const pending = (Array.isArray(saved.formData.approval_log) ? saved.formData.approval_log : []).find(entry => (
@@ -631,7 +450,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
             }));
             changes.management_approver = pending?.approver || '';
           }
-          return { ...previous, ...changes };
+          return { ...previous, ...baseline, ...changes };
         });
         setSelectedRequisition(saved.selectedRequisition || prReference || null);
         setProjectPreset(saved.projectPreset || null);
@@ -644,7 +463,10 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
         setCurrentSection(Math.max(1, Math.min(4, saved.currentSection || 1)));
         if (!editData || JSON.stringify(saved.attachmentSlots) !== JSON.stringify(saved.initialAttachmentSlots)) {
           setAttachmentSlots(saved.attachmentSlots || []);
+        } else {
+          setAttachmentSlots(purchaseOrderAttachmentSlots(editData.attachments));
         }
+        initialAttachmentSlots.current = purchaseOrderAttachmentSlots(editData?.attachments);
         const recoveredId = editData?.id || saved.draftId || null;
         persistedOrderIdRef.current = recoveredId;
         setDraftId(recoveredId);
@@ -653,9 +475,11 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
         }
       }
       setRecoveryReady(true);
+    }).catch(() => {
+      if (active) setRecoveryError('The saved purchase order could not be loaded. Your draft is retained.');
     });
     return () => { active = false; };
-  }, [draftRecovery]);
+  }, [draftRecovery, recoveryAttempt]);
 
   const recoverySnapshot = useMemo(() => ({
     formData, initialFormData: initialFormData.current, selectedRequisition, projectPreset,
@@ -681,7 +505,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   }, [draftRecovery]);
 
   const handleCancel = async () => {
-    if (submittingRef.current) return;
+    if (submittingRef.current || autoSaveRequestRef.current) return;
     submittingRef.current = true;
     await draftRecovery.clear();
     onClose?.();
@@ -777,11 +601,12 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
       fetchPOApprovers();
       if (!editData?.pr_reference) fetchAvailableRequisitions();
     }
-  }, [isOpen, pageMode, editData, recoveryReady]);
+  }, [isOpen, pageMode, editData?.pr_reference, recoveryReady]);
 
   // Auto-save draft every 30 seconds
   useEffect(() => {
-    if (recoveryReady && !editData && !pricingEdited && !pricingConfirmed) {
+    if (recoveryReady && !suppliedEditData && (!editData || editData.status === 'draft')
+      && editData?.commercial_edit_locked !== true && !pricingEdited && !pricingConfirmed) {
       const autoSaveInterval = setInterval(() => {
         const canPersistDraft = Boolean(
           formData.pr_reference &&
@@ -796,7 +621,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
       }, 30000);
       return () => clearInterval(autoSaveInterval);
     }
-  }, [formData, editData, draftId, pricingEdited, pricingConfirmed, recoveryReady]);
+  }, [formData, editData, suppliedEditData, draftId, pricingEdited, pricingConfirmed, recoveryReady]);
 
   const normalizeApiArray = (data) => {
     if (Array.isArray(data)) return data;
@@ -1057,7 +882,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     // Do not race the user's first explicit Create request with a background
     // POST. Auto-save starts after the PO has a server-side draft ID.
     if (!persistedOrderId || pricingEdited || pricingConfirmed) return;
-    if (autoSaveRequestRef.current) return;
+    if (autoSaveRequestRef.current || submittingRef.current) return;
     autoSaveRequestRef.current = true;
     setAutoSaving(true);
     try {
@@ -1067,7 +892,14 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
       ['vat_basis', 'net_amount', 'tax_amount', 'total_amount', 'vat_percentage', 'discount_amount', 'currency', 'items'].forEach(field => delete payload[field]);
       // Background metadata updates must not overwrite a pending or completed decision.
       ['approval_log', 'management_approver', 'approved_by_name', 'approved_by_title', 'approved_date', 'approved_at', 'approval_signature'].forEach(field => delete payload[field]);
-      await apiClient.patch(`/procurement/orders/${persistedOrderId}/`, payload);
+      const response = await apiClient.patch(`/procurement/orders/${persistedOrderId}/`, payload);
+      const persisted = Object.fromEntries(Object.keys(payload).filter(key => Object.hasOwn(formData, key)).map(key => [
+        key, Object.hasOwn(response.data, key) ? response.data[key] : payload[key],
+      ]));
+      initialFormData.current = { ...initialFormData.current, ...persisted };
+      setFormData(current => mergeSavedPurchaseOrder(current, formData, { ...formData, ...persisted }));
+      setSavedOrder(response.data);
+      onSuccess?.(response.data, { close: false });
     } catch (error) {
       console.error('Auto-save failed:', error);
     } finally {
@@ -1622,7 +1454,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     formScrollRef.current?.scrollTo({ top: 0 });
   };
 
-  const sectionForField = (field) => field === 'total_amount' ? 3 : field === 'attachments' ? 4 : 1;
+  const sectionForField = (field) => field === 'total_amount' ? 2 : ['attachments', 'approval_log'].includes(field) ? 4 : ['project_number', 'start_date', 'end_date', 'expected_delivery'].includes(field) ? 3 : 1;
   const openValidationIssue = (issue) => {
     const field = issue.field || issue.id;
     openSection(sectionForField(field));
@@ -1639,7 +1471,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
 
   const handleSubmit = async (e, sendToVendor = false) => {
     e.preventDefault();
-    if (submittingRef.current) return;
+    if (submittingRef.current || autoSaveRequestRef.current) return;
     if (sendToVendor && editData?.can_send_to_vendor !== true) {
       setPopupError(editData ? purchaseOrderLifecycleBlockReason(editData) : 'Save this purchase order as a draft, then complete its approvals before sending it to the vendor.');
       return;
@@ -1681,7 +1513,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
         attachments: attachmentSlots
           .filter((slot) => slot.existingAttachment && !slot.file)
           .map((slot) => {
-            const initial = initialAttachmentSlots.current.find(item => item.existingAttachment === slot.existingAttachment);
+            const initial = initialAttachmentSlots.current.find(item => purchaseOrderAttachmentKey(item.existingAttachment) === purchaseOrderAttachmentKey(slot.existingAttachment));
             return initial && slot.title === initial.title && slot.description === initial.description
               ? slot.existingAttachment
               : { ...slot.existingAttachment, title: slot.title.trim(), description: slot.description.trim() };
@@ -1701,7 +1533,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
           && JSON.stringify(value) !== JSON.stringify(initialFormData.current[key])
         )),
       ) : buildPurchaseOrderPayload(preparedFormData, 'draft');
-      if (pricingConfirmed) {
+      if (pricingConfirmed && (!editData || pricingEdited)) {
         Object.assign(payload, {
           vat_basis: formData.vat_basis, net_amount: pricing.netAmount,
           tax_amount: pricing.taxAmount, total_amount: pricing.totalAmount, vat_percentage: pricing.vatRate,
@@ -1745,18 +1577,36 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
         setDraftId(response.data.id);
       }
 
-      const poLabel = response.data?.po_number || formData.po_number || 'Purchase Order';
-      await draftRecovery.clear();
+      const saved = response.data;
+      persistedOrderIdRef.current = saved.id;
+      setDraftId(saved.id);
+      const baseline = purchaseOrderSavedValues(preparedFormData, saved);
+      initialFormData.current = baseline;
+      initialAttachmentSlots.current = purchaseOrderAttachmentSlots(saved.attachments);
+      setFormData(current => mergeSavedPurchaseOrder(current, formData, baseline));
+      setAttachmentSlots(current => mergeSavedPurchaseOrderAttachments(current, attachmentSlots, saved.attachments || []));
+      const pricingFields = ['items', 'price_amount', 'vat_basis', 'currency', 'discount_amount'];
+      if (pricingFields.every(field => JSON.stringify(latestFormData.current[field]) === JSON.stringify(formData[field]))) {
+        setPricingEdited(false);
+      }
+      if (JSON.stringify(latestFormData.current.approval_log) === JSON.stringify(formData.approval_log)) {
+        approvalSelectionEditedRef.current = false;
+      }
+      setSavedOrder(saved);
+      setErrors({});
+      setPopupError('');
+      const poLabel = saved.po_number || formData.po_number || 'Purchase Order';
       if (sendToVendor) {
-        toast.success(`${poLabel} sent to vendor successfully.`);
+        await draftRecovery.clear();
+        toast.success('Purchase order issued.');
       } else if (isExistingOrder) {
         toast.success(`${poLabel} saved successfully.`);
       } else {
         toast.success(`${poLabel} draft created successfully.`);
       }
       
-      if (onSuccess) onSuccess(response.data);
-      else if (onClose) onClose();
+      if (onSuccess) onSuccess(saved, { close: sendToVendor });
+      else if (sendToVendor) onClose?.();
     } catch (error) {
       console.error('Error submitting PO:', error);
       const fieldErrors = normalizeApiErrors(error.response?.data);
@@ -1774,6 +1624,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
 
   // Don't render if not open - check AFTER all hooks
   if (!isOpen && !pageMode) return null;
+  if (recoveryError) return <div role="alert" className="p-4"><p>{recoveryError}</p><button type="button" className="pof-button" onClick={() => setRecoveryAttempt(value => value + 1)}>Try again</button><button type="button" className="pof-button" onClick={handleCancel}>Close purchase order</button></div>;
   if (!recoveryReady) return <div role="status" className="p-4">Restoring purchase order…</div>;
 
   const isNewOrder = !editData;
@@ -1805,10 +1656,10 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   const buyerReferences = formData.contact_persons?.buyer_references || [];
 
   const sections = [
-    { id: 1, name: 'Header, Buyer & Project', icon: BuildingOfficeIcon },
-    { id: 2, name: 'PO Description & Scope', icon: DocumentTextIcon },
-    { id: 3, name: 'Summary of Prices', icon: CurrencyDollarIcon },
-    { id: 4, name: 'Attachments', icon: PaperClipIcon },
+    { id: 1, name: 'Order & parties' },
+    { id: 2, name: 'Scope & pricing' },
+    { id: 3, name: 'Projects & delivery' },
+    { id: 4, name: 'Approval' },
   ];
 
   const validationErrors = editData ? getValidationErrors(false) : formData.pr_reference ? getValidationErrors(true) : { pr_reference: 'Select an existing purchase recommendation to continue.' };
@@ -1816,81 +1667,14 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
   const validationIssues = Object.entries(validationErrors).map(([field, message]) => ({ id: field, field, message, title: message }));
   const busy = submitLoading || autoSaving;
 
-  return (
-    <div ref={workspaceRef} className={`purchase-order-form-workspace ${pageMode ? 'pof-page' : 'pof-modal'}`}
-      style={pageMode ? undefined : modalBounds || { visibility: 'hidden' }}>
-      <div className="pof-workspace-grid">
-        <section className="pof-editor" aria-label="Purchase order editor">
-          <header className="pof-header">
-            <nav className="pof-breadcrumb" aria-label="Breadcrumb">
-              <span>Procurement</span><span>/</span><button type="button" onClick={handleCancel}>Purchase Orders</button><span>/</span><strong>{editData ? 'Edit' : 'New'}</strong>
-            </nav>
-            <div className="pof-title-row">
-              <div>
-                <h1>{editData ? 'Edit purchase order' : 'New purchase order'}</h1>
-                <p>Confirm the supplier, scope and commercial terms for your purchase order.</p>
-              </div>
-              <button type="button" className="pof-close" onClick={handleCancel} aria-label="Close purchase order"><X size={18} /></button>
-            </div>
-            <div className="pof-header-bottom">
-              <span className="pof-draft-state" role="status"><DocumentTextIcon />{autoSaving ? 'Saving draft…' : formData.po_number || 'Draft · select a recommendation to start'}</span>
-              <div className="pof-header-actions">
-                <button type="button" className="pof-button" onClick={(event) => handleSubmit(event, false)} disabled={busy || !hasRequiredRequisition || poNumberLoading}><SaveIcon />{submitLoading ? 'Saving…' : editData ? 'Save changes' : 'Save draft'}</button>
-                {(!editData || editData.status === 'draft') && <button type="button" className="pof-button pof-primary" onClick={() => openSection(4)} disabled={!hasRequiredRequisition}>Review order <ArrowRight /></button>}
-              </div>
-            </div>
-            <div className="pof-tabs" role="tablist" aria-label="Purchase order sections">
-              {sections.map(section => (
-                <button type="button" role="tab" id={`po-tab-${section.id}`} aria-controls="po-section-panel" aria-selected={currentSection === section.id}
-                  tabIndex={currentSection === section.id ? 0 : -1}
-                  key={section.id} onClick={() => openSection(section.id)}
-                  onKeyDown={event => {
-                    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-                    event.preventDefault();
-                    const last = hasRequiredRequisition ? 4 : 1;
-                    const next = event.key === 'Home' ? 1 : event.key === 'End' ? last : ((currentSection - 1 + (event.key === 'ArrowRight' ? 1 : -1) + last) % last) + 1;
-                    openSection(next);
-                    event.currentTarget.parentElement.querySelector(`#po-tab-${next}`)?.focus();
-                  }}
-                  disabled={isNewOrder && !hasRequiredRequisition && section.id !== 1}>
-                  <span className="pof-tab-icon"><section.icon /></span><span>{section.name}</span>
-                </button>
-              ))}
-            </div>
-          </header>
-          <form className="pof-form" noValidate onSubmit={(event) => handleSubmit(event, false)} aria-label="Purchase order form">
-            {popupError && <div className="pof-error" role="alert"><AlertCircle size={17} /><span>{popupError}</span><button type="button" aria-label="Dismiss error" onClick={() => setPopupError('')}><X size={16} /></button></div>}
-            <div className="pof-form-scroll" ref={formScrollRef}>
-              {editData?.commercial_edit_locked === true && <p role="status" className="mx-4 mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{purchaseOrderCommercialLockReason(editData)}</p>}
-              {currentSection === 4 && (!editData || editData.status === 'draft') && editData?.can_send_to_vendor !== true && <p id="po-form-send-block-reason" role="status" className="mx-4 mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{editData ? purchaseOrderLifecycleBlockReason(editData) : 'Save this purchase order as a draft, then complete its approvals before sending it to the vendor.'}</p>}
-              <div id="po-section-panel" role="tabpanel" aria-labelledby={`po-tab-${currentSection}`} className="pof-section-panel">
-          {/* Section 1: Header, buyer, seller and project details */}
-          {currentSection === 1 && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between rounded-xl border border-blue-200 border-l-4 border-l-blue-600 bg-blue-50 px-3 py-2">
-                <div className="flex items-center gap-3">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white"><DocumentTextIcon className="h-4 w-4" /></span>
-                  <div><h3 id="po-header-group" className="text-base font-bold text-blue-950">Header, Buyer &amp; Project Details</h3><p className="text-xs text-blue-700">PO identity, requisition and seller information</p></div>
-                </div>
-                <span className="rounded-full bg-blue-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-blue-700"></span>
-              </div>
-
-              <div className="rounded-2xl border-2 border-blue-200 bg-blue-50/60 p-4 shadow-sm">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <label htmlFor="po-pr-search" className="block text-sm font-bold text-gray-900">
-                      Existing PR Number <span className="text-red-600">*</span>
-                    </label>
-                    <p className="mt-1 text-xs text-gray-600">Select a purchase recommendation to fill in the supplier, project and pricing details.</p>
-                  </div>
-                  {selectedRequisition && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">
-                      <CheckCircleIcon className="h-4 w-4" /> PR linked
-                    </span>
-                  )}
-                </div>
-
-                {isNewOrder || !editData.pr_reference ? (
+  const orderSellerCard = (
+    <section className="pof-card pof-order-card" aria-labelledby="po-header-group">
+      <div className="pof-card-heading"><span className="pof-card-icon"><DocumentTextIcon /></span><h3 id="po-header-group">Order &amp; seller</h3></div>
+      <div className="pof-card-body">
+        <div className="pof-field-grid">
+          <div className="pof-field-row pof-pr-row">
+            <label htmlFor="po-pr-search">PR Number <span className="pof-required">*</span></label>
+            {isNewOrder || !editData.pr_reference ? (
                   <div className="relative mt-3">
                     <input
                       id="po-pr-search"
@@ -1960,26 +1744,8 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     {effectiveRequisition?.pr_number || 'Legacy PO — no linked PR'}
                   </div>
                 )}
-
-                {selectedRequisition && (
-                  <div className="mt-3 grid gap-2 rounded-xl border border-blue-100 bg-white/80 p-3 text-xs text-gray-700 sm:grid-cols-3">
-                    <div><span className="font-semibold text-gray-500">Purchase:</span><br />{selectedRequisition.product_service || selectedRequisition.title || '—'}</div>
-                    <div><span className="font-semibold text-gray-500">Supplier:</span><br />{selectedRequisition.vendor_name || selectedRequisition.supplier_name || '—'}</div>
-                    <div><span className="font-semibold text-gray-500">PR Amount:</span><br />{selectedRequisition.currency || 'AED'} {Number(selectedRequisition.total_price || selectedRequisition.net_total_excl_vat || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
-                  </div>
-                )}
-              </div>
-
-              {!hasRequiredRequisition ? (
-                <div className="pof-empty-requisition">
-                  <DocumentCheckIcon className="mx-auto h-10 w-10 text-amber-500" />
-                  <h4 className="mt-3 font-bold text-amber-900">Select an existing PR to continue</h4>
-                  <p className="mt-1 text-sm text-amber-700">RADAI will link the PO to that requisition and prefill the available supplier, scope, project, pricing, and delivery data.</p>
-                </div>
-              ) : (
-              <div className="space-y-4 rounded-2xl border border-blue-200 bg-white p-4 shadow-sm" aria-labelledby="po-header-group">
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
+          </div>
+          <div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">PO Number *</label>
                     <input
                       type="text"
@@ -1990,10 +1756,9 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                       placeholder={poNumberLoading ? 'Generating PO number…' : 'RAD-PRJ-PUR-####_YYYY'}
                     />
                     {poNumberLoading && <p className="mt-1 text-xs text-blue-600">Generating the next PO number from the selected PR…</p>}
-                    {!poNumberLoading && !errors.po_number && <p className="mt-1 text-xs text-gray-500">Auto-generated after PR selection. You may edit it while keeping the RAD format.</p>}
                     {errors.po_number && <p className="mt-1 text-xs font-medium text-red-600">{errors.po_number}</p>}
                   </div>
-                  <div>
+          <div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">PO Date</label>
                     <input
                       type="date"
@@ -2004,7 +1769,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
                     />
                   </div>
-                  <div>
+          <div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">Currency *</label>
                     <select
                       name="currency"
@@ -2019,10 +1784,10 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                       <option value="GBP">GBP</option>
                     </select>
                   </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Seller Information *</label>
+        </div>
+        {hasRequiredRequisition ? <>
+          <div className="pof-field-row">
+                  <label className="block text-sm font-medium text-gray-700">Seller *</label>
                   <select
                     name="vendor"
                       aria-label="Seller Information"
@@ -2041,32 +1806,9 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                   </select>
                   {errors.vendor && <p className="mt-1 text-xs text-red-600">{errors.vendor}</p>}
 
-                  {selectedVendor && (
-                    <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-gray-700">
-                      <div className="font-semibold text-blue-700 mb-2">Selected vendor details</div>
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        <div>
-                          <span className="font-medium">Email:</span> {selectedVendor.email || 'N/A'}
-                        </div>
-                        <div>
-                          <span className="font-medium">Phone:</span> {selectedVendor.phone || 'N/A'}
-                        </div>
-                        <div>
-                          <span className="font-medium">Country:</span> {selectedVendor.country || 'N/A'}
-                        </div>
-                        <div>
-                          <span className="font-medium">Trade License:</span> {selectedVendor.trade_license_number || 'N/A'}
-                        </div>
-                        <div>
-                          <span className="font-medium">VAT Number:</span> {selectedVendor.vat_number || 'N/A'}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
 
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
+                </div>
+          <div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">Seller Reference</label>
                     <input
                       type="text"
@@ -2078,7 +1820,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                       placeholder="Attn: Mr. Abdul Muneem"
                     />
                   </div>
-                  <div>
+          <div className="pof-field-grid"><div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">Quote Reference</label>
                     <input
                       type="text"
@@ -2089,8 +1831,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
                       placeholder="E-mail dt 27.12.2024"
                     />
-                  </div>
-                  <div>
+                  </div><div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">License No.</label>
                     <input
                       type="text"
@@ -2101,41 +1842,8 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
                       placeholder="CN-3362215"
                     />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Title / Description *</label>
-                  <input
-                    type="text"
-                    name="title"
-                      aria-label="Title / Description"
-                    value={formData.title}
-                    onChange={handleChange}
-                    className={`mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 ${
-                      errors.title ? 'border-red-500' : ''
-                    }`}
-                    placeholder="Value Engineering Services for STP & GTG Demolition Project"
-                  />
-                  {errors.title && <p className="mt-1 text-xs text-red-600">{errors.title}</p>}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Vendor Summary (included when sending to vendor) *</label>
-                  <textarea
-                    name="summary"
-                      aria-label="Vendor Summary"
-                    value={formData.summary}
-                    onChange={handleChange}
-                    rows={2}
-                    className={`mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 ${errors.summary ? 'border-red-500' : ''}`}
-                    placeholder="Short summary to appear in vendor notification..."
-                  />
-                  {errors.summary && <p className="mt-1 text-xs text-red-600">{errors.summary}</p>}
-                </div>
-
-                <div className="grid gap-3 md:grid-cols-3">
-                  <div>
+                  </div></div>
+          <div className="pof-field-grid"><div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">Seller Email</label>
                     <input
                       type="email"
@@ -2146,9 +1854,8 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
                       placeholder="seller@example.com"
                     />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Seller Phone Number</label>
+                  </div><div className="pof-field-row">
+                    <label className="block text-sm font-medium text-gray-700">Seller Phone</label>
                     <input
                       type="text"
                       name="seller_phone"
@@ -2158,8 +1865,8 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
                       placeholder="+971 4 123 4567"
                     />
-                  </div>
-                  <div>
+                  </div></div>
+          <div className="pof-field-row">
                     <label htmlFor="seller-address" className="block text-sm font-medium text-gray-700">Seller Address</label>
                     <input
                       type="text"
@@ -2174,61 +1881,24 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                       placeholder="Building, street, city, postal code, country"
                     />
                   </div>
-                </div>
-              </div>
-              )}
-            </div>
-          )}
+          {selectedVendor && <details className="pof-vendor-details">
+            <summary>Vendor details <span>{[selectedVendor.country, selectedVendor.vat_number && ('VAT ' + selectedVendor.vat_number), selectedVendor.trade_license_number && ('Trade licence ' + selectedVendor.trade_license_number)].filter(Boolean).join(' · ')}</span></summary>
+            <dl>{[['Email', selectedVendor.email], ['Phone', selectedVendor.phone], ['Country', selectedVendor.country], ['Trade licence', selectedVendor.trade_license_number], ['VAT number', selectedVendor.vat_number]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value || 'Not recorded'}</dd></div>)}</dl>
+          </details>}
+        </> : <div className="pof-empty-requisition"><DocumentCheckIcon /><h4>Select an existing PR to continue</h4></div>}
+      </div>
+    </section>
+  );
 
-          {/* Buyer and payment information is part of the merged first tab. */}
-          {currentSection === 1 && (
-            <div className="mt-5 space-y-4">
-              <div className="flex items-center justify-between rounded-xl border border-violet-200 border-l-4 border-l-violet-600 bg-violet-50 px-3 py-2">
-                <div className="flex items-center gap-3">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600 text-white"><CurrencyDollarIcon className="h-4 w-4" /></span>
-                  <div><h3 id="po-buyer-payment-group" className="text-base font-bold text-violet-950">Buyer &amp; Payment Information</h3><p className="text-xs text-violet-700">Buyer references, totals and commercial terms</p></div>
-                </div>
-                <span className="rounded-full bg-violet-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-violet-700"></span>
-              </div>
-
-              <div className="space-y-4 rounded-2xl border border-violet-200 bg-white p-4 shadow-sm" aria-labelledby="po-buyer-payment-group">
-                <div className="hidden grid-cols-2 gap-4" aria-hidden="true">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Invoicing Attention</label>
-                    <input
-                      type="text"
-                      name="invoicing_attn"
-                      aria-label="Invoicing Attn"
-                      value={formData.invoicing_attn}
-                      readOnly
-                      className="mt-1 block w-full cursor-not-allowed rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-900"
-                    />
-                    <p className="mt-1 text-xs text-gray-500">
-                      Default PO invoicing contact · {DEFAULT_INVOICE_EMAIL}
-                    </p>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Company Fax</label>
-                    <input
-                      type="text"
-                      name="company_fax"
-                      aria-label="Company Fax"
-                      value={formData.company_fax}
-                      onChange={handleChange}
-                      className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Buyer Reference</label>
-                  <div className="mt-3 space-y-3">
-                    {[0, 1, 2].map((slotIndex) => {
+  const buyerCommercialCard = (
+    <section className="pof-card pof-buyer-card" aria-labelledby="po-buyer-payment-group">
+      <div className="pof-card-heading"><span className="pof-card-icon"><UserGroupIcon /></span><h3 id="po-buyer-payment-group">Buyer &amp; commercial</h3></div>
+      <div className="pof-card-body">
+        <div className="pof-buyer-references">{[0, 1, 2].map((slotIndex) => {
                       const reference = buyerReferences[slotIndex];
-                      return <div key={slotIndex} className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                      return <div key={slotIndex} className="pof-buyer-reference">
                         <div className="flex items-center gap-3">
-                          <span className="w-20 text-xs font-bold uppercase text-gray-500">{slotIndex === 0 ? 'Primary' : `Reference ${slotIndex + 1}`}</span>
+                          <span className="w-20 text-xs font-bold uppercase text-gray-500">{slotIndex === 0 ? 'Primary Buyer' : `Reference ${slotIndex + 1}`}</span>
                           {slotIndex === 0 ? (
                             <select aria-label="Primary buyer reference" value={reference?.user_id || ''} onChange={(event) => handleBuyerReferenceSelection(slotIndex, event.target.value)} disabled className="block flex-1 rounded-md border-gray-300 bg-gray-100 px-3 py-2 text-sm text-gray-900">
                               <option value={reference?.user_id || ''}>{reference?.name || DEFAULT_BUYER_REFERENCE}</option>
@@ -2252,22 +1922,17 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                             </>
                           )}
                         </div>
-                        {reference && <p className="mt-2 pl-24 text-xs text-gray-600"><b>{reference.name}</b> · {reference.designation} · {reference.email}</p>}
                       </div>;
-                    })}
-                  </div>
-                  <p className="mt-1 text-xs text-gray-500">{formData.buyer_reference_email || `Default: ${DEFAULT_BUYER_REFERENCE}. Email is fetched from RADAI.`}</p>
-                  {employeeLoadError && <p className="mt-2 text-sm text-red-600">{employeeLoadError} <button type="button" onClick={fetchPOApprovers} disabled={approversLoading} className="font-semibold underline">Retry employee list</button></p>}
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Price before order discount</label>
+                    })}</div>
+        {employeeLoadError && <p className="pof-field-error">{employeeLoadError} <button type="button" onClick={fetchPOApprovers} disabled={approversLoading}>Retry employee list</button></p>}
+        <div className="pof-field-grid pof-money-fields">
+          <div className="pof-field-row">
+                    <label className="block text-sm font-medium text-gray-700">Price Before Discount</label>
                     <input type="number" step="0.01" min="0" name="price_amount" aria-label="Price before order discount"
                       value={formData.items?.length ? sumProcurementMoney(formData.items.map(purchaseOrderLineNet)) ?? '' : formData.price_amount} readOnly={Boolean(formData.items?.length)} onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 read-only:bg-gray-100" />
                   </div>
-                  <label className="block text-sm font-medium text-gray-700">Price basis
+          <label className="pof-field-row">Price basis
                     <select name="vat_basis" aria-label="Price basis" value={pricingConfirmed ? formData.vat_basis : 'unconfirmed'} onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900">
                       <option value="unconfirmed">Confirm VAT treatment</option>
@@ -2275,7 +1940,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     </select>
                     {errors.vat_basis && <span className="mt-1 block text-xs text-red-600">{errors.vat_basis}</span>}
                   </label>
-                  <div>
+          <div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">Total Amount *</label>
                     <input
                       type="number"
@@ -2290,8 +1955,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     />
                     {errors.total_amount && <p className="mt-1 text-xs text-red-600">{errors.total_amount}</p>}
                   </div>
-                  
-                  <div>
+          <div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">VAT %</label>
                     <input
                       type="number"
@@ -2303,8 +1967,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
                     />
                   </div>
-                  
-                  <div>
+          <div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">Tax Amount</label>
                     <input
                       type="number"
@@ -2316,10 +1979,8 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-gray-100 px-3 py-2 text-sm text-gray-900"
                     />
                   </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
+        </div>
+        <div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">Payment Terms *</label>
                     <input
                       type="text"
@@ -2333,8 +1994,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     />
                     {errors.payment_terms && <p className="mt-1 text-xs text-red-600">{errors.payment_terms}</p>}
                   </div>
-                  
-                  <div>
+        <div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">Payment Mode</label>
                     <select
                       name="payment_mode"
@@ -2349,22 +2009,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                       <option value="Cheque">Cheque</option>
                     </select>
                   </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Delivery Terms</label>
-                    <input
-                      type="text"
-                      name="delivery_terms"
-                      aria-label="Delivery Terms"
-                      value={formData.delivery_terms}
-                      onChange={handleChange}
-                      className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
-                    />
-                  </div>
-                  
-                  <div>
+        <div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">Shipment Marking</label>
                     <input
                       type="text"
@@ -2376,29 +2021,46 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                       placeholder="RAD-PRJ-PUR-0014"
                     />
                   </div>
-                </div>
+      </div>
+    </section>
+  );
 
-              </div>
-            </div>
-          )}
-
-          {/* Project details are part of the merged first tab. */}
-          {currentSection === 1 && (
-            <div className="mt-5 space-y-4">
-              <div className="flex items-center justify-between rounded-xl border border-emerald-200 border-l-4 border-l-emerald-600 bg-emerald-50 px-3 py-2">
-                <div className="flex items-center gap-3">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white"><BuildingOfficeIcon className="h-4 w-4" /></span>
-                  <div><h3 id="po-project-group" className="text-base font-bold text-emerald-950">Project Details</h3><p className="text-xs text-emerald-700">Project linkage, parties and delivery dates</p></div>
-                </div>
-                <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700"></span>
-              </div>
-
-              <div className="space-y-4 rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm" aria-labelledby="po-project-group">
-                <div>
+  const scopeProjectsCard = (
+    <section className="pof-card pof-scope-card" aria-labelledby="po-project-group">
+      <div className="pof-card-heading"><span className="pof-card-icon"><FolderOpen /></span><h3 id="po-project-group">Scope &amp; projects</h3></div>
+      <div className="pof-card-body">
+        <div className="pof-field-grid"><div className="pof-field-row">
+                  <label className="block text-sm font-medium text-gray-700">Title / Description *</label>
+                  <input
+                    type="text"
+                    name="title"
+                      aria-label="Title / Description"
+                    value={formData.title}
+                    onChange={handleChange}
+                    className={`mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 ${
+                      errors.title ? 'border-red-500' : ''
+                    }`}
+                    placeholder="Value Engineering Services for STP & GTG Demolition Project"
+                  />
+                  {errors.title && <p className="mt-1 text-xs text-red-600">{errors.title}</p>}
+                </div><div className="pof-field-row">
+                  <label className="block text-sm font-medium text-gray-700">Vendor Summary *</label>
+                  <textarea
+                    name="summary"
+                      aria-label="Vendor Summary"
+                    value={formData.summary}
+                    onChange={handleChange}
+                    rows={1}
+                    className={`mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500 ${errors.summary ? 'border-red-500' : ''}`}
+                    placeholder="Short summary to appear in vendor notification..."
+                  />
+                  {errors.summary && <p className="mt-1 text-xs text-red-600">{errors.summary}</p>}
+                </div></div>
+        <div className="pof-project-picker">
                   <div className="flex flex-wrap items-end justify-between gap-3">
                     <div>
                       <label htmlFor="po-project-search" className="block text-sm font-medium text-gray-700">Project Name and Number</label>
-                      <p className="mt-1 text-xs text-gray-500">Search and select one or more projects.</p>
+
                     </div>
                     <button
                       type="button"
@@ -2540,9 +2202,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                     </div>
                   )}
                 </div>
-
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
+        <div className="pof-field-grid pof-three-fields"><div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">Project Number</label>
                     <input
                       type="text"
@@ -2554,9 +2214,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                       placeholder="Select projects above"
                     />
                     {errors.project_number && <p className="mt-1 text-xs text-red-600">{errors.project_number}</p>}
-                  </div>
-                  
-                  <div>
+                  </div><div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">RAD Project No.</label>
                     <input
                       type="text"
@@ -2566,9 +2224,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
                     />
-                  </div>
-                  
-                  <div>
+                  </div><div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">Agreement No.</label>
                     <input
                       type="text"
@@ -2579,11 +2235,8 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
                       placeholder="4700024202"
                     />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
+                  </div></div>
+        <div className="pof-field-grid pof-project-parties"><div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">End Client</label>
                     <input
                       type="text"
@@ -2594,9 +2247,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
                       placeholder="ADNOC Gas"
                     />
-                  </div>
-                  
-                  <div>
+                  </div><div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">Project Manager</label>
                     <input
                       type="text"
@@ -2606,11 +2257,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
                     />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
+                  </div><div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">Contractor</label>
                     <input
                       type="text"
@@ -2620,9 +2267,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
                     />
-                  </div>
-                  
-                  <div>
+                  </div><div className="pof-field-row">
                     <label className="block text-sm font-medium text-gray-700">Subcontractor</label>
                     <input
                       type="text"
@@ -2632,10 +2277,19 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                       onChange={handleChange}
                       className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
                     />
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-4">
+                  </div></div>
+        {currentSection === 3 && <div className="pof-field-row">
+                    <label className="block text-sm font-medium text-gray-700">Delivery Terms</label>
+                    <input
+                      type="text"
+                      name="delivery_terms"
+                      aria-label="Delivery Terms"
+                      value={formData.delivery_terms}
+                      onChange={handleChange}
+                      className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-blue-500"
+                    />
+                  </div>}
+        <div className="pof-delivery-fields">
                   <label className="block text-sm font-medium text-gray-700">Date for Delivery Information</label>
                   <div className="mt-2 flex gap-6">
                     {[['delivery', 'Delivery Date (supply)'], ['start', 'Start Date (services)']].map(([value, label]) => <label key={value} className="flex items-center gap-2 text-sm text-gray-700"><input type="radio" checked={(formData.contact_persons?.delivery_date_type || 'delivery') === value} onChange={() => setFormData((previous) => ({ ...previous, contact_persons: { ...(previous.contact_persons || {}), delivery_date_type: value } }))} />{label}</label>)}
@@ -2680,19 +2334,171 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                   </div>
                   </div>}
                 </div>
+      </div>
+    </section>
+  );
+
+  const approvalCards = (
+    <div className="pof-approval-grid">
+      <section className="pof-card" aria-labelledby="po-approval-notes-heading">
+        <div className="pof-card-heading"><span className="pof-card-icon"><DocumentCheckIcon /></span><h3 id="po-approval-notes-heading">Approval notes</h3></div>
+        <div className="pof-card-body"><div className="pof-field-row"><label htmlFor="po-final-approval-notes">Final Approval Notes</label>
+          <textarea id="po-final-approval-notes" name="final_approver_notes" aria-label="Final approval notes" value={formData.final_approver_notes} onChange={handleChange} rows={2} placeholder="Final sign-off notes, approval comments or routing remarks..." />
+        </div></div>
+      </section>
+      <section className="pof-card pof-signatory-card" aria-labelledby="po-final-signatory-heading">
+        <div className="pof-card-heading"><span className="pof-card-icon"><DocumentCheckIcon /></span><h3 id="po-final-signatory-heading">Final signatory</h3>
+          {approvalRouteEditable && <button type="button" onClick={fetchPOApprovers} disabled={approversLoading} className="pof-refresh-signatories"><RefreshCw />Refresh signatories</button>}
+        </div>
+        <div className="pof-card-body">
+          {formData.approval_log.length > 0 ? formData.approval_log.map((entry, index) => (
+            <div key={[entry.stage, index].join('-')} className="pof-signatory-fields">
+              <div className="pof-field-row"><label>Approval Stage</label><span className="pof-recorded-value">{entry.stage || entry.role || 'Recorded approval'}</span></div>
+              <div className="pof-field-row"><label>Approver</label><select
+                              id={index === 0 ? 'po-approval_log' : undefined}
+                              value={entry.user_id || ''}
+                              onChange={(e) => handleApprovalSelection(index, e.target.value)}
+                              aria-label={`${entry.stage || entry.role || 'Recorded approval'} approver`}
+                              aria-describedby={approvalRouteEditable ? 'po-signatory-status' : undefined}
+                              disabled={!approvalRouteEditable || approversLoading || Boolean(approverLoadError) || !finalApprovers.length}
+
+                              className="block w-full rounded-md border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                            >
+                              <option value="">{approversLoading ? 'Loading authorized signatories...' : '-- Select authorized signatory --'}</option>
+                              {entry.user_id && !(approvalRouteEditable ? finalApprovers : approvalEmployees).some(employee => String(employee.id) === String(entry.user_id)) && <option value={entry.user_id} disabled={approvalRouteEditable}>{entry.approver || entry.user_name || 'Recorded approver'}{approvalRouteEditable ? ' — eligibility not confirmed' : ''}</option>}
+                              {(approvalRouteEditable ? finalApprovers : approvalEmployees).map((employee) => (
+                                <option key={employee.id} value={employee.id}>
+                                  {employee.full_name || employee.username || 'Active employee'}{employee.job_title ? ` — ${employee.job_title}` : ''}{employee.email ? ` — ${employee.email}` : ''}{employee.department ? ` (${employee.department})` : ''}
+                                </option>
+                              ))}
+                            </select></div>
+              <div className="pof-field-row"><label>Approved By</label><span className="pof-recorded-value">{[entry.approver || entry.user_name, entry.status].filter(Boolean).join(' · ') || 'Not recorded'}</span></div>
+              <div className="pof-field-row"><label>Routing Comments</label><input
+                              type="text"
+                              value={entry.comments || ''}
+                              aria-label={`${entry.stage || entry.role || 'Recorded approval'} routing comments`}
+                              onChange={(e) => updateApprovalLog(index, 'comments', e.target.value)}
+                              disabled={!approvalRouteEditable}
+                              placeholder="Optional comments"
+                              className="block w-full rounded-md border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                            /></div>
+              {entry.external && <p className="pof-source-history">{['purchase_requisition', 'signed_purchase_requisition_pdf'].includes(entry.source) ? 'Source recommendation history' : 'Source document history'}</p>}
+            </div>
+          )) : <p className="pof-helper">No separate PO approval route is recorded.</p>}
+          {approvalRouteEditable && <p id="po-signatory-status" role="status" className={'pof-field-error ' + (approversLoading ? 'is-loading' : '')}>{signatoryAvailabilityError || errors.approval_log || (unavailableSignatory ? approvalEligibilityError : '')}</p>}
+          {!approvalRouteEditable && errors.approval_log && <p className="pof-field-error">{errors.approval_log}</p>}
+        </div>
+      </section>
+    </div>
+  );
+
+  return (
+    <div ref={workspaceRef} className={`purchase-order-form-workspace ${pageMode ? 'pof-page' : 'pof-modal'}`} data-table-typography="preserve"
+      style={pageMode ? undefined : modalBounds || { visibility: 'hidden' }}>
+      <div className="pof-workspace-grid">
+        <section className="pof-editor" aria-label="Purchase order editor">
+          <header className="pof-header">
+            <nav className="pof-breadcrumb" aria-label="Breadcrumb">
+              <span>Procurement</span><span>/</span><button type="button" onClick={handleCancel} disabled={busy}>Purchase Orders</button><span>/</span><strong>{editData ? 'Edit' : 'New'}</strong>
+            </nav>
+            <div className="pof-title-row">
+              <div>
+                <h1>{editData ? 'Edit purchase order' : 'New purchase order'}</h1>
+              </div>
+              <button type="button" className="pof-close" onClick={handleCancel} disabled={busy} aria-label="Close purchase order"><X size={18} /></button>
+            </div>
+            <div className="pof-header-bottom">
+              <span className="pof-draft-state" role="status"><DocumentTextIcon />{autoSaving ? 'Saving draft…' : formData.po_number || 'Draft · select a recommendation to start'}</span>
+              <div className="pof-header-actions">
+                <button type="button" className="pof-button" onClick={(event) => handleSubmit(event, false)} disabled={busy || !hasRequiredRequisition || poNumberLoading}><SaveIcon />{submitLoading ? 'Saving…' : editData ? 'Save changes' : 'Save draft'}</button>
               </div>
             </div>
-          )}
+            <div className="pof-tabs" role="tablist" aria-label="Purchase order sections">
+              {sections.map(section => (
+                <button type="button" role="tab" id={`po-tab-${section.id}`} aria-controls="po-section-panel" aria-selected={currentSection === section.id}
+                  tabIndex={currentSection === section.id ? 0 : -1}
+                  key={section.id} onClick={() => openSection(section.id)}
+                  onKeyDown={event => {
+                    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+                    event.preventDefault();
+                    const last = hasRequiredRequisition ? 4 : 1;
+                    const next = event.key === 'Home' ? 1 : event.key === 'End' ? last : ((currentSection - 1 + (event.key === 'ArrowRight' ? 1 : -1) + last) % last) + 1;
+                    openSection(next);
+                    event.currentTarget.parentElement.querySelector(`#po-tab-${next}`)?.focus();
+                  }}
+                  disabled={isNewOrder && !hasRequiredRequisition && section.id !== 1}>
+                  <span className="pof-step-number" aria-hidden="true">{section.id}</span><span>{section.name}</span>
+                </button>
+              ))}
+            </div>
+          </header>
+          <form className="pof-form" noValidate onSubmit={(event) => handleSubmit(event, false)} aria-label="Purchase order form">
+            {popupError && <div className="pof-error" role="alert"><AlertCircle size={17} /><span>{popupError}</span><button type="button" aria-label="Dismiss error" onClick={() => setPopupError('')}><X size={16} /></button></div>}
+            <div className="pof-form-scroll" ref={formScrollRef}>
+              {editData?.commercial_edit_locked === true && <p role="status" className="mx-4 mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{purchaseOrderCommercialLockReason(editData)}</p>}
+              {currentSection === 4 && (!editData || editData.status === 'draft') && editData?.can_send_to_vendor !== true && <p id="po-form-send-block-reason" role="status" className="mx-4 mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{editData ? purchaseOrderLifecycleBlockReason(editData) : 'Save this purchase order as a draft, then complete its approvals before sending it to the vendor.'}</p>}
+              <div id="po-section-panel" role="tabpanel" aria-labelledby={`po-tab-${currentSection}`} className="pof-section-panel">
+          {currentSection === 1 && <div className="pof-overview-grid">
+            {orderSellerCard}
+            {buyerCommercialCard}
+            {scopeProjectsCard}
+            {approvalCards}
+          </div>}
+          {currentSection === 3 && <>
+            {scopeProjectsCard}
+            <section className="pof-card" aria-labelledby="po-invoicing-heading">
+              <div className="pof-card-heading"><span className="pof-card-icon"><DocumentTextIcon /></span><h3 id="po-invoicing-heading">Invoicing</h3></div>
+              <div className="pof-card-body pof-field-grid">
+                <div className="pof-field-row">
+                  <label htmlFor="po-invoicing-attn">Invoicing Attention</label>
+                  <input id="po-invoicing-attn" type="text" name="invoicing_attn" aria-label="Invoicing Attn" value={formData.invoicing_attn} readOnly />
+                </div>
+                <div className="pof-field-row">
+                  <label htmlFor="po-company-fax">Company Fax</label>
+                  <input id="po-company-fax" type="text" name="company_fax" aria-label="Company Fax" value={formData.company_fax} onChange={handleChange} />
+                </div>
+              </div>
+            </section>
+          </>}
 
           {/* Section 2: PO Description and Scope */}
           {currentSection === 2 && (
             <div className="space-y-4">
-              <div>
-                <h3 className="border-b pb-2 text-lg font-semibold text-gray-900">PO Description &amp; Scope</h3>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-2">
+                <h3 className="text-lg font-semibold text-gray-900">PO Description &amp; Scope</h3>
+                <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={formData.contact_persons?.show_scope_heading !== false}
+                    disabled={editData?.commercial_edit_locked === true}
+                    onChange={(event) => {
+                      const showScopeHeading = event.target.checked;
+                      setFormData(previous => ({ ...previous, contact_persons: { ...(previous.contact_persons || {}), show_scope_heading: showScopeHeading } }));
+                    }}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+                  />
+                  Show heading
+                </label>
               </div>
               <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
                 <div>
-                  <label htmlFor="po-order-introduction" className="block text-sm font-medium text-gray-700">Buyer / Seller introduction</label>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <label htmlFor="po-order-introduction" className="block text-sm font-medium text-gray-700">Buyer / Seller introduction</label>
+                    <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={showOrderIntroduction}
+                        disabled={editData?.commercial_edit_locked === true}
+                        onChange={(event) => {
+                          const showIntroduction = event.target.checked;
+                          setFormData(previous => ({ ...previous, contact_persons: { ...(previous.contact_persons || {}), show_order_introduction: showIntroduction } }));
+                        }}
+                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+                      />
+                      Show introduction
+                    </label>
+                  </div>
+                  {showOrderIntroduction && <>
                   <textarea
                     id="po-order-introduction"
                     name="order_introduction"
@@ -2720,17 +2526,18 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
                       })}
                     >Use standard introduction</button>
                   </div>
+                  </>}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700">PO Narrative</label>
-                  <RichTextEditor value={formData.description} onChange={(description) => setFormData((previous) => ({ ...previous, description, scope_of_services: '' }))} />
+                  <PurchaseOrderNarrativeEditor disabled={editData?.commercial_edit_locked === true} value={formData.description} onChange={(description) => setFormData((previous) => ({ ...previous, description, scope_of_services: '' }))} />
                 </div>
               </div>
             </div>
           )}
 
-          {/* Section 3: Summary of Prices */}
-          {currentSection === 3 && (
+          {/* Pricing shares the scope step. */}
+          {currentSection === 2 && (
             <div className="space-y-4" data-po-price-summary tabIndex={-1}>
               <div className="flex items-center justify-between">
                 <div>
@@ -3030,92 +2837,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
             </div>
           )}
 
-          {/* Final sign-off belongs to the existing Header, Buyer & Project section. */}
-          {currentSection === 1 && (
-            <div className="space-y-6">
-              <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Final Approval Notes</h3>
-                  <p className="text-sm text-gray-500">Use this field for any final instructions, exceptions, or handover comments from approvers.</p>
-                </div>
-                <textarea
-                  name="final_approver_notes"
-                  aria-label="Final approval notes"
-                  value={formData.final_approver_notes}
-                  onChange={handleChange}
-                  rows={5}
-                  className="mt-4 block w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:border-blue-500 focus:ring-blue-500"
-                  placeholder="Final sign-off notes, approval comments, or routing remarks..."
-                />
-              </div>
-
-              <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900">Final Signatory</h3>
-                    <p className="text-sm text-gray-500">{approvalRouteEditable ? 'PO sign-off is requested separately from the purchase recommendation. Only eligible final signatories are listed.' : 'Recorded assignments and approval evidence are preserved.'}</p>
-                  </div>
-                  {approvalRouteEditable && <button type="button" onClick={fetchPOApprovers} disabled={approversLoading} className="text-sm font-semibold text-blue-700 underline disabled:opacity-50">Refresh signatories</button>}
-                </div>
-
-                {formData.approval_log.length > 0 ? <div className="mt-6 overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200 text-sm">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Approval stage</th>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Approver</th>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Routing Comments</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200 bg-white">
-                      {formData.approval_log.map((entry, index) => (
-                        <tr key={`${entry.stage}-${index}`}>
-                          <td className="whitespace-nowrap px-4 py-3 font-semibold text-gray-900">{entry.stage || entry.role || 'Recorded approval'}{entry.external && <p className="mt-1 text-xs font-normal text-gray-500">{['purchase_requisition', 'signed_purchase_requisition_pdf'].includes(entry.source) ? 'Source recommendation history' : 'Source document history'}</p>}</td>
-                          <td className="px-4 py-3">
-                            <select
-                              id={index === 0 ? 'po-approval_log' : undefined}
-                              value={entry.user_id || ''}
-                              onChange={(e) => handleApprovalSelection(index, e.target.value)}
-                              aria-label={`${entry.stage || entry.role || 'Recorded approval'} approver`}
-                              aria-describedby={approvalRouteEditable ? 'po-signatory-status' : undefined}
-                              disabled={!approvalRouteEditable || approversLoading || Boolean(approverLoadError) || !finalApprovers.length}
-                              style={{ minWidth: 260 }}
-                              className="block w-full rounded-md border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
-                            >
-                              <option value="">{approversLoading ? 'Loading authorized signatories...' : '-- Select authorized signatory --'}</option>
-                              {entry.user_id && !(approvalRouteEditable ? finalApprovers : approvalEmployees).some(employee => String(employee.id) === String(entry.user_id)) && <option value={entry.user_id} disabled={approvalRouteEditable}>{entry.approver || entry.user_name || 'Recorded approver'}{approvalRouteEditable ? ' — eligibility not confirmed' : ''}</option>}
-                              {(approvalRouteEditable ? finalApprovers : approvalEmployees).map((employee) => (
-                                <option key={employee.id} value={employee.id}>
-                                  {employee.full_name || employee.username || 'Active employee'}{employee.job_title ? ` — ${employee.job_title}` : ''}{employee.email ? ` — ${employee.email}` : ''}{employee.department ? ` (${employee.department})` : ''}
-                                </option>
-                              ))}
-                            </select>
-                            {!approvalRouteEditable && <p className="mt-1 text-xs text-gray-700">{entry.approver || entry.user_name || 'Not recorded'} · {entry.status || 'Not recorded'}</p>}
-                            <p className="mt-1 text-xs text-gray-500">{entry.designation || (entry.user_id ? employeeDesignation((approvalRouteEditable ? finalApprovers : approvalEmployees).find(employee => String(employee.id) === String(entry.user_id))) : '')}</p>
-                          </td>
-                          <td className="px-4 py-3">
-                            <input
-                              type="text"
-                              value={entry.comments || ''}
-                              aria-label={`${entry.stage || entry.role || 'Recorded approval'} routing comments`}
-                              onChange={(e) => updateApprovalLog(index, 'comments', e.target.value)}
-                              disabled={!approvalRouteEditable}
-                              placeholder="Optional comments"
-                              className="block w-full rounded-md border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
-                            />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div> : <p className="mt-4 text-sm text-gray-500">No separate PO approval route is recorded.</p>}
-                {approvalRouteEditable && <p id="po-signatory-status" role="status" className={`mt-3 text-sm ${approversLoading ? 'text-gray-500' : 'font-medium text-red-600'}`}>
-                  {signatoryAvailabilityError || errors.approval_log || (unavailableSignatory ? approvalEligibilityError : '')}
-                </p>}
-                {!approvalRouteEditable && errors.approval_log && <p className="mt-3 text-sm font-medium text-red-600">{errors.approval_log}</p>}
-              </div>
-            </div>
-          )}
+          {currentSection === 4 && approvalCards}
 
           {/* Section 4: all PO attachments are managed in this tab only. */}
           {currentSection === 4 && <div className="space-y-4">
@@ -3151,7 +2873,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
               </div>
             </div>
             <footer className="pof-actionbar">
-              <button type="button" className="pof-button pof-cancel" onClick={handleCancel}>Cancel</button>
+              <button type="button" className="pof-button pof-cancel" onClick={handleCancel} disabled={busy}>Cancel</button>
               <span className={`pof-validation-state ${validationIssues.length ? 'has-issues' : ''}`} role="status">
                 {validationIssues.length ? <AlertCircle /> : <CheckCircleIcon />}
                 {validationIssues.length ? `${validationIssues.length} required item${validationIssues.length === 1 ? '' : 's'} remaining` : 'Required fields complete'}
@@ -3186,4 +2908,17 @@ PurchaseOrderForm.propTypes = {
   }),
 };
 
-export default PurchaseOrderForm;
+function PurchaseOrderEditor(props) {
+  // Choose at entry so a save response cannot discard an already open draft.
+  const [numberOnly] = useState(() => Boolean(props.editData
+    && (props.editData.commercial_edit_locked === true || props.editData.status === 'completed')));
+  if (numberOnly) {
+    return props.isOpen ? <PurchaseOrderNumberCorrection key={props.editData.id} order={props.editData}
+      onSaved={props.onSuccess} onClose={props.onClose} /> : null;
+  }
+  return <PurchaseOrderForm {...props} />;
+}
+
+PurchaseOrderEditor.propTypes = PurchaseOrderForm.propTypes;
+
+export default PurchaseOrderEditor;

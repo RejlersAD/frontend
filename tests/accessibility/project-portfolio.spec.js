@@ -25,9 +25,10 @@ const clean = state => {
   expect(state.unknown).toEqual([])
   expect(state.requests.filter(request => request.method !== 'GET')).toEqual([])
 }
-const listOnly = state => {
+const listOnly = (state, additionalPaths = []) => {
   expect(state.requests.filter(request => ![
     '/api/v1/projects/', '/api/v1/project-control/phase-flags/',
+    ...additionalPaths,
   ].includes(request.path))).toEqual([])
 }
 
@@ -64,6 +65,7 @@ async function portfolioHarness(page, { empty = false, failed = false, unknown =
       Object.assign(fixture, { portfolioEmpty: empty, portfolioFailed: failed })
     },
     async handleRequest({ path, route, state: fixture, reply }) {
+      if (path === '/api/v1/projects/shared-record-targets/') { await reply(route, { results: [], has_more: false }); return true }
       if (path !== '/api/v1/projects/') return false
       if (fixture.portfolioFailed) await reply(route, { detail: 'Portfolio source is unavailable.' }, 503)
       else {
@@ -266,7 +268,7 @@ test('Create project opens the existing accessible form and cancel does not subm
   await expect(dialog.getByRole('button', { name: 'Set up from agreement', exact: true })).toHaveCount(0)
   await dialog.getByRole('button', { name: 'Close', exact: true }).click()
   await expect(dialog).toHaveCount(0)
-  listOnly(state); clean(state)
+  listOnly(state, ['/api/v1/projects/shared-record-targets/']); clean(state)
 })
 
 test('empty and unavailable portfolios distinguish recorded zero from unavailable counts', async ({ page }) => {

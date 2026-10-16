@@ -13,7 +13,7 @@
  *     skips obvious metadata sheets (Notes, SPReport_Definition, Pivot).
  */
 import * as XLSX from 'xlsx';
-import { VALVE_COLUMNS, AREA_OPTIONS, DEFAULT_ROW } from './valveMTO.config';
+import { VALVE_COLUMNS, AREA_OPTIONS, DEFAULT_ROW, sizeNBFromLineNumber } from './valveMTO.config';
 import { deriveRemarksFromRow, mergeRemarks } from './valveMTORemarks';
 
 // ─── Soft-coded constants ────────────────────────────────────────────────
@@ -93,7 +93,7 @@ const extractProjectMeta = (rows) => {
 const coerce = (key, raw) => {
   if (raw === undefined || raw === null) return '';
   const s = String(raw).trim();
-  if (key === 'sl_no' || key === 'qty_island' || key === 'qty_field' || key === 'unit') {
+  if (key === 'sl_no' || key === 'qty_island' || key === 'qty_field' || key === 'qty_observed') {
     if (s === '') return 0;
     const n = Number(s.replace(/[, ]+/g, ''));
     return Number.isFinite(n) ? n : 0;
@@ -135,7 +135,7 @@ export const importValveMTOFile = async (file) => {
     if (!det) continue;
     debug.chosenSheets.push({ name, headerRow: det.headerRow, hits: Object.keys(det.colMap).length });
 
-    // Default-area fallback: sheet name often equals the area (ISLAND / FIELD).
+    // Sheet names select installation allocation, never the source title.
     const sheetArea =
       AREA_OPTIONS.find((a) => norm(a) === norm(name))
       || (norm(name).includes('combined') ? 'COMBINED' : null);
@@ -155,7 +155,8 @@ export const importValveMTOFile = async (file) => {
       // Need at least a tag OR a description OR a type to count.
       if (!row.valve_tag && !row.description && !row.type) continue;
       if (filled < 3) continue;
-      if (!row.area && sheetArea) row.area = sheetArea;
+      if (sheetArea) row.tab = sheetArea.toLowerCase();
+      if (!row.size_1) row.size_1 = sizeNBFromLineNumber(row.line_number);
       // Soft-coded Remark derivation from any text field; merge with any
       // pre-existing free-text remarks so engineering notes survive.
       const derived = deriveRemarksFromRow(row);

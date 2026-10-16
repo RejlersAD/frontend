@@ -7,6 +7,22 @@
 .planning-inputs :focus-visible, .planning-input-dialog :focus-visible, .planning-design :focus-visible { outline: 2px solid var(--pln-blue); outline-offset: 3px; }
 .planning-inputs { display: flex; flex-direction: column; gap: 11px; }
 .planning-design { display: flex; min-width: 0; flex-direction: column; gap: 10px; }
+.planning-design .pln-document-workflow { display: grid; grid-template-columns: 225px minmax(0, 1fr); gap: 16px; align-items: start; }
+.planning-design .pln-document-content { min-width: 0; }
+.planning-design .pln-document-steps { display: flex; flex-direction: column; gap: 5px; }
+.planning-design .pln-document-steps button { display: flex; align-items: center; gap: 12px; min-height: 51px; padding: 8px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: #294d82; text-align: left; font: inherit; }
+.planning-design .pln-document-steps button:hover { background: #f0f4fb; }
+.planning-design .pln-document-steps button[aria-current="step"] { border-color: #c7b8f4; background: #fff; box-shadow: 0 2px 5px #172b4d12; }
+.planning-design .pln-document-steps button:disabled { cursor: not-allowed; opacity: .55; }
+.planning-design .pln-document-steps strong { display: block; font-size: 13px; font-weight: 500; }
+.planning-design .pln-document-steps small { display: block; margin-top: 2px; color: #5974a7; font-size: 11px; line-height: 1.3; }
+.planning-design .pln-document-step-icon { display: grid; place-items: center; width: 30px; height: 30px; flex-shrink: 0; border-radius: 8px; background: #f0f4fa; }
+.planning-design .pln-document-steps [aria-current="step"] .pln-document-step-icon { background: #ede7ff; }
+@media (max-width: 900px) {
+  .planning-design .pln-document-workflow { grid-template-columns: minmax(0, 1fr); }
+  .planning-design .pln-document-steps { flex-direction: row; overflow-x: auto; padding: 3px; }
+  .planning-design .pln-document-steps button { flex: 0 0 195px; }
+}
 .planning-design .pln-steps { display: flex; align-items: stretch; margin: 0; padding: 12px 16px; list-style: none; border: 1px solid var(--pln-border); border-radius: 6px; background: #fff; }
 .planning-design .pln-steps li { display: flex; flex: 1; align-items: center; min-width: 0; }
 .planning-design .pln-steps li:not(:last-child)::after { content: ""; height: 1px; flex: 1; min-width: 12px; margin: 0 17px; background: #c9d7ee; }

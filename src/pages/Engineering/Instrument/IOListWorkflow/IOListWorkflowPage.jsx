@@ -1,3 +1,4 @@
+import PlatformAIStatus from '../../../../components/ai/PlatformAIStatus'
 import { radaiConfirm } from '../../../../services/radaiDialog'
 /**
  * Instrument IO List Workflow — CRS-style multi-revision page.
@@ -18,7 +19,7 @@ import { radaiConfirm } from '../../../../services/radaiDialog'
  */
 
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import {
   Upload, RefreshCw, Download, Trash2, ArrowLeft, FileText, Search,
@@ -42,8 +43,10 @@ import {
   VISION_ESTIMATE,
   DETAIL_TABS, UPLOAD_CONFIG, STATS_CARDS, TONE_CLASSES,
   COST_BADGES, ROUTES, SORT_OPTIONS, STATUS_FILTER_OPTIONS,
-  IO_LIST_EDIT_CONFIG,
+  IO_LIST_EDIT_CONFIG, IO_STAGE_FLOW, IO_AUTOSAVE, IO_WORKSPACE_SESSION,
+  IO_SUBMIT_GATE, IO_REGISTER_UI,
 } from '../../../../config/ioListWorkflow.config'
+import { BYOK_COST_CONFIG, estimateByokCost } from '../../../../config/byokCost.config'
 import {
   IO_LIST_WORKFLOW_PROJECT_STATUSES,
   IO_LIST_WORKFLOW_PROJECT_CATEGORIES,
@@ -706,10 +709,91 @@ const ProjectsPanel = ({ onProjectSelected, documents = [] }) => {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// Stage-flow helpers (soft-coded) — mirrors the Instrument Index guided
+// 4-stage pattern. Config lives in IO_STAGE_FLOW / IO_AUTOSAVE
+// (ioListWorkflow.config.js). Purely presentational + draft persistence;
+// no upload/extraction logic is touched.
+// ─────────────────────────────────────────────────────────────────────
+
+// Minimal promise-wrapped IndexedDB helpers (module scope).
+const ioIdb = {
+  open() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(IO_AUTOSAVE.dbName, 1)
+      req.onupgradeneeded = () => req.result.createObjectStore(IO_AUTOSAVE.storeName)
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
+    })
+  },
+  async put(key, value) {
+    const db = await this.open()
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IO_AUTOSAVE.storeName, 'readwrite')
+      tx.objectStore(IO_AUTOSAVE.storeName).put(value, key)
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+  },
+  async get(key) {
+    const db = await this.open()
+    return new Promise((resolve, reject) => {
+      const req = db.transaction(IO_AUTOSAVE.storeName, 'readonly')
+        .objectStore(IO_AUTOSAVE.storeName).get(key)
+      req.onsuccess = () => resolve(req.result || null)
+      req.onerror = () => reject(req.error)
+    })
+  },
+}
+
+// Per-stage "User Instruction" panel — purely presentational.
+const IoStageInstruction = ({ stage }) => {
+  const navigate = useNavigate()
+  const { heading, bullets = [], note, action } = stage.instruction || {}
+  if (!heading) return null
+  return (
+    <div className="rounded-lg border border-sky-200 bg-sky-50/60 p-3.5">
+      <p className="text-[11px] font-bold uppercase tracking-wider text-sky-700 mb-1.5">
+        📘 User Instruction — {heading}
+      </p>
+      <ul className="list-disc list-inside space-y-0.5 text-xs text-slate-600">
+        {bullets.map((b, i) => <li key={i}>{b}</li>)}
+      </ul>
+      {action && (
+        <button
+          type="button"
+          onClick={() => navigate(action.route)}
+          className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-sky-700 bg-white hover:bg-sky-50 border border-sky-300 rounded-md transition-colors"
+        >
+          {action.label} <ExternalLink className="w-3.5 h-3.5" />
+        </button>
+      )}
+      {note && <p className="mt-1.5 text-[11px] italic text-slate-400">{note}</p>}
+    </div>
+  )
+}
+
+// Locked placeholder shown in place of a stage until its gate passes.
+const IoStageGate = ({ stage }) => (
+  <div className="border border-dashed border-slate-200 rounded-lg p-3.5 bg-slate-50/60 flex items-center gap-3 opacity-80">
+    <span className="flex items-center justify-center h-6 w-6 rounded-full bg-slate-100 text-slate-400 text-xs font-bold border border-slate-200 shrink-0">
+      🔒
+    </span>
+    <div>
+      <p className="text-sm font-semibold text-slate-400">
+        {stage.num}. {stage.title}
+        {stage.optional && <span className="ml-1 text-[10px] font-normal text-slate-400">(optional)</span>}
+      </p>
+      <p className="text-xs text-slate-400 mt-0.5">Complete the previous step to unlock this stage.</p>
+    </div>
+  </div>
+)
+
+// ─────────────────────────────────────────────────────────────────────
 // Upload card — inline, always visible inside a project's workspace
 // (not a modal). I/O List only: no engine/OCR picker, no API key.
 // ─────────────────────────────────────────────────────────────────────
 const UploadCard = ({ onUploaded, projectId, projectName }) => {
+  const navigate = useNavigate()
   const [file, setFile]         = useState(null)
   const [meta, setMeta]         = useState({})
   const [progress, setProgress] = useState(0)
@@ -749,11 +833,19 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
   // project-scoped sessionStorage pattern as provider/key above, and same
   // UI convention as PIDVerification.jsx's own quick/thorough toggle.
   const thoroughScanStorageKey = `${PID_VISION_CONFIG.sessionStorageThoroughKey}::${projectId || 'unassigned'}`
+  const visionModelStorageKey = `${PID_VISION_CONFIG.sessionStorageModelKey}::${projectId || 'unassigned'}`
+  // BYOK model picker (soft-coded; PID_VISION_CONFIG.models) — per-project,
+  // session-scoped like the provider/key above.
+  const [visionModel, setVisionModel] = useState(
+    () => sessionStorage.getItem(visionModelStorageKey) || '',
+  )
   const [showPidOptions, setShowPidOptions] = useState(false)
   const [visionProvider, setVisionProvider] = useState(
     () => sessionStorage.getItem(visionProviderStorageKey) || PID_VISION_CONFIG.defaultProvider,
   )
   const [visionApiKey, setVisionApiKey] = useState(
+    // BYOK: hydrate from the project-scoped session key (tab-scoped only,
+    // cleared when the tab closes — never persisted to disk/server).
     () => sessionStorage.getItem(visionApiKeyStorageKey) || '',
   )
   const [thoroughScan, setThoroughScan] = useState(
@@ -773,16 +865,97 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
   // Gates the confirmation dialog below, not the button itself.
   const [showNoKeyConfirm, setShowNoKeyConfirm] = useState(false)
 
+  // ── Draft auto-save (soft-coded; IO_AUTOSAVE) ───────────────────────
+  // Per-project IndexedDB draft: selected file + document info survive
+  // page reloads / browser restarts, so a user waiting on an ICT-issued
+  // AI key can come back and continue. The vision API key is NEVER saved.
+  const hydratedDraftRef = useRef(null)
+  const [draftSavedAt, setDraftSavedAt] = useState(null)
+  const draftKey = projectId || 'unassigned'
+
+  // ── Stage-flow chaining (soft-coded; IO_STAGE_FLOW) ────────────────
+  // legendAcked marks the optional legend stage as addressed (checked or
+  // skipped) so Document Info unlocks; Vision unlocks once the required
+  // Document Info fields are filled. Persisted with the draft.
+  const [legendAcked, setLegendAcked] = useState(false)
+
+  // ── Submit gate (soft-coded; IO_SUBMIT_GATE) ───────────────────────
+  // Stage 4 is a required CHOICE: 'byok' (key must pass Test) or 'ocr'
+  // (explicit opt-in to free basic OCR). Upload & Extract stays disabled
+  // until all four stages are verified.
+  const [keyChoice, setKeyChoice] = useState('')   // '' | 'byok' | 'ocr'
+  const visionVerified =
+    keyChoice === 'ocr' ||
+    (keyChoice === 'byok' && Boolean(visionApiKey.trim()) && testResult?.valid === true)
+  const ioStageState = { file, meta, legendAcked, visionApiKey, keyChoice }
+  const stageVerified = {
+    upload:   Boolean(file),
+    legend:   Boolean(legendAcked),
+    metadata: Boolean(meta.document_number && meta.revision_label),
+    vision:   visionVerified,
+  }
+  const allStagesVerified =
+    !IO_SUBMIT_GATE.enabled ||
+    IO_SUBMIT_GATE.stages.every(s => stageVerified[s.id])
+
+  // 1) Hydrate the saved draft when the project resolves.
+  useEffect(() => {
+    if (!IO_AUTOSAVE.enabled || hydratedDraftRef.current === draftKey) return undefined
+    let cancelled = false
+    ;(async () => {
+      try {
+        const draft = await ioIdb.get(draftKey)
+        if (cancelled) return
+        if (draft) {
+          if (draft.file) setFile(draft.file)
+          if (draft.meta) setMeta(draft.meta)
+          if (draft.thoroughScan != null) setThoroughScan(draft.thoroughScan)
+          if (draft.legendAcked != null) setLegendAcked(draft.legendAcked)
+          if (draft.keyChoice != null) setKeyChoice(draft.keyChoice)
+          if (draft.savedAt) setDraftSavedAt(draft.savedAt)
+        }
+      } catch (_) { /* IDB unavailable — upload still works normally */ }
+      hydratedDraftRef.current = draftKey
+    })()
+    return () => { cancelled = true }
+  }, [draftKey])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 2) Debounced write-through.
+  useEffect(() => {
+    if (!IO_AUTOSAVE.enabled || hydratedDraftRef.current !== draftKey) return undefined
+    const t = setTimeout(() => {
+      const draft = { file, meta, thoroughScan, legendAcked, keyChoice, savedAt: new Date().toISOString() }
+      ioIdb.put(draftKey, draft)
+        .then(() => setDraftSavedAt(draft.savedAt))
+        .catch(() => { /* non-fatal */ })
+    }, IO_AUTOSAVE.debounceMs)
+    return () => clearTimeout(t)
+  }, [file, meta, thoroughScan, legendAcked, keyChoice, draftKey])
+
+  // Immediate (non-debounced) draft save — used right before navigating
+  // away (Legend Manager redirect), since unmount cancels the debounce.
+  const persistDraftNow = (overrides = {}) => {
+    if (!IO_AUTOSAVE.enabled) return
+    const draft = { file, meta, thoroughScan, legendAcked, keyChoice, ...overrides, savedAt: new Date().toISOString() }
+    ioIdb.put(draftKey, draft).then(() => setDraftSavedAt(draft.savedAt)).catch(() => { /* non-fatal */ })
+  }
+
   const reset = () => {
-    setFile(null); setMeta({}); setProgress(0); setBusy(false); setError('')
+    setFile(null); setMeta({}); setProgress(0); setBusy(false); setError(''); setLegendAcked(false); setKeyChoice(''); setTestResult(null)
+    // Clear the saved draft after a successful upload (soft-coded).
+    if (IO_AUTOSAVE.enabled) {
+      ioIdb.put(draftKey, { file: null, meta: {}, thoroughScan, legendAcked: false, keyChoice: '', savedAt: new Date().toISOString() }).catch(() => {})
+    }
   }
 
   const handleTestConnection = async () => {
     if (!visionApiKey.trim()) { setTestResult({ valid: false, message: 'Enter an API key first.' }); return }
     setTestingKey(true); setTestResult(null)
     try {
-      const res = await ioListWorkflowService.testVisionApiKey(visionProvider, visionApiKey.trim())
+      const res = await ioListWorkflowService.testVisionApiKey(visionProvider, visionApiKey.trim(), visionModel || undefined)
       setTestResult(res)
+      // A passing test confirms the BYOK choice for the submit gate.
+      if (res?.valid) setKeyChoice('byok')
     } catch (err) {
       setTestResult({ valid: false, message: err.response?.data?.message || err.message })
     } finally {
@@ -797,13 +970,15 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
     // (also covers a form submit triggered any other way, e.g. Enter key).
     if (!projectId) { setError('Please select or create a project first.'); return }
     if (!file) { setError('Please select a PDF file.'); return }
+    // Submit gate (soft-coded; IO_SUBMIT_GATE): every stage must be
+    // explicitly verified — including the AI key choice — before upload.
+    if (IO_SUBMIT_GATE.enabled && !allStagesVerified) {
+      setError('Please verify all steps above (including the AI key choice) before uploading.')
+      return
+    }
     // Friendly speed bump, not a wall — see showNoKeyConfirm's own
     // comment. Only asks once per click; "Continue with Basic OCR" in the
     // dialog calls doUpload() directly, bypassing this gate.
-    if (showPidOptions && !visionApiKey.trim()) {
-      setShowNoKeyConfirm(true)
-      return
-    }
     doUpload()
   }
 
@@ -822,13 +997,21 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
       // "P&ID options" section is open, since detection happens server-side
       // after upload (the user may not know in advance which kind of PDF
       // they're dropping in).
-      if (visionApiKey.trim()) {
+      if (visionProvider) {
         uploadMeta.vision_provider = visionProvider
-        uploadMeta.vision_api_key = visionApiKey.trim()
+        // The server resolves the provider credential.
         uploadMeta.thorough = thoroughScan ? 'true' : 'false'
         sessionStorage.setItem(visionProviderStorageKey, visionProvider)
-        sessionStorage.setItem(visionApiKeyStorageKey, visionApiKey.trim())
         sessionStorage.setItem(thoroughScanStorageKey, thoroughScan ? 'true' : 'false')
+        // BYOK: forward the user's own key when present — sent with this
+        // request only, never stored server-side (backend contract:
+        // `vision_api_key` form field; ignored for plain I/O List PDFs).
+        if (visionApiKey.trim()) {
+          uploadMeta.vision_api_key = visionApiKey.trim()
+          sessionStorage.setItem(visionApiKeyStorageKey, visionApiKey.trim())
+          // BYOK model picker — whitelisted server-side; omitted = default.
+          if (visionModel) uploadMeta.vision_model = visionModel
+        }
       }
       const result = await ioListWorkflowService.uploadDocument({
         file, metadata: uploadMeta,
@@ -843,7 +1026,7 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
       // while this document is still extracting, before its own
       // document_type is known (that's only decided once extraction
       // finishes — see orchestrator._detect_document_type).
-      onUploaded({ ...result, _usingVision: Boolean(visionApiKey.trim()), _thorough: thoroughScan })
+      onUploaded({ ...result, _usingVision: false, _thorough: thoroughScan })
       reset()
     } catch (err) {
       setError(err.response?.data?.detail || err.response?.data?.error || err.message || 'Upload failed')
@@ -863,9 +1046,19 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
           <h3 className="text-lg font-bold">{UPLOAD_CONFIG.title}</h3>
           <p className="text-xs text-indigo-100">Multi-revision document workflow</p>
         </div>
+        {/* Draft auto-save status (soft-coded) */}
+        {IO_AUTOSAVE.enabled && draftSavedAt && (
+          <span className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold text-emerald-50 bg-emerald-500/20 border border-emerald-300/40"
+            title={`Your selected file and document info are auto-saved on this device.\nLast saved: ${new Date(draftSavedAt).toLocaleString()}\nYou can safely leave and continue later (e.g. after receiving your AI key from ICT).`}>
+            {IO_AUTOSAVE.savedLabel} · {new Date(draftSavedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        )}
       </div>
 
       <form onSubmit={handleSubmit} className="p-6 space-y-5">
+        {/* Stage 1 · User Instruction (soft-coded) */}
+        <IoStageInstruction stage={IO_STAGE_FLOW[0]} />
+
         {/* Drop zone */}
         <label className="block">
           <div className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors
@@ -899,6 +1092,112 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
           </ul>
         </div>
 
+        {/* ── Stage 2 · Legend cross-check instruction (gated — soft-coded) ── */}
+        {!IO_STAGE_FLOW[1].isUnlocked(ioStageState) ? (
+          <IoStageGate stage={IO_STAGE_FLOW[1]} />
+        ) : (
+          <>
+            <IoStageInstruction stage={IO_STAGE_FLOW[1]} />
+            {!IO_STAGE_FLOW[1].isComplete(ioStageState) && (
+              <div className="flex items-center gap-2 -mt-2">
+                {/* Strict flow: completing this stage means VISITING the
+                    Legend Manager — the button marks it done and redirects;
+                    the draft + workspace session restore everything on return. */}
+                <button
+                  type="button"
+                  onClick={() => { setLegendAcked(true); persistDraftNow({ legendAcked: true }); navigate(IO_STAGE_FLOW[1].instruction.legendManagerRoute) }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white rounded-md transition-all hover:-translate-y-px"
+                  style={{ background: 'linear-gradient(135deg,#0891b2,#0e7490)', boxShadow: '0 2px 8px rgba(8,145,178,0.3)' }}
+                >
+                  <BookOpen className="w-3.5 h-3.5" /> {IO_STAGE_FLOW[1].instruction.continueLabel}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLegendAcked(true)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium text-slate-500 hover:text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-md transition-colors"
+                  title="Continue without legend cross-check"
+                >
+                  {IO_STAGE_FLOW[1].instruction.skipLabel}
+                </button>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ── Stage 3 · Document Info (gated — soft-coded) ── */}
+        {!IO_STAGE_FLOW[2].isUnlocked(ioStageState) ? (
+          <IoStageGate stage={IO_STAGE_FLOW[2]} />
+        ) : (
+        <>
+        <IoStageInstruction stage={IO_STAGE_FLOW[2]} />
+        {/* Metadata grid */}
+        <div className="grid grid-cols-2 gap-3">
+          {UPLOAD_CONFIG.fields.map(f => (
+            <div key={f.key} className={f.key === 'crs_chain_id' ? 'col-span-2' : ''}>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                {f.label} {f.required && <span className="text-red-500">*</span>}
+              </label>
+              <input
+                type="text"
+                value={meta[f.key] || ''}
+                placeholder={f.placeholder}
+                required={f.required}
+                onChange={(e) => setMeta({ ...meta, [f.key]: e.target.value })}
+                className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 outline-none"
+              />
+            </div>
+          ))}
+        </div>
+        </>
+        )}
+
+        {/* ── Stage 4 · AI Extraction Key — BYOK (gated — soft-coded) ── */}
+        {!IO_STAGE_FLOW[3].isUnlocked(ioStageState) ? (
+          <IoStageGate stage={IO_STAGE_FLOW[3]} />
+        ) : (
+        <>
+        <IoStageInstruction stage={IO_STAGE_FLOW[3]} />
+
+        {/* ── Stage 4 · required key choice (soft-coded; IO_SUBMIT_GATE) ──
+            The user must explicitly choose BYOK (key tested) or Basic OCR —
+            Upload & Extract stays disabled until this is decided. */}
+        {IO_SUBMIT_GATE.enabled && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {[IO_SUBMIT_GATE.choices.byok, IO_SUBMIT_GATE.choices.ocr].map(c => {
+              const active = keyChoice === c.id
+              const verified = c.id === 'ocr' ? active : (active && testResult?.valid === true)
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => {
+                    setKeyChoice(c.id)
+                    if (c.id === 'byok') { setShowPidOptions(true); setTimeout(() => apiKeyInputRef.current?.focus(), 50) }
+                  }}
+                  className={`text-left rounded-xl border p-3 transition-all ${
+                    verified
+                      ? 'border-emerald-400 bg-emerald-50/60 ring-2 ring-emerald-200'
+                      : active
+                        ? 'border-indigo-400 bg-indigo-50/50 ring-2 ring-indigo-200'
+                        : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                  }`}
+                >
+                  <p className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <span>{c.icon}</span> {c.label}
+                    {verified && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 ml-auto" />}
+                  </p>
+                  <p className="text-[11px] text-slate-500 mt-1 leading-snug">{c.desc}</p>
+                  {active && c.id === 'byok' && !testResult?.valid && (
+                    <p className="text-[11px] font-medium text-amber-700 mt-1.5">
+                      {visionApiKey.trim() ? IO_SUBMIT_GATE.byokTestHint : IO_STAGE_FLOW[3].instruction.bullets[1]}
+                    </p>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        )}
+
         {/* P&ID Drawing options — collapsible, off by default */}
         <div className="border border-slate-200 rounded-lg overflow-hidden">
           <button
@@ -908,7 +1207,7 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
           >
             <span className="flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5 text-violet-500" /> P&ID Drawing options
-              {visionApiKey.trim() && <Badge tone="emerald">Key set</Badge>}
+
             </span>
             <span className="text-slate-400">{showPidOptions ? '▲' : '▼'}</span>
           </button>
@@ -919,42 +1218,84 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
                   optional (basic OCR is a real, working fallback, not a
                   dead end), this just makes the trade-off pleasant to
                   understand up front rather than a surprise later. */}
-              {!visionApiKey.trim() && (
-                <p className="text-[11px] text-violet-700 bg-violet-50 border border-violet-100 rounded-lg px-2.5 py-2 flex items-start gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 flex-shrink-0 mt-px text-violet-500" />
-                  <span>
-                    For best results, add your Claude API key above! Without it,
-                    we&apos;ll use basic OCR, which may miss many tags.
-                  </span>
-                </p>
-              )}
+
               <div className="flex gap-2">
                 <select
                   value={visionProvider}
-                  onChange={(e) => { setVisionProvider(e.target.value); setTestResult(null) }}
+                  onChange={(e) => {
+                    // BUG FIX: this used to only reach sessionStorage inside
+                    // doUpload() — if the user entered/tested a key, then
+                    // navigated back to the project list before ever
+                    // uploading a file, nothing had been saved yet, so
+                    // reopening the project showed an empty field again.
+                    // Persisting on every change (same key doUpload already
+                    // writes to) means "entered and tested" is enough.
+                    setVisionProvider(e.target.value); setTestResult(null)
+                    setVisionModel(''); sessionStorage.removeItem(visionModelStorageKey)
+                    sessionStorage.setItem(visionProviderStorageKey, e.target.value)
+                  }}
                   className="text-xs border border-slate-300 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 outline-none"
                 >
                   {PID_VISION_CONFIG.providers.map(p => (
                     <option key={p.value} value={p.value}>{p.label}</option>
                   ))}
                 </select>
+                <PlatformAIStatus provider={visionProvider} />
+
+              </div>
+
+              {/* ── BYOK key input (soft-coded) — optional; never stored
+                  server-side, kept only in this tab's sessionStorage ── */}
+              <div className="flex gap-2">
                 <input
                   ref={apiKeyInputRef}
                   type="password"
                   value={visionApiKey}
-                  onChange={(e) => { setVisionApiKey(e.target.value); setTestResult(null) }}
-                  placeholder="API key (optional)"
-                  className="flex-1 min-w-0 text-xs border border-slate-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 outline-none"
+                  autoComplete="off"
+                  onChange={(e) => {
+                    setVisionApiKey(e.target.value); setTestResult(null)
+                    // Persist per-project on every change (same convention
+                    // as the provider above) so a keyed-but-never-uploaded
+                    // session survives in-tab navigation.
+                    sessionStorage.setItem(visionApiKeyStorageKey, e.target.value)
+                  }}
+                  placeholder={visionProvider === 'claude' ? 'sk-ant-…  (optional)' : 'sk-…  (optional)'}
+                  className="flex-1 text-xs border border-slate-300 rounded-lg px-2.5 py-1.5 bg-white focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 outline-none font-mono"
                 />
                 <button
                   type="button"
                   onClick={handleTestConnection}
                   disabled={testingKey || !visionApiKey.trim()}
-                  className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-40 flex items-center gap-1 flex-shrink-0"
+                  className="px-3 py-1.5 text-xs font-semibold border border-indigo-300 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
                 >
-                  {testingKey ? <Loader2 className="w-3 h-3 animate-spin" /> : null} Test
+                  {testingKey ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+                  Test
                 </button>
               </div>
+              {/* Model picker (soft-coded; PID_VISION_CONFIG.models) — per provider */}
+              <div className="flex items-center gap-2">
+                <label className="text-[11px] font-semibold text-slate-600 whitespace-nowrap">Model</label>
+                <select
+                  value={visionModel}
+                  onChange={(e) => {
+                    setVisionModel(e.target.value); setTestResult(null)
+                    sessionStorage.setItem(visionModelStorageKey, e.target.value)
+                  }}
+                  className="flex-1 text-xs border border-slate-300 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 outline-none"
+                >
+                  {(PID_VISION_CONFIG.models[visionProvider] || []).map(m => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
+                </select>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Used for this request only and never stored on the server. No key?{' '}
+                <Link to="/my-enquiries" className="font-semibold text-indigo-600 hover:underline">
+                  Raise a ticket with ICT
+                </Link>{' '}
+                or leave blank to use basic OCR.
+              </p>
+
               {testResult && (
                 <p className={`text-[11px] ${testResult.valid ? 'text-emerald-600' : 'text-red-600'}`}>
                   {testResult.message}
@@ -968,14 +1309,14 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
                 <div className="inline-flex rounded-lg border border-slate-300 overflow-hidden">
                   <button
                     type="button"
-                    onClick={() => setThoroughScan(false)}
+                    onClick={() => { setThoroughScan(false); sessionStorage.setItem(thoroughScanStorageKey, 'false') }}
                     className={`px-3 py-1.5 text-xs font-semibold ${!thoroughScan ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
                   >
                     Quick Scan
                   </button>
                   <button
                     type="button"
-                    onClick={() => setThoroughScan(true)}
+                    onClick={() => { setThoroughScan(true); sessionStorage.setItem(thoroughScanStorageKey, 'true') }}
                     className={`px-3 py-1.5 text-xs font-semibold border-l border-slate-300 ${thoroughScan ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
                   >
                     Thorough Scan
@@ -1005,28 +1346,34 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
                   })()}
                 </p>
               )}
+              {/* ── BYOK cost estimate (soft-coded; BYOK_COST_CONFIG) — up-front
+                  accountability before spending anything on your own key ── */}
+              {BYOK_COST_CONFIG.enabled && pageCount != null && (() => {
+                const costEst = estimateByokCost(
+                  pageCount,
+                  thoroughScan ? BYOK_COST_CONFIG.tokensPerPage.ioThorough : BYOK_COST_CONFIG.tokensPerPage.ioQuick,
+                  visionProvider,
+                )
+                if (!costEst) return null
+                return (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50/70 px-2.5 py-1.5 flex items-start gap-1.5">
+                    <span className="text-xs leading-none mt-0.5">💰</span>
+                    <div className="text-[11px] text-amber-900">
+                      <p>
+                        <b>Estimated BYOK cost: {costEst.text}</b>
+                        {' '}· {BYOK_COST_CONFIG.pricing[visionProvider]?.label} · {thoroughScan ? 'Thorough' : 'Quick'} Scan
+                      </p>
+                      <p className="text-amber-700/80 mt-0.5">{BYOK_COST_CONFIG.disclaimer}</p>
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
           )}
         </div>
 
-        {/* Metadata grid */}
-        <div className="grid grid-cols-2 gap-3">
-          {UPLOAD_CONFIG.fields.map(f => (
-            <div key={f.key} className={f.key === 'crs_chain_id' ? 'col-span-2' : ''}>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                {f.label} {f.required && <span className="text-red-500">*</span>}
-              </label>
-              <input
-                type="text"
-                value={meta[f.key] || ''}
-                placeholder={f.placeholder}
-                required={f.required}
-                onChange={(e) => setMeta({ ...meta, [f.key]: e.target.value })}
-                className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 outline-none"
-              />
-            </div>
-          ))}
-        </div>
+        </>
+        )}
 
         {/* Progress / error. BUG FIX: `progress` only ever tracked the
             FILE TRANSFER (axios onUploadProgress) — for a small PDF that
@@ -1093,15 +1440,32 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
             honestly once the P&ID options panel is open with no key
             entered, matching the friendly nudge above instead of quietly
             saying "Upload & Extract" and surprising the user later. */}
-        <div className="flex justify-end pt-3 border-t border-slate-200">
-          <button type="submit" disabled={busy || !file || !projectId}
-                  className="px-5 py-2 text-sm font-semibold bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-lg hover:from-indigo-700 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
-            {busy
-              ? <><Loader2 className="w-4 h-4 animate-spin" /> Extracting…</>
-              : showPidOptions && !visionApiKey.trim()
-                ? <>Extract with Basic OCR ⚠️</>
-                : <><Upload className="w-4 h-4" /> Upload & Extract</>}
-          </button>
+        {/* ── Submit gate checklist (soft-coded; IO_SUBMIT_GATE) ── */}
+        <div className="pt-3 border-t border-slate-200 space-y-3">
+          {IO_SUBMIT_GATE.enabled && !allStagesVerified && (
+            <div className="rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2.5">
+              <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                {IO_SUBMIT_GATE.checklistTitle}
+              </p>
+              <ul className="flex flex-wrap gap-x-4 gap-y-1">
+                {IO_SUBMIT_GATE.stages.map(s => (
+                  <li key={s.id} className={`inline-flex items-center gap-1.5 text-[11px] font-medium ${stageVerified[s.id] ? 'text-emerald-600' : 'text-slate-400'}`}>
+                    {stageVerified[s.id] ? <CheckCircle2 className="w-3.5 h-3.5" /> : <span className="inline-block h-3.5 w-3.5 rounded-full border border-slate-300" />}
+                    {s.label}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <div className="flex justify-end">
+            <button type="submit" disabled={busy || !file || !projectId || (IO_SUBMIT_GATE.enabled && !allStagesVerified)}
+                    title={IO_SUBMIT_GATE.enabled && !allStagesVerified ? IO_SUBMIT_GATE.checklistTitle : ''}
+                    className="px-5 py-2 text-sm font-semibold bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-lg hover:from-indigo-700 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+              {busy
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> Extracting…</>
+                : <><Upload className="w-4 h-4" /> {IO_SUBMIT_GATE.readyLabel}</>}
+            </button>
+          </div>
         </div>
       </form>
 
@@ -1109,49 +1473,7 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
           user has opened P&ID options and left the key blank, right when
           they click the button. Never a hard stop: "Continue with Basic
           OCR" always works. */}
-      {showNoKeyConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={() => setShowNoKeyConfirm(false)}>
-          <div
-            className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-full bg-violet-100 flex items-center justify-center flex-shrink-0">
-                <Sparkles className="w-5 h-5 text-violet-500" />
-              </div>
-              <div>
-                <h4 className="text-sm font-bold text-slate-900">Are you sure?</h4>
-                <p className="text-sm text-slate-600 mt-1">
-                  Without an API key, accuracy will be significantly lower.
-                  Add a key for much better results!
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowNoKeyConfirm(false)
-                  // Nice touch, not load-bearing — the field is already
-                  // visible (P&ID options is open, or this dialog
-                  // couldn't have appeared), just puts the cursor there.
-                  apiKeyInputRef.current?.focus()
-                }}
-                className="flex-1 px-4 py-2 text-sm font-semibold bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-lg hover:from-indigo-700 hover:to-blue-700"
-              >
-                Add API Key
-              </button>
-              <button
-                type="button"
-                onClick={() => { setShowNoKeyConfirm(false); doUpload() }}
-                className="flex-1 px-4 py-2 text-sm font-semibold border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50"
-              >
-                Continue with Basic OCR
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+
     </div>
   )
 }
@@ -1282,7 +1604,7 @@ const AssignProjectPicker = ({ onAssign, onClose }) => {
 // ─────────────────────────────────────────────────────────────────────
 // Document Row — one row in the "Previous Uploads" list inside a project
 // ─────────────────────────────────────────────────────────────────────
-const DocumentRow = ({ doc, onOpen, busy, onReExtract, onDownload, onAssignProject }) => {
+const DocumentRow = ({ doc, onOpen, busy, onReExtract, onForceFreshExtract, onDownload, onAssignProject }) => {
   const stats = doc.extraction_stats || {}
   const [pickerOpen, setPickerOpen] = useState(false)
   return (
@@ -1329,13 +1651,28 @@ const DocumentRow = ({ doc, onOpen, busy, onReExtract, onDownload, onAssignProje
       <button
         onClick={() => onReExtract(doc.id)}
         disabled={busy}
-        title="Re-run extraction on this PDF"
+        title="Prefers a cached Vision result for this file — fast and consistent"
         className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg border border-violet-200 bg-violet-50 text-violet-700 hover:-translate-y-px transition-all disabled:opacity-50 flex-shrink-0"
       >
         {busy
           ? <><Loader2 className="w-3 h-3 animate-spin" /> Extracting…</>
           : <><RefreshCw className="w-3 h-3" /> Re-extract</>}
       </button>
+      {doc.document_type === 'pid_drawing' && (
+        // Same condition as DetailView's own Force Fresh Analysis button
+        // — meaningless for a plain I/O List table document, which never
+        // calls Vision or caches a result.
+        <button
+          onClick={() => onForceFreshExtract(doc.id)}
+          disabled={busy}
+          title="Always runs a new Vision analysis and keeps whichever result is better (Vision isn't fully deterministic run-to-run)"
+          className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg border border-violet-200 bg-violet-50 text-violet-700 hover:-translate-y-px transition-all disabled:opacity-50 flex-shrink-0"
+        >
+          {busy
+            ? <><Loader2 className="w-3 h-3 animate-spin" /> Extracting…</>
+            : <><Zap className="w-3 h-3" /> Force Fresh Analysis</>}
+        </button>
+      )}
     </div>
   )
 }
@@ -1345,7 +1682,7 @@ const DocumentRow = ({ doc, onOpen, busy, onReExtract, onDownload, onAssignProje
 // ─────────────────────────────────────────────────────────────────────
 const ListView = ({ documents, loading, onOpen, onUploaded, onRefresh, onBackToProjects, activeProjectFilter,
                     search, setSearch, statusFilter, setStatusFilter, sortBy, setSortBy,
-                    rowBusyId, onRowReExtract, onRowDownload, onAssignProject,
+                    rowBusyId, onRowReExtract, onRowForceFreshExtract, onRowDownload, onAssignProject,
                     processingDoc, processingMeta }) => {
   const filtered = useMemo(() => {
     let rows = [...documents]
@@ -1443,6 +1780,14 @@ const ListView = ({ documents, loading, onOpen, onUploaded, onRefresh, onBackToP
             <span className="text-slate-500">No legend active — uploads won&apos;t be checked against a tag format</span>
           )}
         </div>
+        {/* ICT help line (soft-coded — mirrors Instrument Index stage 2) */}
+        <div className="px-5 pb-3 -mt-1 text-[11px] text-slate-400">
+          Facing any difficulty with legends?{' '}
+          <Link to="/my-enquiries" className="font-semibold text-indigo-600 hover:underline">
+            Raise a request with the ICT department
+          </Link>
+          .
+        </div>
       </div>
       <LegendSheetsModal
         open={legendModalOpen}
@@ -1492,6 +1837,7 @@ const ListView = ({ documents, loading, onOpen, onUploaded, onRefresh, onBackToP
                 onOpen={onOpen}
                 busy={rowBusyId === d.id}
                 onReExtract={onRowReExtract}
+                onForceFreshExtract={onRowForceFreshExtract}
                 onDownload={onRowDownload}
                 onAssignProject={onAssignProject}
               />
@@ -1979,7 +2325,33 @@ const IOListPanel = ({ doc, filterTag, setFilterTag, showAllColumns, setShowAllC
     setSavingCells({})
   }, [doc.id, doc.updated_at])
 
-  const rows = localRows || doc.extracted_rows || []
+  // Stable reference across renders — without this, `localRows ||
+  // doc.extracted_rows || []` builds a new array (or at least a new `||`
+  // result) every render, so the `rows` useMemo below never actually got
+  // a stable dependency and recomputed on every render regardless
+  // (caught by eslint's react-hooks/exhaustive-deps, confirmed before
+  // this fix).
+  const allRows = useMemo(
+    () => localRows || doc.extracted_rows || [],
+    [localRows, doc.extracted_rows],
+  )
+  // Hide a row that identifies NOTHING at all — mirrors the backend's own
+  // _drop_empty_rows filter (apps/instrument_io_workflow/services/
+  // pid_vision_extractor.py) at persistence time, applied again here so a
+  // document extracted BEFORE that backend fix (still holding old, truly
+  // blank rows) doesn't keep showing white space until it's re-extracted.
+  // Checks the same 5 fields with OR — a row is real if ANY one of them
+  // has data (a genuine 'equipment' row has tag_number/line_tag blank by
+  // design; a genuine untagged 'symbol' row often has no
+  // service_description at all but does have symbol_type) — never a
+  // narrower check that would hide real rows along with genuinely empty
+  // ones.
+  const rows = useMemo(() => allRows.filter(r => {
+    const d = r.data || {}
+    return Boolean(
+      r.tag_number || d.equipment_tag || d.line_tag || d.service_description || d.symbol_type,
+    )
+  }), [allRows])
   // "Show relevant columns" (default) picks the right column set for THIS
   // document's actual extraction path — was a fixed 16-column list shown
   // for every document, and an io_list table document never populates
@@ -2040,15 +2412,96 @@ const IOListPanel = ({ doc, filterTag, setFilterTag, showAllColumns, setShowAllC
     )
   }, [rows, filterTag])
 
+  // ── Enterprise register layer (soft-coded; IO_REGISTER_UI) ──────────
+  // KPI strip, dropdown filters, pagination, detail drawer, DQ badges.
+  // Derived entirely from the already-loaded rows — no data/logic changes.
+  const [regFilters, setRegFilters]   = useState({})
+  const [regPage, setRegPage]         = useState(1)
+  const [regPageSize, setRegPageSize] = useState(IO_REGISTER_UI.pageSize)
+  const [selectedRowId, setSelectedRowId] = useState(null)
+
+  const rowKind   = (r) => (r.data?.kind || '').toString()
+  const rowSignal = (r) => (r.data?.signal_type || '').toString()
+  // Data-quality flag: any of the soft-coded "expected" fields is blank.
+  const rowHasDqIssue = (r) =>
+    IO_REGISTER_UI.dq.enabled &&
+    IO_REGISTER_UI.dq.requiredAny.some(f => {
+      const v = (r.data || {})[f]
+      return v === null || v === undefined || v === ''
+    })
+
+  const regKpiValues = useMemo(() => ({
+    total:       rows.length,
+    instruments: rows.filter(r => rowKind(r) === 'instrument').length,
+    lines:       rows.filter(r => ['line', 'equipment'].includes(rowKind(r))).length,
+    signals:     new Set(rows.map(rowSignal).filter(Boolean)).size,
+    dq:          rows.filter(rowHasDqIssue).length,
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [rows])
+
+  const filterOptions = useMemo(() => {
+    const opts = {}
+    for (const f of IO_REGISTER_UI.filters) {
+      opts[f.key] = [...new Set(rows.map(r => (r.data || {})[f.key]).filter(Boolean))].sort()
+    }
+    return opts
+  }, [rows])
+
+  const regFiltered = useMemo(() => {
+    if (!IO_REGISTER_UI.enabled) return filtered
+    return filtered.filter(r =>
+      IO_REGISTER_UI.filters.every(f => !regFilters[f.key] || (r.data || {})[f.key] === regFilters[f.key])
+    )
+  }, [filtered, regFilters])
+
+  const regPageCount = Math.max(1, Math.ceil(regFiltered.length / regPageSize))
+  const regSafePage  = Math.min(Math.max(1, regPage), regPageCount)
+  const pagedRows = IO_REGISTER_UI.enabled
+    ? regFiltered.slice((regSafePage - 1) * regPageSize, regSafePage * regPageSize)
+    : regFiltered
+  const selectedRow = selectedRowId ? regFiltered.find(r => r.id === selectedRowId) || null : null
+
   return (
+    <>
+    {/* ── Enterprise KPI strip (soft-coded; IO_REGISTER_UI) ── */}
+    {IO_REGISTER_UI.enabled && (
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
+        {IO_REGISTER_UI.kpis.map(k => (
+          <div key={k.id} className="rounded-xl bg-white border border-slate-200 px-4 py-3 flex items-center gap-3 shadow-sm">
+            <span className="inline-flex items-center justify-center h-9 w-9 rounded-lg shrink-0 text-sm font-black"
+              style={{ background: `${k.color}14`, color: k.color }}>
+              {k.id === 'total' ? 'Σ' : k.id === 'instruments' ? '⚙' : k.id === 'lines' ? '⤢' : k.id === 'signals' ? '∿' : '⚠'}
+            </span>
+            <div className="min-w-0">
+              <p className="text-xl font-extrabold tabular-nums leading-none" style={{ color: regKpiValues[k.id] > 0 ? k.color : '#94a3b8' }}>
+                {regKpiValues[k.id]}
+              </p>
+              <p className="text-[10px] font-medium text-slate-400 mt-1 truncate">{k.label}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
     <div className={THEME.card}>
       {/* Header */}
       <div className={`${THEME.cardHeader} flex items-center justify-between gap-2 flex-wrap`}>
         <div className="flex items-center gap-2 flex-wrap">
           <Table2 className="w-4 h-4 text-indigo-600" />
           <h4 className="text-sm font-semibold text-slate-900">I/O List Table</h4>
-          <Badge tone="emerald">{filtered.length} rows</Badge>
+          <Badge tone="emerald">{regFiltered.length} rows</Badge>
           <span className="text-[11px] text-slate-400">Preview · full 40 columns in Excel export</span>
+          {/* Enterprise filter dropdowns (soft-coded; IO_REGISTER_UI.filters) */}
+          {IO_REGISTER_UI.enabled && IO_REGISTER_UI.filters.map(f => (
+            <select
+              key={f.key}
+              value={regFilters[f.key] || ''}
+              onChange={e => { setRegFilters(p => ({ ...p, [f.key]: e.target.value })); setRegPage(1) }}
+              className="text-xs border border-slate-300 rounded-lg px-2 py-1 bg-white focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 outline-none"
+            >
+              <option value="">{f.label}: All</option>
+              {(filterOptions[f.key] || []).map(v => <option key={v} value={v}>{v}</option>)}
+            </select>
+          ))}
           {/* Column toggle — "Show relevant columns" (default, adaptive to
               this document's document_type) vs "Show all columns" (the
               full fixed 16-column list) — same segmented-button pattern
@@ -2086,7 +2539,7 @@ const IOListPanel = ({ doc, filterTag, setFilterTag, showAllColumns, setShowAllC
         </div>
         <div className="relative w-64">
           <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input value={filterTag} onChange={(e) => setFilterTag(e.target.value)}
+          <input value={filterTag} onChange={(e) => { setFilterTag(e.target.value); setRegPage(1) }}
                  placeholder="Filter by tag, service, type…"
                  className="w-full text-xs border border-slate-300 rounded-md pl-8 pr-2 py-1.5 outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400" />
         </div>
@@ -2122,8 +2575,12 @@ const IOListPanel = ({ doc, filterTag, setFilterTag, showAllColumns, setShowAllC
             </tr>
           </thead>
           <tbody>
-            {filtered.map(r => (
-              <tr key={r.id} className={THEME.tableRow}>
+            {pagedRows.map(r => (
+              <tr key={r.id}
+                  className={`${THEME.tableRow} ${IO_REGISTER_UI.drawer.enabled && selectedRowId === r.id ? 'bg-teal-50/60' : ''}`}
+                  onClick={() => { if (!editMode && IO_REGISTER_UI.drawer.enabled) setSelectedRowId(r.id === selectedRowId ? null : r.id) }}
+                  style={IO_REGISTER_UI.drawer.enabled && !editMode ? { cursor: 'pointer' } : undefined}
+                  title={IO_REGISTER_UI.drawer.enabled && !editMode ? 'Click to view full record' : undefined}>
                 {previewColumns.map(c => {
                   const val = c.key === 'tag_number' ? r.tag_number
                             : c.key === 'page_number' ? r.page_number
@@ -2154,6 +2611,13 @@ const IOListPanel = ({ doc, filterTag, setFilterTag, showAllColumns, setShowAllC
                           />
                         : <span className={`${c.sticky ? 'font-mono font-semibold text-indigo-700' : 'text-slate-700'} ${c.key === 'kind' ? 'capitalize' : ''}`}>
                             {isBlank ? <span className="text-slate-300">—</span> : val}
+                            {/* Data-quality badge (soft-coded; IO_REGISTER_UI.dq) */}
+                            {c.key === 'tag_number' && rowHasDqIssue(r) && (
+                              <span className="ml-1.5 inline-flex items-center px-1 py-0.5 rounded text-[9px] font-black bg-rose-100 text-rose-700 border border-rose-200 align-middle"
+                                title={IO_REGISTER_UI.dq.tooltip}>
+                                {IO_REGISTER_UI.dq.badge}
+                              </span>
+                            )}
                           </span>
                       }
                     </td>
@@ -2161,7 +2625,7 @@ const IOListPanel = ({ doc, filterTag, setFilterTag, showAllColumns, setShowAllC
                 })}
               </tr>
             ))}
-            {filtered.length === 0 && (
+            {regFiltered.length === 0 && (
               <tr><td colSpan={previewColumns.length}
                       className="text-center py-10 text-slate-400">
                 <Table2 className="w-8 h-8 mx-auto mb-2 text-slate-300" />
@@ -2171,7 +2635,90 @@ const IOListPanel = ({ doc, filterTag, setFilterTag, showAllColumns, setShowAllC
           </tbody>
         </table>
       </div>
+
+      {/* ── Enterprise pagination footer (soft-coded; IO_REGISTER_UI) ── */}
+      {IO_REGISTER_UI.enabled && (
+        <div className="px-5 py-2.5 bg-white border-t border-slate-200 flex flex-wrap items-center gap-x-3 gap-y-2 text-[11px] text-slate-500 rounded-b-2xl">
+          <span className="tabular-nums">
+            {regFiltered.length === 0 ? '0' : `${(regSafePage - 1) * regPageSize + 1}–${Math.min(regSafePage * regPageSize, regFiltered.length)}`} of {regFiltered.length}
+          </span>
+          {Object.values(regFilters).some(Boolean) && <span>· filtered</span>}
+          <div className="ml-auto flex items-center gap-1.5">
+            <select
+              value={regPageSize}
+              onChange={e => { setRegPageSize(Number(e.target.value)); setRegPage(1) }}
+              className="px-1.5 py-1 text-[11px] border border-slate-200 rounded-md bg-white text-slate-600"
+              title="Rows per page">
+              {IO_REGISTER_UI.pageSizeOptions.map(n => <option key={n} value={n}>{n} / page</option>)}
+            </select>
+            <button onClick={() => setRegPage(p => Math.max(1, p - 1))} disabled={regSafePage <= 1}
+              className="h-6 w-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">‹</button>
+            {Array.from({ length: regPageCount }, (_, i) => i + 1)
+              .filter(p => p === 1 || p === regPageCount || Math.abs(p - regSafePage) <= 2)
+              .reduce((acc, p, i, arr) => { if (i > 0 && p - arr[i - 1] > 1) acc.push('…'); acc.push(p); return acc }, [])
+              .map((p, i) => p === '…'
+                ? <span key={`gap-${i}`} className="px-1 text-slate-300">…</span>
+                : (
+                  <button key={p} onClick={() => setRegPage(p)}
+                    className={`h-6 min-w-[1.5rem] px-1 rounded-md text-[11px] font-semibold tabular-nums transition-colors ${p === regSafePage ? 'text-white' : 'text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
+                    style={p === regSafePage ? { background: IO_REGISTER_UI.accent } : {}}>
+                    {p}
+                  </button>
+                ))}
+            <button onClick={() => setRegPage(p => Math.min(regPageCount, p + 1))} disabled={regSafePage >= regPageCount}
+              className="h-6 w-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">›</button>
+          </div>
+        </div>
+      )}
     </div>
+
+    {/* ── Row detail drawer (soft-coded; IO_REGISTER_UI.drawer) ──
+        Enterprise "specifications" side panel for the selected row. */}
+    {IO_REGISTER_UI.drawer.enabled && selectedRow && !editMode && (
+      <div className="fixed inset-y-0 right-0 z-40 w-full max-w-md bg-white border-l border-slate-200 shadow-2xl flex flex-col"
+        role="dialog" aria-label={IO_REGISTER_UI.drawer.title}>
+        <div className="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-3"
+          style={{ background: `linear-gradient(90deg, ${IO_REGISTER_UI.accentSoft}, #ffffff)` }}>
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: IO_REGISTER_UI.accent }}>
+              {IO_REGISTER_UI.drawer.title}
+            </p>
+            <h3 className="text-lg font-extrabold text-slate-900 font-mono truncate mt-0.5">
+              {selectedRow.tag_number || '(no tag)'}
+            </h3>
+            <p className="text-[11px] text-slate-400">{IO_REGISTER_UI.drawer.subtitle}</p>
+          </div>
+          <button onClick={() => setSelectedRowId(null)}
+            className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition-colors shrink-0">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-1.5">
+          {rowHasDqIssue(selectedRow) && (
+            <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-700 flex items-center gap-2">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {IO_REGISTER_UI.dq.tooltip}
+            </div>
+          )}
+          <Row label="Page" value={selectedRow.page_number ?? '—'} />
+          {previewColumns
+            .filter(c => !['tag_number', 'page_number'].includes(c.key))
+            .map(c => (
+              <Row key={c.key} label={c.label}
+                value={(selectedRow.data || {})[c.key] || <span className="text-slate-300">—</span>} />
+            ))}
+        </div>
+        <div className="px-5 py-3 border-t border-slate-200 text-[11px] text-slate-400 flex items-center justify-between">
+          <span>Doc: {doc.document_number || `#${doc.id}`} · Rev {doc.revision_label || '—'}</span>
+          {IO_LIST_EDIT_CONFIG.enabled && (
+            <button onClick={() => { setEditMode(true) }}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800">
+              <Edit3 className="w-3 h-3" /> Edit cells
+            </button>
+          )}
+        </div>
+      </div>
+    )}
+    </>
   )
 }
 
@@ -2206,6 +2753,34 @@ const MetadataPanel = ({ doc, onPreviewPdf }) => (
         <Row label="Uploaded by"    value={doc.uploaded_by_email || '—'} />
         <Row label="Uploaded at"    value={doc.created_at ? new Date(doc.created_at).toLocaleString() : '—'} />
         <Row label="Updated at"     value={doc.updated_at ? new Date(doc.updated_at).toLocaleString() : '—'} />
+        {/* ── BYOK cost estimate (soft-coded; BYOK_COST_CONFIG) ─────────
+            Accountability view: what this extraction would cost / cost on
+            the user's own key, per provider. P&ID drawings only — plain
+            I/O List PDFs use free PyMuPDF extraction ($0). */}
+        {BYOK_COST_CONFIG.enabled && doc.document_type === 'pid_drawing' && (() => {
+          const pages = doc.extraction_stats?.total_pages ?? doc.total_pages ?? null
+          if (!pages) return null
+          const per = Object.keys(BYOK_COST_CONFIG.pricing).map(p => ({
+            provider: p,
+            label: BYOK_COST_CONFIG.pricing[p].label,
+            quick: estimateByokCost(pages, BYOK_COST_CONFIG.tokensPerPage.ioQuick, p),
+            thorough: estimateByokCost(pages, BYOK_COST_CONFIG.tokensPerPage.ioThorough, p),
+          }))
+          return (
+            <Row label="BYOK cost (est.)" value={
+              <span title={BYOK_COST_CONFIG.disclaimer}>
+                💰 {per.map(p => `${p.label.split(' ')[0]} ~${BYOK_COST_CONFIG.currencySymbol}${p.quick.cost.toFixed(2)}`).join(' · ')}
+                <span className="text-slate-400"> ({pages} page{pages === 1 ? '' : 's'}, Quick scan)</span>
+                <span className="block text-[10px] text-slate-400">
+                  Thorough scan: {per.map(p => `${p.label.split(' ')[0]} ~${BYOK_COST_CONFIG.currencySymbol}${p.thorough.cost.toFixed(2)}`).join(' · ')} — billed by the provider to your own key
+                </span>
+              </span>
+            } />
+          )
+        })()}
+        {BYOK_COST_CONFIG.enabled && doc.document_type !== 'pid_drawing' && (
+          <Row label="BYOK cost" value={<span className="text-emerald-600 font-medium">$0 — free PyMuPDF extraction (no AI key used)</span>} />
+        )}
         {doc.pdf_url && (
           <div className="pt-2">
             <button type="button" onClick={onPreviewPdf}
@@ -2222,9 +2797,21 @@ const MetadataPanel = ({ doc, onPreviewPdf }) => (
 // ─────────────────────────────────────────────────────────────────────
 // Detail View — tabbed
 // ─────────────────────────────────────────────────────────────────────
-const DetailView = ({ doc, onBack, onBackToProjects, onReExtract, onDownload, onDelete, busyAction, processingDoc, processingMeta }) => {
+const DetailView = ({ doc, onBack, onBackToProjects, onReExtract, onForceFreshExtract, onDownload, onDelete, busyAction, processingDoc, processingMeta, initialTab, onInitialTabConsumed }) => {
   const [activeTab, setActiveTab] = useState('overview')
   const [filterTag, setFilterTag] = useState('')
+  // Re-extract's auto-open (see handleReExtract's own comment) wants this
+  // view to land directly on "I/O List Table", not the default Overview
+  // — DetailView doesn't remount when `doc` merely swaps to a different
+  // document (same position in the tree), so activeTab has no other way
+  // to know a fresh completion just landed. "Consume once" (clearing via
+  // onInitialTabConsumed right after) so a later, unrelated re-render of
+  // this same DetailView instance doesn't keep forcing the tab back.
+  useEffect(() => {
+    if (!initialTab) return
+    setActiveTab(initialTab)
+    onInitialTabConsumed?.()
+  }, [initialTab, onInitialTabConsumed])
   // Lifted up from IOListPanel — see its own comment on this same state
   // for why (the "Download xlsx" button below needs to read it too).
   const [showAllColumns, setShowAllColumns] = useState(false)
@@ -2306,11 +2893,24 @@ const DetailView = ({ doc, onBack, onBackToProjects, onReExtract, onDownload, on
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <button onClick={onReExtract} disabled={busyAction === 're'}
+              <button onClick={onReExtract} disabled={!!busyAction}
+                      title="Prefers a cached Vision result for this file — fast and consistent"
                       className="px-3 py-2 text-sm bg-white/10 hover:bg-white/20 text-white rounded-lg flex items-center gap-1.5 disabled:opacity-50">
                 {busyAction === 're' ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
                 Re-extract
               </button>
+              {doc.document_type === 'pid_drawing' && (
+                // Only meaningful for a Vision-extracted P&ID drawing — a
+                // plain I/O List table document never calls Vision or
+                // caches a result, so this button would do nothing
+                // different from Re-extract for that document type.
+                <button onClick={onForceFreshExtract} disabled={!!busyAction}
+                        title="Always runs a new Vision analysis and keeps whichever result is better (Vision isn't fully deterministic run-to-run)"
+                        className="px-3 py-2 text-sm bg-white/10 hover:bg-white/20 text-white rounded-lg flex items-center gap-1.5 disabled:opacity-50">
+                  {busyAction === 'force' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                  Force Fresh Analysis
+                </button>
+              )}
               <button onClick={() => onDownload(showAllColumns ? 'all' : 'relevant')}
                       className="px-3 py-2 text-sm bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg flex items-center gap-1.5 shadow-sm">
                 <Download className="w-4 h-4" /> Download xlsx
@@ -2439,7 +3039,22 @@ export default function IOListWorkflowPage() {
   // Project workspace state — no project selected = show the project card
   // grid (the module's landing view); a selected project scopes the
   // document list and new uploads to it.
-  const [activeProjectFilter, setActiveProjectFilter] = useState(null)
+  // Persisted to sessionStorage (soft-coded; IO_WORKSPACE_SESSION) so the
+  // Legend Manager round-trip returns to the same project workspace.
+  const [activeProjectFilter, setActiveProjectFilter] = useState(() => {
+    if (!IO_WORKSPACE_SESSION.enabled) return null
+    try {
+      const raw = sessionStorage.getItem(IO_WORKSPACE_SESSION.storageKey)
+      return raw ? JSON.parse(raw) : null
+    } catch { return null }
+  })
+  useEffect(() => {
+    if (!IO_WORKSPACE_SESSION.enabled) return
+    try {
+      if (activeProjectFilter) sessionStorage.setItem(IO_WORKSPACE_SESSION.storageKey, JSON.stringify(activeProjectFilter))
+      else sessionStorage.removeItem(IO_WORKSPACE_SESSION.storageKey)
+    } catch { /* non-fatal */ }
+  }, [activeProjectFilter])
 
   const loadDocuments = useCallback(async () => {
     setLoading(true); setPageError('')
@@ -2490,6 +3105,19 @@ export default function IOListWorkflowPage() {
   // never by handleRowReExtract (a list-row re-extract must not hijack
   // whatever the user is currently looking at).
   const [autoOpenDocId, setAutoOpenDocId] = useState(null)
+  // BUG FIX: Re-extract (from an already-open DetailView) relied ONLY on
+  // "setActiveDoc(prev => prev?.id === docId ? doc : prev)" in the poll
+  // loop below to refresh the page in place — real, confirmed symptom:
+  // if the user navigated away while it ran (or a cache hit resolved
+  // near-instantly), that condition was false by completion time and the
+  // document silently never (re)opened at all, even though the toast
+  // correctly said "Complete! Found N rows...". handleReExtract now sets
+  // autoOpenDocId too, same as a fresh upload, so completion reliably
+  // opens the document regardless of what the user was doing meanwhile.
+  // autoOpenTab additionally requests which tab DetailView should land
+  // on once opened this way — 'iolist' for Re-extract specifically (see
+  // handleReExtract), consumed once by DetailView's own effect.
+  const [autoOpenTab, setAutoOpenTab] = useState(null)
 
   // Client-side hints for the processing banner's mode-aware text —
   // see handleSubmit's own comment (_usingVision/_thorough on `result`).
@@ -2558,6 +3186,16 @@ export default function IOListWorkflowPage() {
             const rowsFound = doc.extraction_stats?.io_rows_found ?? doc.extracted_rows?.length ?? 0
             const commentsFound = doc.extraction_stats?.comments_found ?? doc.extracted_comments?.length ?? 0
             toast.success(`Complete! Found ${rowsFound} row${rowsFound === 1 ? '' : 's'} and ${commentsFound} comment${commentsFound === 1 ? '' : 's'}`)
+            // "Force Fresh Analysis" specifically (see tasks.py's
+            // finalize_io_document compare_best param) surfaces which
+            // result won as its own warning string — real information a
+            // plain row-count toast above doesn't convey, so it gets its
+            // own separate, more visible toast rather than being buried
+            // in the Overview tab's general warnings banner.
+            const compareMsg = (doc.extraction_stats?.warnings || []).find(
+              w => w.startsWith('Better result found!') || w.startsWith('Cached result is better'),
+            )
+            if (compareMsg) toast.info(compareMsg)
             // Real, brief "Complete!" state in the ProcessingBanner itself
             // (not just the toast) — the same panel the user was watching
             // switches to its done state with the final real counts,
@@ -2577,7 +3215,10 @@ export default function IOListWorkflowPage() {
             }
           } else {
             setProcessingDoc(null)
-            if (autoOpenDocId === docId) setAutoOpenDocId(null)
+            if (autoOpenDocId === docId) {
+              setAutoOpenDocId(null)
+              setAutoOpenTab(null)
+            }
             setPageError(doc.extraction_error || 'Extraction failed.')
           }
           loadDocuments()
@@ -2621,29 +3262,82 @@ export default function IOListWorkflowPage() {
   // "just works" with whatever key was last provided, without needing
   // its own separate key-entry UI on this page.
   // Reads the SAME project-scoped sessionStorage keys UploadCard writes to
-  // (see its BUG FIX comment) — re-extract runs inside a selected project's
-  // workspace, so activeProjectFilter is the right scope to look under.
-  const getPersistedVisionMeta = () => {
-    const scope = activeProjectFilter?.id || 'unassigned'
-    const apiKey = sessionStorage.getItem(`${PID_VISION_CONFIG.sessionStorageApiKeyKey}::${scope}`) || ''
-    if (!apiKey.trim()) return {}
+  // (see its BUG FIX comment).
+  // BUG FIX: this used to scope by activeProjectFilter?.id — wrong for
+  // Re-extract/Force Fresh Analysis on a document opened outside its own
+  // project filter (e.g. from a global/unfiltered list, or after switching
+  // filters after opening it): activeProjectFilter no longer matches the
+  // project the key was actually saved under, so the lookup silently found
+  // nothing and these actions fell back to no-key OCR even with a valid,
+  // tested key on file. The document's OWN `project` field is the correct,
+  // stable scope — pass it in explicitly rather than relying on whatever
+  // filter happens to be active right now.
+  const getPersistedVisionMeta = (projectId) => {
+    const scope = projectId || 'unassigned'
     const provider = sessionStorage.getItem(`${PID_VISION_CONFIG.sessionStorageProviderKey}::${scope}`) || PID_VISION_CONFIG.defaultProvider
     const thorough = sessionStorage.getItem(`${PID_VISION_CONFIG.sessionStorageThoroughKey}::${scope}`) === 'true'
-    return { vision_provider: provider, vision_api_key: apiKey.trim(), thorough: thorough ? 'true' : 'false' }
+    const meta = { vision_provider: provider, thorough: thorough ? 'true' : 'false' }
+    // BYOK: include the project-scoped key when one was entered — without it,
+    // re-extract / force-fresh silently fell back to no-key OCR.
+    const apiKey = sessionStorage.getItem(`${PID_VISION_CONFIG.sessionStorageApiKeyKey}::${scope}`) || ''
+    if (apiKey.trim()) meta.vision_api_key = apiKey.trim()
+    // BYOK model picker (same project-scoped persistence).
+    const model = sessionStorage.getItem(`${PID_VISION_CONFIG.sessionStorageModelKey}::${scope}`) || ''
+    if (model) meta.vision_model = model
+    return meta
   }
 
   const handleReExtract = async () => {
     if (!activeDoc) return
     setBusyAction('re')
     try {
-      const visionMeta = getPersistedVisionMeta()
+      const visionMeta = getPersistedVisionMeta(activeDoc.project)
       const result = await ioListWorkflowService.reExtract(activeDoc.id, visionMeta)
+      upsertDocument(result.document)
+      // BUG FIX: Re-extract from an already-open DetailView must reliably
+      // reopen it (and land on the I/O List Table tab) on completion,
+      // exactly like a fresh upload — see autoOpenDocId/autoOpenTab's own
+      // comment above for why the old "setActiveDoc(prev => ...)" re-sync
+      // alone wasn't enough.
+      if (result.processing) {
+        setProcessingDoc(result.document)
+        setProcessingMeta({ usingVision: false, thorough: visionMeta.thorough === 'true' })
+        setAutoOpenDocId(result.document.id)
+        setAutoOpenTab('iolist')
+      } else {
+        setActiveDoc(result.document)
+        setAutoOpenTab('iolist')
+      }
+      loadDocuments()
+    } catch (err) {
+      setPageError(err.response?.data?.error || err.message)
+    } finally {
+      setBusyAction('')
+    }
+  }
+
+  // "Force Fresh Analysis" — always pays for a new Vision run (never the
+  // cache); the backend keeps whichever result (this run vs whatever was
+  // already cached) actually has more rows and says which one won via
+  // extraction_stats.warnings — surfaced here as a toast so it's not
+  // easy to miss, on top of whatever the Overview tab's own warnings
+  // banner already shows once the document reloads.
+  const handleForceFreshExtract = async () => {
+    if (!activeDoc) return
+    setBusyAction('force')
+    try {
+      const visionMeta = getPersistedVisionMeta(activeDoc.project)
+      const result = await ioListWorkflowService.forceFreshExtract(activeDoc.id, visionMeta)
       upsertDocument(result.document)
       if (result.processing) {
         setProcessingDoc(result.document)
         setProcessingMeta({ usingVision: Boolean(visionMeta.vision_api_key), thorough: visionMeta.thorough === 'true' })
       } else {
         setActiveDoc(result.document)
+        const compareMsg = result.document?.extraction_stats?.warnings?.find(
+          w => w.startsWith('Better result found!') || w.startsWith('Cached result is better'),
+        )
+        if (compareMsg) toast.info(compareMsg)
       }
       loadDocuments()
     } catch (err) {
@@ -2658,7 +3352,9 @@ export default function IOListWorkflowPage() {
   const handleRowReExtract = async (id) => {
     setRowBusyId(id)
     try {
-      const visionMeta = getPersistedVisionMeta()
+      // Same project-scoping fix as handleReExtract above — look up the
+      // row's OWN project, not whatever filter is currently active.
+      const visionMeta = getPersistedVisionMeta(documents.find(d => d.id === id)?.project)
       const result = await ioListWorkflowService.reExtract(id, visionMeta)
       upsertDocument(result.document)
       if (result.processing) {
@@ -2670,6 +3366,43 @@ export default function IOListWorkflowPage() {
         // I/O List table re-extract, or vice versa). Same fix
         // handleReExtract already applies for the DetailView button.
         setProcessingMeta({ usingVision: Boolean(visionMeta.vision_api_key), thorough: visionMeta.thorough === 'true' })
+        // BUG FIX: row-level Re-extract (from the list, not an already-open
+        // DetailView) never auto-opened the document on completion at all —
+        // this was an earlier, incorrect assumption that auto-opening here
+        // would "hijack" the list view; the user explicitly wants the SAME
+        // behavior as a fresh upload regardless of which button triggered
+        // it, so this now sets autoOpenDocId/autoOpenTab exactly like
+        // handleUploaded and handleReExtract do.
+        setAutoOpenDocId(result.document.id)
+        setAutoOpenTab('iolist')
+      }
+      loadDocuments()
+    } catch (err) {
+      setPageError(err.response?.data?.error || err.message)
+    } finally {
+      setRowBusyId(null)
+    }
+  }
+
+  // Row-level "Force Fresh Analysis" — same relationship to
+  // handleRowReExtract as handleForceFreshExtract has to handleReExtract
+  // above (always runs fresh, keeps whichever result is better). The
+  // compare-result toast is skipped here deliberately: this action
+  // always dispatches async (result.processing is always true in
+  // practice), so the real completion — and the one place that toast
+  // fires — is the shared status-polling loop above, not this handler.
+  const handleRowForceFreshExtract = async (id) => {
+    setRowBusyId(id)
+    try {
+      const visionMeta = getPersistedVisionMeta(documents.find(d => d.id === id)?.project)
+      const result = await ioListWorkflowService.forceFreshExtract(id, visionMeta)
+      upsertDocument(result.document)
+      if (result.processing) {
+        setProcessingDoc(result.document)
+        setProcessingMeta({ usingVision: Boolean(visionMeta.vision_api_key), thorough: visionMeta.thorough === 'true' })
+        // Same auto-open fix as handleRowReExtract above.
+        setAutoOpenDocId(result.document.id)
+        setAutoOpenTab('iolist')
       }
       loadDocuments()
     } catch (err) {
@@ -2714,27 +3447,29 @@ export default function IOListWorkflowPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-sky-50/55 to-indigo-50/60">
-      <div className="max-w-[1700px] mx-auto px-4 py-6 space-y-4 relative">
-        <div className="pointer-events-none absolute -top-10 -left-10 w-72 h-72 rounded-full bg-cyan-200/30 blur-3xl" aria-hidden />
-        <div className="pointer-events-none absolute top-20 right-0 w-80 h-80 rounded-full bg-indigo-200/35 blur-3xl" aria-hidden />
+    /* SOFT-CODED: page shell aligned with P&ID Verification V1 — same page
+       gradient (T.bg in PIDVerification.jsx) and full-width canvas. */
+    <div className="min-h-screen" style={{ background: 'linear-gradient(135deg, #f8faff 0%, #eef2ff 45%, #f0f9ff 75%, #fffbeb 100%)' }}>
+      <div className="w-full px-2 sm:px-4 lg:px-6 py-6 space-y-4 relative">
+        <div className="pointer-events-none absolute -top-10 -left-10 w-72 h-72 rounded-full blur-3xl" style={{ background: 'rgba(59,130,246,0.12)' }} aria-hidden />
+        <div className="pointer-events-none absolute top-20 right-0 w-80 h-80 rounded-full blur-3xl" style={{ background: 'rgba(99,102,241,0.12)' }} aria-hidden />
 
         {/* Page banner (visible only on list view) */}
         {!activeDoc && (
           <section className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white/85 backdrop-blur shadow-lg">
-            <div className="pointer-events-none absolute -left-20 -top-24 w-72 h-72 rounded-full bg-cyan-200/35 blur-3xl" aria-hidden />
+            <div className="pointer-events-none absolute -left-20 -top-24 w-72 h-72 rounded-full bg-blue-200/35 blur-3xl" aria-hidden />
             <div className="pointer-events-none absolute -right-24 -bottom-20 w-80 h-80 rounded-full bg-indigo-200/30 blur-3xl" aria-hidden />
             <div className="relative px-6 py-6 flex flex-wrap items-center justify-between gap-4">
               <div className="flex items-center gap-4 min-w-0">
-                <div className="w-14 h-14 rounded-xl bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 text-white flex items-center justify-center flex-shrink-0 shadow-md">
+                <div className="w-14 h-14 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 text-white flex items-center justify-center flex-shrink-0 shadow-md">
                   <Table2 className="w-7 h-7" />
                 </div>
                 <div className="min-w-0">
-                  <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full border border-sky-200 bg-white/70 text-xs font-semibold text-sky-700 mb-1">
+                  <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full border border-blue-200 bg-white/70 text-xs font-semibold text-blue-700 mb-1">
                     <Sparkles className="w-3 h-3" /> Engineering · Instrument
                   </div>
                   <h1 className="text-2xl font-bold truncate">
-                    <span className="bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                    <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 bg-clip-text text-transparent">
                       {PAGE_COPY.title}
                     </span>
                   </h1>
@@ -2769,11 +3504,14 @@ export default function IOListWorkflowPage() {
             onBack={() => setActiveDoc(null)}
             onBackToProjects={activeProjectFilter ? () => { setActiveDoc(null); setActiveProjectFilter(null) } : null}
             onReExtract={handleReExtract}
+            onForceFreshExtract={handleForceFreshExtract}
             onDownload={handleDownload}
             onDelete={handleDelete}
             busyAction={busyAction}
             processingDoc={processingDoc}
             processingMeta={processingMeta}
+            initialTab={autoOpenTab}
+            onInitialTabConsumed={() => setAutoOpenTab(null)}
           />
         ) : !activeProjectFilter && IO_LIST_WORKFLOW_PROJECT_FEATURES.enableProjectManagement ? (
           /* Landing view: project workspace (cards, New Project, Edit/Delete) */
@@ -2793,6 +3531,7 @@ export default function IOListWorkflowPage() {
             sortBy={sortBy} setSortBy={setSortBy}
             rowBusyId={rowBusyId}
             onRowReExtract={handleRowReExtract}
+            onRowForceFreshExtract={handleRowForceFreshExtract}
             onRowDownload={handleRowDownload}
             onAssignProject={handleAssignProject}
             processingDoc={processingDoc}

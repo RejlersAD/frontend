@@ -3,17 +3,21 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { toast } from 'react-toastify'
 import * as XLSX from 'xlsx'
-import { BookOpen, Plus, Save, Trash2, CheckCircle2, X, Download, Upload, Loader2, LayoutList, Braces, GripVertical, FileSpreadsheet, FileText, ImageOff, Pencil } from 'lucide-react'
+import { BookOpen, Plus, Save, Trash2, CheckCircle2, X, Download, Upload, Loader2, LayoutList, Braces, GripVertical, FileSpreadsheet, FileText, ImageOff, Pencil, Folder } from 'lucide-react'
 
 import {
-  listLegends, createLegend, updateLegend, deleteLegend,
-  activateLegend, getLegendDefaultTemplate, getSymbolImages,
+  listLegends as pidListLegends, createLegend as pidCreateLegend,
+  updateLegend as pidUpdateLegend, deleteLegend as pidDeleteLegend,
+  activateLegend as pidActivateLegend, getLegendDefaultTemplate, getSymbolImages,
   getDefaultSymbolImages, uploadSymbolImage, deleteSymbolImage,
   deleteLegendLookupEntry, LEGEND_SECTIONS,
 } from '../../../../services/pidCheckerV2API'
+import projectOrganizerService from '../../../../services/projectOrganizerService'
 import AddToLegendModal from './AddToLegendModal'
 import { emitLegendSync, subscribeLegendSync, LEGEND_SYNC_ACTIONS, LEGEND_SYNC_POLL_MS } from '../../../../config/legendSheetsRules'
 import { parseLegendFile, IMPORT_ACCEPT } from '../../../../config/legendSheetsImport'
+import WorkbookImportModal from '../../Legends/WorkbookImportModal'
+import ImportedWorkbookSheets from '../../Legends/ImportedWorkbookSheets'
 
 // ═════════════════════════════════════════════════════════════════════
 // Soft-coded theme (matches parent page)
@@ -114,6 +118,15 @@ function newBlankField() {
   return { key: '', label: '', regex: '[A-Z0-9]+', suffix: '', optional: false, notes: '', lookup: null }
 }
 
+// Defaults preserve the exact text every existing caller (P&ID
+// Verification V1/V2) already shows — only a caller that explicitly
+// passes title/description/syncTitle/syncText (currently just
+// ValveMTO.jsx) sees anything different.
+const DEFAULT_TITLE = 'Legend Sheets'
+const DEFAULT_DESCRIPTION_PREFIX = 'Define custom extraction rules — switch section to view or create legends for '
+const DEFAULT_SYNC_TITLE = 'Synchronized Across Versions'
+const DEFAULT_SYNC_TEXT = 'Legends are shared between V1 (P&ID Verification) and V2 (Line List Extractor). Create once, use everywhere.'
+
 /**
  * LegendSheetsModal — full legend-sheet manager.
  *
@@ -123,15 +136,83 @@ function newBlankField() {
  *   onActiveChange   — callback(activeLegendOrNull) fired whenever the active
  *                      legend for the CURRENT section changes; parent uses it
  *                      to refresh the "Active Legend" badge.
+ *   title            — optional header title override (default: "Legend Sheets")
+ *   description      — optional header subtitle override (default: the
+ *                      "Define custom extraction rules…" sentence, which
+ *                      lists every registered section)
+ *   syncTitle        — optional Sync Info Banner heading override (default:
+ *                      "Synchronized Across Versions")
+ *   syncText         — optional Sync Info Banner body override (default:
+ *                      the V1/V2-sharing sentence). Passing either sync
+ *                      prop also hides the "V1 ↔ V2" pills, since those
+ *                      specifically illustrate the default V1/V2 framing.
  */
-export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SECTION, onActiveChange, projectId }) {
+export default function LegendSheetsModal({
+  open, onClose, section = DEFAULT_SECTION, onActiveChange, projectId: projectIdProp,
+  title, description, syncTitle, syncText, filterOutMTOLegends = false,
+  legendApi,
+}) {
+  // STEP 5 (complete legend-system isolation for Valve MTO): when a
+  // caller passes `legendApi` ({listLegends, createLegend, updateLegend,
+  // deleteLegend, activateLegend}, e.g. from services/valveMtoLegendService.js),
+  // this modal talks to THAT backend instead of the default
+  // apps.pid_checker_v2 one. ValveMTO.jsx passes it; P&ID V1/V2 and every
+  // other existing caller omit it and keep using pid_checker_v2
+  // unchanged — fully backward compatible.
+  const listLegendsApi = legendApi?.listLegends || pidListLegends
+  const createLegendApi = legendApi?.createLegend || pidCreateLegend
+  const updateLegendApi = legendApi?.updateLegend || pidUpdateLegend
+  const deleteLegendApi = legendApi?.deleteLegend || pidDeleteLegend
+  const activateLegendApi = legendApi?.activateLegend || pidActivateLegend
+  const availableSections = legendApi?.sections || LEGEND_SECTIONS
   const [activeSection, setActiveSection] = useState(section || DEFAULT_SECTION)
+
+  // ── Project scope — soft-coded selector in the header. When the parent
+  // passes projectId it acts as the initial value; the user can switch or
+  // clear it here without leaving the modal. Empty = personal/global library.
+  const [projectId, setProjectId] = useState(projectIdProp || '')
+  const [projects, setProjects] = useState([])
+  const [projectsBusy, setProjectsBusy] = useState(false)
+  useEffect(() => { if (open) setProjectId(projectIdProp || '') }, [open, projectIdProp])
+  useEffect(() => {
+    if (!open) return undefined
+    let live = true
+    setProjectsBusy(true)
+    ;(async () => {
+      try {
+        const items = await projectOrganizerService.listProjects()
+        if (live) setProjects(Array.isArray(items) ? items : [])
+      } catch { /* selector stays empty — non-fatal */ }
+      finally { if (live) setProjectsBusy(false) }
+    })()
+    return () => { live = false }
+  }, [open])
 
   // Reference pictures, manually uploaded per symbol (see LegendSymbolImage /
   // SymbolImagesListView / SymbolImageUploadView) — keyed by
   // "section::NORMALISED NAME" so FormEditor can look one up per lookup entry.
   const [symbolImages, setSymbolImages] = useState({})
   const refreshSymbolImages = useCallback(async () => {
+    if (legendApi) {
+      try {
+        const records = await listLegendsApi()
+        const map = {}
+        for (const record of records.filter(item => item.is_active)) {
+          for (const sheet of record.definition?.imported_sheets || []) {
+            for (const image of sheet.images || []) {
+              if (image.data_url) map[`${record.section}::${normaliseSymbolName(image.name)}`] = {
+                url: image.data_url, contentType: 'image/png',
+              }
+            }
+          }
+        }
+        setSymbolImages(map)
+      } catch (error) {
+        console.error('[LegendSheetsModal] Could not load isolated workbook pictures', error)
+        toast.error('Could not load workbook pictures. Reopen the legend manager to retry.')
+      }
+      return
+    }
     if (!projectId) { setSymbolImages({}); return }
     try {
       const data = await getSymbolImages(projectId)
@@ -146,7 +227,7 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
     } catch {
       setSymbolImages({})
     }
-  }, [projectId])
+  }, [projectId, legendApi, listLegendsApi])
   useEffect(() => { if (open) refreshSymbolImages() }, [open, projectId, refreshSymbolImages])
 
   // Re-sync internal section when the parent re-opens the modal with a new one.
@@ -156,6 +237,9 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
   const [saving, setSaving] = useState(false)
   const [legends, setLegends] = useState([])
   const [selectedId, setSelectedId] = useState(null)
+  const [workbookFile, setWorkbookFile] = useState(null)
+  const [workbookOpen, setWorkbookOpen] = useState(false)
+  const [workbookSection, setWorkbookSection] = useState(DEFAULT_SECTION)
 
   // Draft (edit form) fields
   const [draftName, setDraftName] = useState('')
@@ -176,28 +260,87 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
   const refresh = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
     try {
-      const rows = await listLegends(activeSection)
-      setLegends(Array.isArray(rows) ? rows : [])
-      // Clear selection when switching sections so the editor doesn't show a
-      // stale legend belonging to a different section. Only do this for a
-      // user-driven load (tab click / modal open) — a silent background
-      // poll or cross-tab sync must NOT clear it, or the tab the user just
-      // opened blanks itself out a few seconds later. `selected` is derived
-      // from `legends.find(...)` anyway, so if the row really did disappear
+      const rows = await listLegendsApi(activeSection, projectId || undefined)
+      const allRows = Array.isArray(rows) ? rows : []
+      // When opened from a non-Valve-MTO caller (P&ID V1/V2), hide
+      // Valve-MTO-specific auto-created legends (name contains "MTO")
+      // from the list entirely — this only affects what's DISPLAYED
+      // here, so another module's "Manage Legends" view isn't cluttered
+      // with legends it didn't create and has no use for.
+      let filteredRows = filterOutMTOLegends
+        ? allRows.filter((l) => !String(l?.name || '').includes('MTO'))
+        : allRows
+      // SELF-HEAL (confirmed real on production): Valve MTO's own
+      // auto-create can activate an MTO-named legend for a section this
+      // user also uses in P&ID V1/V2 — PidCheckerV2LegendSheet has only
+      // ONE active legend per (user, section), no per-module dimension,
+      // so that activation is real server-side state, not just a display
+      // issue. Hiding it from the list (above) stops it being SHOWN as
+      // active, but P&ID's own tag-validation still reads the real
+      // active row — so if the genuinely active legend for this section
+      // turns out to be one of ours, restore whichever non-MTO legend
+      // this user most recently had active/edited instead (listLegends
+      // orders by -updated_at, so filteredRows[0] is exactly that one).
+      // Best-effort and non-destructive: if this user has NO non-MTO
+      // legend at all for this section, there's nothing to restore —
+      // never fabricate one, same rule as everywhere else in this file.
+      if (filterOutMTOLegends) {
+        const activeRaw = allRows.find((l) => l.is_active)
+        const activeIsMTO = activeRaw && String(activeRaw.name || '').includes('MTO')
+        if (activeIsMTO && filteredRows.length) {
+          const restoreTarget = filteredRows[0]
+          try {
+            await activateLegendApi(restoreTarget.legend_id)
+            filteredRows = filteredRows.map((l) =>
+              l.legend_id === restoreTarget.legend_id ? { ...l, is_active: true } : l
+            )
+          } catch {
+            // Best-effort — if this fails, the MTO legend just stays
+            // hidden-but-technically-active; still never shown here.
+          }
+        }
+      }
+      // Diff before setState — background polls/syncs return identical data
+      // most of the time. Replacing the array unconditionally created new
+      // references on every poll, re-rendering the list + editor and making
+      // the uploaded-file thumbnails visibly shake every 15s. Returning the
+      // previous reference when nothing changed skips that render entirely.
+      setLegends(prev => {
+        const next = filteredRows
+        const same = prev.length === next.length
+          && prev.every((p, i) => p.legend_id === next[i]?.legend_id
+            && p.updated_at === next[i]?.updated_at
+            && p.is_active === next[i]?.is_active)
+        return same ? prev : next
+      })
+      // On a user-driven load (tab click / modal open), auto-select the
+      // section's active legend (falling back to the most recent one) so
+      // the editor opens populated instead of blank — users shouldn't have
+      // to click the list item to see the rules that are already in force.
+      // A silent background poll or cross-tab sync must NOT change the
+      // selection, or the tab the user just opened blanks/switches itself
+      // a few seconds later. `selected` is derived from
+      // `legends.find(...)` anyway, so if the row really did disappear
       // (deleted elsewhere), it naturally falls back to null on its own.
-      if (!silent) setSelectedId(null)
+      if (!silent) {
+        const auto = filteredRows.find(l => l.is_active) || filteredRows[0] || null
+        setSelectedId(auto ? auto.legend_id : null)
+      }
       // notify parent about active state (only when viewing the section the
       // parent originally opened us with)
       if (onActiveChange && activeSection === section) {
-        const active = (rows || []).find(l => l.is_active) || null
+        // Uses filteredRows, not rows: a parent that hides MTO legends
+        // from display should also never be told one is "active" (e.g.
+        // for a status badge) — stays consistent with what's on screen.
+        const active = filteredRows.find(l => l.is_active) || null
         onActiveChange(active)
       }
     } catch (err) {
-      toast.error('Failed to load legends')
+      if (!silent) toast.error('Failed to load legends')
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [activeSection, section, onActiveChange])
+  }, [activeSection, section, onActiveChange, projectId, filterOutMTOLegends, listLegendsApi, activateLegendApi])
 
   useEffect(() => { if (open) refresh() }, [open, refresh])
 
@@ -289,13 +432,17 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
         description: draftDesc,
         definition: JSON.parse(draftDefinition),
       }
+      // ValveMTOLegend has no 'project' field at all (not project-scoped
+      // — see its own model docstring), unlike PidCheckerV2LegendSheet.
+      // Only send it on the default (pid_checker_v2) path.
+      if (projectId && !legendApi) payload.project = projectId
       if (selectedId) {
-        const updated = await updateLegend(selectedId, payload)
+        const updated = await updateLegendApi(selectedId, payload)
         toast.success('Legend updated')
         setLegends(prev => prev.map(l => l.legend_id === updated.legend_id ? updated : l))
         emitLegendSync(LEGEND_SYNC_ACTIONS.UPDATED, { legend_id: updated.legend_id, section: updated.section })
       } else {
-        const created = await createLegend(payload)
+        const created = await createLegendApi(payload)
         toast.success(`Legend created in ${LEGEND_SECTIONS.find(s => s.id === activeSection)?.label || activeSection}`)
         setLegends(prev => [created, ...prev])
         setSelectedId(created.legend_id)
@@ -318,28 +465,36 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
     } finally {
       setSaving(false)
     }
-  }, [draftName, draftDesc, draftDefinition, activeSection, selectedId, validateDefinition])
+  }, [draftName, draftDesc, draftDefinition, activeSection, selectedId, validateDefinition, projectId, legendApi, createLegendApi, updateLegendApi])
 
   const onActivate = useCallback(async (legendId) => {
     try {
-      const activated = await activateLegend(legendId)
-      toast.success(`Activated: ${activated.name}`)
-      // Update local list: only one active per section
-      setLegends(prev => prev.map(l => ({
-        ...l,
-        is_active: l.legend_id === activated.legend_id ? true : (l.section === activated.section ? false : l.is_active),
-      })))
+      const activated = await activateLegendApi(legendId)
+      const isDefaultPidApi = !legendApi?.activateLegend
+      toast.success(activated.is_active ? `Activated: ${activated.name}` : `Deactivated: ${activated.name}`)
+      if (isDefaultPidApi) {
+        // Multi-active backend (pid_checker_v2): only this legend's flag flips.
+        setLegends(prev => prev.map(l => (
+          l.legend_id === activated.legend_id ? { ...l, is_active: activated.is_active } : l
+        )))
+      } else {
+        // Legacy single-active backends (valve MTO / IO list)
+        setLegends(prev => prev.map(l => ({
+          ...l,
+          is_active: l.legend_id === activated.legend_id ? true : (l.section === activated.section ? false : l.is_active),
+        })))
+      }
       if (onActiveChange && activated.section === section) onActiveChange(activated)
       emitLegendSync(LEGEND_SYNC_ACTIONS.ACTIVATED, { legend_id: activated.legend_id, section: activated.section })
     } catch (err) {
-      toast.error('Failed to activate')
+      toast.error('Failed to update activation')
     }
-  }, [onActiveChange, section])
+  }, [onActiveChange, section, activateLegendApi, legendApi])
 
   const onDelete = useCallback(async (legendId) => {
     if (!(await radaiConfirm('Delete this legend? This cannot be undone.'))) return
     try {
-      await deleteLegend(legendId)
+      await deleteLegendApi(legendId)
       const wasActive = legends.find(l => l.legend_id === legendId)?.is_active
       const deletedSection = legends.find(l => l.legend_id === legendId)?.section
       setLegends(prev => prev.filter(l => l.legend_id !== legendId))
@@ -350,7 +505,7 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
     } catch (err) {
       toast.error('Delete failed')
     }
-  }, [selectedId, legends, onActiveChange, section])
+  }, [selectedId, legends, onActiveChange, section, deleteLegendApi])
 
   const safeFilenameBase = useCallback(() => {
     const base = (draftName || activeSection || 'legend').trim().replace(/[^a-zA-Z0-9._-]+/g, '_')
@@ -442,6 +597,16 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
     const f = e.target.files?.[0]
     if (!f) return
     try {
+      if ((!legendApi || legendApi.importLegendWorkbook) && /\.(xlsx|xlsm)$/i.test(f.name)) {
+        if (!legendApi && (!projectId || !projects.some(project => project.project_id === projectId))) {
+          toast.warning('Select a legend-library project in this manager before importing the workbook. Drawing projects and legend-library projects may be different.')
+          return
+        }
+        setWorkbookFile(f)
+        setWorkbookSection(activeSection)
+        setWorkbookOpen(true)
+        return
+      }
       const items = await parseLegendFile(f, `Imported ${activeSection} legend`)
       if (!items.length) { toast.error('No legends found in the file'); return }
       const first = items[0]
@@ -459,7 +624,28 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
     } finally {
       e.target.value = ''
     }
-  }, [section])
+  }, [activeSection, legendApi, projectId, projects])
+
+  const onWorkbookImported = useCallback(async (result) => {
+    const entries = [...(result.created || []), ...(result.updated || [])]
+    for (const entry of entries) {
+      emitLegendSync(LEGEND_SYNC_ACTIONS.UPDATED, { legend_id: entry.legend_id, section: entry.section })
+    }
+    const targetSection = entries.some(entry => entry.section === activeSection)
+      ? activeSection : entries[0]?.section
+    if (targetSection && targetSection !== activeSection) setActiveSection(targetSection)
+    else await refresh()
+    await refreshSymbolImages()
+    if (onActiveChange) {
+      try {
+        const rows = await listLegendsApi(section, projectId || undefined)
+        onActiveChange(rows.find(row => row.is_active) || null)
+      } catch (error) {
+        console.error('[LegendSheetsModal] Failed to refresh extraction legend after import', error)
+        toast.error('Workbook imported, but the extraction legend could not be refreshed. Reopen the legend manager.')
+      }
+    }
+  }, [activeSection, section, refresh, refreshSymbolImages, onActiveChange, listLegendsApi, projectId])
 
   // Switch between Form and JSON tabs. Form → JSON is easy (JSON is source
   // of truth). JSON → Form requires a valid parse first.
@@ -508,10 +694,35 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
             <BookOpen size={18} />
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 17, fontWeight: 700, color: THEME_TEXT }}>Legend Sheets</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: THEME_TEXT }}>{title || DEFAULT_TITLE}</div>
             <div style={{ fontSize: 12, color: THEME_MUTED }}>
-              Define custom extraction rules — switch section to view or create legends for {LEGEND_SECTIONS.map(s => s.label).join(', ')}
+              {description || `${DEFAULT_DESCRIPTION_PREFIX}${availableSections.map(s => s.label).join(', ')}`}
             </div>
+          </div>
+          {/* Project scope selector — empty = personal/global library */}
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+            <Folder size={14} style={{ position: 'absolute', left: 10, color: THEME_MUTED, pointerEvents: 'none' }} />
+            <select
+              value={projectId}
+              onChange={e => setProjectId(e.target.value)}
+              disabled={projectsBusy}
+              title="Scope legends to a project — project legends are inherited by every tool working on that project"
+              style={{
+                padding: '7px 28px 7px 30px', borderRadius: 10, fontSize: 12, fontWeight: 600,
+                color: THEME_TEXT, background: projectId ? '#eef2ff' : THEME_BG_SOFT,
+                border: `1px solid ${projectId ? '#c7d2fe' : THEME_BORDER}`,
+                appearance: 'none', cursor: 'pointer', maxWidth: 220,
+              }}
+            >
+              <option value="">Global library (no project)</option>
+              {projectId && !projects.some(project => project.project_id === projectId) && (
+                <option value={projectId} disabled>Select a legend-library project</option>
+              )}
+              {projects.map(p => (
+                <option key={p.project_id} value={p.project_id}>{p.name || p.code || p.project_id}</option>
+              ))}
+            </select>
+            <span style={{ position: 'absolute', right: 10, color: THEME_MUTED, pointerEvents: 'none', fontSize: 10 }}>▾</span>
           </div>
           <button onClick={onClose} style={{
             background: 'none', border: 'none', cursor: 'pointer', color: THEME_MUTED,
@@ -529,25 +740,51 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
           <span style={{ fontSize: 16 }}>🔄</span>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: '#1e40af', marginBottom: 2 }}>
-              Synchronized Across Versions
+              {syncTitle || DEFAULT_SYNC_TITLE}
             </div>
             <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.4 }}>
-              Legends are shared between V1 (P&ID Verification) and V2 (Line List Extractor). Create once, use everywhere.
+              {syncText || DEFAULT_SYNC_TEXT}
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 600 }}>
-            <span style={{ padding: '3px 8px', background: '#dbeafe', color: '#1e40af', borderRadius: 6 }}>V1</span>
-            <span style={{ color: '#94a3b8' }}>↔</span>
-            <span style={{ padding: '3px 8px', background: '#dbeafe', color: '#1e40af', borderRadius: 6 }}>V2</span>
-          </div>
+          {/* V1 ↔ V2 pills illustrate the default cross-version framing —
+              hidden whenever a caller supplies its own sync copy (e.g.
+              ValveMTO.jsx's "Global Library" framing), since they'd be
+              misleading outside the P&ID Verification V1/V2 context. */}
+          {!(syncTitle || syncText) && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 600 }}>
+              <span style={{ padding: '3px 8px', background: '#dbeafe', color: '#1e40af', borderRadius: 6 }}>V1</span>
+              <span style={{ color: '#94a3b8' }}>↔</span>
+              <span style={{ padding: '3px 8px', background: '#dbeafe', color: '#1e40af', borderRadius: 6 }}>V2</span>
+            </div>
+          )}
         </div>
 
         {/* Body: two columns */}
         <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', flex: 1, minHeight: 0 }}>
           {/* ── Left: list ──────────────────────────────────────── */}
-          <div style={{
+          {/* BUG FIX, round 3: round 2's explicit `maxHeight: calc(90vh
+              - 170px)` was a GUESS at how much space the header + sync
+              banner + modal chrome actually consume, and it guessed
+              wrong — confirmed by the next screenshot, which showed the
+              pane squeezed down to barely the section tabstrip + New/
+              Default/Import buttons, with every legend card pushed out
+              of view. Reverted the explicit height. The RIGHT pane
+              (`data-legend-scroll-pane` below) has never had this
+              problem and uses nothing more than plain `overflowY:
+              'auto'`, relying on the grid row (this pane's own direct
+              parent, `flex: 1, minHeight: 0`) to stretch both panes to
+              the same correct height — proof that mechanism does work
+              correctly here. This pane now matches that exact same
+              pattern instead of fighting it with a hardcoded guess.
+              Kept the thicker/darker scrollbar styling from round 2
+              (that part was a real improvement) and switched back from
+              `overflowY: 'scroll'` to `'auto'` — 'scroll' forces a
+              track to render even when there's nothing to scroll, which
+              combined with a wrong height guess was part of what
+              squeezed this pane in round 2. */}
+          <div className="legend-list-pane" style={{
             borderRight: `1px solid ${THEME_BORDER}`, padding: 14, overflowY: 'auto',
-            display: 'flex', flexDirection: 'column', gap: 8, background: THEME_BG_SOFT,
+            display: 'flex', flexDirection: 'column', gap: 6, background: THEME_BG_SOFT,
           }}>
             {/* Section switcher — vertical rail so every section's full label
                 stays readable no matter how many are registered (no cutoff,
@@ -563,7 +800,7 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
                 background: THEME_TAB_BG, borderRadius: 10, padding: 6,
               }}
             >
-              {LEGEND_SECTIONS.map(s => {
+              {availableSections.map(s => {
                 const on = s.id === activeSection
                 return (
                   <button
@@ -603,11 +840,21 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
               >
                 <Download size={14} /> Default
               </button>
-              <label style={{ ...btnGhost(), cursor: 'pointer', display: 'inline-flex' }} title="Import JSON, CSV, or Excel (.xlsx / .xls)">
+              <label style={{ ...btnGhost(), cursor: 'pointer', display: 'inline-flex' }} title={legendApi && !legendApi.importLegendWorkbook
+                ? 'Import JSON, CSV, or Excel field definitions'
+                : 'Import a complete Excel workbook (.xlsx / .xlsm), including every mapped worksheet and embedded symbol, or JSON/CSV field definitions'}>
                 <Upload size={14} /> Import
                 <input type="file" accept={IMPORT_ACCEPT} onChange={onImportJson} style={{ display: 'none' }} />
               </label>
             </div>
+
+            {(!legendApi || legendApi.importLegendWorkbook) && (
+              <div style={{ color: THEME_MUTED, fontSize: 11 }}>
+                Excel workbook import preserves worksheet text and embedded symbols.
+                {legendApi ? 'Preview and confirm the worksheets to import into this isolated library.'
+                  : 'Select a legend-library project above, then preview and confirm the worksheet mapping.'}
+              </div>
+            )}
 
             {loading && (
               <div style={{ color: THEME_MUTED, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -625,13 +872,19 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
                 <div key={l.legend_id}
                   onClick={() => setSelectedId(l.legend_id)}
                   style={{
-                    padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
+                    // Shrunk from '10px 12px' — so more legends fit in
+                    // view at once and the ones that still don't fit
+                    // are visibly cut off at the pane's bottom edge
+                    // (the scroll affordance itself), rather than this
+                    // pane only ever showing ~5 cards before any cue
+                    // that there's more to scroll to.
+                    padding: '6px 10px', borderRadius: 8, cursor: 'pointer',
                     border: `1px solid ${active ? THEME_PRIMARY : THEME_BORDER}`,
                     background: active ? '#faf5ff' : '#fff',
                   }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span style={{
-                      fontWeight: 600, color: THEME_TEXT, fontSize: 13,
+                      fontWeight: 600, color: THEME_TEXT, fontSize: 12,
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
                     }}>
                       {l.name}
@@ -639,18 +892,18 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
                     {l.is_active && (
                       <span style={{
                         display: 'inline-flex', alignItems: 'center', gap: 3,
-                        padding: '2px 6px', borderRadius: 999, fontSize: 10,
+                        padding: '1px 5px', borderRadius: 999, fontSize: 9,
                         background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0',
                       }}>
-                        <CheckCircle2 size={10} /> Active
+                        <CheckCircle2 size={9} /> Active
                       </span>
                     )}
                   </div>
                   {l.description && (
                     <div style={{
-                      fontSize: 11, color: THEME_MUTED, marginTop: 3,
+                      fontSize: 10, color: THEME_MUTED, marginTop: 2,
                       overflow: 'hidden', textOverflow: 'ellipsis',
-                      display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                      display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical',
                     }}>
                       {l.description}
                     </div>
@@ -754,9 +1007,18 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
                   symbolImages={symbolImages}
                   projectId={projectId}
                   onImagesChanged={refreshSymbolImages}
+                  isolated={Boolean(legendApi)}
                 />
               )}
             </label>
+
+            {(!legendApi || legendApi.importLegendWorkbook) && (
+              <ImportedWorkbookSheets
+                sheets={parsedDefinition?.imported_sheets}
+                projectId={projectId}
+                section={selected?.section || activeSection}
+              />
+            )}
 
             {/* Footer actions */}
             <div style={{ display: 'flex', gap: 8, marginTop: 'auto', flexWrap: 'wrap' }}>
@@ -788,6 +1050,16 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
           </div>
         </div>
       </div>
+      <WorkbookImportModal
+        open={workbookOpen}
+        onClose={() => setWorkbookOpen(false)}
+        file={workbookFile}
+        projectId={projectId}
+        defaultSection={workbookSection}
+        onImported={onWorkbookImported}
+        workbookApi={legendApi}
+        sections={legendApi?.sections}
+      />
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         /* Thin, non-overlapping scrollbars everywhere inside this modal —
@@ -806,6 +1078,23 @@ export default function LegendSheetsModal({ open, onClose, section = DEFAULT_SEC
         .legend-tabstrip::-webkit-scrollbar { width: 4px; }
         .legend-tabstrip::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
         .legend-tab-item[aria-selected="false"]:hover { background: rgba(255,255,255,0.08) !important; }
+        /* Darker/wider/opaque-track override of the shared low-contrast
+           scrollbar rule above, specific to the legend list pane's light
+           background — always visible, not just on hover, so a user with
+           several legends in one section can actually see there's more
+           to scroll to. Firefox: scrollbar-width has no "wide" option, so
+           'auto' (not 'thin') is the closest way to make it more visible
+           there too. */
+        /* Prefixed with .legend-sheets-modal so this unambiguously
+           out-specifies the shared ".legend-sheets-modal *" rule above
+           regardless of source order (previously a same-specificity tie
+           resolved only by being declared later — more fragile than
+           necessary). */
+        .legend-sheets-modal .legend-list-pane { scrollbar-width: auto; scrollbar-color: #475569 #cbd5e1; }
+        .legend-sheets-modal .legend-list-pane::-webkit-scrollbar { width: 16px; }
+        .legend-sheets-modal .legend-list-pane::-webkit-scrollbar-track { background: #cbd5e1; border-radius: 8px; }
+        .legend-sheets-modal .legend-list-pane::-webkit-scrollbar-thumb { background: #475569; border-radius: 8px; border: 3px solid #cbd5e1; min-height: 40px; }
+        .legend-sheets-modal .legend-list-pane::-webkit-scrollbar-thumb:hover { background: #1e293b; }
         .legend-symbol-cell:focus { outline: 2px solid ${THEME_PRIMARY}; outline-offset: 1px; }
       `}</style>
     </div>
@@ -871,7 +1160,7 @@ function tabBtnStyle(active) {
 // Source-of-truth is a JSON string on the parent; on every change we
 // re-emit the entire definition object.
 // ═════════════════════════════════════════════════════════════════════
-function FormEditor({ definition, onChange, onError, jsonError, activeSection, selectedSection, symbolImages, projectId, onImagesChanged }) {
+function FormEditor({ definition, onChange, onError, jsonError, activeSection, selectedSection, symbolImages, projectId, onImagesChanged, isolated = false }) {
   // Tracks which symbol keys ("section::NAME") currently have an upload in
   // flight, so each cell can show its own small spinner independently.
   const [uploadingKeys, setUploadingKeys] = useState({})
@@ -887,11 +1176,12 @@ function FormEditor({ definition, onChange, onError, jsonError, activeSection, s
     const rowKey = `${idx}::${code}`
     setDeletingLookupKey(rowKey)
     try {
-      await deleteLegendLookupEntry({ section: activeSection, code })
+      if (!isolated) await deleteLegendLookupEntry({ section: activeSection, code })
       const nextLookup = { ...field.lookup }
       delete nextLookup[code]
       updateField(idx, { lookup: nextLookup })
-      toast.success(`"${code}" removed from the legend.`)
+      if (isolated) toast.info(`"${code}" removed from the draft. Save changes to persist the legend.`)
+      else toast.success(`"${code}" removed from the legend.`)
     } catch (err) {
       toast.error(err.response?.data?.error || err.message || 'Failed to remove.')
     } finally {
@@ -903,22 +1193,48 @@ function FormEditor({ definition, onChange, onError, jsonError, activeSection, s
   // active section's lookup names this project hasn't uploaded its own
   // image for — keyed by the raw symbol name (matches the batch request).
   const [defaultImages, setDefaultImages] = useState({})
-  useEffect(() => {
+
+  // Memoize the SET of names we actually need to fetch. Without this the
+  // effect refires on every keystroke in the JSON editor (`definition` is a
+  // string that changes per keystroke), refetching + re-setting images and
+  // making the uploaded-symbol thumbnails visibly flicker/shake.
+  const neededNamesKey = useMemo(() => {
     const parsed = parseDefinitionSafely(definition)
     const names = []
     for (const f of (parsed?.fields || [])) {
       for (const value of Object.values(f.lookup || {})) {
         const key = `${activeSection}::${normaliseSymbolName(value)}`
-        if (!symbolImages?.[key]) names.push(value)
+        if (!symbolImages?.[key]) names.push(normaliseSymbolName(value))
       }
     }
-    if (names.length === 0) { setDefaultImages({}); return undefined }
+    // Sorted join → stable key that only changes when the name SET changes.
+    return Array.from(new Set(names)).sort().join('|')
+  }, [activeSection, definition, symbolImages])
+
+  useEffect(() => {
+    if (isolated || !neededNamesKey) {
+      // Only clear if there's something to clear (avoid a redundant render).
+      setDefaultImages(prev => (Object.keys(prev).length ? {} : prev))
+      return undefined
+    }
+    const names = neededNamesKey.split('|')
     let cancelled = false
     getDefaultSymbolImages(activeSection, names)
-      .then((data) => { if (!cancelled) setDefaultImages(data?.results || {}) })
-      .catch(() => { if (!cancelled) setDefaultImages({}) })
+      .then((data) => {
+        if (cancelled) return
+        const next = data?.results || {}
+        // Diff — skip the state update (and the re-render/flicker) when the
+        // fetched map is identical to what we already have.
+        setDefaultImages(prev => {
+          const pKeys = Object.keys(prev)
+          const nKeys = Object.keys(next)
+          const same = pKeys.length === nKeys.length && nKeys.every(k => prev[k] === next[k])
+          return same ? prev : next
+        })
+      })
+      .catch(() => { if (!cancelled) setDefaultImages(prev => (Object.keys(prev).length ? {} : prev)) })
     return () => { cancelled = true }
-  }, [activeSection, definition, symbolImages])
+  }, [activeSection, neededNamesKey, isolated])
 
   // Scroll positions captured just before a symbol cell is clicked, so the
   // "Right: editor" pane (and any scrollable ancestor up to it) can be
@@ -931,6 +1247,10 @@ function FormEditor({ definition, onChange, onError, jsonError, activeSection, s
   const pendingScrollLockRef = useRef(null)
 
   const handleSymbolImageUpload = useCallback(async (symbolValue, file) => {
+    if (isolated) {
+      toast.warn('Import a complete workbook to replace pictures in this isolated legend library.')
+      return
+    }
     if (!projectId) { toast.warn('Select a project first — pictures are saved per project.'); return }
     const key = `${activeSection}::${normaliseSymbolName(symbolValue)}`
     setUploadingKeys(prev => ({ ...prev, [key]: true }))
@@ -943,9 +1263,13 @@ function FormEditor({ definition, onChange, onError, jsonError, activeSection, s
     } finally {
       setUploadingKeys(prev => { const next = { ...prev }; delete next[key]; return next })
     }
-  }, [projectId, activeSection, onImagesChanged])
+  }, [projectId, activeSection, onImagesChanged, isolated])
 
   const handleSymbolImageDelete = useCallback(async (symbolValue) => {
+    if (isolated) {
+      toast.warn('Replace the workbook to update its embedded reference pictures.')
+      return
+    }
     if (!projectId) return
     if (!(await radaiConfirm(`Remove the picture for "${symbolValue}"?`))) return
     const key = `${activeSection}::${normaliseSymbolName(symbolValue)}`
@@ -958,7 +1282,7 @@ function FormEditor({ definition, onChange, onError, jsonError, activeSection, s
     } finally {
       setUploadingKeys(prev => { const next = { ...prev }; delete next[key]; return next })
     }
-  }, [projectId, activeSection, onImagesChanged])
+  }, [projectId, activeSection, onImagesChanged, isolated])
 
   // Paste-from-clipboard — click a symbol cell to focus it, then Ctrl+V a
   // picture copied from Excel/anywhere else. Same upload path as the file
@@ -1403,6 +1727,7 @@ function FormEditor({ definition, onChange, onError, jsonError, activeSection, s
       </div>
 
       <AddToLegendModal
+        localDraft={isolated}
         isOpen={!!lookupRowEditor}
         onClose={() => setLookupRowEditor(null)}
         mode={lookupRowEditor?.mode || 'add'}

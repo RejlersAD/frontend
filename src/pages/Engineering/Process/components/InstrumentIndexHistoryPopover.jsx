@@ -28,8 +28,9 @@ const ACTIVE_ICON   = '#b45309'
  * Props:
  *   activeInstrumentIndex  — currently-active II (or null)
  *   onChange()             — called after activate / delete / refresh
+ *   projectId              — active project's UUID, scopes the listed history to it
  */
-export default function InstrumentIndexHistoryPopover({ activeInstrumentIndex, onChange }) {
+export default function InstrumentIndexHistoryPopover({ activeInstrumentIndex, onChange, projectId }) {
   const [open, setOpen] = useState(false)
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(false)
@@ -38,14 +39,14 @@ export default function InstrumentIndexHistoryPopover({ activeInstrumentIndex, o
   const refresh = useCallback(async () => {
     setLoading(true)
     try {
-      const rows = await listInstrumentIndexes()
+      const rows = await listInstrumentIndexes(projectId)
       setHistory(Array.isArray(rows) ? rows : (rows?.results || []))
     } catch (err) {
       console.warn('[InstrumentIndexHistoryPopover] refresh failed', err)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [projectId])
 
   useEffect(() => { if (open) refresh() }, [open, refresh])
 

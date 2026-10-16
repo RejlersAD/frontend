@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import process from 'node:process'
 import { orderFormHarness, orderFormId, orderFormNumber, orderFormRecommendation } from '../fixtures/purchase-order-form.fixture'
 
 // The first full-App navigation includes the engineering modules on cold Vite starts.
@@ -17,6 +18,11 @@ async function selectRecommendation(page) {
   await workspace(page).getByRole('combobox', { name: 'Price basis', exact: true }).selectOption('exclusive')
 }
 const save = page => workspace(page).getByRole('button', { name: /^(Save draft|Save changes)$/ }).first().click()
+const expectSavedEditor = async (page, state) => {
+  await expect.poll(() => savedWrites(state).length).toBe(1)
+  await expect(workspace(page).getByRole('heading', { name: 'Edit purchase order', exact: true })).toBeVisible()
+  await expect(workspace(page).getByRole('button', { name: 'Save changes', exact: true }).first()).toBeEnabled()
+}
 const oldDraft = (overrides = {}) => ({
   id: orderFormId, po_number: orderFormNumber, status: 'draft', title: 'Native order needing approval routing',
   vendor: 21, vendor_name: 'Alfanar Engineering LLC', pr_reference: orderFormRecommendation.id,
@@ -49,17 +55,22 @@ test('linked PR retains an independent pending final PO signer and sends no PR c
   await expect(page.getByRole('region', { name: 'Current purchase order PDF preview', exact: true }).getByRole('img')).toBeVisible({ timeout: 30000 })
   await selector(page).scrollIntoViewIfNeeded()
   await expect(selector(page)).toBeInViewport()
-  await expect(page.getByRole('tab', { name: 'Header, Buyer & Project', exact: true })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('tab', { name: 'Order & parties', exact: true })).toHaveAttribute('aria-selected', 'true')
   await page.screenshot({ path: artifact('po-independent-final-signatory.png') })
   await page.setViewportSize({ width: 390, height: 844 })
   await selector(page).scrollIntoViewIfNeeded()
   await expect(selector(page)).toBeInViewport()
-  expect((await selector(page).boundingBox()).width).toBeGreaterThanOrEqual(250)
+  const mobileSelector = await selector(page).boundingBox()
+  expect(mobileSelector.x).toBeGreaterThanOrEqual(0)
+  expect(mobileSelector.x + mobileSelector.width).toBeLessThanOrEqual(390)
+  await expect(selector(page)).toBeEnabled()
+  await selector(page).selectOption('11')
+  await expect(selector(page)).toHaveValue('11')
   await expect(page.getByRole('tablist', { name: 'Purchase order sections', exact: true }).getByRole('tab')).toHaveCount(4)
   await page.screenshot({ path: artifact('po-independent-final-signatory-mobile.png') })
   await page.setViewportSize({ width: 1672, height: 941 })
   await save(page)
-  await expect(page).toHaveURL(/\/procurement\/orders$/)
+  await expectSavedEditor(page, state)
   expect(savedWrites(state)).toHaveLength(1)
   const body = savedWrites(state)[0].body
   expect(body.status).toBe('draft')
@@ -90,7 +101,7 @@ for (const scenario of [
     expect(savedWrites(state)).toEqual([])
     await selector(page).selectOption(scenario.selection)
     await save(page)
-    await expect(page).toHaveURL(/\/procurement\/orders$/)
+    await expectSavedEditor(page, state)
     expect(savedWrites(state)).toHaveLength(1)
     expect(String(savedWrites(state)[0].body.approval_log[0].user_id)).toBe(scenario.selection)
     expect(savedWrites(state)[0].body.approval_log[0].status).toBe('Pending')
@@ -110,7 +121,7 @@ test('backend approver eligibility rejection preserves the selection and permits
   expect(savedWrites(state)).toEqual([])
   state.saveError = null
   await save(page)
-  await expect(page).toHaveURL(/\/procurement\/orders$/)
+  await expectSavedEditor(page, state)
   expect(savedWrites(state)).toHaveLength(1)
   expect(savedWrites(state)[0].body.approval_log[0]).toMatchObject({ user_id: 11, status: 'Pending' })
   isolate(state)
@@ -135,9 +146,10 @@ test('loading eligible signatories blocks assignment and retains form input', as
     release()
     await expect(selector(page)).toHaveValue('11')
     await expect(selector(page)).toBeEnabled()
+    await workspace(page).getByRole('tab', { name: 'Order & parties', exact: true }).click()
     await expect(page.locator('[name="title"]')).toHaveValue('Keep this scope while signatories load')
     await save(page)
-    await expect(page).toHaveURL(/\/procurement\/orders$/)
+    await expectSavedEditor(page, state)
     expect(savedWrites(state)).toHaveLength(1)
     isolate(state)
   } finally { release() }
@@ -157,6 +169,7 @@ for (const status of [403, 503]) {
       ? 'You do not have access to load authorized PO signatories.'
       : 'Authorized PO signatories could not be loaded. Please retry.')
     expect(savedWrites(state)).toEqual([])
+    await workspace(page).getByRole('tab', { name: 'Order & parties', exact: true }).click()
     await expect(page.locator('#buyer-reference-options-1 option[value="Richa Hannah Thomas"]')).toHaveCount(1)
     state.finalSignatoriesError = null
     await workspace(page).getByRole('button', { name: 'Refresh signatories', exact: true }).click()
@@ -164,7 +177,7 @@ for (const status of [403, 503]) {
     await expect(selector(page)).toBeEnabled()
     await expect(page.locator('[name="title"]')).toHaveValue('Scope retained after directory failure')
     await save(page)
-    await expect(page).toHaveURL(/\/procurement\/orders$/)
+    await expectSavedEditor(page, state)
     expect(savedWrites(state)).toHaveLength(1)
     isolate(state)
   })
@@ -179,6 +192,7 @@ test('empty eligible list does not fall back to the active employee directory', 
   await expect(page.locator('#po-signatory-status')).toContainText('No eligible final signatory is available.')
   await save(page)
   expect(savedWrites(state)).toEqual([])
+  await workspace(page).getByRole('tab', { name: 'Order & parties', exact: true }).click()
   await expect(page.locator('#buyer-reference-options-1 option[value="Richa Hannah Thomas"]')).toHaveCount(1)
   isolate(state)
 })
@@ -205,7 +219,7 @@ test('recovered signer who loses eligibility stays visible and cannot be saved u
   await expect(selector(page).locator('option[value="11"]')).toBeEnabled()
   await expect(page.locator('#po-signatory-status')).toBeEmpty()
   await save(page)
-  await expect(page).toHaveURL(/\/procurement\/orders$/)
+  await expectSavedEditor(page, state)
   expect(savedWrites(state)).toHaveLength(1)
   expect(savedWrites(state)[0].body.approval_log[0]).toMatchObject({ user_id: 11, comments: 'Retain this routing note', status: 'Pending' })
   isolate(state)
@@ -220,7 +234,7 @@ test('new PO cannot save without an assigned directory approver', async ({ page 
   expect(savedWrites(state)).toEqual([])
   await selector(page).selectOption('11')
   await save(page)
-  await expect(page).toHaveURL(/\/procurement\/orders$/)
+  await expectSavedEditor(page, state)
   expect(savedWrites(state)).toHaveLength(1)
   isolate(state)
 })
@@ -231,7 +245,7 @@ test('old native Draft with empty route can receive an explicitly selected PO si
   await expect(selector(page)).toHaveValue('')
   await selector(page).selectOption('11')
   await save(page)
-  await expect(page).toHaveURL(/\/procurement\/orders$/)
+  await expectSavedEditor(page, state)
   expect(savedWrites(state)).toHaveLength(1)
   expect(savedWrites(state)[0].body.approval_log[0]).toMatchObject({ user_id: 11, status: 'Pending' })
   for (const field of ['approved_by_name', 'approved_at', 'approved_date', 'approval_signature', 'total_amount', 'status']) expect(savedWrites(state)[0].body).not.toHaveProperty(field)
@@ -247,7 +261,7 @@ test('existing PO assignments and source approval evidence stay unchanged during
   await expect(selector(page)).toBeDisabled()
   await page.locator('[name="title"]').fill('Corrected native PO title')
   await save(page)
-  await expect(page).toHaveURL(/\/procurement\/orders$/)
+  await expectSavedEditor(page, state)
   expect(savedWrites(state)[0].body).not.toHaveProperty('approval_log')
   expect(state.record.approval_log).toEqual(history)
   isolate(state)
@@ -258,7 +272,7 @@ test('signed source Draft with empty routing does not gain a new pending signer'
   await expect(selector(page)).toHaveCount(0)
   await page.locator('[name="title"]').fill('Corrected historical PO title')
   await save(page)
-  await expect(page).toHaveURL(/\/procurement\/orders$/)
+  await expectSavedEditor(page, state)
   expect(savedWrites(state)[0].body).not.toHaveProperty('approval_log')
   expect(state.record.approval_log).toEqual([])
   isolate(state)
@@ -272,7 +286,7 @@ test('metadata edits preserve a recorded signer absent from current eligible and
   await expect(selector(page)).toContainText('Recorded Former Signer')
   await page.locator('[name="title"]').fill('Metadata correction preserving the recorded route')
   await save(page)
-  await expect(page).toHaveURL(/\/procurement\/orders$/)
+  await expectSavedEditor(page, state)
   expect(savedWrites(state)).toHaveLength(1)
   expect(savedWrites(state)[0].body).toEqual({ title: 'Metadata correction preserving the recorded route' })
   expect(state.record.approval_log).toEqual(history)
@@ -289,7 +303,7 @@ test('recorded PO approval remains untouched when correcting metadata on a draft
   await expect(selector(page)).toBeDisabled()
   await page.locator('[name="title"]').fill('Corrected signed PO title')
   await save(page)
-  await expect(page).toHaveURL(/\/procurement\/orders$/)
+  await expectSavedEditor(page, state)
   expect(savedWrites(state)).toHaveLength(1)
   expect(savedWrites(state)[0].body).toEqual({ title: 'Corrected signed PO title' })
   for (const [field, value] of Object.entries(approval)) expect(state.record[field]).toEqual(value)

@@ -29,10 +29,10 @@ const APPROVAL_STAGES = [
 
 const StageTracker = ({ job }) => {
   const progress = Number(job.progress || 0)
-  const phases = (job.progress_log || []).map(item => item.phase)
+  const context = job.progress_context || job.result_data?.progress_context || {}
+  const phases = [...(job.progress_log || []).map(item => item.phase), context.phase]
   const approval = phases.some(phase => ['assurance_approval', 'baseline_snapshot'].includes(phase))
   const stages = approval ? APPROVAL_STAGES : BUILD_STAGES
-  const context = job.result_data?.progress_context || {}
   return <div className="mt-4 grid gap-1.5">
     {stages.map(stage => {
       const complete = progress >= stage.completesAt

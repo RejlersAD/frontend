@@ -2,6 +2,8 @@
 .pde-summary > strong { color: #153464; }
 .pde-summary > div { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 5px; }
 .pde-summary p { margin: 5px 0 0; }
+.pde-summary .pde-analysis-warning { margin-top: 10px; padding: 10px 12px; border: 1px solid #e9bd70; border-radius: 4px; color: #78470c; background: #fff9eb; }
+.pde-analysis-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .pde-activity { margin-top: 4px; font-size: 11px; color: #526987; }
 .pde-activity > strong, .pde-activity > small { display: block; }
 .pde-activity[data-duration-source="missing_source"] > strong, .pde-activity[data-duration-source="missing"] > strong { color: #875410; }

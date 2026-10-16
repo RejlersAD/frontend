@@ -87,13 +87,12 @@ export const filterEmployeeRow = (row) => {
 // ─────────────────────────────────────────────────────────────────────────────
 export const ATTENDANCE_VIEWS = [
   { id: 'overview', label: 'Overview',  icon: 'ChartBarSquareIcon', description: 'HR Executive Summary' },
-  { id: 'summary',  label: 'Summary',   icon: 'TableCellsIcon',     description: 'Consolidated monthly timesheet — Rejlers format' },
   { id: 'daily',    label: 'Daily',     icon: 'CalendarDaysIcon',   description: 'Day-by-day biometric tracker' },
-  { id: 'monthly',  label: 'Monthly',   icon: 'CalendarIcon',       description: 'Monthly rollup with dept charts' },
+  { id: 'summary',  label: 'Monthly matrix', icon: 'TableCellsIcon', description: 'Employee daily hours for the selected month' },
   { id: 'yearly',   label: 'Yearly',    icon: 'ChartBarIcon',       description: '12-month trend per employee' },
   { id: 'reports',  label: 'Reports',   icon: 'ArrowDownTrayIcon',  description: 'Export Excel / PDF' },
 ]
-export const ATTENDANCE_DEFAULT_VIEW = 'overview'
+export const ATTENDANCE_DEFAULT_VIEW = 'summary'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 3. STATUS META  (present / late / half_day / absent / on_leave)

@@ -10,7 +10,8 @@ import {
 
 import {
   listLegends, createLegend, updateLegend, deleteLegend,
-  activateLegend, getLegendDefaultTemplate, LEGEND_SECTIONS,
+  activateLegend, getLegendDefaultTemplate, exportLegendWorkbook, LEGEND_SECTIONS,
+  LEGEND_DISCIPLINES, LEGEND_SECTION_DISCIPLINE,
 } from '../../../services/pidCheckerV2API'
 import {
   LEGEND_SECTION_RULES, getSectionRules,
@@ -18,6 +19,7 @@ import {
   LEGEND_SYNC_ACTIONS, LEGEND_SYNC_POLL_MS,
 } from '../../../config/legendSheetsRules'
 import { parseLegendFile, IMPORT_ACCEPT } from '../../../config/legendSheetsImport'
+import ImportedWorkbookSheets from '../Legends/ImportedWorkbookSheets'
 
 // ═════════════════════════════════════════════════════════════════════
 // Legend Sheets — full-page CANVAS view
@@ -39,6 +41,19 @@ const DEFAULT_SECTION = LEGEND_SECTIONS[0]?.id || 'line_list'
 const JSON_INDENT = 2
 const DEFAULT_SEPARATOR = '-'
 
+// ── Soft-coded: smart Back navigation ───────────────────────────────────────
+// Maps legend sections to the tool that owns them, so "Back" always returns
+// the user to the application they came from — even without an explicit
+// `returnTo` param. Add new sections/tools here without touching logic.
+export const SMART_BACK_CONFIG = {
+  sectionHomes: {
+    instrument_index: { route: '/engineering/instrument/index',        label: 'Instrument Index' },
+    line_list:        { route: '/engineering/process/line-list',       label: 'Line List' },
+    equipment_list:   { route: '/engineering/process/equipment-list',  label: 'Equipment List' },
+  },
+  fallback: { route: '/engineering/process/pid-checker-v2', label: 'P&ID Checker V2' },
+}
+
 function prettyJson(obj) {
   try { return JSON.stringify(obj, null, JSON_INDENT) } catch { return '' }
 }
@@ -53,12 +68,39 @@ function fieldsFromDefinition(def) {
 }
 
 
-export default function LegendSheetsCanvas() {
+export default function LegendSheetsCanvas({ projectId = null, projectName = '', onWorkbookImport, importVersion = 0, importedSection = null }) {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
+
+  // ── Soft-coded: smart Back-button resolution (enterprise pattern) ───────
+  // Priority:
+  //   1. Explicit `returnTo` query param (caller-driven, validated internal)
+  //   2. `section` query param → owning tool via SECTION_HOME_MAP below
+  //   3. Fallback: P&ID Checker V2 (legacy default)
+  const returnToParam = params.get('returnTo')
+  const returnFromLabel = params.get('from') || ''
+  const sectionParam = params.get('section') || ''
+  const sectionHome = SMART_BACK_CONFIG.sectionHomes[sectionParam] || null
+  const isSafeInternal = (p) =>
+    typeof p === 'string' && p.startsWith('/') && !p.startsWith('//')
+
+  const backTarget = isSafeInternal(returnToParam)
+    ? returnToParam
+    : (sectionHome?.route || SMART_BACK_CONFIG.fallback.route)
+  const backLabel = returnFromLabel
+    ? `Back to ${returnFromLabel}`
+    : (sectionHome ? `Back to ${sectionHome.label}` : `Back to ${SMART_BACK_CONFIG.fallback.label}`)
   const initialSection = params.get('section') || DEFAULT_SECTION
 
   const [activeSection, setActiveSection] = useState(initialSection)
+  // Discipline tab (1.1 Process … 1.7 Digitization) — filters the section rail.
+  // Derived from the active section; 'all' shows every section (legacy view).
+  const [activeDiscipline, setActiveDiscipline] = useState(
+    () => LEGEND_SECTION_DISCIPLINE[initialSection] || 'all'
+  )
+  useEffect(() => {
+    if (importedSection) setActiveSection(importedSection)
+  }, [importedSection, importVersion])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [legends, setLegends] = useState([])
@@ -81,51 +123,96 @@ export default function LegendSheetsCanvas() {
     [legends, selectedId]
   )
 
-  const refresh = useCallback(async () => {
-    setLoading(true)
+  // `silent` skips the visible "Loading…" spinner — used for background
+  // sync/poll refreshes so the list doesn't flash/shake when nothing changed.
+  // User-driven loads (section switch, initial open) still show the spinner.
+  const refresh = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
-      const rows = await listLegends(activeSection)
-      setLegends(Array.isArray(rows) ? rows : [])
-      setSelectedId(null)
+      // projectId (optional) scopes the list to include the project legend pack
+      const rows = await listLegends(activeSection, projectId || undefined)
+      // Diff: only update when the row set actually changed (avoids re-render
+      // flicker on background syncs that return identical data).
+      const next = Array.isArray(rows) ? rows : []
+      setLegends(prev => {
+        const same = prev.length === next.length
+          && prev.every((p, i) => p.legend_id === next[i]?.legend_id && p.updated_at === next[i]?.updated_at)
+        return same ? prev : next
+      })
+      // Auto-select the section's active legend (fallback: most recent) on
+      // user-driven loads so the editor opens populated; silent background
+      // refreshes must never touch the selection.
+      if (!silent) {
+        const auto = next.find(l => l.is_active) || next[0] || null
+        setSelectedId(auto ? auto.legend_id : null)
+      }
     } catch {
-      toast.error('Failed to load legends')
+      if (!silent) toast.error('Failed to load legends')
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
-  }, [activeSection])
+  }, [activeSection, projectId])
 
   // Load lightweight counts + active-legend names for every section so the
   // top overview always reflects reality — even when the user is viewing a
   // different section tab.
+  //
+  // Runs on a 15s fallback poll AND on every cross-tab sync event. To stop the
+  // page visibly re-rendering ("shaking"/flicker) on each poll when nothing
+  // changed, we diff the fresh result against current state and only setState
+  // when something actually differs — React skips the re-render entirely for
+  // identical references.
   const loadAllCounts = useCallback(async () => {
     try {
-      const results = await Promise.all(
-        LEGEND_SECTIONS.map(s => listLegends(s.id).then(
-          rows => ({ id: s.id, rows: Array.isArray(rows) ? rows : [] }),
-          ()  => ({ id: s.id, rows: [] }),
-        ))
-      )
+      const rows = await listLegends(undefined, projectId || undefined)
+      const results = LEGEND_SECTIONS.map(s => ({
+        id: s.id, rows: rows.filter(row => row.section === s.id),
+      }))
       const counts = {}
       const active = {}
+      const activeCounts = {}
       results.forEach(({ id, rows }) => {
         counts[id] = rows.length
-        active[id] = rows.find(r => r.is_active) || null
+        const actives = rows.filter(r => r.is_active)
+        activeCounts[id] = actives.length
+        active[id] = actives[0] ? { legend_id: actives[0].legend_id, name: actives[0].name } : null
       })
-      setSectionCounts(counts)
-      setSectionActive(active)
+      // Diff before setState — avoids a re-render (and the resulting layout
+      // flicker / scroll jump) on every background poll when nothing changed.
+      setSectionCounts(prev => {
+        const same = LEGEND_SECTIONS.every(s => prev[s.id] === counts[s.id])
+        return same ? prev : counts
+      })
+      setSectionActive(prev => {
+        const same = LEGEND_SECTIONS.every(s =>
+          (prev[s.id]?.legend_id || null) === (active[s.id]?.legend_id || null)
+          && (prev[s.id]?.__count || 0) === activeCounts[s.id])
+        if (same) return prev
+        // Map back to full legend objects only when the active set changed.
+        const next = {}
+        results.forEach(({ id, rows }) => {
+          const first = rows.find(r => r.is_active) || null
+          next[id] = first ? { ...first, __count: activeCounts[id] } : null
+        })
+        return next
+      })
       setLastSync(new Date())
-    } catch { /* silent — auxiliary */ }
-  }, [])
+    } catch (error) {
+      console.error('[LegendSheetsCanvas] Failed to load section counts', error)
+    }
+  }, [projectId])
 
-  useEffect(() => { refresh() }, [refresh])
-  useEffect(() => { loadAllCounts() }, [loadAllCounts])
+  useEffect(() => { refresh() }, [refresh, importVersion])
+  useEffect(() => { loadAllCounts() }, [loadAllCounts, importVersion])
 
   // Realtime sync: refresh whenever ANY tab/window creates/edits/deletes a
   // legend. Falls back to polling for browsers without BroadcastChannel.
+  // Both paths run SILENT (no loading spinner / no flicker) — the user is
+  // passively viewing, not actively reloading.
   useEffect(() => {
     const handler = (msg) => {
       loadAllCounts()
-      if (msg?.section === activeSection) refresh()
+      if (msg?.section === activeSection) refresh(true)
     }
     const unsub = subscribeLegendSync(handler)
     const timer = setInterval(loadAllCounts, LEGEND_SYNC_POLL_MS)
@@ -204,6 +291,9 @@ export default function LegendSheetsCanvas() {
         name: draftName.trim(),
         description: draftDesc,
         definition: JSON.parse(draftDefinition),
+        // When a project is selected on the hub, new legends bind to it so
+        // every tool in that project inherits them (project legend pack).
+        ...(projectId ? { project: projectId } : {}),
       }
       if (selectedId) {
         const updated = await updateLegend(selectedId, payload)
@@ -231,15 +321,15 @@ export default function LegendSheetsCanvas() {
 
   const onActivate = useCallback(async (legendId) => {
     try {
-      const activated = await activateLegend(legendId)
-      toast.success(`Activated: ${activated.name}`)
-      setLegends(prev => prev.map(l => ({
-        ...l,
-        is_active: l.legend_id === activated.legend_id ? true : (l.section === activated.section ? false : l.is_active),
-      })))
-      emitLegendSync(LEGEND_SYNC_ACTIONS.ACTIVATED, { legend_id: activated.legend_id, section: activated.section })
+      const result = await activateLegend(legendId)
+      toast.success(result.is_active ? `Activated: ${result.name}` : `Deactivated: ${result.name}`)
+      // Multi-active: only this legend's flag flips — siblings keep theirs.
+      setLegends(prev => prev.map(l => (
+        l.legend_id === result.legend_id ? { ...l, is_active: result.is_active } : l
+      )))
+      emitLegendSync(LEGEND_SYNC_ACTIONS.ACTIVATED, { legend_id: result.legend_id, section: result.section })
       loadAllCounts()
-    } catch { toast.error('Failed to activate') }
+    } catch { toast.error('Failed to update activation') }
   }, [loadAllCounts])
 
   const onDelete = useCallback(async (legendId) => {
@@ -259,6 +349,10 @@ export default function LegendSheetsCanvas() {
     const f = e.target.files?.[0]
     if (!f) return
     try {
+      if (onWorkbookImport && /\.(xlsx|xlsm)$/i.test(f.name)) {
+        onWorkbookImport(f)
+        return
+      }
       const items = await parseLegendFile(f, `Imported ${activeSection} legend`)
       if (!items.length) { toast.error('No legends found in the file'); return }
       const first = items[0]
@@ -275,7 +369,7 @@ export default function LegendSheetsCanvas() {
     } finally {
       e.target.value = ''
     }
-  }, [activeSection])
+  }, [activeSection, onWorkbookImport])
 
   // Rows built from an arbitrary definition (one row per field).
   const rowsFromDefinition = useCallback((def) => {
@@ -396,9 +490,10 @@ export default function LegendSheetsCanvas() {
 
   const XLSX_HEADERS = ['order','key','label','regex','suffix','optional','separator','notes','lookup']
 
-  const onExportExcel = useCallback(() => {
-    const payload = resolveExportPayload()
-    if (!payload) { toast.warn(nothingToExportMsg()); return }
+  // Quick client-side export (fields only, no symbol images) — used for
+  // unsaved drafts in the editor and as a fallback if the server export
+  // is unavailable.
+  const exportExcelClientSide = useCallback((payload) => {
     const wb = XLSX.utils.book_new()
     // One sheet per legend + a summary Metadata sheet
     const usedNames = new Set()
@@ -437,7 +532,39 @@ export default function LegendSheetsCanvas() {
       ? `Excel exported (${totalRows} field row${totalRows === 1 ? '' : 's'})`
       : `Excel exported (${payload.items.length} legends, ${totalRows} field rows)`)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resolveExportPayload, rowsFromDefinition, activeSection, legends.length, jsonError])
+  }, [rowsFromDefinition, activeSection])
+
+  const [excelBusy, setExcelBusy] = useState(false)
+
+  // Preferred export: the server builds a formatted workbook — aligned
+  // fields/code tables AND the section symbol pictures embedded as images,
+  // which the client-side SheetJS library cannot do.
+  const onExportExcel = useCallback(async () => {
+    const payload = resolveExportPayload()
+    if (!payload) { toast.warn(nothingToExportMsg()); return }
+    const isDraft = Boolean(parsedDefinition && fieldsFromDefinition(parsedDefinition).length)
+    if (isDraft) { exportExcelClientSide(payload); return }
+    setExcelBusy(true)
+    try {
+      const { blob, filename } = await exportLegendWorkbook({
+        projectId: projectId || undefined,
+        section: payload.mode === 'section' ? activeSection : undefined,
+        legendId: payload.mode === 'single' ? selected?.legend_id : undefined,
+      })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = filename
+      document.body.appendChild(a); a.click(); document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      toast.success(`Excel workbook exported with symbols — ${filename}`)
+    } catch {
+      toast.info('Formatted export unavailable — exported fields only.')
+      exportExcelClientSide(payload)
+    } finally {
+      setExcelBusy(false)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolveExportPayload, parsedDefinition, exportExcelClientSide, projectId, activeSection, selected, legends.length, jsonError])
 
   // Filtered list based on search
   const visibleLegends = useMemo(() => {
@@ -496,15 +623,15 @@ export default function LegendSheetsCanvas() {
       }}>
         <button
           type="button"
-          onClick={() => navigate('/engineering/process/pid-checker-v2')}
-          title="Back to P&ID Checker V2"
+          onClick={() => navigate(backTarget)}
+          title={backLabel}
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 6,
             padding: '6px 10px', borderRadius: 8, border: `1px solid ${THEME_BORDER}`,
             background: '#fff', color: THEME_TEXT, cursor: 'pointer', fontSize: 12,
           }}
         >
-          <ArrowLeft size={14} /> Back
+          <ArrowLeft size={14} /> {backLabel}
         </button>
 
         <div style={{
@@ -535,13 +662,17 @@ export default function LegendSheetsCanvas() {
         </div>
       </div>
 
-      {/* All-sections overview — always in sync with backend + other tabs */}
+      {/* All-sections overview — always in sync with backend + other tabs.
+          Filtered by the active discipline tab (all = legacy full grid). */}
+      {(() => {
+        const visibleRules = LEGEND_SECTION_RULES.filter(s => activeDiscipline === 'all' || LEGEND_SECTION_DISCIPLINE[s.id] === activeDiscipline)
+        return (
       <div style={{
-        display: 'grid', gridTemplateColumns: `repeat(${LEGEND_SECTION_RULES.length}, 1fr)`,
+        display: 'grid', gridTemplateColumns: `repeat(${Math.max(visibleRules.length, 1)}, 1fr)`,
         gap: 12, padding: '12px 20px', background: THEME_BG_SOFT,
         borderBottom: `1px solid ${THEME_BORDER}`,
       }}>
-        {LEGEND_SECTION_RULES.map(s => {
+        {visibleRules.map(s => {
           const count = sectionCounts[s.id] ?? 0
           const active = sectionActive[s.id]
           const isCurrent = s.id === activeSection
@@ -571,12 +702,60 @@ export default function LegendSheetsCanvas() {
               <div style={{ fontSize: 11, color: THEME_TEXT, marginTop: 2 }}>
                 <span style={{ color: THEME_MUTED }}>Active:&nbsp;</span>
                 {active
-                  ? <b style={{ color: '#047857' }}>{active.name}</b>
+                  ? <b style={{ color: '#047857' }}>{active.name}{(active.__count || 0) > 1 ? ` (+${active.__count - 1} more)` : ''}</b>
                   : <span style={{ color: '#b45309', fontWeight: 600 }}>none (using built-in default)</span>}
               </div>
             </button>
           )
         })}
+      </div>
+        )
+      })()}
+
+      {/* Discipline tabs — aligned with Engineering sidebar 1.1–1.7 */}
+      <div style={{ background: '#fff', borderBottom: `1px solid ${THEME_BORDER}` }}>
+        <div className="legend-canvas-tabrail" style={{
+          display: 'flex', gap: 6, padding: '10px 20px 0',
+          overflowX: 'auto',
+        }}>
+          {[{ id: 'all', number: '', label: 'All Disciplines' }, ...LEGEND_DISCIPLINES].map(d => {
+            const on = activeDiscipline === d.id
+            return (
+              <button
+                key={d.id}
+                type="button"
+                onClick={() => {
+                  setActiveDiscipline(d.id)
+                  if (d.id !== 'all' && !d.sections.includes(activeSection) && d.sections.length) {
+                    setActiveSection(d.sections[0])
+                  }
+                }}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '8px 14px', flex: '0 0 auto', whiteSpace: 'nowrap',
+                  border: 'none', borderRadius: '10px 10px 0 0',
+                  borderBottom: on ? `3px solid ${THEME_PRIMARY}` : '3px solid transparent',
+                  background: on ? THEME_BG_SOFT : 'transparent',
+                  color: on ? THEME_PRIMARY : THEME_MUTED,
+                  fontWeight: 700, fontSize: 12, cursor: 'pointer',
+                  transition: 'color 0.15s ease, background 0.15s ease',
+                }}
+              >
+                {d.number && (
+                  <span style={{
+                    fontSize: 10, fontWeight: 800, padding: '1px 6px', borderRadius: 6,
+                    background: on ? `${THEME_PRIMARY}18` : THEME_BG_SOFT,
+                    color: on ? THEME_PRIMARY : THEME_MUTED,
+                  }}>{d.number}</span>
+                )}
+                {d.label}
+                {d.id !== 'all' && (
+                  <span style={{ fontSize: 10, color: THEME_MUTED }}>({d.sections.length})</span>
+                )}
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* Section tabs — horizontally-scrollable pill rail. Fixed single-line
@@ -589,7 +768,7 @@ export default function LegendSheetsCanvas() {
           display: 'flex', gap: 8, padding: '12px 20px',
           overflowX: 'auto', scrollSnapType: 'x proximity',
         }}>
-          {LEGEND_SECTIONS.map(s => {
+          {LEGEND_SECTIONS.filter(s => activeDiscipline === 'all' || LEGEND_SECTION_DISCIPLINE[s.id] === activeDiscipline).map(s => {
             const on = s.id === activeSection
             const count = sectionCounts[s.id] ?? legends.filter(l => l.section === s.id).length
             return (
@@ -673,7 +852,8 @@ export default function LegendSheetsCanvas() {
             <button onClick={onLoadDefaultTemplate} style={btnGhost()} title="Load built-in default template">
               <Download size={13} /> Default
             </button>
-            <label style={{ ...btnGhost(), cursor: 'pointer' }} title="Import JSON, CSV, or Excel (.xlsx / .xls)">
+            <label style={{ ...btnGhost(), cursor: 'pointer' }}
+              title="Import JSON, CSV, or Excel. Excel workbooks (.xlsx / .xlsm) import every mapped sheet with text and embedded symbols.">
               <Upload size={13} /> Import
               <input type="file" accept={IMPORT_ACCEPT} onChange={onImportFile} style={{ display: 'none' }} />
             </label>
@@ -839,6 +1019,11 @@ export default function LegendSheetsCanvas() {
           </div>
 
           {/* Comparison rules — soft-coded per section */}
+          <ImportedWorkbookSheets
+            sheets={parsedDefinition?.imported_sheets}
+            projectId={projectId}
+            section={activeSection}
+          />
           <RulesCard sectionId={activeSection} />
 
           {/* JSON editor */}
@@ -883,13 +1068,19 @@ export default function LegendSheetsCanvas() {
                 ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Saving…</>
                 : <><Save size={14} /> {selectedId ? 'Save changes' : 'Create legend'}</>}
             </button>
-            {selectedId && !selected?.is_active && (
-              <button onClick={() => onActivate(selectedId)} style={btnGreen()}>
-                <CheckCircle2 size={14} /> Activate for {LEGEND_SECTIONS.find(s => s.id === activeSection)?.label || activeSection}
+            {selectedId && (
+              <button onClick={() => onActivate(selectedId)} style={selected?.is_active ? btnGhost() : btnGreen()}
+                title={selected?.is_active
+                  ? 'Deactivate this legend (other active legends in the section stay active)'
+                  : 'Activate alongside any already-active legends — actives are merged for extraction/validation'}
+              >
+                <CheckCircle2 size={14} /> {selected?.is_active ? 'Deactivate' : 'Activate'} for {LEGEND_SECTIONS.find(s => s.id === activeSection)?.label || activeSection}
               </button>
             )}
-            <button onClick={onExportExcel} style={btnGhost()} title={exportScopeHint}>
-              <FileSpreadsheet size={14} /> Export Excel <span style={exportScopeBadge}>{exportScopeLabel}</span>
+            <button onClick={onExportExcel} disabled={excelBusy} style={btnGhost()}
+              title={`${exportScopeHint} Formatted workbook with aligned tables and embedded symbol pictures.`}>
+              {excelBusy ? <Loader2 size={14} className="animate-spin" /> : <FileSpreadsheet size={14} />}
+              {excelBusy ? ' Exporting…' : ' Export Excel'} <span style={exportScopeBadge}>{exportScopeLabel}</span>
             </button>
             <button onClick={onExportCsv} style={btnGhost()} title={exportScopeHint}>
               <FileText size={14} /> Export CSV <span style={exportScopeBadge}>{exportScopeLabel}</span>

@@ -21,7 +21,7 @@ const clean = state => {
 async function editOrder(page, number = orderFormNumber) {
   await page.getByRole('button', { name: `Actions for ${number}`, exact: true }).click()
   await page.getByRole('menuitem', { name: 'Edit order', exact: true }).click()
-  await page.getByRole('tab', { name: 'PO Description & Scope', exact: true }).click()
+  await page.getByRole('tab', { name: 'Scope & pricing', exact: true }).click()
   await expect(pdfButton(page)).toBeEnabled({ timeout: 30000 })
 }
 
@@ -39,7 +39,10 @@ async function openEditor(page, secondOrder = false, pages = 8) {
     fixture.orders = [fixture.record]
     if (secondOrder) fixture.orders.push({ ...fixture.record, id: '00000000-0000-4000-8000-000000009099', po_number: 'RAD-PRJ-PUR-9099_SEP2026' })
   } })
-  if (secondOrder) await page.route(`**/api/v1/procurement/orders/${state.orders[1].id}/`, route => route.fulfill({ json: state.orders[1] }))
+  if (secondOrder) {
+    await page.route(`**/api/v1/procurement/orders/${state.orders[1].id}/`, route => route.fulfill({ json: state.orders[1] }))
+    await page.route(`**/api/v1/procurement/orders/${state.orders[1].id}/uploaded-documents/`, route => route.fulfill({ json: [] }))
+  }
   await editOrder(page)
   return state
 }
@@ -121,7 +124,7 @@ test('bold, underline and colour updates retain page, zoom, scroll and visible c
     const previousUrl = await page.evaluate(() => window.previewPdfUrls.created.at(-1))
     await canvas(page).evaluate(element => { element.dataset.retained = 'yes' })
     await selectNarrative(page)
-    if (index < 2) await page.getByRole('button', { name: index === 0 ? 'B' : 'U', exact: true }).click()
+    if (index < 2) await page.getByRole('button', { name: index === 0 ? 'Bold' : 'Underline', exact: true }).click()
     else await page.getByLabel('Font colour', { exact: true }).fill('#c81e1e')
     await expect(pdfButton(page)).toBeDisabled()
     await expect(pane(page).getByRole('button', { name: 'Download Word', exact: true })).toBeDisabled()
@@ -245,7 +248,7 @@ test('scrolling while a replacement is prepared waits for the newly visible page
     await expect(pdfButton(page)).toBeDisabled()
     await expect.poll(() => requested, { timeout: 15000 }).toBe(true)
     await pane(page).evaluate(element => {
-      const button = Array.from(element.querySelectorAll('button')).find(control => control.textContent.trim() === 'Download PDF')
+      const button = element.querySelector('button[aria-label="Download PDF"]')
       const viewport = element.querySelector('[aria-label="Current purchase order PDF preview pages"]')
       window.unpaintedReadyPages = []
       window.previewReadyObserver = new MutationObserver(() => {

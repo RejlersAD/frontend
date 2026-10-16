@@ -32,6 +32,24 @@ server {
         proxy_send_timeout 120s;
         proxy_read_timeout 120s;
 
+        # Large opportunity files use the Sales deployment limit and disk-backed
+        # processing. Keep unrelated API body limits unchanged.
+        location ~ ^/api/v1/sales/deals/[^/]+/workspace/folders/[^/]+/(upload/|files/[^/]+/(download/|versions/upload/))$ {
+            client_max_body_size 0;
+            proxy_request_buffering off;
+            proxy_send_timeout 1800s;
+            proxy_read_timeout 1800s;
+            proxy_pass http://${BACKEND_HOST}:8000;
+        }
+
+        # Verifying and reading a large uploaded proposal PDF uses the same
+        # transfer window; comment/approval requests keep the normal timeout.
+        location ~ ^/api/v1/sales/quotes/[^/]+/review/documents/([^/]+/(content|download)/)?$ {
+            proxy_send_timeout 1800s;
+            proxy_read_timeout 1800s;
+            proxy_pass http://${BACKEND_HOST}:8000;
+        }
+
         # Portfolio Excel uploads: allow a 25 MiB file plus multipart overhead.
         location /api/v1/dashboard/executive/portfolio-workbook/ {
             client_max_body_size 26m;

@@ -2,35 +2,31 @@ import { radaiConfirm } from '../../../services/radaiDialog'
 /**
  * Attendance Dashboard — HR Manager Consolidated View
  * ====================================================
- * 5 sub-views:  Overview · Daily · Monthly · Yearly · Reports
+ * 5 sub-views: Overview · Daily · Monthly matrix · Yearly · Reports
  *
- * Data comes entirely from the existing timesheet service (SQL Server biometric).
+ * Data reuses the existing attendance and HR services.
  * All config, thresholds, colours and labels live in hrAttendance.config.js.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import './attendanceWorkspace.css'
+import DailyAttendanceTab from './DailyAttendanceTab'
+import YearlyAttendanceTab from './YearlyAttendanceTab'
+import AttendanceOverviewTab from './AttendanceOverviewTab'
 import { useSelector } from 'react-redux'
 import * as HeroIcons from '@heroicons/react/24/outline'
-import {
-  BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-} from 'recharts'
 import ts from '../../../services/timesheet.service'
 import payrollService from '../../../services/payroll.service'
 import {
   ATTENDANCE_VIEWS, ATTENDANCE_DEFAULT_VIEW,
-  ATTENDANCE_STATUS, ATTENDANCE_KPIS,
-  ATTENDANCE_DAILY_COLS, ATTENDANCE_MONTHLY_COLS,
-  DEPT_COLORS, MONTH_SHORT, MONTH_FULL,
-  ATT_GOOD_RATE_PCT, ATT_WARN_RATE_PCT, ATT_TOP_ABSENT_LIMIT,
+  MONTH_FULL,
   ATT_STANDARD_DAILY_HOURS, ATT_STANDARD_MONTHLY_WORKING_DAYS,
   ATT_COMPANY_NAME, fmtDiff,
-  classifyDay, workingDaysInMonth, rateColor, empName, empDept,
-  fmtTime, ATT_COPY, filterEmployeeRow,
+  workingDaysInMonth, empName, empDept,
+  ATT_COPY, filterEmployeeRow,
   // ── New: edit + holiday
   ATT_HOLIDAY_CELL_BG, ATT_HOLIDAY_CELL_BORDER,
   ATT_HOLIDAY_HEADER_BG, ATT_HOLIDAY_HEADER_TEXT, ATT_HOLIDAY_SYMBOL,
   OVERRIDE_REASON_OPTIONS, canEditAttendance, ATT_EDIT_COPY,
-  OPEN_SHIFT_INDICATOR,
   // ── Reports catalogue
   ATT_REPORT_TYPES, ATT_DOWNLOAD_METHOD_MAP,
   // ── Summary leave columns (NEW: dynamic soft-coded leave types)
@@ -51,30 +47,6 @@ const Spinner = () => (
     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
   </svg>
 )
-
-const StatusBadge = ({ status }) => {
-  const m = ATTENDANCE_STATUS[status] || ATTENDANCE_STATUS.absent
-  return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${m.bg} ${m.text} ${m.border}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${m.dot}`} />
-      {m.label}
-    </span>
-  )
-}
-
-const KpiTile = ({ kpi }) => {
-  const Icon = HeroIcons[kpi.icon] || HeroIcons.ChartBarIcon
-  return (
-    <div className={`${kpi.bgLight} rounded-xl p-4 border border-slate-200 bg-gradient-to-br to-white`}>
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-medium text-slate-600">{kpi.label}</span>
-        <Icon className={`w-4 h-4 ${kpi.textColor}`} />
-      </div>
-      <div className={`text-2xl font-semibold tabular-nums ${kpi.textColor}`}>{kpi.value}</div>
-      <div className="text-xs text-slate-500 mt-0.5">{kpi.sub}</div>
-    </div>
-  )
-}
 
 const EmptyState = ({ icon: IconName = 'InboxIcon', msg, loading, loadingMsg }) => {
   const Icon = HeroIcons[IconName] || HeroIcons.InboxIcon
@@ -112,18 +84,18 @@ const pageRows = (rows, page, pageSize) => {
   return rows.slice((safePage - 1) * pageSize, safePage * pageSize)
 }
 
-const TablePagination = ({ total, page, pageSize, onPageChange, onPageSizeChange }) => {
+const TablePagination = ({ total, page, pageSize, onPageChange, onPageSizeChange, itemLabel = 'employees' }) => {
   if (!total) return null
   const pages = Math.max(1, Math.ceil(total / pageSize))
   const safePage = Math.min(page, pages)
   const first = (safePage - 1) * pageSize + 1
   const last = Math.min(total, safePage * pageSize)
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/80 px-4 py-3 text-xs text-slate-500">
-      <span>Showing <strong className="text-slate-700">{first}-{last}</strong> of <strong className="text-slate-700">{total}</strong> employees</span>
+    <div className="att-pagination flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/80 px-4 py-3 text-xs text-slate-500">
+      <span>Showing <strong className="text-slate-700">{first}-{last}</strong> of <strong className="text-slate-700">{total}</strong> {itemLabel}</span>
       <div className="flex items-center gap-3">
         <label className="flex items-center gap-1.5">
-          Rows
+          Rows per page
           <select value={pageSize} onChange={event => onPageSizeChange(Number(event.target.value))}
             className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700">
             {ATTENDANCE_PAGE_SIZES.map(size => <option key={size} value={size}>{size}</option>)}
@@ -135,7 +107,12 @@ const TablePagination = ({ total, page, pageSize, onPageChange, onPageSizeChange
             aria-label="Previous page">
             <HeroIcons.ChevronLeftIcon className="h-3.5 w-3.5" />
           </button>
-          <span className="min-w-20 text-center text-slate-600">Page {safePage} of {pages}</span>
+          {[...new Set([1, ...Array.from({ length: Math.min(pages, 3) }, (_, i) => Math.max(1, Math.min(safePage - 1, pages - 2)) + i), pages])].sort((a, b) => a - b).map((number, index, numbers) => (
+            <span key={number} className="inline-flex items-center gap-1">
+              {index > 0 && number - numbers[index - 1] > 1 && <span aria-hidden="true">…</span>}
+              <button type="button" className="att-page-number" aria-label={`Page ${number}`} aria-current={number === safePage ? 'page' : undefined} onClick={() => onPageChange(number)}>{number}</button>
+            </span>
+          ))}
           <button type="button" onClick={() => onPageChange(safePage + 1)} disabled={safePage >= pages}
             className="rounded-md border border-slate-300 bg-white p-1.5 text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
             aria-label="Next page">
@@ -165,6 +142,7 @@ const COLOR_MAP = {
 const PANEL_YEAR_RANGE = Number(import.meta.env?.VITE_DL_PANEL_YEAR_RANGE || 3)
 
 function DownloadReportPanel({ year, month, tsService }) {
+  const [error, setError] = useState('')
   const [open,   setOpen]   = useState(false)
   const [busy,   setBusy]   = useState('')  // tracks which key is downloading
   const ref = useRef(null)
@@ -196,21 +174,23 @@ function DownloadReportPanel({ year, month, tsService }) {
   const handleDownload = async (key, scope) => {
     const method = ATT_DOWNLOAD_METHOD_MAP[key]
     if (!method || !tsService[method]) return
+    setError('')
     setBusy(key)
     try {
       if (scope === 'date')  await tsService[method](params.date)
       else if (scope === 'year') await tsService[method](params.year)
       else                   await tsService[method](params.year, params.month)
-    } catch { /* silent — network errors surface via browser */ }
+    } catch (downloadError) { setError(downloadError?.response?.data?.detail || 'The report could not be downloaded. Please try again.') }
     finally { setBusy('') }
   }
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="att-export relative" ref={ref} onKeyDown={event => { if (event.key === 'Escape') { setOpen(false); ref.current?.querySelector('button')?.focus() } }}>
       {/* Trigger button */}
       <button
         type="button"
         onClick={() => setOpen(v => !v)}
+        aria-expanded={open}
         className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border transition ${
           open
             ? 'bg-slate-700 text-white border-slate-800'
@@ -218,13 +198,14 @@ function DownloadReportPanel({ year, month, tsService }) {
         }`}
       >
         <HeroIcons.ArrowDownTrayIcon className="w-4 h-4" />
-        Reports
+        Export
         <HeroIcons.ChevronDownIcon className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {/* Dropdown panel */}
       {open && (
-        <div className="absolute top-full right-0 mt-2 z-50 bg-white border border-slate-200 rounded-2xl shadow-2xl w-[420px] p-4 space-y-4">
+        <div className="att-export-panel absolute top-full right-0 mt-2 z-50 bg-white border border-slate-200 rounded-2xl shadow-2xl w-[420px] p-4 space-y-4">
+          {error && <p role="alert" className="text-sm text-rose-700">{error}</p>}
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider px-1">
             Select report type &amp; format
           </p>
@@ -335,16 +316,19 @@ function DownloadReportPanel({ year, month, tsService }) {
 // Summary columns: Total · Days · Normal Hours · Difference
 // All thresholds read from hrAttendance.config.js — no magic numbers here.
 // ─────────────────────────────────────────────────────────────────────────────
-function SummaryTab() {
-  const initNow = new Date()
+function SummaryTab({ initialDate, initialSearch = '' }) {
+  const initNow = initialDate ? new Date(`${initialDate}T12:00:00`) : new Date()
   const [year,          setYear]          = useState(initNow.getFullYear())
   const [month,         setMonth]         = useState(initNow.getMonth() + 1)
-  const [search,        setSearch]        = useState('')
+  const [search,        setSearch]        = useState(initialSearch)
   const [summaryPage,   setSummaryPage]   = useState(1)
   const [summaryPageSize, setSummaryPageSize] = useState(DEFAULT_ATTENDANCE_PAGE_SIZE)
   const [resp,          setResp]          = useState(null)
   const [busy,          setBusy]          = useState(false)
   const [err,           setErr]           = useState('')
+  const [refresh, setRefresh] = useState(0)
+  const [density, setDensity] = useState('comfortable')
+  const [showDetails, setShowDetails] = useState(false)
   const [leaveCalendar, setLeaveCalendar] = useState({})  // { employee_code: { 'YYYY-MM-DD': {code,name,...} } }
   const [annualLeaveDb,     setAnnualLeaveDb]     = useState({})  // { employee_code: { balance, ... } }
   const [annualLeaveByName, setAnnualLeaveByName] = useState({})  // { norm_name: { balance, ... } } — fallback
@@ -354,10 +338,13 @@ function SummaryTab() {
   const [syncMsg,       setSyncMsg]       = useState('')
   const [attendanceUploading, setAttendanceUploading] = useState(false)
   const [attendanceUploadMsg, setAttendanceUploadMsg] = useState('')
+  const attendanceFileRef = useRef(null)
+  const leaveFileRef = useRef(null)
   const [summaryBranch,        setSummaryBranch]        = useState(null)   // null = All | 'RAD' | 'RIN'
   // Set of employee_codes for the selected branch; null = no filter (show All)
   const [branchCodes,           setBranchCodes]           = useState(null)
   const [branchCodesLoading,    setBranchCodesLoading]    = useState(false)
+  const [branchError, setBranchError] = useState('')
 
   // ── RBAC / permission ──────────────────────────────────────────────────────
   // canEdit = true when the logged-in user holds an HR Manager or admin role.
@@ -369,8 +356,11 @@ function SummaryTab() {
   // ── Attendance Overrides ───────────────────────────────────────────────────
   // overrideMap: { employeeCode: { 'YYYY-MM-DD': { override_hours, reason, note, id } } }
   const [overrideMap,   setOverrideMap]   = useState({})
+  const [correctionsReady, setCorrectionsReady] = useState(false)
+  const [correctionsError, setCorrectionsError] = useState(false)
   // Edit modal state
   const [editTarget,    setEditTarget]    = useState(null)  // { employeeCode, employeeName, date, currentHours }
+  const editDialogRef = useRef(null)
   const [editHours,     setEditHours]     = useState('')
   const [editReason,    setEditReason]    = useState('hr_correction')
   const [editNote,      setEditNote]      = useState('')
@@ -387,33 +377,50 @@ function SummaryTab() {
   const [hSaving,        setHSaving]       = useState(false)
   const [hMsg,           setHMsg]          = useState('')
 
+  useEffect(() => {
+    if (!editTarget) return undefined
+    const previous = document.activeElement
+    const dialog = editDialogRef.current
+    dialog?.showModal()
+    return () => { dialog?.close(); if (previous?.isConnected) previous.focus() }
+  }, [editTarget])
+
   // When branch selection changes, fetch the employee codes for that branch
   // so we can cross-reference against biometric attendance rows (which have no branch tag)
   useEffect(() => {
+    let active = true
+    setBranchError('')
     if (!summaryBranch) {
       setBranchCodes(null)
-      return
+      setBranchCodesLoading(false)
+      return undefined
     }
+    setBranchCodes(new Set())
     setBranchCodesLoading(true)
     payrollService.getBranchEmployeeCodes(summaryBranch, year)
-      .then(d => setBranchCodes(new Set(d?.codes || [])))
-      .catch(() => setBranchCodes(new Set()))   // on error: show empty rather than all
-      .finally(() => setBranchCodesLoading(false))
-  }, [summaryBranch, year])
+      .then(d => { if (active) setBranchCodes(new Set(d?.codes || [])) })
+      .catch(() => { if (active) { setBranchCodes(new Set()); setBranchError('Branch employees could not be loaded. Please retry.') } })
+      .finally(() => { if (active) setBranchCodesLoading(false) })
+    return () => { active = false }
+  }, [summaryBranch, year, refresh])
 
   // Fetch biometric attendance
   useEffect(() => {
+    let active = true
     setBusy(true)
     setErr('')
+    setResp(null)
     ts.fetchMonthly(year, month)
-      .then(d => setResp(d))
-      .catch(e => setErr(e?.message || 'Failed to load attendance data'))
-      .finally(() => setBusy(false))
-  }, [year, month])
+      .then(d => { if (active) setResp(d) })
+      .catch(e => { if (active) setErr(e?.response?.data?.detail || e?.message || 'Failed to load attendance data') })
+      .finally(() => { if (active) setBusy(false) })
+    return () => { active = false }
+  }, [year, month, refresh])
 
   // Refresh leave overlays after decisions and when returning to the page.
   useEffect(() => {
     let active = true
+    setLeaveCalendar({})
     const refresh = () => payrollService.getLeaveCalendar(year, month)
       .then(d => { if (active) setLeaveCalendar(d?.calendar || {}) })
       .catch(() => { if (active) setLeaveCalendar({}) })
@@ -425,26 +432,36 @@ function SummaryTab() {
       window.removeEventListener('leave-approval-updated', refresh)
       window.removeEventListener('focus', refresh)
     }
-  }, [year, month])
+  }, [year, month, refresh])
 
   // Fetch computed annual leave balance from the DB (per employee, YTD as of selected month)
   // Soft-coded: only fetched when SUMMARY_AL_SHOW_BALANCE is true
   useEffect(() => {
     if (!SUMMARY_AL_SHOW_BALANCE) return
+    let active = true
     setAnnualLeaveLoading(true)
+    setAnnualLeaveDb({})
+    setAnnualLeaveByName({})
     payrollService.getAnnualLeaveBalanceSummary(year, month)
       .then(d => {
+        if (!active) return
         setAnnualLeaveDb(d?.balances || {})
         setAnnualLeaveByName(d?.balances_by_name || {})
       })
-      .catch(() => { setAnnualLeaveDb({}); setAnnualLeaveByName({}) })
-      .finally(() => setAnnualLeaveLoading(false))
-  }, [year, month])
+      .catch(() => { if (active) { setAnnualLeaveDb({}); setAnnualLeaveByName({}) } })
+      .finally(() => { if (active) setAnnualLeaveLoading(false) })
+    return () => { active = false }
+  }, [year, month, refresh])
 
   // Fetch HR attendance overrides for this month
   useEffect(() => {
+    let active = true
+    setOverrideMap({})
+    setCorrectionsReady(false)
+    setCorrectionsError(false)
     payrollService.getAttendanceOverrides(year, month)
       .then(rows => {
+        if (!active) return
         // Build a nested lookup: { employeeCode: { 'YYYY-MM-DD': override } }
         const map = {}
         ;(rows || []).forEach(ov => {
@@ -452,16 +469,21 @@ function SummaryTab() {
           map[ov.employee_code][ov.date] = ov
         })
         setOverrideMap(map)
+        setCorrectionsReady(true)
       })
-      .catch(() => setOverrideMap({}))
-  }, [year, month])
+      .catch(() => { if (active) { setOverrideMap({}); setCorrectionsError(true) } })
+    return () => { active = false }
+  }, [year, month, refresh])
 
   // Fetch public holidays for this year (shown as column accents + side panel)
   useEffect(() => {
+    let active = true
+    setHolidays([])
     payrollService.getPublicHolidays(year, { active_only: 'true' })
-      .then(rows => setHolidays(Array.isArray(rows) ? rows : (rows?.results || [])))
-      .catch(() => setHolidays([]))
-  }, [year])
+      .then(rows => { if (active) setHolidays(Array.isArray(rows) ? rows : (rows?.results || [])) })
+      .catch(() => { if (active) setHolidays([]) })
+    return () => { active = false }
+  }, [year, refresh])
 
   // Build a Set of 'YYYY-MM-DD' strings for quick O(1) holiday lookup
   const holidayDateSet = useMemo(() => {
@@ -588,6 +610,7 @@ function SummaryTab() {
       fd.append('year', String(year))
       fd.append('branch', summaryBranch || 'RAD')
       const result = await payrollService.syncLeaveData(fd)
+      e.target.value = ''
       setSyncMsg(`✅ Synced: ${result.created} created, ${result.updated} updated, ${result.computed} computed`)
       // Refresh the annual leave balance data
       payrollService.getAnnualLeaveBalanceSummary(year, month)
@@ -597,7 +620,6 @@ function SummaryTab() {
       setSyncMsg(`❌ Sync failed: ${err?.message || 'Unknown error'}`)
     } finally {
       setSyncUploading(false)
-      e.target.value = ''  // reset input
     }
   }
 
@@ -608,7 +630,8 @@ function SummaryTab() {
     setAttendanceUploadMsg('')
     try {
       const result = await ts.uploadDailyAttendance(file, year, month)
-      setResp(await ts.fetchMonthly(year, month))
+      e.target.value = ''
+      setRefresh(value => value + 1)
       const imported = (result.created || 0) + (result.updated || 0)
       setAttendanceUploadMsg(
         `Imported ${imported} daily entries · ${result.created || 0} new · ${result.updated || 0} updated${result.skipped ? ` · ${result.skipped} skipped` : ''}`
@@ -618,7 +641,6 @@ function SummaryTab() {
       setAttendanceUploadMsg(data?.detail || data?.errors?.[0]?.error || uploadError?.message || 'Attendance upload failed')
     } finally {
       setAttendanceUploading(false)
-      e.target.value = ''
     }
   }
 
@@ -636,7 +658,7 @@ function SummaryTab() {
       // Remove non-employee biometric records (facility names, visitor badges, etc.)
       .filter(filterEmployeeRow)
       // Branch filter
-      .filter(r => !branchCodes || branchCodes.has(r.employee_code || ''))
+      .filter(r => !summaryBranch || branchCodes?.has(r.employee_code || ''))
       .filter(r => matchesEmployeeSearch(r, q))
       .map(r => {
         const dayMap = {}
@@ -696,7 +718,7 @@ function SummaryTab() {
           unpaidLeaveDays: leaveDays.UL || 0,
         }
       })
-  }, [rows, search, workingDays, leaveCalendar, branchCodes, overrideMap])
+  }, [rows, search, workingDays, leaveCalendar, branchCodes, overrideMap, summaryBranch])
 
   // Column totals row
   const totals = useMemo(() => {
@@ -748,155 +770,62 @@ function SummaryTab() {
     setSummaryPage(1)
   }, [search, year, month, summaryBranch, summaryPageSize])
 
-  return (
-    <div className="space-y-4">
-      {/* Report header */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-        <div className="flex flex-wrap items-end gap-3">
-          {/* Search */}
-          <div className="min-w-[16rem] flex-1 max-w-sm">
-            <label className="block text-xs text-slate-500 mb-1">Search</label>
-            <div className="relative">
-              <HeroIcons.MagnifyingGlassIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input value={search} onChange={e => setSearch(e.target.value)}
-                placeholder="Name or department…" autoComplete="off"
-                className="w-full pl-8 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500" />
-            </div>
-          </div>
-          {/* Branch selector */}
-          <div>
-            <label className="block text-xs text-slate-500 mb-1">Branch</label>
-            <div className="flex gap-1">
-              <button type="button" onClick={() => setSummaryBranch(null)}
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
-                  summaryBranch === null
-                    ? 'bg-slate-700 text-white border-slate-700'
-                    : 'bg-slate-50 text-slate-600 border-slate-300 hover:bg-slate-100'
-                }`}>All</button>
-              {BRANCHES.map(b => (
-                <button key={b.id} type="button" onClick={() => setSummaryBranch(b.id)}
-                  disabled={branchCodesLoading && summaryBranch === b.id}
-                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors flex items-center gap-1 ${
-                    summaryBranch === b.id
-                      ? `${b.activeBg} ${b.activeText} border-transparent`
-                      : `${b.badgeBg} ${b.badgeText} ${b.badgeBorder} hover:opacity-80`
-                  }`}>
-                  {branchCodesLoading && summaryBranch === b.id && (
-                    <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-                    </svg>
-                  )}
-                  {b.label}
-                </button>
-              ))}
-            </div>
-          </div>
+  const correctionsCount = pivotRows.reduce((count, row) => count + Object.values(row.dayMap).filter(slot => slot.type === 'override').length, 0)
+  const summaryAvailable = !busy && !err && !branchError && !branchCodesLoading && !!resp && resp.configured !== false
+  const hoursLabel = value => summaryAvailable && correctionsReady ? `${value.toLocaleString('en-US', { maximumFractionDigits: 2 })}h` : '—'
+  const sourceLabel = ({ manual_upload: 'Manual upload source', biometric: 'Biometric source', hybrid: 'Biometric + uploaded hours' })[resp?.attendance_source] || 'Attendance records'
+  const actions = <>
+    <DownloadReportPanel year={year} month={month} tsService={ts} />
+    <button type="button" className="att-button" aria-label="Refresh attendance" disabled={busy} onClick={() => setRefresh(value => value + 1)}><HeroIcons.ArrowPathIcon aria-hidden="true" /></button>
+    {canEdit && <label className="att-button att-upload">
+      <HeroIcons.ArrowUpTrayIcon aria-hidden="true" />{attendanceUploading ? 'Importing…' : 'Upload daily hours'}
+      <input ref={attendanceFileRef} className="att-file-input" aria-label="Upload daily hours" type="file" accept=".xlsx,.csv" onChange={handleAttendanceUpload} disabled={attendanceUploading} />
+    </label>}
+  </>
 
-          {/* Month */}
-            <div>
-              <label className="block text-xs text-slate-500 mb-1">Month</label>
-              <select value={month} onChange={e => setMonth(Number(e.target.value))}
-                className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
-                {MONTH_FULL.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
-              </select>
+  return (
+    <div className="att-matrix" data-density={density}>
+      <section className="att-filter-panel" aria-label="Attendance filters">
+        <div className="att-filters">
+          <label className="att-field att-search">
+            <span>Search employees</span>
+            <div className="att-search-box"><HeroIcons.MagnifyingGlassIcon aria-hidden="true" />
+              <input aria-label="Employee search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Employee name or department" autoComplete="off" />
             </div>
-            {/* Year */}
-            <div>
-              <label className="block text-xs text-slate-500 mb-1">Year</label>
-              <select value={year} onChange={e => setYear(Number(e.target.value))}
-                className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
-                {yearOpts.map(y => <option key={y} value={y}>{y}</option>)}
-              </select>
-            </div>
-            {/* Quick exports — replaced with smart report panel */}
-            <DownloadReportPanel year={year} month={month} tsService={ts} />
-            {canEdit && (
-              <label className={`flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition ${
-                attendanceUploading
-                  ? 'border-blue-300 bg-blue-100 text-blue-600 opacity-70'
-                  : 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
-              }`} title="Upload a native COSEC attendance report, or an Excel/CSV attendance sheet">
-                {attendanceUploading
-                  ? <><Spinner /> Importing...</>
-                  : <><HeroIcons.ArrowUpTrayIcon className="h-4 w-4" /> Upload Daily Hours</>
-                }
-                <input type="file" accept=".xlsx,.csv" className="hidden"
-                  onChange={handleAttendanceUpload} disabled={attendanceUploading} />
-              </label>
-            )}
-            {/* Public Holidays button — visible to everyone; edit controls appear only for HR */}
-            {/* HR Manager: sync leave data from Excel upload */}
-            {canEdit && (
-              <label
-                className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border cursor-pointer transition ${
-                  syncUploading
-                    ? 'bg-sky-100 text-sky-600 border-sky-300 opacity-70'
-                    : 'bg-sky-50 text-sky-700 border-sky-300 hover:bg-sky-100'
-                }`}
-                title="Upload HR Leave Excel to sync annual leave balances for all employees"
-              >
-                {syncUploading
-                  ? <><svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Syncing…</>
-                  : <><HeroIcons.ArrowUpTrayIcon className="w-4 h-4" /> Sync Leave</>
-                }
-                <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleSyncUpload} disabled={syncUploading} />
-              </label>
-            )}
-            {syncMsg && (
-              <span className={`text-xs px-2 py-1 rounded border ${syncMsg.startsWith('✅') ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
-                {syncMsg}
-              </span>
-            )}
-            <button type="button"
-              onClick={() => setShowHolidayPanel(v => !v)}
-              className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border transition ${
-                showHolidayPanel
-                  ? 'bg-violet-600 text-white border-violet-700'
-                  : 'bg-violet-50 text-violet-700 border-violet-300 hover:bg-violet-100'
-              }`}>
-              <HeroIcons.CalendarDaysIcon className="w-4 h-4" />
-              {ATT_EDIT_COPY.holidayTitle}
-              {holidays.length > 0 && (
-                <span className="ml-1 bg-violet-100 text-violet-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                  {holidays.filter(h => {
-                    const d = h.date?.slice(0, 7)
-                    return d === `${year}-${String(month).padStart(2, '0')}`
-                  }).length}
-                </span>
-              )}
-            </button>
+          </label>
+          <div className="att-field"><span>Branch</span><div className="att-branches" role="group" aria-label="Branch">
+            <button type="button" aria-pressed={summaryBranch === null} onClick={() => setSummaryBranch(null)} className={summaryBranch === null ? 'bg-slate-700 text-white border-slate-700' : 'bg-slate-50 text-slate-600 border-slate-200'}>All</button>
+            {BRANCHES.map(branch => <button key={branch.id} type="button" aria-pressed={summaryBranch === branch.id} onClick={() => setSummaryBranch(branch.id)} className={summaryBranch === branch.id ? `${branch.activeBg} ${branch.activeText} border-transparent` : `${branch.badgeBg} ${branch.badgeText} ${branch.badgeBorder}`}>{branch.label}</button>)}
+          </div></div>
+          <label className="att-field"><span>Month</span><select aria-label="Month" value={month} onChange={event => setMonth(Number(event.target.value))}>{MONTH_FULL.map((name, index) => <option key={name} value={index + 1}>{name}</option>)}</select></label>
+          <label className="att-field"><span>Year</span><select aria-label="Year" value={year} onChange={event => setYear(Number(event.target.value))}>{yearOpts.map(value => <option key={value}>{value}</option>)}</select></label>
+          <div className="att-filter-actions">
+            <div className="att-primary-actions">{actions}</div>
+            {canEdit && <label className="att-button att-sync"><HeroIcons.ArrowPathIcon aria-hidden="true" />{syncUploading ? 'Syncing…' : 'Sync leave'}<input ref={leaveFileRef} className="att-file-input" aria-label="Sync leave" type="file" accept=".xlsx,.xls" onChange={handleSyncUpload} disabled={syncUploading} /></label>}
+            <button type="button" className="att-button att-holidays" aria-expanded={showHolidayPanel} onClick={() => setShowHolidayPanel(value => !value)}><HeroIcons.CalendarDaysIcon aria-hidden="true" />Public holidays</button>
+            <details className="att-columns"><summary className="att-button"><HeroIcons.ViewColumnsIcon aria-hidden="true" />Columns</summary><div className="att-columns-panel"><label><input type="checkbox" checked={showDetails} onChange={event => setShowDetails(event.target.checked)} />Detailed totals</label><p>Days, leave balances, normal hours and difference.</p></div></details>
+            <label className="att-density"><span className="sr-only">Density</span><select aria-label="Density" value={density} onChange={event => setDensity(event.target.value)}><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label>
+          </div>
         </div>
-        {attendanceUploadMsg && (
-          <div className={`mt-2 rounded-lg border px-3 py-2 text-xs ${
-            attendanceUploadMsg.startsWith('Imported')
-              ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-              : 'border-rose-200 bg-rose-50 text-rose-700'
-          }`}>{attendanceUploadMsg}</div>
-        )}
-        {/* Stats strip */}
-        <div className="mt-3 flex flex-wrap gap-5 text-xs text-slate-500 border-t border-slate-100 pt-2.5">
-          <span><span className="font-semibold text-slate-700">{busy ? '…' : pivotRows.length}</span> employees</span>
-          <span><span className="font-semibold text-slate-700">{workingDays}</span> contractual workdays</span>
-          <span><span className="font-semibold text-slate-700">{calendarWorkingDays}</span> scheduled weekdays in period</span>
-          <span>Standard <span className="font-semibold text-slate-700">{ATT_STANDARD_DAILY_HOURS} h/day</span></span>
-          {/* Legend for new cell types */}
-          {canEdit && (
-            <span className="flex items-center gap-1">
-              <HeroIcons.PencilSquareIcon className="w-3 h-3 text-violet-500" />
-              <span className="text-violet-600 font-semibold">HR corrected</span>
-            </span>
-          )}
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded bg-violet-300 inline-block" />
-            <span className="text-violet-600 font-semibold">Public holiday</span>
-          </span>
-          <span className="ml-auto flex items-center gap-1 text-[10px]">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse inline-block" />
-            {ATT_COPY.sourceTag}
-          </span>
+        <div className="att-meta">
+          <span><strong>{summaryAvailable ? pivotRows.length : '—'}</strong> employees</span>
+          <span><strong>{workingDays}</strong> contractual workdays</span>
+          <span>Standard <strong>{ATT_STANDARD_DAILY_HOURS}h/day</strong></span>
+          <span title={`${calendarWorkingDays} scheduled weekdays in period`}>Source: {sourceLabel}</span>
+          <div className="att-legend" aria-label="Attendance legend">
+            <span><b className="att-absent">A</b>Absent</span><span><b className="att-leave">L</b>Leave</span><span><b className="att-holiday">PH</b>Holiday</span><span><b className="att-unscheduled">—</b>No hours recorded</span>
+          </div>
         </div>
-      </div>
+        {syncMsg && <div role="status" className="att-message flex items-center gap-3 text-xs text-slate-700">{syncMsg}{syncMsg.startsWith('❌') && <button type="button" className="att-button" disabled={syncUploading} onClick={() => handleSyncUpload({ target: leaveFileRef.current })}>Retry sync</button>}</div>}
+        {attendanceUploadMsg && <div role="status" className={`att-message flex items-center gap-3 text-xs ${attendanceUploadMsg.startsWith('Imported') ? 'text-emerald-700' : 'text-rose-700'}`}>{attendanceUploadMsg}{!attendanceUploadMsg.startsWith('Imported') && <button type="button" className="att-button" disabled={attendanceUploading} onClick={() => handleAttendanceUpload({ target: attendanceFileRef.current })}>Retry upload</button>}</div>}
+      </section>
+      <dl className="att-summary" aria-label="Filtered attendance summary">
+        <div className="att-summary-item"><HeroIcons.ClockIcon aria-hidden="true" /><div><dt>Recorded</dt><dd>{hoursLabel(totals.totalHrs)}</dd></div></div>
+        <div className="att-summary-item" title={`Existing contractual basis: ${workingDays} days × ${ATT_STANDARD_DAILY_HOURS} hours per employee`}><HeroIcons.DocumentTextIcon aria-hidden="true" /><div><dt>Expected</dt><dd>{hoursLabel(totals.normalHrs)}</dd></div></div>
+        <div className="att-summary-item"><HeroIcons.ScaleIcon aria-hidden="true" /><div><dt>Variance</dt><dd className={summaryAvailable && totals.diff < 0 ? 'att-negative' : ''}>{hoursLabel(totals.diff)}</dd></div></div>
+        <div className="att-summary-item" title={correctionsReady ? 'Recorded HR corrections in the filtered matrix' : 'HR corrections are loading or unavailable'}><HeroIcons.PencilSquareIcon aria-hidden="true" /><div><dt>HR corrections</dt><dd>{summaryAvailable && correctionsReady ? correctionsCount : '—'}</dd></div></div>
+      </dl>
+      {correctionsError && <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 flex flex-wrap items-center gap-3">HR corrections could not be loaded. The matrix shows source hours; summary totals are unavailable.<button type="button" className="att-button" onClick={() => setRefresh(value => value + 1)}>Retry corrections</button></div>}
 
       {/* ── Public Holiday Panel (collapsible) ── */}
       {showHolidayPanel && (
@@ -1008,32 +937,33 @@ function SummaryTab() {
       )}
 
       {/* Error */}
-      {err && (
-        <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-sm text-rose-700 flex items-center gap-2">
-          <HeroIcons.ExclamationCircleIcon className="w-4 h-4 flex-shrink-0" /> {err}
+      {(err || branchError) && (
+        <div role="alert" className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-sm text-rose-700 flex items-center gap-2">
+          <HeroIcons.ExclamationCircleIcon className="w-4 h-4 flex-shrink-0" /> {err || branchError}<button type="button" className="att-button ml-auto" onClick={() => setRefresh(value => value + 1)}>Retry</button>
         </div>
       )}
 
       {/* Loading skeleton */}
-      {busy && !resp && <EmptyState loading icon="TableCellsIcon" loadingMsg={ATT_COPY.loading} />}
+      {(busy || branchCodesLoading) && <EmptyState loading icon="TableCellsIcon" loadingMsg={ATT_COPY.loading} />}
 
       {/* Empty state */}
-      {!busy && !err && pivotRows.length === 0 && (
-        <EmptyState icon="TableCellsIcon" msg={ATT_COPY.monthlyEmpty} />
+      {!busy && !err && !branchError && !branchCodesLoading && pivotRows.length === 0 && (
+        <EmptyState icon="TableCellsIcon" msg={resp?.configured === false ? 'Attendance source is not configured.' : search || summaryBranch ? 'No employees match these filters.' : ATT_COPY.monthlyEmpty} />
       )}
 
       {/* ══ Cross-tab pivot table ══ */}
-      {pivotRows.length > 0 && (
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
+      {!busy && !err && !branchCodesLoading && pivotRows.length > 0 && (
+        <div className="att-matrix-panel">
+          <div className="att-matrix-heading">
             <div>
-              <h3 className="text-sm font-semibold text-slate-800">Employee daily hours</h3>
-              <p className="text-xs text-slate-500">Each row is an employee; numbered columns show uploaded hours for each day.</p>
+              <h2>Employee daily hours</h2>
+              <p className="text-xs text-slate-500">Numbered columns show recorded hours for each day.</p>
             </div>
-            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700">Manual upload source</span>
+            <span className="att-source-badge">{sourceLabel}</span>
           </div>
-          <div className="overflow-x-auto">
-            <table className="text-xs border-collapse" style={{ minWidth: 'max-content' }}>
+          <div className="att-table-scroll" tabIndex={0} role="region" aria-label="Employee daily hours matrix">
+            <table className={`att-matrix-table ${showDetails ? '' : 'att-hide-details'}`} data-table-typography="preserve">
+              <caption className="sr-only">Employee daily hours for {MONTH_FULL[month - 1]} {year}. Totals include all filtered employees.</caption>
 
               {/* Column headers: Employee | 1–31 | Total | Days | Normal Hours | Difference */}
               <thead>
@@ -1056,13 +986,13 @@ function SummaryTab() {
                           ph  ? `${ATT_HOLIDAY_HEADER_BG} border-violet-800 ${ATT_HOLIDAY_HEADER_TEXT}` : '',
                           !sat && !sun && !ph ? 'border-slate-600' : '',
                         ].join(' ')}
-                        style={{ minWidth: '2.6rem' }}>
+                        style={{ minWidth: '2.3rem' }}>
                         {d}
                       </th>
                     )
                   })}
-                  <th className="px-3 py-2.5 text-right font-semibold whitespace-nowrap border-l-2 border-slate-500 bg-slate-800">Total</th>
-                  <th className="px-3 py-2.5 text-center font-semibold whitespace-nowrap bg-slate-800">Days</th>
+                  <th className="att-total px-3 py-2.5 text-right font-semibold whitespace-nowrap border-l-2 border-slate-500 bg-slate-800">Total</th>
+                  <th className="att-detail-column px-3 py-2.5 text-center font-semibold whitespace-nowrap bg-slate-800">Days</th>
                   
                   {/* ✅ DYNAMIC LEAVE COLUMNS — Soft-coded from SUMMARY_LEAVE_TYPES */}
                   {SUMMARY_LEAVE_TYPES.filter(lt => lt.enabled !== false)
@@ -1080,7 +1010,7 @@ function SummaryTab() {
                       return (
                         <th
                           key={leaveType.code}
-                          className={`px-3 py-2.5 text-center font-semibold whitespace-nowrap ${bgClass}`}
+                          className={`att-detail-column px-3 py-2.5 text-center font-semibold whitespace-nowrap ${bgClass}`}
                           title={leaveType.description}>
                           {leaveType.label}
                           {leaveType.showBalance && leaveType.code === 'AL' && SUMMARY_AL_SHOW_BALANCE && (
@@ -1090,10 +1020,10 @@ function SummaryTab() {
                       )
                     })}
                   
-                  <th className="px-3 py-2.5 text-right font-semibold whitespace-nowrap bg-slate-800 border-r border-slate-600">
+                  <th className="att-detail-column px-3 py-2.5 text-right font-semibold whitespace-nowrap bg-slate-800 border-r border-slate-600">
                     Normal Hrs
                   </th>
-                  <th className="px-3 py-2.5 text-right font-semibold whitespace-nowrap bg-slate-800">Difference</th>
+                  <th className="att-detail-column px-3 py-2.5 text-right font-semibold whitespace-nowrap bg-slate-800">Difference</th>
                 </tr>
                 {/* Row 2: Sa / Su / PH labels */}
                 <tr className="bg-slate-600 text-[9px] uppercase tracking-wide">
@@ -1115,7 +1045,7 @@ function SummaryTab() {
                       </td>
                     )
                   })}
-                  <td colSpan={2 + SUMMARY_LEAVE_TYPES.filter(lt => lt.enabled !== false).length + 2} className="bg-slate-600 border-l-2 border-slate-500" />
+                  <td colSpan={showDetails ? 4 + SUMMARY_LEAVE_TYPES.filter(lt => lt.enabled !== false).length : 1} className="bg-slate-600 border-l-2 border-slate-500" />
                 </tr>
               </thead>
 
@@ -1186,8 +1116,6 @@ function SummaryTab() {
 
                       return (
                         <td key={d}
-                          onClick={canEdit && !wkd && !isFuture && slot?.type !== 'leave' ? () => openEdit(r, d) : undefined}
-                          title={canEdit && !wkd && !isFuture && slot?.type !== 'leave' ? 'Click to edit' : undefined}
                           className={[
                             'py-1.5 text-center border-r relative',
                             sat ? 'bg-amber-50 border-amber-200' : '',
@@ -1196,8 +1124,10 @@ function SummaryTab() {
                             !wkd && !ph ? 'border-slate-100' : '',
                             canEdit && !wkd && !isFuture && slot?.type !== 'leave' ? 'cursor-pointer hover:bg-violet-50/70 group' : '',
                           ].join(' ')}
-                          style={{ minWidth: '2.6rem' }}>
-                          {cellContent}
+                          style={{ minWidth: '2.3rem' }}>
+                          {canEdit && !wkd && !isFuture && slot?.type !== 'leave'
+                            ? <button type="button" className="att-cell-button" aria-label={`Edit ${r.name}, ${cellDateStr(d)}`} onClick={() => openEdit(r, d)}>{cellContent}</button>
+                            : cellContent}
                           {/* Hover pencil indicator for editable cells */}
                           {canEdit && !wkd && !isFuture && slot?.type !== 'leave' && (
                             <HeroIcons.PencilSquareIcon className="absolute top-0.5 right-0.5 w-2 h-2 text-violet-300 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -1206,10 +1136,10 @@ function SummaryTab() {
                       )
                     })}
                     {/* Summary cells */}
-                    <td className="px-3 py-1.5 text-right font-bold text-slate-800 border-l-2 border-slate-300 whitespace-nowrap tabular-nums bg-slate-50">
+                    <td className="att-total px-3 py-1.5 text-right font-bold text-slate-800 border-l-2 border-slate-300 whitespace-nowrap tabular-nums bg-slate-50">
                       {r.totalHrs.toFixed(2)}
                     </td>
-                    <td className="px-3 py-1.5 text-center font-semibold text-slate-700 bg-slate-50">
+                    <td className="att-detail-column px-3 py-1.5 text-center font-semibold text-slate-700 bg-slate-50">
                       {r.daysPresent}
                     </td>
                     
@@ -1232,7 +1162,7 @@ function SummaryTab() {
                         if (leaveType.showBalance && leaveType.code === 'AL' && SUMMARY_AL_SHOW_BALANCE) {
                           if (annualLeaveLoading) {
                             return (
-                              <td key={leaveType.code} className={`px-3 py-1.5 text-center font-semibold ${colors.bg} ${colors.text} whitespace-nowrap`}>
+                              <td key={leaveType.code} className={`att-detail-column px-3 py-1.5 text-center font-semibold ${colors.bg} ${colors.text} whitespace-nowrap`}>
                                 <span className="text-[9px] text-slate-400 italic">…</span>
                               </td>
                             )
@@ -1245,7 +1175,7 @@ function SummaryTab() {
                             const balNum = parseFloat(dbEntry.balance ?? 0)
                             const balColor = balNum < 0 ? 'text-rose-700 bg-rose-50' : balNum < 2 ? 'text-amber-700 bg-amber-50' : 'text-emerald-700 bg-emerald-50'
                             return (
-                              <td key={leaveType.code} className={`px-3 py-1.5 text-center font-semibold ${colors.bg} ${colors.text} whitespace-nowrap`}>
+                              <td key={leaveType.code} className={`att-detail-column px-3 py-1.5 text-center font-semibold ${colors.bg} ${colors.text} whitespace-nowrap`}>
                                 <span
                                   className={`inline-flex flex-col items-center leading-tight px-1 py-0.5 rounded text-[10px] font-bold ${balColor}`}
                                   title={`Balance: ${bal} days | Earned YTD: ${earned} | Taken YTD: ${taken} | CF: ${parseFloat(dbEntry.carryforward ?? 0).toFixed(2)}`}
@@ -1260,16 +1190,16 @@ function SummaryTab() {
                         
                         // Standard display: days taken this month
                         return (
-                          <td key={leaveType.code} className={`px-3 py-1.5 text-center font-semibold ${colors.bg} ${colors.text} whitespace-nowrap`}>
+                          <td key={leaveType.code} className={`att-detail-column px-3 py-1.5 text-center font-semibold ${colors.bg} ${colors.text} whitespace-nowrap`}>
                             {leaveDays > 0 ? leaveDays : '—'}
                           </td>
                         )
                       })}
                     
-                    <td className="px-3 py-1.5 text-right text-slate-600 bg-slate-50 whitespace-nowrap tabular-nums border-r border-slate-200">
+                    <td className="att-detail-column px-3 py-1.5 text-right text-slate-600 bg-slate-50 whitespace-nowrap tabular-nums border-r border-slate-200">
                       {r.normalHrs} h
                     </td>
-                    <td className={`px-3 py-1.5 text-right font-semibold whitespace-nowrap bg-slate-50 tabular-nums ${
+                    <td className={`att-detail-column px-3 py-1.5 text-right font-semibold whitespace-nowrap bg-slate-50 tabular-nums ${
                       r.diff >= 0 ? 'text-emerald-600' : 'text-rose-600'
                     }`}>
                       {fmtDiff(r.diff)}
@@ -1297,7 +1227,7 @@ function SummaryTab() {
                           sun ? 'bg-rose-800  border-rose-900'  : '',
                           !wkd ? 'border-slate-700' : '',
                         ].join(' ')}
-                        style={{ minWidth: '2.6rem' }}>
+                        style={{ minWidth: '2.3rem' }}>
                         {h !== undefined
                           ? <span className="font-semibold tabular-nums">{h.toFixed(2)}</span>
                           : <span className="opacity-25">—</span>
@@ -1308,7 +1238,7 @@ function SummaryTab() {
                   <td className="px-3 py-2.5 text-right border-l-2 border-slate-600 tabular-nums">
                     {totals.totalHrs.toFixed(2)}
                   </td>
-                  <td className="px-3 py-2.5 text-center">{totals.daysPresent}</td>
+                  <td className="att-detail-column px-3 py-2.5 text-center">{totals.daysPresent}</td>
                   
                   {/* ✅ DYNAMIC LEAVE TOTALS — Soft-coded from SUMMARY_LEAVE_TYPES */}
                   {SUMMARY_LEAVE_TYPES.filter(lt => lt.enabled !== false)
@@ -1326,7 +1256,7 @@ function SummaryTab() {
                       const textColor = colorMap[leaveType.color] || 'text-slate-300'
                       
                       return (
-                        <td key={leaveType.code} className={`px-3 py-2.5 text-center font-semibold ${textColor}`}>
+                        <td key={leaveType.code} className={`att-detail-column px-3 py-2.5 text-center font-semibold ${textColor}`}>
                           {totalDays > 0 ? totalDays : '—'}
                           {leaveType.showBalance && leaveType.code === 'AL' && SUMMARY_AL_SHOW_BALANCE && Object.keys(annualLeaveDb).length > 0 && (
                             <div className="text-[9px] font-normal opacity-70">taken</div>
@@ -1335,10 +1265,10 @@ function SummaryTab() {
                       )
                     })}
                   
-                  <td className="px-3 py-2.5 text-right tabular-nums border-r border-slate-600">
+                  <td className="att-detail-column px-3 py-2.5 text-right tabular-nums border-r border-slate-600">
                     {totals.normalHrs} h
                   </td>
-                  <td className={`px-3 py-2.5 text-right tabular-nums ${
+                  <td className={`att-detail-column px-3 py-2.5 text-right tabular-nums ${
                     totals.diff >= 0 ? 'text-emerald-300' : 'text-rose-300'
                   }`}>
                     {fmtDiff(totals.diff)}
@@ -1348,7 +1278,7 @@ function SummaryTab() {
             </table>
           </div>
           {/* Footer note */}
-          <div className="px-4 py-2 border-t border-slate-100 bg-white flex items-center justify-between text-[11px] text-slate-400">
+          <div className="att-matrix-note">
             <span>Normal Hours = {workingDays} working days × {ATT_STANDARD_DAILY_HOURS} h  ·  {ATT_COPY.absenceNote}</span>
             <span>{pivotRows.length} of {rows.length} employees shown</span>
           </div>
@@ -1359,14 +1289,14 @@ function SummaryTab() {
 
       {/* ── Attendance Override Edit Modal ── */}
       {editTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+        <dialog ref={editDialogRef} className="att-edit-dialog" aria-labelledby="attendance-edit-title" onCancel={event => { event.preventDefault(); if (!editSaving) setEditTarget(null) }}>
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
-              <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+              <h3 id="attendance-edit-title" className="text-base font-bold text-slate-800 flex items-center gap-2">
                 <HeroIcons.PencilSquareIcon className="w-4 h-4 text-violet-600" />
                 {ATT_EDIT_COPY.editTitle}
               </h3>
-              <button type="button" onClick={() => setEditTarget(null)}
+              <button type="button" aria-label="Close attendance correction" disabled={editSaving} onClick={() => setEditTarget(null)}
                 className="p-1.5 rounded hover:bg-slate-100 text-slate-500">
                 <HeroIcons.XMarkIcon className="w-5 h-5" />
               </button>
@@ -1384,20 +1314,20 @@ function SummaryTab() {
               {/* Original hours (read-only) */}
               <div>
                 <label className="block text-xs font-medium text-slate-500 mb-1">{ATT_EDIT_COPY.originalHoursLabel}</label>
-                <input type="number" disabled value={editTarget.currentHours}
+                <input aria-label={ATT_EDIT_COPY.originalHoursLabel} type="number" disabled value={editTarget.currentHours}
                   className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-slate-50 text-slate-500" />
               </div>
               {/* Override hours */}
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">{ATT_EDIT_COPY.overrideHoursLabel} *</label>
                 <input type="number" min={0} max={24} step={0.5}
-                  value={editHours} onChange={e => setEditHours(e.target.value)}
+                  aria-label={ATT_EDIT_COPY.overrideHoursLabel} value={editHours} onChange={e => setEditHours(e.target.value)}
                   className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-violet-500" />
               </div>
               {/* Reason */}
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">{ATT_EDIT_COPY.reasonLabel} *</label>
-                <select value={editReason} onChange={e => setEditReason(e.target.value)}
+                <select aria-label={ATT_EDIT_COPY.reasonLabel} value={editReason} onChange={e => setEditReason(e.target.value)}
                   className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-violet-500">
                   {OVERRIDE_REASON_OPTIONS.map(o => (
                     <option key={o.value} value={o.value}>{o.label}</option>
@@ -1407,7 +1337,7 @@ function SummaryTab() {
               {/* Note */}
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">{ATT_EDIT_COPY.noteLabel}</label>
-                <textarea rows={2} value={editNote} onChange={e => setEditNote(e.target.value)}
+                <textarea aria-label={ATT_EDIT_COPY.noteLabel} rows={2} value={editNote} onChange={e => setEditNote(e.target.value)}
                   placeholder="Explain the correction…"
                   className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-violet-500 resize-none" />
               </div>
@@ -1430,7 +1360,7 @@ function SummaryTab() {
               </button>
             </div>
           </div>
-        </div>
+        </dialog>
       )}
     </div>
   )
@@ -1589,832 +1519,79 @@ function ReportsTab({ todayStr }) {
 // Main Component
 // ─────────────────────────────────────────────────────────────────────────────
 const NOW          = new Date()
-const TODAY_STR    = NOW.toISOString().slice(0, 10)
-const ALL_DEPT     = 'all'
-const ALL_STATUS   = 'all'
+const TODAY_STR    = `${NOW.getFullYear()}-${String(NOW.getMonth() + 1).padStart(2, '0')}-${String(NOW.getDate()).padStart(2, '0')}`
 
 export default function AttendanceDashboard() {
   // ── UI state ────────────────────────────────────────────────────────────────
   const [view,         setView]         = useState(ATTENDANCE_DEFAULT_VIEW)
   const [selectedDate, setSelectedDate] = useState(TODAY_STR)
-  const [selMonth,     setSelMonth]     = useState(NOW.getMonth() + 1)
-  const [selYear,      setSelYear]      = useState(NOW.getFullYear())
-  const [deptFilter,   setDeptFilter]   = useState(ALL_DEPT)
-  const [statusFilter, setStatusFilter] = useState(ALL_STATUS)
-  const [employeeSearch, setEmployeeSearch] = useState('')
-  const [tablePage,       setTablePage]       = useState(1)
-  const [tablePageSize,   setTablePageSize]   = useState(DEFAULT_ATTENDANCE_PAGE_SIZE)
+  const [dailyInitialSearch, setDailyInitialSearch] = useState('')
+  const [matrixSelection, setMatrixSelection] = useState({})
 
   // ── Data state ──────────────────────────────────────────────────────────────
-  const [liveData,    setLiveData]    = useState([])
   const [dailyData,   setDailyData]   = useState([])
-  const [monthlyData, setMonthlyData] = useState([])
-  const [yearlyData,  setYearlyData]  = useState([])  // Array[12] of monthly arrays
-  const [yearlyLeaveBalances, setYearlyLeaveBalances] = useState({})
-  const [trendData,   setTrendData]   = useState([])  // 6-month overview chart
 
   const [loadingDaily,   setLoadingDaily]   = useState(false)
-  const [loadingMonthly, setLoadingMonthly] = useState(false)
-  const [loadingYearly,  setLoadingYearly]  = useState(false)
-
-  // ── Always-on: fetch live for total active count (KPI denominator) ──────────
-  useEffect(() => {
-    ts.fetchLive()
-      .then(d => setLiveData((d?.rows || (Array.isArray(d) ? d : [])).filter(filterEmployeeRow)))
-      .catch(() => {})
-  }, [])
+  const [dailyError, setDailyError] = useState('')
+  const [dailySource, setDailySource] = useState('')
+  const [dailyLoadedDate, setDailyLoadedDate] = useState('')
+  const [dailyRefresh, setDailyRefresh] = useState(0)
 
   // ── Daily data ──────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (view !== 'daily' && view !== 'overview') return
+    if (view !== 'daily') return
+    let active = true
     setLoadingDaily(true)
+    setDailyData([])
+    setDailyError('')
+    setDailySource('')
+    setDailyLoadedDate('')
     ts.fetchDaily(selectedDate)
-      .then(d => setDailyData((d?.rows || (Array.isArray(d) ? d : [])).filter(filterEmployeeRow)))
-      .catch(() => setDailyData([]))
-      .finally(() => setLoadingDaily(false))
-  }, [selectedDate, view])
-
-  // ── Monthly data ─────────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (view !== 'monthly' && view !== 'overview') return
-    setLoadingMonthly(true)
-    ts.fetchMonthly(selYear, selMonth)
-      .then(d => setMonthlyData((d?.rows || (Array.isArray(d) ? d : [])).filter(filterEmployeeRow)))
-      .catch(() => setMonthlyData([]))
-      .finally(() => setLoadingMonthly(false))
-  }, [selYear, selMonth, view])
-
-  // ── 6-month trend for Overview ───────────────────────────────────────────────
-  useEffect(() => {
-    if (view !== 'overview') return
-    const months = Array.from({ length: 6 }, (_, i) => {
-      const d = new Date(NOW.getFullYear(), NOW.getMonth() - (5 - i), 1)
-      return { year: d.getFullYear(), month: d.getMonth() + 1 }
-    })
-    Promise.all(months.map(({ year, month }) =>
-      ts.fetchMonthly(year, month).catch(() => ({}))
-    )).then(results => {
-      setTrendData(results.map((employees, i) => {
-        const arr = (employees?.rows || (Array.isArray(employees) ? employees : [])).filter(filterEmployeeRow)
-        const wd  = ATT_STANDARD_MONTHLY_WORKING_DAYS
-        const tp  = arr.reduce((s, e) => s + (e.days_present || 0), 0)
-        const max = arr.length * wd
-        return {
-          month: MONTH_SHORT[months[i].month - 1],
-          rate:  max > 0 ? Math.min(100, Math.round((tp / max) * 100)) : 0,
-          count: arr.length,
+      .then(d => {
+        if (!active) return
+        if (d?.configured === false) {
+          setDailyError(typeof d.message === 'string' && d.message ? d.message : 'The attendance source is not configured or is unavailable.')
+          return
         }
-      }))
-    }).catch(() => {})
-  }, [view])
-
-  // ── Yearly: fetch all 12 months in parallel ──────────────────────────────────
-  useEffect(() => {
-    if (view !== 'yearly') return
-    setLoadingYearly(true)
-    setYearlyData([])
-    Promise.all(
-      Array.from({ length: 12 }, (_, i) =>
-        ts.fetchMonthly(selYear, i + 1).catch(() => ({}))
-      )
-    ).then(results => {
-      setYearlyData(results.map(d => (d?.rows || (Array.isArray(d) ? d : [])).filter(filterEmployeeRow)))
-    }).finally(() => setLoadingYearly(false))
-  }, [selYear, view])
-
-  useEffect(() => {
-    if (view !== 'yearly') return
-    payrollService.getAnnualLeaveBalanceSummary(selYear, 12)
-      .then(d => setYearlyLeaveBalances(d?.balances || {}))
-      .catch(() => setYearlyLeaveBalances({}))
-  }, [selYear, view])
-
-  // ── Working days in currently selected month ─────────────────────────────────
-  const calendarWorkingDays = useMemo(
-    () => workingDaysInMonth(selYear, selMonth),
-    [selYear, selMonth]
-  )
-  const workingDays = ATT_STANDARD_MONTHLY_WORKING_DAYS
-
-  // ── Departments list (from whichever data is available) ──────────────────────
-  const departments = useMemo(() => {
-    const src = dailyData.length > 0 ? dailyData : monthlyData
-    return [...new Set(src.map(empDept))].filter(Boolean).sort()
-  }, [dailyData, monthlyData])
-
-  // ── Enriched monthly rows  (_absent, _rate appended) ─────────────────────────
-  const enrichedMonthly = useMemo(() => {
-    const filtered = deptFilter === ALL_DEPT
-      ? monthlyData
-      : monthlyData.filter(r => empDept(r) === deptFilter)
-    return filtered.map(r => ({
-      ...r,
-      _absent: Math.max(0, workingDays - (r.days_present || 0)),
-      _rate:   workingDays > 0
-        ? Math.min(100, Math.round(((r.days_present || 0) / workingDays) * 100))
-        : 0,
-      _payrollReady: (r.days_present || 0) >= calendarWorkingDays,
-    }))
-  }, [monthlyData, workingDays, calendarWorkingDays, deptFilter])
-
-  const filteredMonthly = useMemo(
-    () => enrichedMonthly.filter(row => matchesEmployeeSearch(row, employeeSearch)),
-    [enrichedMonthly, employeeSearch]
-  )
-
-  // ── Filtered daily rows ───────────────────────────────────────────────────────
-  const filteredDaily = useMemo(() => {
-    let d = deptFilter === ALL_DEPT ? dailyData : dailyData.filter(r => empDept(r) === deptFilter)
-    if (statusFilter !== ALL_STATUS) d = d.filter(r => classifyDay(r) === statusFilter)
-    d = d.filter(row => matchesEmployeeSearch(row, employeeSearch))
-    return d
-  }, [dailyData, deptFilter, statusFilter, employeeSearch])
-
-  // ── Daily status counts for summary bar ─────────────────────────────────────
-  const dailyStatusCounts = useMemo(() => {
-    const c = { present: 0, late: 0, half_day: 0, absent: 0 }
-    dailyData.forEach(r => {
-      const s = classifyDay(r)
-      if (s in c) c[s]++
-    })
-    return c
-  }, [dailyData])
-
-  // ── KPI values ───────────────────────────────────────────────────────────────
-  const kpiValues = useMemo(() =>
-    ATTENDANCE_KPIS.map(k => ({
-      ...k,
-      ...k.compute({ daily: dailyData, totalActive: liveData.length, monthly: monthlyData }),
-    })),
-    [dailyData, liveData, monthlyData]
-  )
-
-  // ── Daily dept breakdown for charts ─────────────────────────────────────────
-  const dailyDeptBreakdown = useMemo(() => {
-    const map = {}
-    dailyData.forEach(r => {
-      const dept = empDept(r)
-      if (!map[dept]) map[dept] = { dept, present: 0, late: 0, half_day: 0, absent: 0 }
-      const s = classifyDay(r)
-      map[dept][s] = (map[dept][s] || 0) + 1
-    })
-    return Object.values(map).sort((a, b) => (b.present + b.late + b.half_day) - (a.present + a.late + a.half_day))
-  }, [dailyData])
-
-  // ── Monthly dept breakdown for charts ────────────────────────────────────────
-  const monthlyDeptBreakdown = useMemo(() => {
-    const map = {}
-    enrichedMonthly.forEach(r => {
-      const dept = empDept(r)
-      if (!map[dept]) map[dept] = { dept, present: 0, absent: 0, late: 0, employees: 0 }
-      map[dept].employees++
-      map[dept].present += r.days_present || 0
-      map[dept].absent  += r._absent      || 0
-      map[dept].late    += r.late_arrivals || 0
-    })
-    return Object.values(map).sort((a, b) => b.employees - a.employees)
-  }, [enrichedMonthly])
-
-  // ── Top absent employees (monthly) for alerts ────────────────────────────────
-  const topAbsent = useMemo(() =>
-    [...enrichedMonthly]
-      .filter(r => (r._absent || 0) > 0)
-      .sort((a, b) => (b._absent || 0) - (a._absent || 0))
-      .slice(0, ATT_TOP_ABSENT_LIMIT),
-    [enrichedMonthly]
-  )
-
-  // ── Yearly aggregation ───────────────────────────────────────────────────────
-  const { yearlyEmployees, yearlyTrend } = useMemo(() => {
-    if (yearlyData.length === 0) return { yearlyEmployees: [], yearlyTrend: [] }
-    const map = {}
-    yearlyData.forEach((employees, mi) => {
-      (employees || []).forEach(emp => {
-        const key = emp.employee_code || empName(emp)
-        if (!map[key]) {
-          map[key] = {
-            code: key, name: empName(emp), dept: empDept(emp),
-            months: Array(12).fill(null), totalPresent: 0, totalOvertime: 0,
-          }
-        }
-        const wd = ATT_STANDARD_MONTHLY_WORKING_DAYS
-        map[key].months[mi] = {
-          present: emp.days_present || 0,
-          wd,
-          rate: wd > 0 ? Math.min(100, Math.round(((emp.days_present || 0) / wd) * 100)) : 0,
-          overtime: Number(emp.overtime_hours || 0),
-          status: (emp.days_present || 0) >= 20 ? 'Ready' : (emp.days_present || 0) > 0 ? 'Review' : 'No attendance',
-        }
-        map[key].totalPresent += emp.days_present || 0
-        map[key].totalOvertime += Number(emp.overtime_hours || 0)
+        const rows = d?.rows || (Array.isArray(d) ? d : null)
+        if (!Array.isArray(rows)) throw new Error('Invalid daily attendance response')
+        setDailyData(rows.filter(filterEmployeeRow))
+        const source = d?.attendance_source || (d?.variant === 'manual' || d?.hours_mode === 'manual' ? 'manual_upload' : '')
+        setDailySource(({ manual_upload: 'Manual upload source', biometric: 'Biometric source', hybrid: 'Biometric + uploaded hours' })[source] || 'Attendance records')
+        setDailyLoadedDate(selectedDate)
       })
-    })
-    const totalWd = ATT_STANDARD_MONTHLY_WORKING_DAYS * MONTH_SHORT.length
-    const employees = Object.values(map).map(e => {
-      const yearRate = totalWd > 0 ? Math.min(100, Math.round((e.totalPresent / totalWd) * 100)) : 0
-      return {
-        ...e,
-        yearRate,
-        yearStatus: e.totalPresent > 0 ? (yearRate >= ATT_GOOD_RATE_PCT ? 'Ready' : 'Review') : 'No attendance',
-        leaveBalance: yearlyLeaveBalances[e.code]?.balance,
-      }
-    }).sort((a, b) => a.name.localeCompare(b.name))
+      .catch(failure => {
+        if (!active) return
+        setDailyError(failure?.response?.status === 403 ? 'You do not have permission to view daily attendance.'
+          : failure?.response?.status === 401 ? 'Your session has expired. Sign in again to load attendance.'
+            : 'Daily attendance could not be loaded. Please try again.')
+      })
+      .finally(() => { if (active) setLoadingDaily(false) })
+    return () => { active = false }
+  }, [selectedDate, view, dailyRefresh])
 
-    const trend = yearlyData.map((arr, i) => {
-      const wd  = ATT_STANDARD_MONTHLY_WORKING_DAYS
-      const tp  = (arr || []).reduce((s, e) => s + (e.days_present || 0), 0)
-      const max = (arr || []).length * wd
-      return { month: MONTH_SHORT[i], rate: max > 0 ? Math.min(100, Math.round((tp / max) * 100)) : 0, employees: (arr || []).length }
-    })
-    return { yearlyEmployees: employees, yearlyTrend: trend }
-  }, [yearlyData, yearlyLeaveBalances])
-
-  const filteredYearlyEmployees = useMemo(
-    () => yearlyEmployees.filter(employee =>
-      (deptFilter === ALL_DEPT || employee.dept === deptFilter) &&
-      matchesEmployeeSearch(employee, employeeSearch)
-    ),
-    [yearlyEmployees, deptFilter, employeeSearch]
-  )
-
-  const pagedDaily = useMemo(
-    () => pageRows(filteredDaily, tablePage, tablePageSize),
-    [filteredDaily, tablePage, tablePageSize]
-  )
-  const pagedMonthly = useMemo(
-    () => pageRows(filteredMonthly, tablePage, tablePageSize),
-    [filteredMonthly, tablePage, tablePageSize]
-  )
-  const pagedYearly = useMemo(
-    () => pageRows(filteredYearlyEmployees, tablePage, tablePageSize),
-    [filteredYearlyEmployees, tablePage, tablePageSize]
-  )
-
-  useEffect(() => {
-    setTablePage(1)
-  }, [view, employeeSearch, deptFilter, statusFilter, selectedDate, selMonth, selYear, tablePageSize])
-
-  // ────────────────────────────────────────────────────────────────────────────
-  // VIEW: OVERVIEW
-  // ────────────────────────────────────────────────────────────────────────────
-  const renderOverview = () => (
-    <div className="space-y-5">
-      {/* KPI tiles */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
-        {kpiValues.map(k => <KpiTile key={k.id} kpi={k} />)}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* 6-month rate trend */}
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
-          <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
-            <HeroIcons.ChartBarIcon className="w-4 h-4 text-blue-500" />
-            6-Month Attendance Rate
-          </h3>
-          {trendData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={trendData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} tickFormatter={v => `${v}%`} />
-                <Tooltip formatter={(v, n) => [`${v}%`, 'Rate']} />
-                <Line type="monotone" dataKey="rate" stroke="#3b82f6" strokeWidth={2}
-                  dot={{ r: 4, fill: '#3b82f6' }} activeDot={{ r: 6 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          ) : (
-            <EmptyState loading={loadingMonthly} loadingMsg="Building trend…" icon="ChartBarIcon" />
-          )}
-        </div>
-
-        {/* Today dept breakdown */}
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
-          <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
-            <HeroIcons.BuildingOfficeIcon className="w-4 h-4 text-slate-400" />
-            Today by Department
-          </h3>
-          {dailyDeptBreakdown.length > 0 ? (
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={dailyDeptBreakdown} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="dept" tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip />
-                <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="present"  name="Present"  fill="#10b981" stackId="a" radius={[0,0,0,0]} />
-                <Bar dataKey="late"     name="Late"     fill="#f59e0b" stackId="a" />
-                <Bar dataKey="half_day" name="Half Day" fill="#f97316" stackId="a" />
-                <Bar dataKey="absent"   name="Absent"   fill="#ef4444" stackId="a" radius={[3,3,0,0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <EmptyState loading={loadingDaily} icon="BuildingOfficeIcon" msg="No punch data for today yet" />
-          )}
-        </div>
-      </div>
-
-      {/* Late arrivals alert strip */}
-      {dailyData.filter(r => r.is_late).length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-          <h3 className="text-sm font-semibold text-amber-800 mb-2 flex items-center gap-1.5">
-            <HeroIcons.ClockIcon className="w-4 h-4" />
-            Late Arrivals Today — {dailyData.filter(r => r.is_late).length} employee{dailyData.filter(r => r.is_late).length !== 1 ? 's' : ''}
-          </h3>
-          <div className="flex flex-wrap gap-2">
-            {dailyData.filter(r => r.is_late).map((r, i) => (
-              <span key={i} className="bg-white text-amber-800 text-xs px-2.5 py-1 rounded-full border border-amber-200">
-                {empName(r)} — {fmtTime(r.first_in)}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-
-  // ────────────────────────────────────────────────────────────────────────────
-  // VIEW: DAILY
-  // ────────────────────────────────────────────────────────────────────────────
   const renderDaily = () => (
-    <div className="space-y-4">
-      {/* Controls row */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap items-end gap-3">
-        <div>
-          <label className="block text-xs text-slate-500 mb-1">Date</label>
-          <input type="date" value={selectedDate} max={TODAY_STR}
-            onChange={e => setSelectedDate(e.target.value)}
-            className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500" />
-        </div>
-        <div className="min-w-44">
-          <label className="block text-xs text-slate-500 mb-1">Department</label>
-          <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
-            <option value={ALL_DEPT}>All Departments</option>
-            {departments.map(d => <option key={d} value={d}>{d}</option>)}
-          </select>
-        </div>
-        <div className="min-w-56">
-          <label className="block text-xs text-slate-500 mb-1">Search employee</label>
-          <div className="relative">
-            <HeroIcons.MagnifyingGlassIcon className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input value={employeeSearch} onChange={event => setEmployeeSearch(event.target.value)}
-              placeholder="Name, employee ID or department"
-              className="w-full rounded-lg border border-slate-300 py-2 pl-8 pr-3 text-sm focus:ring-2 focus:ring-indigo-500" />
-          </div>
-        </div>
-        {/* Status filter pills */}
-        <div className="flex flex-wrap gap-1.5 ml-auto">
-          {[ALL_STATUS, 'present', 'late', 'half_day', 'absent'].map(s => {
-            const label = s === ALL_STATUS
-              ? `All (${dailyData.length})`
-              : `${ATTENDANCE_STATUS[s].label} (${dailyStatusCounts[s] ?? 0})`
-            return (
-              <button key={s} type="button" onClick={() => setStatusFilter(s)}
-                className={`px-2.5 py-1 rounded-full text-xs font-medium transition ${
-                  statusFilter === s ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}>{label}</button>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* Summary tiles */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        {['present','late','half_day','absent'].map(s => {
-          const m = ATTENDANCE_STATUS[s]
-          return (
-            <div key={s} className={`${m.bg} rounded-xl p-4 border ${m.border} text-center`}>
-              <div className={`text-2xl font-semibold tabular-nums ${m.text}`}>{dailyStatusCounts[s] ?? 0}</div>
-              <div className={`text-xs font-medium ${m.text} mt-1`}>{m.label}</div>
-            </div>
-          )
-        })}
-      </div>
-
-      {/* Table */}
-      {loadingDaily ? (
-        <EmptyState loading icon="CalendarDaysIcon" loadingMsg={ATT_COPY.loading} />
-      ) : filteredDaily.length === 0 ? (
-        <EmptyState icon="CalendarDaysIcon" msg={ATT_COPY.dailyEmpty} />
-      ) : (
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-            <span className="text-xs text-slate-500">{filteredDaily.length} employees · {selectedDate}</span>
-            <span className="text-xs text-slate-400 flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse inline-block" />
-              {ATT_COPY.sourceTag}
-            </span>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="bg-slate-50">
-                <tr>
-                  {ATTENDANCE_DAILY_COLS.map(c => (
-                    <th key={c.id} className="text-left px-3 py-2.5 text-xs font-semibold text-slate-600 uppercase tracking-wider whitespace-nowrap">
-                      {c.label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {pagedDaily.map((r, i) => {
-                  const status  = classifyDay(r)
-                  const rowTone = ATTENDANCE_STATUS[status]?.row || ''
-                  return (
-                    <tr key={i} className={`${rowTone} hover:bg-slate-50 transition-colors`}>
-                      {ATTENDANCE_DAILY_COLS.map(c => {
-                        const v = c.accessor(r)
-                        if (c.cellType === 'att_status') {
-                          return <td key={c.id} className="px-3 py-2.5"><StatusBadge status={v} /></td>
-                        }
-                        if (c.cellType === 'hours_worked') {
-                          if (r.open_shift) {
-                            return (
-                              <td key={c.id} className="px-3 py-2.5 whitespace-nowrap">
-                                <span className={OPEN_SHIFT_INDICATOR.badgeCls} title={OPEN_SHIFT_INDICATOR.tooltip}>
-                                  <span className={OPEN_SHIFT_INDICATOR.dotCls} />
-                                  {OPEN_SHIFT_INDICATOR.label}
-                                  {OPEN_SHIFT_INDICATOR.maxCreditedH > 0 && Number(v) > 0 && (
-                                    <span className="ml-1 opacity-75">({Number(v).toFixed(1)}h)</span>
-                                  )}
-                                </span>
-                              </td>
-                            )
-                          }
-                          return (
-                            <td key={c.id} className="px-3 py-2.5 text-slate-700 whitespace-nowrap">
-                              {Number(v) > 0 ? `${Number(v).toFixed(1)}h` : '\u2014'}
-                            </td>
-                          )
-                        }
-                        return <td key={c.id} className="px-3 py-2.5 text-slate-700 whitespace-nowrap">{v}</td>
-                      })}
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-          <TablePagination total={filteredDaily.length} page={tablePage} pageSize={tablePageSize}
-            onPageChange={setTablePage} onPageSizeChange={setTablePageSize} />
-        </div>
-      )}
-      <p className="text-xs text-slate-400">{ATT_COPY.absenceNote}</p>
-    </div>
+    <DailyAttendanceTab rows={dailyData} date={selectedDate} today={TODAY_STR}
+      loading={loadingDaily || (!dailyError && dailyLoadedDate !== selectedDate)}
+      error={dailyError} source={dailySource} onDateChange={setSelectedDate}
+      onRefresh={() => setDailyRefresh(value => value + 1)} Pagination={TablePagination} initialSearch={dailyInitialSearch} />
   )
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // VIEW: MONTHLY
-  // ────────────────────────────────────────────────────────────────────────────
-  const renderMonthly = () => {
-    const pieData = (() => {
-      const n = enrichedMonthly.length
-      if (n === 0) return []
-      const good = enrichedMonthly.filter(r => r._rate >= ATT_GOOD_RATE_PCT).length
-      const warn = enrichedMonthly.filter(r => r._rate >= ATT_WARN_RATE_PCT && r._rate < ATT_GOOD_RATE_PCT).length
-      const poor = n - good - warn
-      return [
-        { name: `Good  ≥${ATT_GOOD_RATE_PCT}%`, value: good, fill: '#10b981' },
-        { name: `Warn  ≥${ATT_WARN_RATE_PCT}%`, value: warn, fill: '#f59e0b' },
-        { name: `Poor  <${ATT_WARN_RATE_PCT}%`, value: poor, fill: '#ef4444' },
-      ].filter(d => d.value > 0)
-    })()
-
-    return (
-      <div className="space-y-4">
-        {/* Controls */}
-        <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap items-end gap-3">
-          <div>
-            <label className="block text-xs text-slate-500 mb-1">Month</label>
-            <select value={selMonth} onChange={e => setSelMonth(Number(e.target.value))}
-              className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
-              {MONTH_FULL.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-slate-500 mb-1">Year</label>
-            <select value={selYear} onChange={e => setSelYear(Number(e.target.value))}
-              className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
-              {[selYear - 1, selYear, selYear + 1].map(y => <option key={y} value={y}>{y}</option>)}
-            </select>
-          </div>
-          <div className="min-w-44">
-            <label className="block text-xs text-slate-500 mb-1">Department</label>
-            <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
-              <option value={ALL_DEPT}>All Departments</option>
-              {departments.map(d => <option key={d} value={d}>{d}</option>)}
-            </select>
-          </div>
-          <div className="min-w-56">
-            <label className="block text-xs text-slate-500 mb-1">Search employee</label>
-            <div className="relative">
-              <HeroIcons.MagnifyingGlassIcon className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input value={employeeSearch} onChange={event => setEmployeeSearch(event.target.value)}
-                placeholder="Name, employee ID or department"
-                className="w-full rounded-lg border border-slate-300 py-2 pl-8 pr-3 text-sm focus:ring-2 focus:ring-indigo-500" />
-            </div>
-          </div>
-          <div className="ml-auto bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-600">
-            <span className="font-semibold">{workingDays}</span>-day target · {calendarWorkingDays} scheduled weekdays
-          </div>
-        </div>
-
-        {/* Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="bg-white rounded-xl border border-slate-200 p-4">
-            <h3 className="text-sm font-semibold text-slate-700 mb-3">Days Present vs Absent by Department</h3>
-            {monthlyDeptBreakdown.length > 0 ? (
-              <ResponsiveContainer width="100%" height={210}>
-                <BarChart data={monthlyDeptBreakdown} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="dept" tick={{ fontSize: 10 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip />
-                  <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
-                  <Bar dataKey="present" name="Present Days" fill="#3b82f6" radius={[3,3,0,0]} />
-                  <Bar dataKey="absent"  name="Absent Days"  fill="#f87171" radius={[3,3,0,0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <EmptyState loading={loadingMonthly} icon="ChartBarIcon" msg={ATT_COPY.monthlyEmpty} />
-            )}
-          </div>
-
-          <div className="bg-white rounded-xl border border-slate-200 p-4">
-            <h3 className="text-sm font-semibold text-slate-700 mb-3">Attendance Rate Distribution</h3>
-            {pieData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={210}>
-                <PieChart>
-                  <Pie data={pieData} cx="50%" cy="50%" innerRadius={55} outerRadius={85}
-                    paddingAngle={3} dataKey="value">
-                    {pieData.map((entry, idx) => <Cell key={idx} fill={entry.fill} />)}
-                  </Pie>
-                  <Tooltip formatter={(v, name) => [`${v} employees`, name]} />
-                  <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <EmptyState loading={loadingMonthly} icon="ChartPieIcon" msg={ATT_COPY.monthlyEmpty} />
-            )}
-          </div>
-        </div>
-
-        {/* Top absent alert */}
-        {topAbsent.length > 0 && (
-          <div className="bg-rose-50 border border-rose-200 rounded-xl p-4">
-            <h3 className="text-sm font-semibold text-rose-800 mb-2 flex items-center gap-1.5">
-              <HeroIcons.ExclamationTriangleIcon className="w-4 h-4" />
-              High Absence — {MONTH_FULL[selMonth - 1]} {selYear}
-            </h3>
-            <div className="flex flex-wrap gap-2">
-              {topAbsent.map((r, i) => (
-                <span key={i} className="bg-white text-rose-700 text-xs px-2.5 py-1 rounded-full border border-rose-200 flex items-center gap-1">
-                  {empName(r)}
-                  <span className="font-bold">{r._absent}d</span>
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Monthly employee table */}
-        {loadingMonthly ? (
-          <EmptyState loading icon="CalendarIcon" loadingMsg={ATT_COPY.loading} />
-        ) : filteredMonthly.length === 0 ? (
-          <EmptyState icon="CalendarIcon" msg={ATT_COPY.monthlyEmpty} />
-        ) : (
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-            <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-              <span className="text-xs text-slate-500">{filteredMonthly.length} employees · {MONTH_FULL[selMonth - 1]} {selYear}</span>
-              <span className="text-xs text-slate-400">{workingDays} working days</span>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead className="bg-slate-50">
-                  <tr>
-                    {ATTENDANCE_MONTHLY_COLS.map(c => (
-                      <th key={c.id} className="text-left px-3 py-2.5 text-xs font-semibold text-slate-600 uppercase tracking-wider whitespace-nowrap">
-                        {c.label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {pagedMonthly.map((r, i) => (
-                    <tr key={i} className="hover:bg-slate-50 transition-colors">
-                      {ATTENDANCE_MONTHLY_COLS.map(c => {
-                        const v = c.accessor(r)
-                        if (c.cellType === 'att_rate') {
-                          return (
-                            <td key={c.id} className="px-3 py-2.5">
-                              <span className={`font-semibold ${rateColor(v)}`}>{v}%</span>
-                            </td>
-                          )
-                        }
-                        if (c.cellType === 'absent_count') {
-                          return (
-                            <td key={c.id} className="px-3 py-2.5">
-                              <span className={v > 0 ? 'text-rose-600 font-medium' : 'text-slate-400'}>{v}</span>
-                            </td>
-                          )
-                        }
-                        if (c.cellType === 'late_count') {
-                          return (
-                            <td key={c.id} className="px-3 py-2.5">
-                              <span className={v > 0 ? 'text-amber-600 font-medium' : 'text-slate-400'}>{v}</span>
-                            </td>
-                          )
-                        }
-                        if (c.cellType === 'payroll_ready') {
-                          return (
-                            <td key={c.id} className="px-3 py-2.5">
-                              <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-semibold ${
-                                v ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
-                              }`}>{v ? 'Ready to pay' : 'Review'}</span>
-                            </td>
-                          )
-                        }
-                        return <td key={c.id} className="px-3 py-2.5 text-slate-700 whitespace-nowrap">{v}</td>
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <TablePagination total={filteredMonthly.length} page={tablePage} pageSize={tablePageSize}
-              onPageChange={setTablePage} onPageSizeChange={setTablePageSize} />
-          </div>
-        )}
-        <p className="text-xs text-slate-400">{ATT_COPY.absenceNote} · {ATT_COPY.leaveNote}</p>
-      </div>
-    )
-  }
-
-  // ────────────────────────────────────────────────────────────────────────────
-  // VIEW: YEARLY
-  // ────────────────────────────────────────────────────────────────────────────
-  const renderYearly = () => (
-    <div className="space-y-4">
-      {/* Controls */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap items-end gap-3">
-        <div>
-          <label className="block text-xs text-slate-500 mb-1">Year</label>
-          <select value={selYear}
-            onChange={e => { setSelYear(Number(e.target.value)); setYearlyData([]) }}
-            className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
-            {[selYear - 2, selYear - 1, selYear].map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
-        </div>
-        <div className="min-w-44">
-          <label className="block text-xs text-slate-500 mb-1">Department</label>
-          <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
-            <option value={ALL_DEPT}>All Departments</option>
-            {departments.map(d => <option key={d} value={d}>{d}</option>)}
-          </select>
-        </div>
-        <div className="min-w-56">
-          <label className="block text-xs text-slate-500 mb-1">Search employee</label>
-          <div className="relative">
-            <HeroIcons.MagnifyingGlassIcon className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input value={employeeSearch} onChange={event => setEmployeeSearch(event.target.value)}
-              placeholder="Name, employee ID or department"
-              className="w-full rounded-lg border border-slate-300 py-2 pl-8 pr-3 text-sm focus:ring-2 focus:ring-indigo-500" />
-          </div>
-        </div>
-        {loadingYearly && (
-          <div className="flex items-center gap-2 text-xs text-blue-600 ml-auto">
-            <Spinner /> {ATT_COPY.yearlyLoading}
-          </div>
-        )}
-      </div>
-
-      {/* Yearly trend line chart */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4">
-        <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
-          <HeroIcons.ChartBarIcon className="w-4 h-4 text-blue-500" />
-          {selYear} — Monthly Attendance Rate
-        </h3>
-        <ResponsiveContainer width="100%" height={220}>
-          <LineChart data={yearlyTrend} margin={{ top: 5, right: 30, bottom: 5, left: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-            <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-            <YAxis yAxisId="left" domain={[0, 100]} tick={{ fontSize: 11 }} tickFormatter={v => `${v}%`} />
-            <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
-            <Tooltip
-              formatter={(v, name) => [
-                name === 'rate' ? `${v}%` : `${v} employees`,
-                name === 'rate' ? 'Attendance Rate' : 'Active Employees',
-              ]}
-            />
-            <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }}
-              formatter={v => v === 'rate' ? 'Attendance Rate' : 'Active Employees'} />
-            <Line yAxisId="left"  type="monotone" dataKey="rate"      stroke="#3b82f6" strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }} />
-            <Line yAxisId="right" type="monotone" dataKey="employees" stroke="#10b981" strokeWidth={1} dot={{ r: 3 }} strokeDasharray="5 3" />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* Per-employee yearly grid */}
-      {loadingYearly && yearlyEmployees.length === 0 ? (
-        <EmptyState loading icon="CalendarIcon" loadingMsg={ATT_COPY.yearlyLoading} />
-      ) : filteredYearlyEmployees.length > 0 ? (
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-            <span className="text-xs text-slate-500">{filteredYearlyEmployees.length} employees · {selYear}</span>
-            <span className="text-xs text-slate-400">Rate = Present / Working days · Green ≥{ATT_GOOD_RATE_PCT}% · Amber ≥{ATT_WARN_RATE_PCT}%</span>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-xs">
-              <thead className="bg-slate-50">
-                <tr>
-                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-600 uppercase tracking-wider whitespace-nowrap sticky left-0 bg-slate-50 z-10">Employee</th>
-                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-600 uppercase tracking-wider whitespace-nowrap">Dept</th>
-                  {MONTH_SHORT.map(m => (
-                    <th key={m} className="text-center px-2 py-2.5 text-xs font-semibold text-slate-600 uppercase tracking-wider">{m}</th>
-                  ))}
-                  <th className="text-center px-3 py-2.5 text-xs font-semibold text-slate-700 uppercase tracking-wider bg-slate-100">Status</th>
-                  <th className="text-center px-3 py-2.5 text-xs font-semibold text-slate-700 uppercase tracking-wider bg-slate-100">Leave Balance</th>
-                  <th className="text-center px-3 py-2.5 text-xs font-semibold text-slate-700 uppercase tracking-wider bg-slate-100">Overtime</th>
-                  <th className="text-center px-3 py-2.5 text-xs font-semibold text-slate-700 uppercase tracking-wider bg-slate-100">Year</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {pagedYearly.map((emp, i) => (
-                    <tr key={i} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-3 py-2 font-medium text-slate-800 whitespace-nowrap sticky left-0 bg-white z-10 border-r border-slate-100">{emp.name}</td>
-                      <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{emp.dept}</td>
-                      {emp.months.map((m, mi) => (
-                        <td key={mi} className="px-2 py-2 text-center">
-                          {m ? (
-                            <span className="inline-flex flex-col items-center" title={`${m.present} present days · ${m.overtime.toFixed(1)} overtime hours`}>
-                              <span className={`font-semibold text-xs ${rateColor(m.rate)}`}>{m.rate}%</span>
-                              <span className={`text-[8px] ${m.status === 'Ready' ? 'text-emerald-600' : 'text-amber-600'}`}>{m.status}</span>
-                            </span>
-                          ) : (
-                            <span className="text-slate-300">—</span>
-                          )}
-                        </td>
-                      ))}
-                      <td className="px-3 py-2 text-center bg-slate-50">
-                        <span className={`inline-flex rounded-full px-2 py-1 text-[9px] font-semibold ${
-                          emp.yearStatus === 'Ready' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
-                        }`}>{emp.yearStatus}</span>
-                      </td>
-                      <td className="px-3 py-2 text-center bg-slate-50 font-semibold text-blue-700">
-                        {emp.leaveBalance === undefined ? '—' : `${Number(emp.leaveBalance).toFixed(1)} d`}
-                      </td>
-                      <td className="px-3 py-2 text-center bg-slate-50 font-semibold text-violet-700">
-                        {emp.totalOvertime.toFixed(1)} h
-                      </td>
-                      <td className="px-3 py-2 text-center bg-slate-50">
-                        <span className={`font-bold text-sm ${rateColor(emp.yearRate)}`}>{emp.yearRate}%</span>
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
-          <TablePagination total={filteredYearlyEmployees.length} page={tablePage} pageSize={tablePageSize}
-            onPageChange={setTablePage} onPageSizeChange={setTablePageSize} />
-        </div>
-      ) : !loadingYearly && (
-        <EmptyState icon="CalendarIcon" msg={ATT_COPY.noData} />
-      )}
-    </div>
-  )
-
-  // ────────────────────────────────────────────────────────────────────────────
   // MAIN RENDER
   // ────────────────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-4">
-      {/* View switcher tabs */}
-      <div className="bg-white rounded-xl border border-slate-200 p-2 flex flex-wrap gap-1">
-        {ATTENDANCE_VIEWS.map(v => {
-          const Icon    = HeroIcons[v.icon] || HeroIcons.CalendarIcon
-          const isActive = view === v.id
-          return (
-            <button key={v.id} type="button" onClick={() => setView(v.id)} title={v.description}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-                isActive
-                  ? 'bg-indigo-50 text-indigo-700 ring-1 ring-inset ring-indigo-200'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-              }`}>
-              <Icon className="w-4 h-4" />
-              {v.label}
-            </button>
-          )
-        })}
-      </div>
+    <div className="attendance-workspace">
+      <nav className="att-tabs" aria-label="Attendance views">
+        {ATTENDANCE_VIEWS.map(item => <button key={item.id} type="button" className="att-tab" aria-pressed={view === item.id} title={item.description} onClick={() => { setDailyInitialSearch(''); setMatrixSelection({}); setView(item.id) }}>{item.label}</button>)}
+      </nav>
 
       {/* Render active view */}
-      {view === 'overview' && renderOverview()}
-      {view === 'summary'  && <SummaryTab />}
+      {view === 'overview' && <AttendanceOverviewTab date={selectedDate} today={TODAY_STR} onDateChange={setSelectedDate}
+        onOpenDaily={(date, search = '') => { setSelectedDate(date); setDailyInitialSearch(search); setView('daily') }}
+        onOpenMatrix={(date, search = '') => { setMatrixSelection({ initialDate: date, initialSearch: search }); setView('summary') }} /> }
+      {view === 'summary'  && <SummaryTab {...matrixSelection} />}
       {view === 'daily'    && renderDaily()}
-      {view === 'monthly'  && renderMonthly()}
-      {view === 'yearly'   && renderYearly()}
+      {view === 'yearly'   && <YearlyAttendanceTab Pagination={TablePagination} />}
       {view === 'reports'  && <ReportsTab todayStr={TODAY_STR} />}
     </div>
   )

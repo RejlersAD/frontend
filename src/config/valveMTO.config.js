@@ -29,6 +29,15 @@ export const PROJECT_FIELDS = [
 
 // ─── Soft-coded option lists (free text still allowed) ────────────────────
 export const AREA_OPTIONS = ['ISLAND', 'Field', 'COMBINED'];
+export const allocationTab = (row) => {
+  const tab = String(row.tab || '').trim().toLowerCase();
+  if (['island', 'field', 'combined'].includes(tab)) return tab;
+  const island = Number(row.qty_island) > 0;
+  const field = Number(row.qty_field) > 0;
+  if (island || field) return island && field ? 'combined' : (island ? 'island' : 'field');
+  const legacyArea = String(row.area || '').trim().toLowerCase();
+  return ['island', 'field', 'combined'].includes(legacyArea) ? legacyArea : '';
+};
 export const VALVE_TYPES  = [
   'BALL VALVE', 'GATE VALVE', 'GLOBE VALVE', 'CHECK VALVE',
   'PLUG VALVE', 'BUTTERFLY VALVE', 'NEEDLE VALVE',
@@ -53,11 +62,12 @@ export const UNIT_OPTIONS = ['EACH', 'NOS', 'SET'];
 //   • type      — 'text' | 'number' | 'select' (UI hint only)
 //   • options?  — soft-coded list for selects
 //   • aliases?  — accepted header aliases when importing existing sheets
+//   • visible?  — false hides a field in the UI and exports, not stored/imported data
 export const VALVE_COLUMNS = [
   { key: 'sl_no',       label: 'SL. NO.',                width:  8, type: 'number',
     aliases: ['sl', 'sl no', 'sr no', 's.no', 'serial', 'item'] },
-  { key: 'area',        label: 'AREA',                   width: 10, type: 'select', options: AREA_OPTIONS,
-    aliases: ['area'] },
+  { key: 'area',        label: 'AREA',                   width: 48, type: 'text',
+    aliases: ['area', 'drg. title', 'drg title', 'drawing title'] },
   { key: 'type',        label: 'TYPE',                   width: 22, type: 'select', options: VALVE_TYPES,
     aliases: ['type', 'valve type'] },
   { key: 'pms_class',   label: 'PIPING MATERIAL CLASS',  width: 22, type: 'text',
@@ -70,25 +80,21 @@ export const VALVE_COLUMNS = [
               'class code', 'pipe class code', 'piping class code'] },
   { key: 'rating',      label: 'RATING / FACING',        width: 18, type: 'text',
     aliases: ['rating / facing', 'rating', 'rating facing', 'pressure rating'] },
-  { key: 'size_1',      label: 'SIZE 1 (NB)',            width: 12, type: 'select', options: SIZE_OPTIONS,
+  { key: 'size_1',      label: 'SIZE (NB)',              width: 12, type: 'select', options: SIZE_OPTIONS,
     aliases: ['size 1 (nb)', 'size 1', 'nb', 'size'] },
-  // The standard template uses a second column either for a reduced size
-  // (ISLAND/FIELD) OR for bore (COMBINED). We keep both — UI shows the one
-  // matching the active context, importer maps either.
-  { key: 'size_2',      label: 'SIZE 2 (NB)',            width: 14, type: 'select', options: SIZE_OPTIONS,
+  // Retain legacy reduced-size data for existing records and workbook imports.
+  { key: 'size_2',      label: 'SIZE 2 (NB)',            width: 14, type: 'select', options: SIZE_OPTIONS, visible: false,
     aliases: ['size 2 (nb)', 'size 2', 'reduced size'] },
   { key: 'bore',        label: 'BORE',                   width:  8, type: 'select', options: BORE_OPTIONS,
     aliases: ['bore', 'fb/rb'] },
-  // Display label is "P&ID NUMBER" but the underlying field key stays
-  // `line_number` so all extractor / exporter / storage logic remains
-  // unchanged. Legacy "LINE NUMBER" sheets continue to import via aliases.
-  { key: 'line_number', label: 'P&ID NUMBER',            width: 24, type: 'text',
-    aliases: ['p&id number', 'p&id no', 'p&id no.', 'p&id', 'pid number', 'pid no', 'pid no.',
-              'line number', 'line no', 'line no.', 'line', 'line #', 'pipeline number', 'pipeline no', 'line tag', 'line id'] },
-  // Reference to the Line List document / entry (e.g. LL doc no, line-list
-  // tag, or the originating line-list row id). Soft-coded — UI / exporter /
-  // importer auto-pick up via VALVE_COLUMNS; no core logic change required.
-  { key: 'line_list',   label: 'LINE LIST',              width: 18, type: 'text',
+  { key: 'pid_number', label: 'P&ID NUMBER',             width: 24, type: 'text',
+    aliases: ['p&id number', 'p&id no', 'p&id no.', 'p&id', 'pid number', 'pid no', 'pid no.'] },
+  { key: 'line_number', label: 'LINE NUMBER',            width: 24, type: 'text',
+    aliases: ['line number', 'line no', 'line no.', 'line', 'line #', 'pipeline number', 'pipeline no', 'line tag', 'line id'] },
+  { key: 'facing', label: 'FACING',                     width: 10, type: 'text',
+    aliases: ['facing', 'face type', 'flange facing'] },
+  // Retain legacy Line List references for existing records and imports.
+  { key: 'line_list',   label: 'LINE LIST',              width: 18, type: 'text', visible: false,
     aliases: ['line list', 'line list ref', 'line list reference', 'line list no', 'line list no.',
               'line-list', 'll', 'll no', 'll no.', 'll ref', 'll reference', 'line list document'] },
   { key: 'valve_tag',   label: 'VALVE TAG',              width: 14, type: 'text',
@@ -99,11 +105,29 @@ export const VALVE_COLUMNS = [
     aliases: ['total to be order ed (island)', 'island', 'island qty', 'total island', 'total to be ordered'] },
   { key: 'qty_field',   label: 'Total to be ordered (FIELD)',   width: 18, type: 'number',
     aliases: ['total to be order ed (field)', 'field', 'field qty', 'total field'] },
-  { key: 'unit',        label: 'UNIT',                   width:  8, type: 'number',
+  { key: 'qty_observed', label: 'OBSERVED QTY (REVIEW)', width: 18, type: 'number',
+    aliases: ['observed qty', 'observed qty (review)', 'observed quantity'] },
+  { key: 'unit',        label: 'UNIT',                   width:  8, type: 'text',
     aliases: ['unit', 'uom', 'qty', 'quantity'] },
   { key: 'remarks',     label: 'REMARKS',                width: 24, type: 'text',
     aliases: ['remarks', 'remark', 'comments', 'notes'] },
+  // Vision-confidence + on-sheet grid zone returned by the Borouge PE4&PE5
+  // extraction prompt (CONFIDENCE / LOCATION_HINT) — additive columns.
+  { key: 'confidence',  label: 'CONFIDENCE',             width: 12, type: 'text',
+    aliases: ['confidence', 'conf'] },
+  { key: 'location_hint', label: 'LOCATION',             width: 10, type: 'text',
+    aliases: ['location hint', 'location', 'grid', 'zone'] },
 ];
+
+export const isValveColumnVisible = (key) =>
+  VALVE_COLUMNS.some(column => column.key === key && column.visible !== false);
+
+export const sizeNBFromLineNumber = (lineNumber) => {
+  const match = String(lineNumber || '').trim().match(
+    /^(\d+(?:(?:[- ]\d+)?\/\d+)?)["\u201d\u2033]\s*[-\u2013\u2014]\s*[A-Z0-9]+[-\u2013\u2014]/i,
+  );
+  return match ? `${match[1]}"` : '';
+};
 
 // ─── Tabs / views ─────────────────────────────────────────────────────────
 // Each tab declares an `areaFilter` (or null) which the page uses to filter
@@ -140,12 +164,13 @@ export const STANDARD_NOTES = [
   'PIPING DATASHEET FOR GLOBE VALVES SHALL BE REFERRED.',
   'PIPING DATASHEET FOR CHECK VALVES SHALL BE REFERRED.',
   'PIPING DATASHEET FOR PLUG / BUTTERFLY VALVES SHALL BE REFERRED.',
+  'EXTRACTED QUANTITIES COUNT ALL VISIBLE VALVES, INCLUDING EXISTING ITEMS. REVIEW PROJECT SCOPE, CLASSIFICATION AND PROCUREMENT QUANTITIES BEFORE ORDERING.',
 ];
 
 // ─── Defaults ─────────────────────────────────────────────────────────────
 export const DEFAULT_FILENAME = 'Valve_MTO.xlsx';
 export const DEFAULT_ROW = () => {
-  const row = { id: `v_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` };
+  const row = { id: `v_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, tab: '' };
   for (const c of VALVE_COLUMNS) row[c.key] = c.type === 'number' ? 0 : '';
   return row;
 };
@@ -153,6 +178,6 @@ export const DEFAULT_ROW = () => {
 const _exports = {
   STORAGE_KEY, REFRESH_EVENT, PROJECT_FIELDS, AREA_OPTIONS, VALVE_TYPES,
   RATING_OPTIONS, FACING_SUFFIXES, SIZE_OPTIONS, BORE_OPTIONS, UNIT_OPTIONS,
-  VALVE_COLUMNS, VALVE_TABS, STANDARD_NOTES, DEFAULT_FILENAME, DEFAULT_ROW,
+  VALVE_COLUMNS, isValveColumnVisible, sizeNBFromLineNumber, VALVE_TABS, STANDARD_NOTES, DEFAULT_FILENAME, DEFAULT_ROW,
 };
 export default _exports;

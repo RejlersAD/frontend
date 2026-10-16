@@ -125,6 +125,8 @@ export async function scheduleHarness(page, options = {}) {
     const projectId = url.searchParams.get('enterprise_project') || url.searchParams.get('project')
     const scheduleId = url.searchParams.get('schedule')
     let record = Object.values(state.records).find(row => String(row.schedule.id) === scheduleId) || state.records[projectId] || Object.values(state.records).find(row => String(row.planningProject.id) === projectId) || state.records[17]
+    const planningMatch = path.match(/\/planning-intelligence\/projects\/(\d+)\//)
+    if (planningMatch) record = Object.values(state.records).find(row => String(row.planningProject.id) === planningMatch[1]) || record
     const versionMatch = path.match(/\/schedule-versions\/(\d+)\//)
     if (versionMatch) record = Object.values(state.records).find(row => row.versions.some(version => String(version.id) === versionMatch[1])) || record
     state.requests.push({ path, query: Object.fromEntries(url.searchParams), method: route.request().method(), project: record.project.id })
@@ -135,6 +137,11 @@ export async function scheduleHarness(page, options = {}) {
     if (agreementMatch && route.request().method() === 'GET') return reply(route, { enterprise_project_id: Number(agreementMatch[1]), planning_project_id: null, workspace: null, active_job: null, latest_job: null, files: [], permissions: { can_analyze: true, can_accept: false }, ai: { available: false, reason: 'Project AI is not configured.' } })
     if (path.endsWith('/project-control/phase-flags/')) return reply(route, { phase_flags: flags })
     if (path.endsWith('/planning-intelligence/projects/')) return reply(route, pageOf(state.noLinked ? [] : [record.planningProject]))
+    const masterMatch = path.match(/\/planning-intelligence\/projects\/(\d+)\/simple-plan\/$/)
+    if (masterMatch) {
+      const selected = Object.values(state.records).find(row => String(row.planningProject.id) === masterMatch[1])
+      return reply(route, selected ? { project_id: selected.planningProject.id, master_version_id: selected.masterVersionId || null } : { detail: 'Planning project not found.' }, selected ? 200 : 404)
+    }
     if (path.endsWith('/planning-intelligence/schedules/')) return reply(route, pageOf([record.schedule]))
     if (path.endsWith('/planning-intelligence/schedule-versions/')) return reply(route, pageOf(record.versions))
     if (path.endsWith('/planning-intelligence/baselines/')) return reply(route, pageOf(record.baselines))
@@ -152,7 +159,8 @@ export async function scheduleHarness(page, options = {}) {
     if (path.endsWith('/analytics/commercial-dashboard/')) return reply(route, { currency: 'AED', actual: '4600000.00', committed: '6800000.00', recent_events: [] })
     const support = [['/projects/tasks/', 'tasks'], ['/projects/milestones/', 'milestones'], ['/change-events/', 'changes'], ['/integrated-snapshots/', 'snapshots']].find(([suffix]) => path.endsWith(suffix))
     if (support) return reply(route, pageOf(record[support[1]]))
-    if (['/project-control/documents/', '/files/', '/generations/', '/jobs/', '/intelligence-runs/', '/intelligence-facts/', '/intelligence-conflicts/', '/control-accounts/', '/reporting-periods/', '/approved-hours/', '/cost-ledger/', '/budget-allocations/', '/wbs-nodes/'].some(suffix => path.endsWith(suffix))) return reply(route, pageOf([]))
+    if (path.endsWith('/jobs/active/') || path.endsWith('/intelligence-runs/latest/')) return reply(route, null)
+    if (['/project-control/documents/', '/files/', '/generations/', '/jobs/', '/intelligence-runs/', '/intelligence-facts/', '/intelligence-conflicts/', '/control-accounts/', '/reporting-periods/', '/approved-hours/', '/cost-ledger/', '/budget-allocations/', '/wbs-nodes/', '/schedule-default-proposals/'].some(suffix => path.endsWith(suffix))) return reply(route, pageOf([]))
     if (path.endsWith('/ai-settings/')) return reply(route, { enabled: false, key_configured: false, model: null })
     if (path.endsWith('/enterprise-contract/')) return reply(route, { project: record.planningProject, enterprise_project: record.project, differences: [], lifecycle: 'baselined', baseline_locked: true, baseline: record.baselines[0] || null })
     state.unknown.push(path)

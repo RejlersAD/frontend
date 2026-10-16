@@ -18,7 +18,9 @@ export default function HelpArticleBrowser({ articles, selectedArticleId }) {
       <p className="mt-2 text-sm leading-5 text-slate-600 dark:text-slate-300">{article.summary}</p>
       {article.sections.map(section => <section key={section.heading} className="mt-4">
         <h4 className="text-base font-semibold">{section.heading}</h4>
-        <ul className="mt-2 list-disc space-y-2 pl-5 text-sm leading-5 text-slate-600 dark:text-slate-300">{section.steps.map(step => <li key={step}>{step}</li>)}</ul>
+        {section.image && <img src={section.image.src} alt={section.image.alt} className="mt-2 w-full rounded-lg border border-slate-200 bg-white dark:border-slate-700" loading="lazy" />}
+        {section.body && <p className="mt-2 text-sm leading-5 text-slate-600 dark:text-slate-300">{section.body}</p>}
+        {section.steps?.length > 0 && <ul className="mt-2 list-disc space-y-2 pl-5 text-sm leading-5 text-slate-600 dark:text-slate-300">{section.steps.map(step => <li key={step}>{step}</li>)}</ul>}
       </section>)}
     </article> : <p role="status">No matching guidance. Try a tab name, baseline, sessions or monthly.</p>}
   </div>
@@ -28,6 +30,11 @@ HelpArticleBrowser.propTypes = {
   selectedArticleId: PropTypes.string.isRequired,
   articles: PropTypes.arrayOf(PropTypes.shape({
     id: PropTypes.string.isRequired, title: PropTypes.string.isRequired, summary: PropTypes.string.isRequired,
-    sections: PropTypes.arrayOf(PropTypes.shape({heading: PropTypes.string.isRequired, steps: PropTypes.arrayOf(PropTypes.string).isRequired})).isRequired,
+    sections: PropTypes.arrayOf(PropTypes.shape({
+      heading: PropTypes.string.isRequired,
+      body: PropTypes.string,
+      steps: PropTypes.arrayOf(PropTypes.string),
+      image: PropTypes.shape({ src: PropTypes.string.isRequired, alt: PropTypes.string.isRequired }),
+    })).isRequired,
   })).isRequired,
 }

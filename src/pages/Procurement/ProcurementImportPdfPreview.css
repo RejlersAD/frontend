@@ -1,0 +1,170 @@
+.procurement-import-review .procurement-source-preview {
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+  border-color: #dce5ee;
+  border-radius: 6px;
+  background: #cdd2d7;
+  color: #102b70;
+}
+
+.procurement-import-review .procurement-source-header {
+  position: relative;
+  gap: 8px 14px;
+  padding: 10px 14px;
+  border-color: #e0eafb;
+  background: #fff;
+}
+
+.procurement-import-review .procurement-source-heading h3 {
+  margin: 0;
+  color: #07176b;
+  font-size: var(--text-body-size, .875rem);
+  line-height: var(--text-body-line, 1.25rem);
+  font-weight: 600;
+}
+
+.procurement-import-review .procurement-source-heading p,
+.procurement-import-review .procurement-source-status {
+  margin: 0;
+  color: #3d5689;
+  font-size: var(--text-caption-size, .75rem);
+  line-height: var(--text-caption-line, 1rem);
+}
+
+.procurement-import-review .procurement-source-status {
+  flex: none;
+}
+
+.procurement-import-review .procurement-source-status-dot {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: 50%;
+  background: #7890b2;
+}
+
+.procurement-import-review .procurement-source-status[data-status="ready"] .procurement-source-status-dot {
+  background: #0aae42;
+}
+
+.procurement-import-review .procurement-source-status[data-status="error"] .procurement-source-status-dot,
+.procurement-import-review .procurement-source-status[data-status="unavailable"] .procurement-source-status-dot {
+  background: #bd6415;
+}
+
+.procurement-import-review .procurement-source-tabs {
+  gap: 5px;
+}
+
+.procurement-import-review .procurement-source-tabs button {
+  padding: 4px 10px;
+  border: 1px solid #d9e5f6;
+  border-radius: 4px;
+  color: #3d5689;
+  font-size: var(--text-caption-size, .75rem);
+  line-height: var(--text-caption-line, 1rem);
+  background: #fff;
+}
+
+.procurement-import-review .procurement-source-tabs button[aria-selected="true"] {
+  border-color: #a7c9ff;
+  color: #0058fa;
+  background: #edf4ff;
+}
+
+/* One source needs no visible switcher; keep its tab and panel association. */
+.procurement-import-review .procurement-source-tabs[data-single-document="true"]:not(:focus-within) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.procurement-import-review .procurement-source-content > section > [aria-label="PDF controls"] {
+  gap: 6px;
+  min-height: 44px;
+  padding: 7px 10px;
+  border-color: #dce7f7;
+  background: #f4f8ff;
+}
+
+.procurement-import-review .procurement-source-content [aria-label="PDF controls"] label,
+.procurement-import-review .procurement-source-content [aria-label="PDF pages"] {
+  color: #244381;
+  font-size: var(--text-caption-size, .75rem);
+  line-height: var(--text-caption-line, 1rem);
+}
+
+.procurement-import-review .procurement-source-content [aria-label="PDF controls"] button,
+.procurement-import-review .procurement-source-content [aria-label="PDF controls"] input {
+  min-height: 28px;
+  border-color: #cbdaf0;
+  border-radius: 4px;
+  color: #173978;
+  font-size: var(--text-caption-size, .75rem);
+  line-height: var(--text-caption-line, 1rem);
+  background: #fff;
+}
+
+.procurement-import-review .procurement-source-content [aria-label="PDF controls"] button:hover:not(:disabled) {
+  border-color: #92b9f5;
+  color: #0058fa;
+  background: #edf4ff;
+}
+
+.procurement-import-review .procurement-source-content [aria-label="PDF controls"] button:focus-visible,
+.procurement-import-review .procurement-source-content [aria-label="PDF controls"] input:focus-visible,
+.procurement-import-review .procurement-source-action:focus-visible {
+  outline: 2px solid #005cff;
+  outline-offset: 2px;
+}
+
+.procurement-import-review .procurement-source-content [aria-label="PDF controls"] > div:first-child {
+  gap: 5px;
+}
+
+.procurement-import-review .procurement-source-content [aria-label="PDF controls"] > div:first-child label {
+  order: -1;
+  gap: 6px;
+}
+
+.procurement-import-review .procurement-source-action {
+  min-height: 28px;
+  padding: 3px 5px;
+  gap: 5px;
+  color: #0055f9;
+  font-size: var(--text-caption-size, .75rem);
+  line-height: var(--text-caption-line, 1rem);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.procurement-import-review .procurement-source-download {
+  margin-left: 4px;
+  padding-left: 11px;
+  border-left: 1px solid #c7d8ee;
+  border-radius: 0;
+}
+
+.procurement-import-review .procurement-source-content > section > [tabindex="0"] {
+  background: #cdd2d7;
+  overscroll-behavior: contain;
+}
+
+.procurement-import-review .procurement-source-content canvas {
+  background: #fff;
+  box-shadow: 0 4px 16px #172b4d26;
+}
+
+@media (max-width: 700px) {
+  .procurement-import-review .procurement-source-header {
+    padding: 10px;
+  }
+
+  .procurement-import-review .procurement-source-content > section > [aria-label="PDF controls"] {
+    padding: 7px;
+  }
+}

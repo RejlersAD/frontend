@@ -52,11 +52,18 @@ export const notificationService = {
       console.log('[Notification Service] Response:', response.data)
       return response.data.unread_count || 0
     } catch (error) {
-      // Silent failure for background poll — UI keeps the last known count.
-      // Toast suppression is handled in api.service.js via SILENT_TIMEOUT_ENDPOINTS.
-      console.warn('[Notification Service] Unread count poll failed (silent):', error.message)
-      if (error.response?.status === 401) {
-        console.error('[Notification Service] ⚠️ Unauthorized - User may need to login')
+      // Canceled polls are expected on effect cleanup / StrictMode remounts —
+      // keep those truly silent instead of logging a stack trace.
+      const isCanceled = error?.code === 'ERR_CANCELED'
+        || error?.name === 'CanceledError'
+        || error?.message === 'canceled';
+      if (!isCanceled) {
+        // Silent failure for background poll — UI keeps the last known count.
+        // Toast suppression is handled in api.service.js via SILENT_TIMEOUT_ENDPOINTS.
+        console.warn('[Notification Service] Unread count poll failed (silent):', error.message)
+        if (error.response?.status === 401) {
+          console.error('[Notification Service] ⚠️ Unauthorized - User may need to login')
+        }
       }
       throw error
     }

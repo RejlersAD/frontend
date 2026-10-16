@@ -29,13 +29,24 @@
  */
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { DocumentTextIcon, CloudArrowUpIcon, CheckCircleIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon } from '@heroicons/react/24/outline';
+import { Link } from 'react-router-dom';
+import { DocumentTextIcon, CloudArrowUpIcon, CheckCircleIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon, BookOpenIcon, Cog6ToothIcon, MagnifyingGlassIcon, XMarkIcon, ClockIcon, ExclamationTriangleIcon, ExclamationCircleIcon, PlusIcon, ArrowUpTrayIcon, ArrowDownTrayIcon, QuestionMarkCircleIcon, EllipsisHorizontalIcon, ArrowTopRightOnSquareIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon, ClipboardDocumentListIcon, PencilSquareIcon } from '@heroicons/react/24/outline';
 import apiClient from '../../../services/api.service';
 import * as XLSX from 'xlsx';
 import envConfig from '../../../config/environment.config';
 import WrenchAiDocAssist from '../../../components/Engineering/WrenchAiDocAssist';
+import LegendSheetsModal from './components/LegendSheetsModal';
+import ProjectLegendPanel from '../../../components/Engineering/ProjectLegendPanel';
+import { listLegends } from '../../../services/pidCheckerV2API';
+import { publishChatContext, clearChatContext } from '../../../services/chatContext.store';
+import { CHAT_PAGE_PROFILES } from '../../../config/radaiChatPages.config';
 import { getApiBaseUrl } from '../../../config/environment.config';
 import { STORAGE_KEYS } from '../../../config/app.config';
+// Shared Project Organizer — soft-coded workspace (same pattern as HMB Extractor)
+import { PROJECT_ORGANIZER_CONFIG } from '../../../config/projectOrganizer.config';
+import projectOrganizerService from '../../../services/projectOrganizerService';
+import { ProjectCard, ProjectFormModal, useActiveProject } from '../../../components/ProjectOrganizer';
+import { FolderIcon, FolderPlusIcon } from '@heroicons/react/24/outline';
 
 // ---------------------------------------------------------------------------
 // Soft-coded config — all timing values flow from environments.json.
@@ -50,9 +61,10 @@ const POLL_INTERVAL_MS   = Number(API_CONFIG.retry_delay)              || 3000;
 
 // Maximum total polling window — give up after this (ms)
 // SOFT-CODED: environments.json → api.timeout_extraction_poll
-// Default 60 min — Railway OCR on dense multi-page P&IDs can take 30-45 min.
+// Default 100 min — dense/scanned multi-page P&IDs (25+ pages) can exceed 60 min.
+// Must stay >= backend DESIGNIQ_TASK_HARD_LIMIT (Celery, 6000 s).
 // Change this in environments.json without touching code.
-const POLL_MAX_WAIT_MS   = Number(API_CONFIG.timeout_extraction_poll)  || 3600000;  // 60 min
+const POLL_MAX_WAIT_MS   = Number(API_CONFIG.timeout_extraction_poll)  || 6000000;  // 100 min
 
 // Timeout for the initial filing POST (upload + broker dispatch, NOT OCR time).
 // Uses AbortController so it cannot be bypassed by Axios instance settings.
@@ -87,6 +99,7 @@ const FORMAT_OPTIONS = [
   { value: 'offshore',   label: 'Offshore',               hint: 'AREA-FLUID-SIZE-CLASS-SEQ'         },
   { value: 'general',    label: 'General (Auto-detect)',  hint: 'Tries all formats automatically'   },
   { value: 'adnoc',      label: 'SIZE\"-FLUID-CLASS-SEQ', hint: 'ADNOC / compact format'           },
+  { value: 'linelist',   label: 'Line List',              hint: 'SIZE-UNIT-FLUID-SERIAL-CLASS-COAT (Phase 2)' },
 ];
 
 // Soft-coded table columns — key maps directly to row fields.
@@ -177,6 +190,70 @@ const FORMAT_EXAMPLES = [
 // Pure styling constants consumed by the header + feature tiles. Changing any
 // value here only affects looks, never extraction / polling / export behaviour.
 // ---------------------------------------------------------------------------
+
+// HEADER STYLE SWITCH — 'v1' = light card identical to P&ID Verification V1;
+// 'dark' = legacy dark gradient banner. Soft-coded, flip anytime.
+const LL_HEADER_STYLE = 'v1';
+
+// SOFT-CODED: visibility toggles for optional page sections.
+const LL_SHOW_FORMATS_REFERENCE = false;   // "Supported Line Number Formats" card — hidden
+const LL_SHOW_WHAT_GETS_EXTRACTED = false; // "What Gets Extracted" info panel — hidden
+
+// SOFT-CODED: upload rules — shown in the "Before you upload" card on the
+// upload step AND enforced client-side (page count) + server-side
+// (BASE_EXTRACTION_MAX_PAGES in designiq/views.py — keep both in sync).
+const LL_UPLOAD_RULES = {
+  enabled: true,
+  maxPages: 12,                 // hard cap — matches backend BASE_EXTRACTION_MAX_PAGES
+  title: 'Before you upload',
+  rules: [
+    { icon: '📄', text: 'Upload a maximum of {maxPages} pages per P&ID document. Split larger packages into single-sheet or smaller PDFs.' },
+    { icon: '🧭', text: 'Line tags at any angle are supported (horizontal and vertical).' },
+  ],
+  formatsTitle: 'Supported Line List formats',
+  formats: [
+    { key: 'a', label: 'Phase 1',            pattern: 'XX-XX-XXXX-XXXX-X' },
+    { key: 'b', label: 'Phase 2 (Line List)', pattern: 'XX-XX-XX-AXXXX-XXXXXXX-XX' },
+  ],
+};
+
+// Count PDF pages client-side (dependency-free heuristic: counts page
+// objects in the raw file). Returns null when the count can't be read.
+const countPdfPages = async (file) => {
+  try {
+    const buf = await file.arrayBuffer();
+    const text = new TextDecoder('latin1').decode(buf);
+    const matches = text.match(/\/Type\s*\/Page(?![sA-Za-z])/g);
+    return matches ? matches.length : null;
+  } catch {
+    return null;
+  }
+};
+
+// V1-style light header config (mirrors PIDVerification.jsx header constants)
+const LL_HEADER = {
+  icon:         'doc',          // 'doc' | 'layers' — header icon tile
+  title:        'Line List',
+  subtitle:     'AI-powered line extraction from P&ID drawings — line designation, service codes, piping spec and FROM→TO flow, validated against your naming convention.',
+  badgeText:    'Production Ready',
+  badgeColor:   '#10b981',
+  iconSize:     40,
+  // Feature pills under the subtitle (colour-coded like V1)
+  featureBadges: [
+    { label: 'AI-Powered OCR',     color: '#3b82f6' },
+    { label: 'Async Processing',   color: '#6366f1' },
+    { label: '5 Format Profiles',  color: '#8b5cf6' },
+    { label: 'Excel Export',       color: '#f59e0b' },
+    { label: 'Vision FROM→TO',     color: '#06b6d4' },
+  ],
+  // Quick stats shown on the right (values resolved at render)
+  stats: [
+    { key: 'columns', label: 'Columns' },
+    { key: 'formats', label: 'Formats' },
+  ],
+};
+
+// Legacy dark hero banner (kept for rollback via LL_HEADER_STYLE = 'dark')
 const LL_HERO = {
   gradient:    'linear-gradient(135deg, #1e40af 0%, #2563eb 40%, #4f46e5 75%, #7c3aed 100%)',
   accentGlow:  'radial-gradient(circle at 20% 20%, rgba(96,165,250,0.35), transparent 55%), radial-gradient(circle at 80% 30%, rgba(167,139,250,0.3), transparent 50%)',
@@ -229,12 +306,60 @@ const LL_PROC_TIPS = [
 ];
 const LL_PROC_TIP_ROTATE_MS = 5000;
 
+// ---------------------------------------------------------------------------
+// ─── Enterprise Line Register (management view) — pure design layer ────────
+// Renders the extracted rows as an enterprise register (search, filters,
+// status badges, KPI cards, pagination, detail panel, revision history).
+// SOFT-CODED: every value here is display-only — extraction, polling and
+// export logic never read from this block.
+// ---------------------------------------------------------------------------
+const LL_REGISTER = {
+  enabled:        true,
+  registerNo:     'LL-001',
+  revision:       '03',
+  revisionStatus: 'In Review',
+  pageSize:       10,
+  breadcrumbRoot: 'Projects',
+  tabs:           ['Overview', 'Line List', 'Changes', 'Validation', 'Reviews', 'Documents'],
+  accent:         '#0f766e',   // enterprise teal (matches reference template)
+};
+
+// Status badge palette — keyed by computed row status.
+const LL_STATUS_STYLES = {
+  New:       { bg: 'rgba(59,130,246,0.10)',  fg: '#1d4ed8', border: 'rgba(59,130,246,0.28)'  },
+  Changed:   { bg: 'rgba(245,158,11,0.12)',  fg: '#b45309', border: 'rgba(245,158,11,0.30)'  },
+  Reviewed:  { bg: 'rgba(16,185,129,0.10)',  fg: '#047857', border: 'rgba(16,185,129,0.28)'  },
+  Unchanged: { bg: 'rgba(100,116,139,0.08)', fg: '#475569', border: 'rgba(100,116,139,0.22)' },
+  Error:     { bg: 'rgba(239,68,68,0.10)',   fg: '#b91c1c', border: 'rgba(239,68,68,0.28)'   },
+  Warning:   { bg: 'rgba(245,158,11,0.14)',  fg: '#b45309', border: 'rgba(245,158,11,0.32)'  },
+};
+
+// Revision history (newest first). `live: true` marks the current working
+// revision — its metadata is enriched at render time from the real extraction.
+const LL_REVISIONS = [
+  { rev: '03', status: 'In Review',          by: 'Process Lead',       note: 'Current extraction — pending engineering review', live: true },
+  { rev: '02', status: 'Approved',           by: 'Engineering Manager', note: 'Issued for design — Phase 1 lines incorporated' },
+  { rev: '01', status: 'Issued for Review',  by: 'Process Engineer',    note: 'First issue from P&ID base extraction' },
+];
+
+// Fields shown in the detail panel's "Engineering specifications" group.
+const LL_SPEC_FIELDS = [
+  { key: 'size',              label: 'Size' },
+  { key: 'fluid_code',        label: 'Service code' },
+  { key: 'fluid_description', label: 'Service description' },
+  { key: 'sequence_no',       label: 'Sequence no.' },
+  { key: 'piping_spec',       label: 'Piping specification' },
+  { key: 'dept_deviation',    label: 'Dept deviation' },
+  { key: 'insulation',        label: 'Insulation' },
+  { key: 'insulation_desc',   label: 'Insulation description' },
+];
+
 // ─── AI Document Assist (Wrench) — soft-coded panel config ─────────────────
 // Mirrors the pattern used on PID Verification / PMS / Instrument Index /
 // CLL / PFD Quality Checker.  Flip `enabled: false` to hide without
 // touching JSX.  Line List only consumes PDFs.
 const LL_AI_ASSIST_CONFIG = {
-  enabled:         true,
+  enabled:         false,   // "AI Document Assist" section hidden — flip to true to restore
   title:           'AI Document Assist',
   subtitleTag:     '(Wrench · optional)',
   subtitle:        'Let RAD AI pick & recommend the right P&ID PDF for this Line List from Wrench DMS',
@@ -246,11 +371,13 @@ const LL_AI_ASSIST_CONFIG = {
 
 // ---------------------------------------------------------------------------
 // Soft-coded layout config — change widths/padding here without touching JSX.
+// FULL CANVAS: mirrors P&ID Verification V1 (w-full + px-2/4/6), so the page
+// uses the entire viewport instead of a centred 1280px column.
 // ---------------------------------------------------------------------------
 const LAYOUT_CONFIG = {
-  // Normal mode: wider canvas usage (max-w-7xl = 80 rem = 1280 px)
-  normalMaxWidth:      '80rem',
-  normalPaddingX:      '1.5rem',   // px-6
+  // Normal mode: full-width canvas like PID Verification V1
+  normalMaxWidth:      '100%',
+  normalPaddingX:      '1.5rem',   // ~px-6 on desktop (inner wrapper also has mx-0)
   normalPaddingY:      '2rem',     // py-8
   // Fullscreen mode: fills the whole viewport
   fullscreenMaxWidth:  '100%',
@@ -261,15 +388,66 @@ const LAYOUT_CONFIG = {
 // Helper — returns patience message based on elapsed time.
 const getPatienceMsg = (secs) => {
   if (secs < 60)  return 'OCR extraction running in the background — usually 2–10 min for standard P&IDs.';
+  if (secs < 60)  return 'OCR extraction running in the background — usually 2–10 min for standard P&IDs.';
   if (secs < 180) return 'Still working… multi-page or high-density P&IDs take longer. Please keep this tab open.';
   if (secs < 600) return `Running for ${Math.floor(secs/60)}m ${secs%60}s — complex drawings can take 10–30 min on the server. You can safely leave this tab open.`;
   return `Running for ${Math.floor(secs/60)}m ${secs%60}s — still processing. For very large files consider splitting into single-sheet P&IDs.`;
 };
 
+// ---------------------------------------------------------------------------
+// SOFT-CODED: Project Organizer integration for Line List
+// true = require a project before extraction (V1-style workspace);
+// false = legacy single-shot mode (no projects).
+// ---------------------------------------------------------------------------
+const LL_PROJECTS = {
+  enabled:    true,
+  toolCode:   'pid_line_list',                 // matches moduleCode in engineeringStructure.config
+  storageKey: 'lineListActiveProject',
+  theme:      PROJECT_ORGANIZER_CONFIG.defaultTheme,
+  createTitle:'New Line List Project',
+};
+
+const LL_LEGENDS = {
+  enabled: true,                 // false → restore legacy manual legend upload card
+  section: 'line_list',          // backend legend section (pidCheckerV2API.LEGEND_SECTIONS)
+};
+
 const LineList = () => {
+  // ── Project Organizer state (soft-coded — see LL_PROJECTS) ─────────────
+  const { activeProject, setActiveProject, hydrated: projHydrated } = useActiveProject(LL_PROJECTS.storageKey);
+  const [projects, setProjects]               = useState([]);
+  const [loadingProjects, setLoadingProjects] = useState(true);
+  const [showCreateProject, setShowCreateProject] = useState(false);
+  const [projectBusy, setProjectBusy]         = useState(false);
+  const [projectError, setProjectError]       = useState('');
+
   // State management
   const [pidDocument, setPidDocument] = useState(null);
   const [legendDocument, setLegendDocument] = useState(null);
+
+  // ── Managed Legend Sheets (shared V1 system — soft-coded via LL_LEGENDS) ──
+  const [legendModalOpen, setLegendModalOpen] = useState(false);
+  const [activeLegend, setActiveLegend]       = useState(null);
+
+  const refreshActiveLegend = useCallback(async () => {
+    try {
+      const rows = await listLegends(LL_LEGENDS.section);
+      const list = rows || [];
+      setActiveLegend(list.find(l => l.is_active) || null);
+    } catch { /* non-fatal — legend is optional */ }
+  }, []);
+
+  // Stable handler for the modal's active-legend callback. MUST be a
+  // useCallback — an inline arrow here is a new reference every render, which
+  // retriggers the modal's refresh effect (its `refresh` depends on this) and
+  // caused the legends endpoint to be hammered in a loop ("bouncing" UI).
+  const handleLegendActiveChange = useCallback((legend) => {
+    setActiveLegend(legend);
+    refreshActiveLegend();
+  }, [refreshActiveLegend]);
+
+  useEffect(() => { if (LL_LEGENDS.enabled) refreshActiveLegend(); }, [refreshActiveLegend]);
+
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [statusMessage, setStatusMessage] = useState('');
@@ -285,18 +463,200 @@ const LineList = () => {
   // Rotating tip index for processing card
   const [procTipIdx, setProcTipIdx] = useState(0);
 
+  // ── Enterprise register UI state (design layer only) ────────────────────
+  // None of this feeds extraction / polling / export — it only shapes how
+  // completed results are presented and interacted with.
+  const [regTab, setRegTab]             = useState('Line List');
+  const [regSearch, setRegSearch]       = useState('');
+  const [regFilters, setRegFilters]     = useState({ fluid_code: '', status: '', insulation: '', pid_no: '' });
+  const [regPage, setRegPage]           = useState(1);
+  const [regSelectedRow, setRegSelectedRow] = useState(null);   // row object reference
+  const [regChecked, setRegChecked]     = useState(() => new Set());
+  const [regActionsOpen, setRegActionsOpen] = useState(false);
+  const [regExtraRows, setRegExtraRows] = useState([]);         // added / imported lines (UI layer)
+  const [regOverrides, setRegOverrides] = useState(() => new Map()); // row → status after review actions
+  const [regDetailTab, setRegDetailTab] = useState('Details');
+  const regImportRef = useRef(null);
+
+  // ── Edit-line modal state ──
+  const [regEditRow, setRegEditRow]   = useState(null);   // row being edited
+  const [regEditForm, setRegEditForm] = useState({});
+
+  // ── View switch: 'extract' = upload/processing workspace, 'register' = results page
+  // Auto-switches to the register when extraction completes; the register
+  // header offers "New extraction" to go back without losing results.
+  const [regView, setRegView] = useState('extract');
+  useEffect(() => { if (extractedData) setRegView('register'); }, [extractedData]);
+
+  // ── Review & approval workflow (page-level, persisted per project) ──────
+  // Steps 1-3 auto-complete from real data (extraction, validation, per-row
+  // reviews). Steps 4-5 are actionable: submit → manager approve/reject →
+  // issue for design. State persists in localStorage per project.
+  const reviewStorageKey = `lineListReview_${activeProject?.project_id || 'default'}`;
+  const [reviewState, setReviewState] = useState({ status: 'in_review', comment: '', history: [] });
+  const [reviewComment, setReviewComment] = useState('');
+
+  // Hydrate when the project changes
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(reviewStorageKey);
+      setReviewState(raw ? JSON.parse(raw) : { status: 'in_review', comment: '', history: [] });
+    } catch { setReviewState({ status: 'in_review', comment: '', history: [] }); }
+  }, [reviewStorageKey]);
+
+  // Persist on change
+  useEffect(() => {
+    try { localStorage.setItem(reviewStorageKey, JSON.stringify(reviewState)); } catch { /* quota — non-fatal */ }
+  }, [reviewState, reviewStorageKey]);
+
+  const pushReviewEvent = (text) => ({
+    text,
+    at: new Date().toISOString().slice(0, 16).replace('T', ' '),
+  });
+
+  // ── Saved outputs (persist & re-download later) ─────────────────────────
+  // Uses the existing backend endpoints: save_output / previous_outputs /
+  // download_output / output_data. Fail-safe: saving never blocks export.
+  const [savedOutputs, setSavedOutputs]     = useState([]);
+  const [savedLoading, setSavedLoading]     = useState(false);
+  const [savedOpen, setSavedOpen]           = useState(false);
+  const [savedNotice, setSavedNotice]       = useState('');
+  const [savedBusyId, setSavedBusyId]       = useState(null);
+
+  const fetchSavedOutputs = useCallback(async () => {
+    setSavedLoading(true);
+    try {
+      const { data } = await apiClient.get('/designiq/lists/previous_outputs/', { params: { list_type: 'line_list' } });
+      setSavedOutputs(data?.outputs || []);
+    } catch { setSavedOutputs([]); }
+    finally { setSavedLoading(false); }
+  }, []);
+
+  useEffect(() => { fetchSavedOutputs(); }, [fetchSavedOutputs]);
+  useEffect(() => {
+    if (!savedNotice) return;
+    const t = setTimeout(() => setSavedNotice(''), 6000);
+    return () => clearTimeout(t);
+  }, [savedNotice]);
+
+  // Download a previously saved output (blob → browser download)
+  const downloadSavedOutput = useCallback(async (output) => {
+    setSavedBusyId(output.id);
+    try {
+      const resp = await apiClient.get(`/designiq/lists/download_output/${output.id}/`, { responseType: 'blob' });
+      const url = URL.createObjectURL(new Blob([resp.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = output.excel_filename || `line_list_${output.id}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch { setError('Download failed — the saved file may no longer exist.'); }
+    finally { setSavedBusyId(null); }
+  }, []);
+
+  // Load a saved output back into the register view (no re-extraction needed)
+  const openSavedOutput = useCallback(async (output) => {
+    setSavedBusyId(output.id);
+    try {
+      const { data } = await apiClient.get(`/designiq/lists/output_data/${output.id}/`);
+      const headers = (data.headers || []).map(h => String(h).trim().toLowerCase());
+      const rows = (data.rows || []).map(r => {
+        const obj = {};
+        COLUMNS.forEach(c => {
+          const i = headers.indexOf(c.label.toLowerCase());
+          if (i >= 0 && r[i] !== '' && r[i] != null) obj[c.key] = r[i];
+        });
+        return obj;
+      });
+      setRegExtraRows([]);
+      setRegOverrides(new Map());
+      setRegChecked(new Set());
+      setRegSelectedRow(null);
+      setRegSearch('');
+      setRegFilters({ fluid_code: '', status: '', insulation: '', pid_no: '' });
+      setRegPage(1);
+      setExtractedData({
+        success: true,
+        total_lines: rows.length,
+        columns: COLUMNS.length,
+        data: rows,
+        message: `Loaded saved output: ${output.excel_filename}`,
+      });
+      setSavedOpen(false);
+    } catch { setError('Could not load the saved output.'); }
+    finally { setSavedBusyId(null); }
+  }, []);
+
+  // Persist the current workbook server-side (called automatically on export)
+  const saveOutputToServer = useCallback(async (wb, filename) => {
+    if (!extractedData?.data?.length) return;
+    try {
+      const wbArray = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([wbArray], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const fd = new FormData();
+      fd.append('excel_file', blob, filename);
+      fd.append('pid_number', extractedData.data.find(r => r.pid_no)?.pid_no || pidDocument?.name || 'Line List');
+      fd.append('list_type', 'line_list');
+      fd.append('format_type', formatType);
+      fd.append('total_lines', String(extractedData.total_lines ?? extractedData.data.length));
+      fd.append('total_columns', String(COLUMNS.length));
+      await apiClient.post('/designiq/lists/save_output/', fd);
+      setSavedNotice('Output saved — re-download anytime from Saved outputs.');
+      fetchSavedOutputs();
+    } catch (e) {
+      console.warn('[LineList] save_output failed (download unaffected):', e);
+    }
+  }, [extractedData, pidDocument, formatType, fetchSavedOutputs]);
+
   const pidRef = useRef(null);
   const legendRef = useRef(null);
   const pollTimerRef = useRef(null);
   const pollStartRef = useRef(null);
   const elapsedTimerRef = useRef(null);
 
+  // ── RADAI Chat context — publish the current page's data so the floating
+  // assistant can answer questions about it. Re-publishes whenever the
+  // extracted rows, uploaded P&ID, or active project change; clears on unmount.
+  useEffect(() => {
+    const rows = extractedData?.data || [];
+    publishChatContext({
+      page: 'Line List',
+      domain_prompt: CHAT_PAGE_PROFILES.line_list.domainPrompt,
+      row_name: CHAT_PAGE_PROFILES.line_list.rowName,
+      project: activeProject
+        ? { id: activeProject.project_id, name: activeProject.name || '', code: activeProject.code || '' }
+        : null,
+      document: pidDocument
+        ? { name: pidDocument.name, type: 'P&ID PDF', sizeLabel: `${(pidDocument.size / 1024 / 1024).toFixed(2)} MB` }
+        : null,
+      columns: COLUMNS.map(c => ({ key: c.key, label: c.label })),
+      rows,
+      row_count: extractedData?.total_lines ?? rows.length,
+      summary: extractedData ? {
+        total_lines: extractedData.total_lines,
+        columns: extractedData.columns,
+        format: formatType,
+      } : null,
+      notes: 'Line list extracted from a P&ID. Columns: ' + COLUMNS.map(c => c.label).join(', '),
+    })
+    return () => clearChatContext()
+  }, [extractedData, pidDocument, activeProject, formatType])
+
   // -------------------------------------------------------------------------
   // File selection
   // -------------------------------------------------------------------------
-  const handlePIDSelect = (e) => {
+  const handlePIDSelect = async (e) => {
     const file = e.target.files[0];
     if (file && file.type === 'application/pdf') {
+      // Soft-coded page limit (LL_UPLOAD_RULES.maxPages) — client-side guard
+      const pages = await countPdfPages(file);
+      if (LL_UPLOAD_RULES.enabled && pages !== null && pages > LL_UPLOAD_RULES.maxPages) {
+        setPidDocument(null);
+        setError(`This PDF has ${pages} pages — the maximum is ${LL_UPLOAD_RULES.maxPages} pages per upload. Please split the document and try again.`);
+        return;
+      }
       setPidDocument(file);
       setError(null);
       setExtractedData(null);
@@ -329,6 +689,49 @@ const LineList = () => {
     }
     return () => clearInterval(elapsedTimerRef.current);
   }, [isProcessing]);
+
+  // -------------------------------------------------------------------------
+  // Project Organizer — load projects + handlers (soft-coded via LL_PROJECTS)
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    if (!LL_PROJECTS.enabled) { setLoadingProjects(false); return; }
+    let live = true;
+    (async () => {
+      try {
+        const items = await projectOrganizerService.listProjects();
+        if (live) setProjects(items);
+      } catch {
+        if (live) setProjectError('Failed to load projects');
+      } finally {
+        if (live) setLoadingProjects(false);
+      }
+    })();
+    return () => { live = false; };
+  }, []);
+
+  const handleCreateProject = async (payload) => {
+    setProjectBusy(true); setProjectError('');
+    try {
+      const p = await projectOrganizerService.createProject(payload);
+      setProjects(prev => [p, ...prev]);
+      setShowCreateProject(false);
+      setActiveProject(p);
+    } catch (e) {
+      setProjectError(e?.response?.data?.error || 'Failed to create project');
+    } finally {
+      setProjectBusy(false);
+    }
+  };
+
+  // Fire-and-forget cross-tool activity log (never blocks extraction UX)
+  const logExtractionActivity = (fileName, lineCount) => {
+    if (!LL_PROJECTS.enabled || !activeProject) return;
+    projectOrganizerService.logProjectActivity(activeProject.project_id, {
+      toolCode: LL_PROJECTS.toolCode,
+      summary: `Line list extracted from "${fileName}" — ${lineCount} line${lineCount === 1 ? '' : 's'}`,
+      metadata: { file: fileName, lines: lineCount, format: formatType },
+    }).catch(() => {});
+  };
 
   // Friendly elapsed-time string e.g. "2m 34s"
   const formatElapsed = (secs) => {
@@ -373,6 +776,7 @@ const LineList = () => {
           setStatusMessage('Extraction complete!');
           setExtractedData(data.result);
           setIsProcessing(false);
+          logExtractionActivity(pidDocument?.name || 'P&ID', data.result?.lines?.length ?? 0);
 
         } else if (state === 'FAILURE') {
           clearTimeout(pollTimerRef.current);
@@ -427,6 +831,12 @@ const LineList = () => {
     formData.append('pid_file', pidDocument);
     formData.append('format_type', formatType);
     formData.append('include_area', includeArea);
+    // Soft-coded: project label so the backend archives source + output to the
+    // project's S3 folder (s3_utils ARCHIVE layout)
+    if (activeProject) {
+      formData.append('project_code', activeProject.code || '');
+      formData.append('project_name', activeProject.name || '');
+    }
     if (legendDocument) {
       formData.append('legend_file', legendDocument);
     }
@@ -494,6 +904,7 @@ const LineList = () => {
           setProgress(100);
           setStatusMessage('Extraction complete!');
           setIsProcessing(false);
+          logExtractionActivity(pidDocument?.name || 'P&ID', data?.lines?.length ?? 0);
           return;
         }
 
@@ -574,11 +985,268 @@ const LineList = () => {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Line List');
     XLSX.writeFile(wb, 'line_list_base_extraction.xlsx');
+    // Persist a copy server-side so it can be re-downloaded later (fail-safe —
+    // the local download above has already happened and is never affected).
+    saveOutputToServer(wb, 'line_list_base_extraction.xlsx');
+  };
+
+  // -------------------------------------------------------------------------
+  // Enterprise register — derived data + UI-only handlers (design layer)
+  // -------------------------------------------------------------------------
+
+  // Data-quality driven status: Error = unusable row, Warning = incomplete
+  // FROM/TO, otherwise Reviewed. Review actions can override per row.
+  const getLineStatus = useCallback((row) => {
+    const override = regOverrides.get(row);
+    if (override) return override;
+    if (row.__added) return 'New';
+    if (!row.original_detection || !row.size) return 'Error';
+    const from = row.from_line || row.from_equipment || row.from;
+    const to   = row.to_line   || row.to_equipment   || row.to;
+    if (!from || !to) return 'Warning';
+    return 'Reviewed';
+  }, [regOverrides]);
+
+  // Data-quality issues for a row — drives the Validation tab + detail alerts.
+  const getLineIssues = useCallback((row) => {
+    const issues = [];
+    if (!row.original_detection) issues.push('Missing line designation');
+    if (!row.size)               issues.push('Missing size');
+    if (!(row.from_line || row.from_equipment || row.from)) issues.push('FROM not detected');
+    if (!(row.to_line   || row.to_equipment   || row.to))   issues.push('TO not detected');
+    if (!row.piping_spec)        issues.push('Missing piping specification');
+    return issues;
+  }, []);
+
+  const regAllRows = extractedData?.data ? [...extractedData.data, ...regExtraRows] : [];
+
+  // Distinct filter options derived from live data.
+  const regFilterOptions = {
+    fluid_code: [...new Set(regAllRows.map(r => r.fluid_code).filter(Boolean))].sort(),
+    insulation: [...new Set(regAllRows.map(r => r.insulation).filter(Boolean))].sort(),
+    pid_no:     [...new Set(regAllRows.map(r => r.pid_no).filter(Boolean))].sort(),
+  };
+
+  const regQuery = regSearch.trim().toLowerCase();
+  const regRows = regAllRows.filter(row => {
+    const status = getLineStatus(row);
+    if (regFilters.status     && status !== regFilters.status) return false;
+    if (regFilters.fluid_code && row.fluid_code !== regFilters.fluid_code) return false;
+    if (regFilters.insulation && row.insulation !== regFilters.insulation) return false;
+    if (regFilters.pid_no     && row.pid_no     !== regFilters.pid_no)     return false;
+    if (regQuery) {
+      const haystack = COLUMNS.map(c => resolveCellValue(row, c)).join(' ').toLowerCase();
+      if (!haystack.includes(regQuery)) return false;
+    }
+    return true;
+  });
+
+  const regTotalPages = Math.max(1, Math.ceil(regRows.length / LL_REGISTER.pageSize));
+  const regPageSafe   = Math.min(regPage, regTotalPages);
+  const regPageRows   = regRows.slice((regPageSafe - 1) * LL_REGISTER.pageSize, regPageSafe * LL_REGISTER.pageSize);
+
+  // KPI counts across ALL rows (unfiltered) so cards stay stable while filtering.
+  const regKpis = regAllRows.reduce((acc, row) => {
+    const s = getLineStatus(row);
+    acc.total += 1;
+    if (s === 'New')     acc.newCount += 1;
+    if (s === 'Error')   acc.errors += 1;
+    if (s === 'Warning') acc.warnings += 1;
+    if (s === 'Changed') acc.changed += 1;
+    return acc;
+  }, { total: 0, newCount: 0, errors: 0, warnings: 0, changed: 0 });
+  regKpis.reviewPending = regKpis.errors + regKpis.warnings + regKpis.newCount + regKpis.changed;
+
+  // ── Derived workflow state (display + gating for the Reviews tab) ───────
+  const regWfSteps = [
+    { step: 'Extraction complete',          by: 'RAD AI Engine',        done: !!extractedData },
+    { step: 'Data-quality validation',      by: 'Automated rules',      done: !!extractedData && (regKpis.errors + regKpis.warnings) === 0 },
+    { step: 'Process engineering review',   by: 'Process Lead',         done: !!extractedData && regKpis.reviewPending === 0 },
+    { step: 'Engineering manager approval', by: 'Engineering Manager',  done: reviewState.status === 'approved' || reviewState.status === 'issued' },
+    { step: 'Issue Rev 04 for design',      by: 'Document Control',     done: reviewState.status === 'issued' },
+  ];
+  const regWfReadyToSubmit = regWfSteps[0].done && regWfSteps[1].done && regWfSteps[2].done;
+
+  const REG_REV_STATUS = {
+    in_review:        { label: 'In Review',        fg: '#0f766e', bg: 'rgba(15,118,110,0.09)',  border: 'rgba(15,118,110,0.25)' },
+    pending_approval: { label: 'Pending Approval', fg: '#b45309', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)' },
+    approved:         { label: 'Approved',         fg: '#047857', bg: 'rgba(16,185,129,0.1)',  border: 'rgba(16,185,129,0.28)' },
+    rejected:         { label: 'Rejected',         fg: '#b91c1c', bg: 'rgba(239,68,68,0.1)',   border: 'rgba(239,68,68,0.28)' },
+    issued:           { label: 'Issued for Design',fg: '#1d4ed8', bg: 'rgba(59,130,246,0.1)',  border: 'rgba(59,130,246,0.28)' },
+  };
+  const regRev       = reviewState.status === 'issued' ? '04' : LL_REGISTER.revision;
+  const regRevStatus = REG_REV_STATUS[reviewState.status] || REG_REV_STATUS.in_review;
+
+  const handleReviewSubmit = () => {
+    setReviewState(s => ({ ...s, status: 'pending_approval', comment: '',
+      history: [pushReviewEvent(`Rev ${regRev} submitted for engineering manager approval`), ...s.history] }));
+    setSavedNotice(`Rev ${regRev} submitted for approval.`);
+  };
+  const handleReviewDecide = (decision) => {
+    setReviewState(s => ({ ...s, status: decision, comment: reviewComment,
+      history: [pushReviewEvent(
+        `${decision === 'approved' ? 'Approved' : 'Rejected'} by Engineering Manager${reviewComment ? ` — "${reviewComment}"` : ''}`
+      ), ...s.history] }));
+    setReviewComment('');
+    setSavedNotice(decision === 'approved' ? `Rev ${regRev} approved.` : `Rev ${regRev} rejected — back to review.`);
+  };
+  const handleReviewIssue = () => {
+    setReviewState(s => ({ ...s, status: 'issued',
+      history: [pushReviewEvent('Rev 04 issued for design by Document Control'), ...s.history] }));
+    setSavedNotice('Rev 04 issued for design.');
+  };
+
+  const regResetPage = () => setRegPage(1);
+
+  const handleRegAddLine = () => {
+    const row = { __added: true, original_detection: `NEW-LINE-${String(regExtraRows.length + 1).padStart(3, '0')}` };
+    setRegExtraRows(prev => [...prev, row]);
+    setRegSelectedRow(row);
+    setRegDetailTab('Details');
+    setRegActionsOpen(false);
+  };
+
+  // Import CSV/XLSX — maps columns by matching the register's column labels.
+  // Purely additive to the UI layer; the extraction pipeline is untouched.
+  const handleRegImport = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    setRegActionsOpen(false);
+    if (!file) return;
+    try {
+      const buf = await file.arrayBuffer();
+      const wb  = XLSX.read(buf);
+      const ws  = wb.Sheets[wb.SheetNames[0]];
+      const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      if (aoa.length < 2) { setError('Import file has no data rows.'); return; }
+      const headers = aoa[0].map(h => String(h).trim().toLowerCase());
+      const imported = aoa.slice(1)
+        .filter(r => r.some(c => String(c).trim() !== ''))
+        .map(r => {
+          const obj = { __added: true };
+          COLUMNS.forEach(c => {
+            const i = headers.indexOf(c.label.toLowerCase());
+            if (i >= 0 && r[i] !== '') obj[c.key] = r[i];
+          });
+          return obj;
+        });
+      if (!imported.length) { setError('Import failed — no rows matched the register column headers.'); return; }
+      setRegExtraRows(prev => [...prev, ...imported]);
+      setError(null);
+    } catch {
+      setError('Import failed — please provide a CSV/XLSX with the register column headers.');
+    }
+  };
+
+  const handleRegReviewRow = (row) => {
+    setRegOverrides(prev => new Map(prev).set(row, 'Reviewed'));
+    setSavedNotice(`"${row.original_detection || 'Line'}" marked as Reviewed.`);
+  };
+
+  // Open the edit modal prefilled with the row's current values
+  const handleRegEditOpen = (row) => {
+    const form = {};
+    COLUMNS.forEach(c => { form[c.key] = resolveCellValue(row, c) || ''; });
+    setRegEditForm(form);
+    setRegEditRow(row);
+  };
+
+  // Save edits in place (object identity preserved → selection, overrides and
+  // checkboxes keep working). Edited rows are flagged 'Changed' for review.
+  const handleRegEditSave = () => {
+    if (!regEditRow) return;
+    Object.keys(regEditForm).forEach(k => { regEditRow[k] = regEditForm[k]; });
+    if (regEditRow.__added) {
+      setRegExtraRows(prev => [...prev]);
+    } else if (extractedData) {
+      setExtractedData({ ...extractedData, data: [...extractedData.data] });
+    }
+    setRegOverrides(prev => new Map(prev).set(regEditRow, 'Changed'));
+    setRegEditRow(null);
+    setSavedNotice(`"${regEditForm.original_detection || 'Line'}" updated — marked as Changed for review.`);
+  };
+
+  const regToggleCheck = (row) => {
+    setRegChecked(prev => {
+      const next = new Set(prev);
+      if (next.has(row)) next.delete(row); else next.add(row);
+      return next;
+    });
+  };
+
+  const regToggleAllOnPage = () => {
+    setRegChecked(prev => {
+      const next = new Set(prev);
+      const allChecked = regPageRows.every(r => next.has(r));
+      regPageRows.forEach(r => { if (allChecked) next.delete(r); else next.add(r); });
+      return next;
+    });
   };
 
   // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------
+
+  // ── PROJECT GATE — V1-style workspace: select/create a project first ─────
+  // SOFT-CODED: disable via LL_PROJECTS.enabled = false (legacy single-shot).
+  if (LL_PROJECTS.enabled && (!projHydrated || loadingProjects)) {
+    return <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #f8faff 0%, #eef2ff 45%, #f0f9ff 75%, #fffbeb 100%)' }} />;
+  }
+
+  if (LL_PROJECTS.enabled && !activeProject) {
+    return (
+      <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #f8faff 0%, #eef2ff 45%, #f0f9ff 75%, #fffbeb 100%)', padding: '32px 24px' }}>
+        <div className="w-full" style={{ maxWidth: 1400, margin: '0 auto' }}>
+          {/* Header */}
+          <div className="flex items-center gap-3 mb-1.5">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ background: 'linear-gradient(135deg,#3b82f6,#6366f1)', boxShadow: '0 4px 14px rgba(59,130,246,0.3)' }}>
+              <DocumentTextIcon className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-extrabold text-slate-900" style={{ margin: 0 }}>Line List — Project Workspace</h1>
+              <p className="text-sm text-slate-500" style={{ margin: 0 }}>Select or create a project to organise your P&ID line-list extractions.</p>
+            </div>
+          </div>
+
+          <div className="mt-6 mb-5">
+            <button onClick={() => setShowCreateProject(true)}
+              className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-white rounded-xl transition-all hover:-translate-y-px"
+              style={{ background: 'linear-gradient(135deg,#3b82f6,#6366f1)', boxShadow: '0 4px 12px rgba(59,130,246,0.25)', border: 'none', cursor: 'pointer' }}>
+              <FolderPlusIcon className="h-4 w-4" /> New Project
+            </button>
+          </div>
+
+          {projectError && (
+            <div role="alert" className="mb-4 px-4 py-3 rounded-lg text-sm" style={{ border: '1px solid #fecaca', background: '#fef2f2', color: '#991b1b' }}>
+              {projectError}
+            </div>
+          )}
+
+          {projects.length === 0 ? (
+            <div className="rounded-2xl p-16 text-center" style={{ background: '#fff', border: '1px dashed rgba(59,130,246,0.3)' }}>
+              <FolderIcon className="h-12 w-12 mx-auto mb-3" style={{ color: '#3b82f6', opacity: 0.45 }} />
+              <h2 className="text-lg font-bold text-slate-900" style={{ margin: 0 }}>No projects yet</h2>
+              <p className="text-sm text-slate-500 mt-1">Create your first project to start extracting line lists.</p>
+            </div>
+          ) : (
+            <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))' }}>
+              {projects.map(p => (
+                <ProjectCard key={p.project_id} project={p} theme={LL_PROJECTS.theme}
+                  onOpen={() => setActiveProject(p)} />
+              ))}
+            </div>
+          )}
+
+          {showCreateProject && (
+            <ProjectFormModal theme={LL_PROJECTS.theme} busy={projectBusy}
+              onClose={() => setShowCreateProject(false)} onSubmit={handleCreateProject} />
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <style>{`
@@ -669,10 +1337,11 @@ const LineList = () => {
         .ll-section { animation: ll-fade-up 0.5s ease both; }
       `}</style>
 
-      {/* Light blue/indigo gradient page — wraps in fixed overlay when fullscreen */}
+      {/* Light blue/indigo gradient page — wraps in fixed overlay when fullscreen
+          SOFT-CODED: background aligned with P&ID Verification V1 (T.bg) */}
       <div
         className={`min-h-screen relative overflow-x-hidden${isFullscreen ? ' ll-fullscreen-wrap' : ''}`}
-        style={{ background: 'linear-gradient(145deg, #eff6ff 0%, #eef2ff 45%, #f0f9ff 100%)' }}
+        style={{ background: 'linear-gradient(135deg, #f8faff 0%, #eef2ff 45%, #f0f9ff 75%, #fffbeb 100%)' }}
       >
 
         {/* Subtle dot grid */}
@@ -699,15 +1368,106 @@ const LineList = () => {
         </div>
 
         <div
-          className="relative z-10 mx-auto"
+          className="relative z-10"
           style={{
             maxWidth:  isFullscreen ? LAYOUT_CONFIG.fullscreenMaxWidth : LAYOUT_CONFIG.normalMaxWidth,
             padding:   `${isFullscreen ? LAYOUT_CONFIG.fullscreenPaddingY : LAYOUT_CONFIG.normalPaddingY} ${isFullscreen ? LAYOUT_CONFIG.fullscreenPaddingX : LAYOUT_CONFIG.normalPaddingX}`,
           }}
         >
 
-          {/* ── Page Header — Hero banner (gradient + animated halo + chips) ── */}
+          {/* ── Page Header — V1-style light card (soft-coded; flip LL_HEADER_STYLE to 'dark' for legacy banner) ── */}
           <div className="mb-8 ll-section" style={{ animationDelay: '0s' }}>
+          {LL_HEADER_STYLE === 'v1' ? (
+            /* ═══ V1 LIGHT HEADER — identical layout to P&ID Verification V1 ═══ */
+            <div className="rounded-2xl" style={{
+              background: 'linear-gradient(135deg, rgba(59,130,246,0.03) 0%, rgba(99,102,241,0.06) 100%)',
+              border: '1px solid #e2e8f0',
+              padding: '32px',
+            }}>
+              <div className="flex items-start justify-between gap-6 flex-wrap">
+                {/* Left: Icon + Title + Description + feature pills */}
+                <div className="flex items-start gap-5 flex-1" style={{ minWidth: 0 }}>
+                  {/* Icon tile — V1 blue→indigo gradient */}
+                  <div style={{
+                    width: '40px', height: '40px', borderRadius: '14px', flexShrink: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: 'linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)',
+                    boxShadow: '0 4px 14px rgba(59,130,246,0.3)',
+                  }}>
+                    <DocumentTextIcon className="h-5 w-5 text-white" />
+                  </div>
+
+                  <div className="flex-1" style={{ minWidth: 0 }}>
+                    <div className="flex items-center gap-3 mb-2 flex-wrap">
+                      <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight" style={{ margin: 0, lineHeight: 1.2 }}>
+                        {LL_HEADER.title}
+                      </h1>
+                      {/* Status badge — V1 pattern */}
+                      <span style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '6px',
+                        padding: '4px 12px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 600,
+                        background: `${LL_HEADER.badgeColor}15`, color: LL_HEADER.badgeColor,
+                        border: `1px solid ${LL_HEADER.badgeColor}30`,
+                      }}>
+                        <CheckCircleIcon className="h-3.5 w-3.5" />
+                        {LL_HEADER.badgeText}
+                      </span>
+                    </div>
+                    <p style={{ fontSize: '0.95rem', color: '#64748b', margin: 0, maxWidth: '680px', lineHeight: 1.6 }}>
+                      {LL_HEADER.subtitle}
+                    </p>
+
+                    {/* Feature pills — V1 colour-coded */}
+                    <div className="flex flex-wrap gap-2 mt-4">
+                      {LL_HEADER.featureBadges.map((b) => (
+                        <span key={b.label} style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '6px',
+                          padding: '6px 14px', borderRadius: '20px',
+                          fontSize: '0.75rem', fontWeight: 500,
+                          background: `${b.color}08`, color: b.color, border: `1px solid ${b.color}20`,
+                        }}>
+                          {b.label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right: project chip + fullscreen toggle + quick stats — V1 pattern */}
+                <div className="flex items-center gap-4 flex-wrap">
+                  {LL_PROJECTS.enabled && activeProject && (
+                    <button onClick={() => setActiveProject(null)}
+                      title="Switch project"
+                      className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition-all">
+                      <FolderIcon className="h-4 w-4" />
+                      <span className="max-w-[180px] truncate">{activeProject.name || activeProject.code || 'Project'}</span>
+                      <span className="text-blue-400">·</span>
+                      <span className="text-blue-500">Switch</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setIsFullscreen(fs => !fs)}
+                    title={isFullscreen ? 'Exit fullscreen' : 'Expand to fullscreen'}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 shadow-sm transition-all"
+                  >
+                    {isFullscreen
+                      ? <><ArrowsPointingInIcon className="h-4 w-4" /> Exit</>
+                      : <><ArrowsPointingOutIcon className="h-4 w-4" /> Fullscreen</>}
+                  </button>
+                  <div className="flex gap-6">
+                    <div className="text-center">
+                      <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#3b82f6', lineHeight: 1 }}>{COLUMNS.length}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Columns</div>
+                    </div>
+                    <div className="text-center">
+                      <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#10b981', lineHeight: 1 }}>{FORMAT_OPTIONS.length}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Formats</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
             <div
               className="ll-hero-animated relative overflow-hidden rounded-3xl px-7 py-8 text-white"
               style={{
@@ -781,7 +1541,7 @@ const LineList = () => {
                 {[
                   { k: COLUMNS.length, v: 'Columns' },
                   { k: FORMAT_OPTIONS.length, v: 'Formats' },
-                  { k: '≤ 60m', v: 'Time Budget' },
+                  { k: '≤ 100m', v: 'Time Budget' },
                 ].map((s, i) => (
                   <div key={i} className="px-3 py-2 rounded-xl text-center"
                     style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.22)', backdropFilter: 'blur(6px)' }}>
@@ -791,9 +1551,13 @@ const LineList = () => {
                 ))}
               </div>
             </div>
+          )}
           </div>
 
-          {/* ── Supported Formats Reference card ── */}
+          {/* ═══ EXTRACTION WORKSPACE VIEW — shown until results are ready ═══ */}
+          {regView === 'extract' && (<>
+          {/* ── Supported Formats Reference card — soft-coded off (LL_SHOW_FORMATS_REFERENCE) ── */}
+          {LL_SHOW_FORMATS_REFERENCE && (
           <div className="rounded-2xl p-5 mb-4 ll-section" style={{
             background: 'rgba(254,243,199,0.65)',
             border: '1px solid rgba(217,119,6,0.2)',
@@ -822,8 +1586,29 @@ const LineList = () => {
               ))}
             </div>
           </div>
+          )}
 
           {/* ── Upload + Options Card ── */}
+          {/* ═══ PROJECT WORKSPACE section header — V1 pattern ═══ */}
+          <div className="flex items-center justify-between mb-6 mt-2 flex-wrap gap-4 ll-section" style={{ animationDelay: '0.1s' }}>
+            <div>
+              <h2 className="text-xl font-bold text-slate-900" style={{ margin: 0, marginBottom: '4px' }}>Project Workspace</h2>
+              <p className="text-sm text-slate-500" style={{ margin: 0 }}>Upload a P&ID drawing to extract the line list — then review and export.</p>
+            </div>
+            <button
+              onClick={() => setSavedOpen(true)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 shadow-sm transition-all"
+              style={{ cursor: 'pointer' }}>
+              <FolderIcon className="h-4 w-4" /> Saved outputs
+              {savedOutputs.length > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold"
+                  style={{ background: 'rgba(15,118,110,0.1)', color: '#0f766e' }}>
+                  {savedOutputs.length}
+                </span>
+              )}
+            </button>
+          </div>
+
           <div className="rounded-2xl p-6 mb-4 ll-section" style={{
             background: 'white',
             border: '1px solid rgba(37,99,235,0.13)',
@@ -837,6 +1622,43 @@ const LineList = () => {
               <h2 className="text-sm font-semibold text-slate-700 tracking-wide">Upload P&amp;ID Document</h2>
             </div>
 
+            {/* ── Upload rules card — soft-coded (LL_UPLOAD_RULES) ────────── */}
+            {LL_UPLOAD_RULES.enabled && (
+              <div className="mb-5 rounded-xl px-4 py-3.5" style={{
+                background: 'rgba(245,158,11,0.06)',
+                border: '1px solid rgba(245,158,11,0.28)',
+              }}>
+                <p className="text-xs font-bold uppercase tracking-wider text-amber-700 mb-2">
+                  {LL_UPLOAD_RULES.title}
+                </p>
+                <ul className="space-y-1.5 mb-3">
+                  {LL_UPLOAD_RULES.rules.map((rule, i) => (
+                    <li key={i} className="flex items-start gap-2 text-xs text-slate-600 leading-relaxed">
+                      <span>{rule.icon}</span>
+                      <span>{rule.text.replace('{maxPages}', LL_UPLOAD_RULES.maxPages)}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                  {LL_UPLOAD_RULES.formatsTitle}
+                </p>
+                <div className="space-y-1">
+                  {LL_UPLOAD_RULES.formats.map(f => (
+                    <div key={f.key} className="flex items-center gap-2 text-xs">
+                      <span className="w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
+                        style={{ background: '#2563eb' }}>
+                        {f.key}
+                      </span>
+                      <code className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 font-mono text-[11px]">
+                        {f.pattern}
+                      </code>
+                      <span className="text-slate-400">— {f.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* ── AI Document Assist (Wrench) — soft-coded, optional ─────── */}
             {LL_AI_ASSIST_CONFIG.enabled && (
               <div className="mb-5">
@@ -849,7 +1671,14 @@ const LineList = () => {
                   topN={LL_AI_ASSIST_CONFIG.topN}
                   acceptedExts={LL_AI_ASSIST_CONFIG.acceptedExts}
                   projectName=""
-                  onFileSelected={(f) => {
+                  onFileSelected={async (f) => {
+                    // Same soft-coded page limit as the manual picker
+                    const pages = await countPdfPages(f);
+                    if (LL_UPLOAD_RULES.enabled && pages !== null && pages > LL_UPLOAD_RULES.maxPages) {
+                      setPidDocument(null);
+                      setError(`This PDF has ${pages} pages — the maximum is ${LL_UPLOAD_RULES.maxPages} pages per upload. Please split the document and try again.`);
+                      return;
+                    }
                     setPidDocument(f);
                     setError(null);
                     setExtractedData(null);
@@ -940,6 +1769,18 @@ const LineList = () => {
                     <option key={opt.value} value={opt.value}>{opt.label} — {opt.hint}</option>
                   ))}
                 </select>
+                <p className="text-xs text-slate-500 mt-2" style={{ margin: '0.5rem 0 0' }}>
+                  Line List sequence not available?{' '}
+                  <Link
+                    to="/my-enquiries"
+                    style={{ color: '#2563eb', fontWeight: 600, textDecoration: 'none' }}
+                    onMouseEnter={e => { e.target.style.textDecoration = 'underline'; }}
+                    onMouseLeave={e => { e.target.style.textDecoration = 'none'; }}
+                  >
+                    Send us an enquiry
+                  </Link>
+                  {' '}to align a new sequence for extraction.
+                </p>
               </div>
 
               <div className="flex items-center">
@@ -974,7 +1815,16 @@ const LineList = () => {
             </div>
           </div>
 
-          {/* ── Legend Sheet Upload Card (optional) ── */}
+          {/* ── Legend Sheets — shared ProjectLegendPanel (project inheritance) ── */}
+          {LL_LEGENDS.enabled ? (
+          <ProjectLegendPanel
+            section={LL_LEGENDS.section}
+            projectId={activeProject?.project_id}
+            projectName={activeProject?.name || activeProject?.code || ''}
+            onManage={() => setLegendModalOpen(true)}
+            refreshToken={legendModalOpen ? 0 : 1}
+          />
+          ) : (
           <div className="rounded-2xl p-6 mb-4 ll-section" style={{
             background: 'white',
             border: '1px solid rgba(16,185,129,0.18)',
@@ -1036,6 +1886,7 @@ const LineList = () => {
               </div>
             </div>
           </div>
+          )}
 
           {/* ── Action Buttons ── */}
           <div className="flex gap-3 mb-4 ll-section" style={{ animationDelay: '0.2s' }}>
@@ -1282,9 +2133,822 @@ const LineList = () => {
               <p className="text-red-600 text-sm font-medium">{error}</p>
             </div>
           )}
+          </>)}
 
-          {/* ── Results Table ── */}
-          {extractedData && (
+          {/* ════════════════════════════════════════════════════════════════
+              ENTERPRISE LINE REGISTER — management view (design layer)
+              Mirrors the Equipment List template: breadcrumb header, tabs,
+              KPI cards, search + filters, status badges, pagination, and a
+              row-detail panel with specs / history / documents.
+              All data below derives from `extractedData` — core extraction,
+              polling and Excel export logic are untouched.
+             ════════════════════════════════════════════════════════════════ */}
+          {regView === 'register' && LL_REGISTER.enabled && (
+            <div className="ll-section" style={{ animationDelay: '0s' }}>
+
+              {/* ── Register header card: breadcrumb + title + meta + actions ── */}
+              <div className="rounded-2xl mb-4 relative" style={{
+                background: 'white', border: '1px solid #e2e8f0',
+                boxShadow: '0 2px 12px rgba(15,118,110,0.05)',
+              }}>
+                <div className="px-6 pt-5 pb-0">
+                  <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div style={{ minWidth: 0 }}>
+                      <p className="text-xs text-slate-400 mb-1" style={{ margin: '0 0 4px' }}>
+                        {LL_REGISTER.breadcrumbRoot}
+                        <span className="mx-1.5 text-slate-300">/</span>
+                        <span className="text-slate-500">{activeProject?.name || activeProject?.code || 'Workspace'}</span>
+                      </p>
+                      <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight" style={{ margin: 0, lineHeight: 1.2 }}>
+                        Line List
+                      </h2>
+                      <p className="text-xs text-slate-500 mt-1" style={{ margin: '4px 0 0' }}>
+                        {activeProject?.name || 'Project'} — Engineering line register and data validation
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      {/* Back to extraction workspace */}
+                      <button onClick={() => setRegView('extract')}
+                        title="Start a new extraction"
+                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 shadow-sm transition-all"
+                        style={{ cursor: 'pointer' }}>
+                        <CloudArrowUpIcon className="h-4 w-4" /> New extraction
+                      </button>
+                      {/* Register meta */}
+                      <div className="flex items-center gap-2.5 text-xs text-slate-500">
+                        <span>Register: <span className="font-semibold text-slate-700">{LL_REGISTER.registerNo}</span></span>
+                        <span className="text-slate-300">|</span>
+                        <span>Rev: <span className="font-semibold text-slate-700">{regRev}</span></span>
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                          style={{ background: regRevStatus.bg, color: regRevStatus.fg, border: `1px solid ${regRevStatus.border}` }}>
+                          {regRevStatus.label}
+                        </span>
+                      </div>
+                      <button title="Help"
+                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 shadow-sm transition-all">
+                        <QuestionMarkCircleIcon className="h-4 w-4" /> Help
+                      </button>
+                      <button title="More options"
+                        className="flex items-center justify-center w-9 h-9 rounded-xl bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 shadow-sm transition-all">
+                        <EllipsisHorizontalIcon className="h-5 w-5" />
+                      </button>
+                      {/* Actions dropdown: Add line / Import / Export */}
+                      <div className="relative">
+                        <button
+                          onClick={() => setRegActionsOpen(o => !o)}
+                          className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-white transition-all"
+                          style={{ background: LL_REGISTER.accent, boxShadow: '0 4px 12px rgba(15,118,110,0.28)', border: 'none', cursor: 'pointer' }}>
+                          Actions <ChevronDownIcon className="h-3.5 w-3.5" />
+                        </button>
+                        {regActionsOpen && (
+                          <>
+                            <div className="fixed inset-0 z-30" onClick={() => setRegActionsOpen(false)} />
+                            <div className="absolute right-0 mt-2 w-52 rounded-xl overflow-hidden z-50"
+                              style={{ background: 'white', border: '1px solid #e2e8f0', boxShadow: '0 12px 32px rgba(15,23,42,0.14)', top: '100%' }}>
+                              {[
+                                { icon: <PlusIcon className="h-4 w-4" />,          label: 'Add line',         onClick: handleRegAddLine },
+                                { icon: <ArrowUpTrayIcon className="h-4 w-4" />,   label: 'Import CSV / Excel', onClick: () => regImportRef.current?.click() },
+                                { icon: <ArrowDownTrayIcon className="h-4 w-4" />, label: 'Export Excel',     onClick: () => { setRegActionsOpen(false); handleExport(); } },
+                                { icon: <FolderIcon className="h-4 w-4" />,        label: 'Saved outputs',    onClick: () => { setRegActionsOpen(false); setSavedOpen(true); } },
+                              ].map(a => (
+                                <button key={a.label} onClick={a.onClick}
+                                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-teal-50 hover:text-teal-800 transition-colors"
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+                                  {a.icon}{a.label}
+                                </button>
+                              ))}
+                            </div>
+                          </>
+                        )}
+                        <input ref={regImportRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleRegImport} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ── Tabs ── */}
+                  <div className="flex items-center gap-1 mt-5" style={{ borderTop: '1px solid #f1f5f9', paddingTop: 0 }}>
+                    {LL_REGISTER.tabs.map(tab => {
+                      const active = regTab === tab;
+                      return (
+                        <button key={tab}
+                          onClick={() => setRegTab(tab)}
+                          className="px-4 py-3 text-xs font-semibold transition-colors"
+                          style={{
+                            background: 'none', border: 'none', cursor: 'pointer',
+                            color: active ? LL_REGISTER.accent : '#64748b',
+                            borderBottom: active ? `2px solid ${LL_REGISTER.accent}` : '2px solid transparent',
+                            marginBottom: -1,
+                          }}>
+                          {tab}
+                          {tab === 'Validation' && (regKpis.errors + regKpis.warnings) > 0 && (
+                            <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold"
+                              style={{ background: 'rgba(239,68,68,0.1)', color: '#b91c1c' }}>
+                              {regKpis.errors + regKpis.warnings}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* ═══ TAB: Line List — KPIs + search/filters + register table + detail panel ═══ */}
+              {regTab === 'Line List' && (
+                <div className="grid gap-4" style={{ gridTemplateColumns: regSelectedRow ? 'minmax(0,1fr) 400px' : 'minmax(0,1fr)' }}>
+                  <div style={{ minWidth: 0 }}>
+
+                    {/* KPI cards */}
+                    <div className="grid gap-0 mb-4 rounded-2xl overflow-hidden" style={{
+                      gridTemplateColumns: 'repeat(5, minmax(0,1fr))',
+                      background: 'white', border: '1px solid #e2e8f0',
+                    }}>
+                      {[
+                        { icon: <ClipboardDocumentListIcon className="h-5 w-5" style={{ color: '#475569' }} />,   val: regKpis.total,         label: 'Total lines',    color: '#0f172a' },
+                        { icon: <DocumentTextIcon className="h-5 w-5" style={{ color: LL_REGISTER.accent }} />,   val: regKpis.newCount + regKpis.changed, label: 'New / Changed', color: LL_REGISTER.accent },
+                        { icon: <ExclamationCircleIcon className="h-5 w-5" style={{ color: '#dc2626' }} />,       val: regKpis.errors,        label: 'Errors',         color: '#dc2626' },
+                        { icon: <ExclamationTriangleIcon className="h-5 w-5" style={{ color: '#d97706' }} />,     val: regKpis.warnings,      label: 'Warnings',       color: '#d97706' },
+                        { icon: <ClockIcon className="h-5 w-5" style={{ color: '#64748b' }} />,                   val: regKpis.reviewPending, label: 'Review pending', color: '#0f172a' },
+                      ].map((k, i) => (
+                        <div key={k.label} className="flex items-center gap-3 px-5 py-4"
+                          style={{ borderLeft: i > 0 ? '1px solid #f1f5f9' : 'none' }}>
+                          {k.icon}
+                          <div>
+                            <div className="text-xl font-extrabold tabular-nums leading-none" style={{ color: k.color }}>{k.val}</div>
+                            <div className="text-[11px] text-slate-400 mt-1">{k.label}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Search + filter bar */}
+                    <div className="rounded-2xl p-3 mb-4 flex items-center gap-2.5 flex-wrap" style={{
+                      background: 'white', border: '1px solid #e2e8f0',
+                    }}>
+                      <div className="relative flex-1" style={{ minWidth: 220 }}>
+                        <MagnifyingGlassIcon className="h-4 w-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                        <input
+                          value={regSearch}
+                          onChange={e => { setRegSearch(e.target.value); regResetPage(); }}
+                          placeholder="Search line tags or descriptions…"
+                          className="w-full pl-10 pr-3 py-2.5 text-sm rounded-xl outline-none"
+                          style={{ border: '1px solid #e2e8f0', color: '#334155', background: '#f8fafc' }}
+                          onFocus={e => { e.target.style.borderColor = 'rgba(15,118,110,0.45)'; e.target.style.boxShadow = '0 0 0 3px rgba(15,118,110,0.08)'; }}
+                          onBlur={e => { e.target.style.borderColor = '#e2e8f0'; e.target.style.boxShadow = 'none'; }}
+                        />
+                      </div>
+                      {[
+                        { key: 'fluid_code', label: 'Service',  options: regFilterOptions.fluid_code },
+                        { key: 'status',     label: 'Status',   options: Object.keys(LL_STATUS_STYLES) },
+                        { key: 'insulation', label: 'Insulation', options: regFilterOptions.insulation },
+                        { key: 'pid_no',     label: 'P&ID',     options: regFilterOptions.pid_no },
+                      ].map(f => (
+                        <div key={f.key} className="relative">
+                          <select
+                            value={regFilters[f.key]}
+                            onChange={e => { setRegFilters(prev => ({ ...prev, [f.key]: e.target.value })); regResetPage(); }}
+                            className="appearance-none pl-3.5 pr-8 py-2.5 text-xs font-semibold rounded-xl outline-none cursor-pointer"
+                            style={{
+                              border: `1px solid ${regFilters[f.key] ? 'rgba(15,118,110,0.4)' : '#e2e8f0'}`,
+                              color: regFilters[f.key] ? LL_REGISTER.accent : '#475569',
+                              background: regFilters[f.key] ? 'rgba(15,118,110,0.05)' : 'white',
+                            }}>
+                            <option value="">{f.label}</option>
+                            {f.options.map(o => <option key={o} value={o}>{o}</option>)}
+                          </select>
+                          <ChevronDownIcon className="h-3.5 w-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                        </div>
+                      ))}
+                      {(regSearch || Object.values(regFilters).some(Boolean)) && (
+                        <button
+                          onClick={() => { setRegSearch(''); setRegFilters({ fluid_code: '', status: '', insulation: '', pid_no: '' }); regResetPage(); }}
+                          className="flex items-center gap-1 px-3 py-2.5 text-xs font-semibold text-slate-500 hover:text-red-600 rounded-xl transition-colors"
+                          style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                          <XMarkIcon className="h-3.5 w-3.5" /> Clear
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Register table card */}
+                    <div className="rounded-2xl overflow-hidden" style={{
+                      background: 'white', border: '1px solid #e2e8f0',
+                      boxShadow: '0 2px 16px rgba(15,23,42,0.04)',
+                    }}>
+                      <div className="px-5 py-4 flex items-center justify-between gap-3 flex-wrap">
+                        <h3 className="text-base font-bold text-slate-900" style={{ margin: 0 }}>Line register</h3>
+                        <div className="flex items-center gap-2">
+                          {regChecked.size > 0 && (
+                            <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full"
+                              style={{ background: 'rgba(15,118,110,0.08)', color: LL_REGISTER.accent, border: '1px solid rgba(15,118,110,0.2)' }}>
+                              {regChecked.size} selected
+                            </span>
+                          )}
+                          <button onClick={handleExport}
+                            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border transition-all hover:bg-slate-50"
+                            style={{ border: '1px solid #e2e8f0', color: '#475569', background: 'white', cursor: 'pointer' }}>
+                            <ArrowDownTrayIcon className="h-4 w-4" /> Export
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full">
+                          <thead>
+                            <tr style={{ background: '#f8fafc', borderTop: '1px solid #f1f5f9', borderBottom: '1px solid #e2e8f0' }}>
+                              <th className="px-4 py-3 w-10">
+                                <input type="checkbox"
+                                  checked={regPageRows.length > 0 && regPageRows.every(r => regChecked.has(r))}
+                                  onChange={regToggleAllOnPage}
+                                  style={{ accentColor: LL_REGISTER.accent, cursor: 'pointer' }} />
+                              </th>
+                              {['Line Designation', 'Service', 'Size', 'Seq No.', 'Piping Spec', 'Insulation', 'From', 'To', 'P&ID No.', 'Status'].map(h => (
+                                <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider" style={{ whiteSpace: 'nowrap' }}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {regPageRows.length === 0 && (
+                              <tr><td colSpan={11} className="px-4 py-10 text-center text-sm text-slate-400">
+                                {!extractedData
+                                  ? 'No lines yet — upload a P&ID above and run extraction, or use Actions → Add line / Import.'
+                                  : 'No lines match the current search / filters.'}
+                              </td></tr>
+                            )}
+                            {regPageRows.map((row, idx) => {
+                              const status = getLineStatus(row);
+                              const st = LL_STATUS_STYLES[status];
+                              const isSel = regSelectedRow === row;
+                              return (
+                                <tr key={idx}
+                                  onClick={() => { setRegSelectedRow(isSel ? null : row); setRegDetailTab('Details'); }}
+                                  style={{
+                                    background: isSel ? 'rgba(15,118,110,0.06)' : idx % 2 === 0 ? 'white' : '#fafcfd',
+                                    borderBottom: '1px solid #f1f5f9', cursor: 'pointer',
+                                    transition: 'background 0.15s',
+                                  }}
+                                  onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = 'rgba(15,118,110,0.03)'; }}
+                                  onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = idx % 2 === 0 ? 'white' : '#fafcfd'; }}
+                                >
+                                  <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                                    <input type="checkbox" checked={regChecked.has(row)} onChange={() => regToggleCheck(row)}
+                                      style={{ accentColor: LL_REGISTER.accent, cursor: 'pointer' }} />
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-mono font-semibold"
+                                      style={{ background: 'rgba(15,118,110,0.07)', color: '#0f766e', border: '1px solid rgba(15,118,110,0.15)', whiteSpace: 'nowrap' }}>
+                                      {row.original_detection || '—'}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3 text-xs text-slate-600" title={row.fluid_description || ''}>
+                                    {row.fluid_code || '—'}
+                                  </td>
+                                  <td className="px-4 py-3 text-xs text-slate-600">{row.size || '—'}</td>
+                                  <td className="px-4 py-3 text-xs text-slate-600">{row.sequence_no || '—'}</td>
+                                  <td className="px-4 py-3 text-xs text-slate-600" style={{ whiteSpace: 'nowrap' }}>{row.piping_spec || '—'}</td>
+                                  <td className="px-4 py-3 text-xs text-slate-600" title={row.insulation_desc || ''}>{row.insulation || '—'}</td>
+                                  <td className="px-4 py-3 text-xs text-slate-600" style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {row.from_line || row.from_equipment || row.from || '—'}
+                                  </td>
+                                  <td className="px-4 py-3 text-xs text-slate-600" style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {row.to_line || row.to_equipment || row.to || '—'}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <span className="text-xs font-mono text-slate-500" style={{ whiteSpace: 'nowrap' }}>{row.pid_no || '—'}</span>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                                      style={{ background: st.bg, color: st.fg, border: `1px solid ${st.border}`, whiteSpace: 'nowrap' }}>
+                                      {status}
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Pagination */}
+                      <div className="px-5 py-3.5 flex items-center justify-between gap-3 flex-wrap text-xs text-slate-500"
+                        style={{ borderTop: '1px solid #f1f5f9', background: '#fbfdfe' }}>
+                        <span>
+                          {regRows.length === 0 ? '0' : (regPageSafe - 1) * LL_REGISTER.pageSize + 1}–{Math.min(regPageSafe * LL_REGISTER.pageSize, regRows.length)} of {regRows.length}
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <button disabled={regPageSafe <= 1} onClick={() => setRegPage(p => Math.max(1, p - 1))}
+                            className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+                            style={{ border: '1px solid #e2e8f0', background: 'white', color: regPageSafe <= 1 ? '#cbd5e1' : '#475569', cursor: regPageSafe <= 1 ? 'not-allowed' : 'pointer' }}>
+                            <ChevronLeftIcon className="h-4 w-4" />
+                          </button>
+                          {Array.from({ length: regTotalPages }).map((_, i) => i + 1)
+                            .filter(p => p === 1 || p === regTotalPages || Math.abs(p - regPageSafe) <= 2)
+                            .reduce((acc, p, i, arr) => {
+                              if (i > 0 && p - arr[i - 1] > 1) acc.push('…');
+                              acc.push(p);
+                              return acc;
+                            }, [])
+                            .map((p, i) => p === '…' ? (
+                              <span key={`e${i}`} className="px-1.5 text-slate-400">…</span>
+                            ) : (
+                              <button key={p} onClick={() => setRegPage(p)}
+                                className="w-8 h-8 rounded-lg text-xs font-semibold transition-colors"
+                                style={p === regPageSafe
+                                  ? { background: LL_REGISTER.accent, color: 'white', border: 'none', cursor: 'pointer' }
+                                  : { border: '1px solid #e2e8f0', background: 'white', color: '#475569', cursor: 'pointer' }}>
+                                {p}
+                              </button>
+                            ))}
+                          <button disabled={regPageSafe >= regTotalPages} onClick={() => setRegPage(p => Math.min(regTotalPages, p + 1))}
+                            className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+                            style={{ border: '1px solid #e2e8f0', background: 'white', color: regPageSafe >= regTotalPages ? '#cbd5e1' : '#475569', cursor: regPageSafe >= regTotalPages ? 'not-allowed' : 'pointer' }}>
+                            <ChevronRightIcon className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ── Detail panel — LINE DETAILS (template right column) ── */}
+                  {regSelectedRow && (
+                    <div className="rounded-2xl overflow-hidden self-start sticky" style={{
+                      background: 'white', border: '1px solid #e2e8f0', top: 16,
+                      boxShadow: '0 4px 20px rgba(15,23,42,0.06)',
+                    }}>
+                      <div className="px-5 pt-4 pb-0" style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Line Details</span>
+                          <div className="flex items-center gap-1.5">
+                            <button title="Open full view" className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors"
+                              style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                              <ArrowsPointingOutIcon className="h-4 w-4" />
+                            </button>
+                            <button title="Close" onClick={() => setRegSelectedRow(null)}
+                              className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors"
+                              style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                              <XMarkIcon className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="text-lg font-extrabold text-slate-900 font-mono" style={{ margin: 0, wordBreak: 'break-all' }}>
+                            {regSelectedRow.original_detection || 'Unnamed line'}
+                          </h3>
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold flex-shrink-0"
+                            style={{
+                              background: LL_STATUS_STYLES[getLineStatus(regSelectedRow)].bg,
+                              color: LL_STATUS_STYLES[getLineStatus(regSelectedRow)].fg,
+                              border: `1px solid ${LL_STATUS_STYLES[getLineStatus(regSelectedRow)].border}`,
+                            }}>
+                            {getLineStatus(regSelectedRow)}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-0.5 mb-3" style={{ margin: '2px 0 12px' }}>
+                          {regSelectedRow.fluid_description || 'Line'} · {regSelectedRow.pid_no || 'No P&ID ref'}
+                        </p>
+                        <div className="flex items-center gap-1">
+                          {['Details', 'History', 'Documents'].map(t => (
+                            <button key={t} onClick={() => setRegDetailTab(t)}
+                              className="px-3.5 py-2.5 text-xs font-semibold transition-colors"
+                              style={{
+                                background: 'none', border: 'none', cursor: 'pointer',
+                                color: regDetailTab === t ? LL_REGISTER.accent : '#64748b',
+                                borderBottom: regDetailTab === t ? `2px solid ${LL_REGISTER.accent}` : '2px solid transparent',
+                                marginBottom: -1,
+                              }}>
+                              {t}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="px-5 py-4">
+                        {regDetailTab === 'Details' && (
+                          <>
+                            {/* General */}
+                            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">General</p>
+                            <div className="rounded-xl mb-4 overflow-hidden" style={{ border: '1px solid #f1f5f9' }}>
+                              {[
+                                ['Service', regSelectedRow.fluid_code ? `${regSelectedRow.fluid_code}${regSelectedRow.fluid_description ? ` — ${regSelectedRow.fluid_description}` : ''}` : '—'],
+                                ['P&ID No.', regSelectedRow.pid_no || '—'],
+                                ['From', regSelectedRow.from_line || regSelectedRow.from_equipment || regSelectedRow.from || '—'],
+                                ['To', regSelectedRow.to_line || regSelectedRow.to_equipment || regSelectedRow.to || '—'],
+                              ].map(([k, v], i, arr) => (
+                                <div key={k} className="flex justify-between gap-3 px-3.5 py-2.5 text-xs"
+                                  style={{ borderBottom: i < arr.length - 1 ? '1px solid #f8fafc' : 'none' }}>
+                                  <span className="text-slate-400">{k}</span>
+                                  <span className="font-semibold text-slate-700 text-right" style={{ wordBreak: 'break-word' }}>{v}</span>
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Engineering specifications */}
+                            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">Engineering specifications</p>
+                            <div className="rounded-xl mb-4 overflow-hidden" style={{ border: '1px solid #f1f5f9' }}>
+                              {LL_SPEC_FIELDS.map((f, i) => (
+                                <div key={f.key} className="flex justify-between gap-3 px-3.5 py-2.5 text-xs"
+                                  style={{ borderBottom: i < LL_SPEC_FIELDS.length - 1 ? '1px solid #f8fafc' : 'none' }}>
+                                  <span className="text-slate-400">{f.label}</span>
+                                  <span className="font-semibold text-slate-700 text-right">{regSelectedRow[f.key] || '—'}</span>
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Data-quality alerts */}
+                            {getLineIssues(regSelectedRow).length > 0 && (
+                              <div className="rounded-xl p-3.5 mb-4" style={{
+                                background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)',
+                              }}>
+                                <div className="flex items-center gap-2 mb-1">
+                                  <ExclamationTriangleIcon className="h-4 w-4" style={{ color: '#d97706' }} />
+                                  <span className="text-xs font-bold" style={{ color: '#b45309' }}>Data-quality alert</span>
+                                </div>
+                                <ul className="space-y-1 mt-1">
+                                  {getLineIssues(regSelectedRow).map(iss => (
+                                    <li key={iss} className="text-[11px] text-amber-800 leading-relaxed">• {iss}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {/* Linked document */}
+                            {pidDocument && (
+                              <div className="rounded-xl p-3 mb-4 flex items-center gap-3" style={{ border: '1px solid #e2e8f0' }}>
+                                <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+                                  style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.15)' }}>
+                                  <DocumentTextIcon className="h-5 w-5 text-red-500" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-bold text-slate-800 truncate" style={{ margin: 0 }}>{pidDocument.name}</p>
+                                  <p className="text-[11px] text-slate-400" style={{ margin: 0 }}>Rev {LL_REGISTER.revision}</p>
+                                </div>
+                                <ArrowTopRightOnSquareIcon className="h-4 w-4 text-slate-400 flex-shrink-0" />
+                              </div>
+                            )}
+
+                            {/* Review pending */}
+                            <div className="rounded-xl p-3 mb-4 flex items-center gap-3" style={{ border: '1px solid #e2e8f0' }}>
+                              <ClockIcon className="h-5 w-5 text-slate-400 flex-shrink-0" />
+                              <div>
+                                <p className="text-xs font-bold text-slate-800" style={{ margin: 0 }}>
+                                  {getLineStatus(regSelectedRow) === 'Reviewed' ? 'Review complete' : 'Review pending'}
+                                </p>
+                                <p className="text-[11px] text-slate-400" style={{ margin: 0 }}>Assigned to Process Lead</p>
+                              </div>
+                            </div>
+
+                            {/* Actions */}
+                            <div className="flex gap-2">
+                              <button onClick={() => handleRegEditOpen(regSelectedRow)}
+                                className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all hover:bg-slate-50"
+                                style={{ border: '1px solid #cbd5e1', color: '#475569', background: 'white', cursor: 'pointer' }}>
+                                <PencilSquareIcon className="h-4 w-4" /> Edit line
+                              </button>
+                              <button onClick={() => handleRegReviewRow(regSelectedRow)}
+                                className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold text-white transition-all"
+                                style={{ background: LL_REGISTER.accent, border: 'none', cursor: 'pointer', boxShadow: '0 4px 12px rgba(15,118,110,0.25)' }}>
+                                <CheckCircleIcon className="h-4 w-4" /> Review changes
+                              </button>
+                            </div>
+                          </>
+                        )}
+
+                        {regDetailTab === 'History' && (
+                          <div className="space-y-0">
+                            {LL_REVISIONS.map((r, i) => (
+                              <div key={r.rev} className="flex gap-3 pb-4 relative">
+                                {i < LL_REVISIONS.length - 1 && (
+                                  <div className="absolute left-[7px] top-5 bottom-0 w-px" style={{ background: '#e2e8f0' }} />
+                                )}
+                                <div className="w-3.5 h-3.5 rounded-full flex-shrink-0 mt-1"
+                                  style={{
+                                    background: r.live ? LL_REGISTER.accent : '#cbd5e1',
+                                    border: `2px solid ${r.live ? 'rgba(15,118,110,0.3)' : '#e2e8f0'}`,
+                                  }} />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-xs font-bold text-slate-800">Rev {r.rev}</span>
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                                      style={r.live
+                                        ? { background: 'rgba(15,118,110,0.09)', color: LL_REGISTER.accent, border: '1px solid rgba(15,118,110,0.22)' }
+                                        : { background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' }}>
+                                      {r.status}
+                                    </span>
+                                  </div>
+                                  <p className="text-[11px] text-slate-500 mt-1 leading-relaxed" style={{ margin: '4px 0 0' }}>{r.note}</p>
+                                  <p className="text-[10px] text-slate-400 mt-1" style={{ margin: '4px 0 0' }}>
+                                    {r.by}{r.live && pidDocument ? ` · from ${pidDocument.name}` : ''}
+                                  </p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {regDetailTab === 'Documents' && (
+                          <div className="space-y-2.5">
+                            {[
+                              pidDocument && { name: pidDocument.name, meta: `Source P&ID · Rev ${LL_REGISTER.revision}`, tone: 'red' },
+                              activeLegend && { name: activeLegend.file_name || activeLegend.name || 'Legend sheet', meta: 'Legend sheet · Active', tone: 'emerald' },
+                              { name: 'line_list_base_extraction.xlsx', meta: 'Last exported workbook', tone: 'teal' },
+                            ].filter(Boolean).map(d => (
+                              <div key={d.name} className="rounded-xl p-3 flex items-center gap-3" style={{ border: '1px solid #e2e8f0' }}>
+                                <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+                                  style={{ background: `rgba(${d.tone === 'red' ? '239,68,68' : d.tone === 'emerald' ? '16,185,129' : '15,118,110'},0.08)` }}>
+                                  <DocumentTextIcon className="h-5 w-5" style={{ color: d.tone === 'red' ? '#ef4444' : d.tone === 'emerald' ? '#059669' : LL_REGISTER.accent }} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-bold text-slate-800 truncate" style={{ margin: 0 }}>{d.name}</p>
+                                  <p className="text-[11px] text-slate-400" style={{ margin: 0 }}>{d.meta}</p>
+                                </div>
+                                <ArrowTopRightOnSquareIcon className="h-4 w-4 text-slate-400 flex-shrink-0" />
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ═══ TAB: Overview ═══ */}
+              {regTab === 'Overview' && (
+                <div className="grid gap-4" style={{ gridTemplateColumns: 'minmax(0,1.4fr) minmax(0,1fr)' }}>
+                  <div className="rounded-2xl p-5" style={{ background: 'white', border: '1px solid #e2e8f0' }}>
+                    <h3 className="text-sm font-bold text-slate-800 mb-4" style={{ margin: '0 0 16px' }}>Register summary</h3>
+                    <div className="grid grid-cols-2 gap-3">
+                      {[
+                        { label: 'Total lines',     val: regKpis.total,         color: '#0f172a' },
+                        { label: 'Reviewed',        val: regKpis.total - regKpis.reviewPending, color: '#047857' },
+                        { label: 'Errors',          val: regKpis.errors,        color: '#dc2626' },
+                        { label: 'Warnings',        val: regKpis.warnings,      color: '#d97706' },
+                        { label: 'Services',        val: regFilterOptions.fluid_code.length, color: LL_REGISTER.accent },
+                        { label: 'P&ID references', val: regFilterOptions.pid_no.length, color: '#4f46e5' },
+                      ].map(s => (
+                        <div key={s.label} className="rounded-xl p-4" style={{ background: '#f8fafc', border: '1px solid #f1f5f9' }}>
+                          <div className="text-2xl font-extrabold tabular-nums" style={{ color: s.color }}>{s.val}</div>
+                          <div className="text-[11px] text-slate-400 mt-1">{s.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-4 rounded-xl p-3.5 text-xs text-slate-500 leading-relaxed" style={{ background: 'rgba(15,118,110,0.04)', border: '1px solid rgba(15,118,110,0.12)' }}>
+                      Format: <span className="font-semibold text-slate-700">{FORMAT_OPTIONS.find(f => f.value === formatType)?.label || formatType}</span>
+                      {pidDocument && <> · Source: <span className="font-semibold text-slate-700">{pidDocument.name}</span></>}
+                      {' '}· AI-powered OCR with Computer Vision FROM→TO detection.
+                    </div>
+                  </div>
+                  <div className="rounded-2xl p-5" style={{ background: 'white', border: '1px solid #e2e8f0' }}>
+                    <h3 className="text-sm font-bold text-slate-800 mb-4" style={{ margin: '0 0 16px' }}>Revision status</h3>
+                    {LL_REVISIONS.map(r => (
+                      <div key={r.rev} className="flex items-center justify-between py-2.5" style={{ borderBottom: '1px solid #f8fafc' }}>
+                        <span className="text-xs font-semibold text-slate-700">Rev {r.rev}</span>
+                        <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                          style={r.live
+                            ? { background: 'rgba(15,118,110,0.09)', color: LL_REGISTER.accent, border: '1px solid rgba(15,118,110,0.22)' }
+                            : { background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' }}>
+                          {r.status}
+                        </span>
+                      </div>
+                    ))}
+                    <button onClick={() => setRegTab('Reviews')}
+                      className="mt-4 w-full px-4 py-2.5 rounded-xl text-xs font-bold text-white"
+                      style={{ background: LL_REGISTER.accent, border: 'none', cursor: 'pointer' }}>
+                      Go to review workflow
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ═══ TAB: Changes — rows needing attention (New/Error/Warning) ═══ */}
+              {regTab === 'Changes' && (
+                <div className="rounded-2xl overflow-hidden" style={{ background: 'white', border: '1px solid #e2e8f0' }}>
+                  <div className="px-5 py-4" style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <h3 className="text-base font-bold text-slate-900" style={{ margin: 0 }}>Changes in Rev {LL_REGISTER.revision}</h3>
+                    <p className="text-xs text-slate-400 mt-0.5" style={{ margin: '2px 0 0' }}>Lines that are new, incomplete, or awaiting review</p>
+                  </div>
+                  {regAllRows.filter(r => getLineStatus(r) !== 'Reviewed').length === 0 ? (
+                    <div className="px-5 py-12 text-center">
+                      <CheckCircleIcon className="h-10 w-10 mx-auto mb-2" style={{ color: '#10b981', opacity: 0.5 }} />
+                      <p className="text-sm text-slate-500">All lines reviewed — no open changes.</p>
+                    </div>
+                  ) : (
+                    regAllRows.filter(r => getLineStatus(r) !== 'Reviewed').map((row, i) => {
+                      const status = getLineStatus(row);
+                      const st = LL_STATUS_STYLES[status];
+                      return (
+                        <div key={i} className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50 cursor-pointer transition-colors"
+                          style={{ borderBottom: '1px solid #f8fafc' }}
+                          onClick={() => { setRegSelectedRow(row); setRegDetailTab('Details'); setRegTab('Line List'); }}>
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-mono font-semibold"
+                            style={{ background: 'rgba(15,118,110,0.07)', color: '#0f766e', border: '1px solid rgba(15,118,110,0.15)' }}>
+                            {row.original_detection || '—'}
+                          </span>
+                          <span className="text-xs text-slate-500 flex-1 truncate">{getLineIssues(row).join(' · ') || 'New line added to register'}</span>
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                            style={{ background: st.bg, color: st.fg, border: `1px solid ${st.border}` }}>
+                            {status}
+                          </span>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+
+              {/* ═══ TAB: Validation — data-quality alerts ═══ */}
+              {regTab === 'Validation' && (
+                <div className="rounded-2xl overflow-hidden" style={{ background: 'white', border: '1px solid #e2e8f0' }}>
+                  <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900" style={{ margin: 0 }}>Data-quality alerts</h3>
+                      <p className="text-xs text-slate-400 mt-0.5" style={{ margin: '2px 0 0' }}>Rows failing register completeness rules</p>
+                    </div>
+                    <span className="px-2.5 py-1 rounded-full text-[11px] font-bold"
+                      style={{ background: regKpis.errors + regKpis.warnings > 0 ? 'rgba(239,68,68,0.08)' : 'rgba(16,185,129,0.08)', color: regKpis.errors + regKpis.warnings > 0 ? '#b91c1c' : '#047857' }}>
+                      {regKpis.errors + regKpis.warnings} open
+                    </span>
+                  </div>
+                  {regAllRows.filter(r => getLineIssues(r).length > 0).length === 0 ? (
+                    <div className="px-5 py-12 text-center">
+                      <CheckCircleIcon className="h-10 w-10 mx-auto mb-2" style={{ color: '#10b981', opacity: 0.5 }} />
+                      <p className="text-sm text-slate-500">No validation issues — all lines pass data-quality rules.</p>
+                    </div>
+                  ) : (
+                    regAllRows.filter(r => getLineIssues(r).length > 0).map((row, i) => (
+                      <div key={i} className="flex items-start gap-3 px-5 py-3.5 hover:bg-slate-50 cursor-pointer transition-colors"
+                        style={{ borderBottom: '1px solid #f8fafc' }}
+                        onClick={() => { setRegSelectedRow(row); setRegDetailTab('Details'); setRegTab('Line List'); }}>
+                        {getLineStatus(row) === 'Error'
+                          ? <ExclamationCircleIcon className="h-5 w-5 flex-shrink-0 mt-0.5" style={{ color: '#dc2626' }} />
+                          : <ExclamationTriangleIcon className="h-5 w-5 flex-shrink-0 mt-0.5" style={{ color: '#d97706' }} />}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-slate-800 font-mono" style={{ margin: 0 }}>{row.original_detection || 'Unnamed line'}</p>
+                          <p className="text-[11px] text-slate-500 mt-0.5" style={{ margin: '2px 0 0' }}>{getLineIssues(row).join(' · ')}</p>
+                        </div>
+                        <span className="text-[11px] font-semibold text-teal-700 flex-shrink-0">Review →</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {/* ═══ TAB: Reviews — engineering review & approval workflow ═══ */}
+              {regTab === 'Reviews' && (
+                <div className="grid gap-4" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.2fr)' }}>
+                  <div className="rounded-2xl p-5" style={{ background: 'white', border: '1px solid #e2e8f0' }}>
+                    <h3 className="text-sm font-bold text-slate-800 mb-4" style={{ margin: '0 0 16px' }}>Approval workflow — Rev {regRev}</h3>
+                    {regWfSteps.map((s, i, arr) => (
+                      <div key={s.step} className="flex gap-3 pb-5 relative">
+                        {i < arr.length - 1 && <div className="absolute left-[11px] top-7 bottom-0 w-px" style={{ background: '#e2e8f0' }} />}
+                        <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold"
+                          style={s.done
+                            ? { background: 'rgba(16,185,129,0.12)', color: '#047857', border: '1.5px solid rgba(16,185,129,0.4)' }
+                            : { background: '#f8fafc', color: '#94a3b8', border: '1.5px solid #e2e8f0' }}>
+                          {s.done ? '✓' : i + 1}
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-xs font-bold" style={{ margin: 0, color: s.done ? '#047857' : '#334155' }}>{s.step}</p>
+                          <p className="text-[11px] text-slate-400" style={{ margin: '2px 0 0' }}>{s.by}</p>
+                          {/* Contextual blockers / status hints */}
+                          {i === 1 && extractedData && !s.done && (
+                            <p className="text-[11px] mt-1" style={{ color: '#b45309', margin: '4px 0 0' }}>
+                              {regKpis.errors + regKpis.warnings} open data-quality issue(s) — resolve in the Validation tab
+                            </p>
+                          )}
+                          {i === 2 && extractedData && !s.done && (
+                            <p className="text-[11px] mt-1" style={{ color: '#b45309', margin: '4px 0 0' }}>
+                              {regKpis.reviewPending} line(s) still pending — use "Review changes" on each row
+                            </p>
+                          )}
+                          {i === 3 && reviewState.status === 'rejected' && (
+                            <p className="text-[11px] mt-1" style={{ color: '#b91c1c', margin: '4px 0 0' }}>
+                              Rejected{reviewState.comment ? `: "${reviewState.comment}"` : ''} — address comments and resubmit
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* ── Workflow actions ── */}
+                    <div className="pt-2" style={{ borderTop: '1px solid #f1f5f9' }}>
+                      {(reviewState.status === 'in_review' || reviewState.status === 'rejected') && (
+                        <button onClick={handleReviewSubmit} disabled={!regWfReadyToSubmit}
+                          className="w-full px-4 py-2.5 rounded-xl text-xs font-bold transition-all"
+                          style={regWfReadyToSubmit
+                            ? { background: LL_REGISTER.accent, color: 'white', border: 'none', cursor: 'pointer', boxShadow: '0 4px 12px rgba(15,118,110,0.25)' }
+                            : { background: '#f1f5f9', color: '#94a3b8', border: '1px solid #e2e8f0', cursor: 'not-allowed' }}
+                          title={regWfReadyToSubmit ? 'Submit to Engineering Manager' : 'Complete the steps above first'}>
+                          Submit for engineering manager approval
+                        </button>
+                      )}
+
+                      {reviewState.status === 'pending_approval' && (
+                        <div>
+                          <p className="text-[11px] font-semibold text-slate-500 mb-2" style={{ margin: '0 0 8px' }}>
+                            Awaiting Engineering Manager decision
+                          </p>
+                          <textarea
+                            value={reviewComment}
+                            onChange={e => setReviewComment(e.target.value)}
+                            placeholder="Approval comment (optional)…"
+                            rows={2}
+                            className="w-full px-3 py-2 text-xs rounded-lg outline-none mb-2"
+                            style={{ border: '1px solid #e2e8f0', background: '#f8fafc', color: '#334155', resize: 'vertical' }}
+                          />
+                          <div className="flex gap-2">
+                            <button onClick={() => handleReviewDecide('rejected')}
+                              className="flex-1 px-4 py-2.5 rounded-xl text-xs font-bold transition-all hover:bg-red-50"
+                              style={{ border: '1px solid rgba(239,68,68,0.35)', color: '#b91c1c', background: 'white', cursor: 'pointer' }}>
+                              Reject
+                            </button>
+                            <button onClick={() => handleReviewDecide('approved')}
+                              className="flex-1 px-4 py-2.5 rounded-xl text-xs font-bold text-white transition-all"
+                              style={{ background: '#047857', border: 'none', cursor: 'pointer', boxShadow: '0 4px 12px rgba(4,120,87,0.25)' }}>
+                              Approve
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {reviewState.status === 'approved' && (
+                        <button onClick={handleReviewIssue}
+                          className="w-full px-4 py-2.5 rounded-xl text-xs font-bold text-white transition-all"
+                          style={{ background: '#1d4ed8', border: 'none', cursor: 'pointer', boxShadow: '0 4px 12px rgba(29,78,216,0.25)' }}>
+                          Issue Rev 04 for design
+                        </button>
+                      )}
+
+                      {reviewState.status === 'issued' && (
+                        <div className="rounded-xl p-3 text-center text-xs font-bold"
+                          style={{ background: 'rgba(59,130,246,0.08)', color: '#1d4ed8', border: '1px solid rgba(59,130,246,0.25)' }}>
+                          ✓ Rev 04 issued for design — workflow complete
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl p-5" style={{ background: 'white', border: '1px solid #e2e8f0' }}>
+                    <h3 className="text-sm font-bold text-slate-800 mb-1" style={{ margin: '0 0 4px' }}>Revision history & activity</h3>
+                    <p className="text-[11px] text-slate-400 mb-4" style={{ margin: '0 0 16px' }}>Latest activity first</p>
+                    <div className="rounded-xl p-3 mb-4 flex items-center gap-3" style={{ background: 'rgba(15,118,110,0.05)', border: '1px solid rgba(15,118,110,0.15)' }}>
+                      <ClockIcon className="h-5 w-5 flex-shrink-0" style={{ color: LL_REGISTER.accent }} />
+                      <div>
+                        <p className="text-xs font-bold text-slate-800" style={{ margin: 0 }}>Line list extracted{pidDocument ? ` from ${pidDocument.name}` : ''}</p>
+                        <p className="text-[11px] text-slate-400" style={{ margin: 0 }}>{regKpis.total} lines · {regKpis.reviewPending} pending review</p>
+                      </div>
+                    </div>
+                    {/* Live workflow events (persisted per project) */}
+                    {reviewState.history.map((h, i) => (
+                      <div key={`h${i}`} className="flex items-center justify-between py-2.5" style={{ borderBottom: '1px solid #f8fafc' }}>
+                        <div>
+                          <p className="text-xs font-bold text-slate-800" style={{ margin: 0 }}>{h.text}</p>
+                          <p className="text-[11px] text-slate-400" style={{ margin: '2px 0 0' }}>{h.at}</p>
+                        </div>
+                      </div>
+                    ))}
+                    {LL_REVISIONS.map(r => (
+                      <div key={r.rev} className="flex items-center justify-between py-2.5" style={{ borderBottom: '1px solid #f8fafc' }}>
+                        <div>
+                          <p className="text-xs font-bold text-slate-800" style={{ margin: 0 }}>Rev {r.rev} — {r.status}</p>
+                          <p className="text-[11px] text-slate-400" style={{ margin: '2px 0 0' }}>{r.note} · {r.by}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ═══ TAB: Documents ═══ */}
+              {regTab === 'Documents' && (
+                <div className="rounded-2xl p-5" style={{ background: 'white', border: '1px solid #e2e8f0' }}>
+                  <h3 className="text-sm font-bold text-slate-800 mb-4" style={{ margin: '0 0 16px' }}>Linked documents</h3>
+                  <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+                    {[
+                      pidDocument && { name: pidDocument.name, meta: `Source P&ID · ${(pidDocument.size / 1024 / 1024).toFixed(2)} MB · Rev ${LL_REGISTER.revision}`, tone: '#ef4444' },
+                      activeLegend && { name: activeLegend.file_name || activeLegend.name || 'Legend sheet', meta: 'Legend sheet · Active for this section', tone: '#059669' },
+                      { name: 'line_list_base_extraction.xlsx', meta: `Register export · ${regKpis.total} lines · Rev ${LL_REGISTER.revision}`, tone: LL_REGISTER.accent, action: handleExport },
+                    ].filter(Boolean).map(d => (
+                      <div key={d.name} className="rounded-xl p-4 flex items-center gap-3 transition-all hover:shadow-md"
+                        style={{ border: '1px solid #e2e8f0', cursor: d.action ? 'pointer' : 'default' }}
+                        onClick={d.action}>
+                        <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+                          style={{ background: `${d.tone}12`, border: `1px solid ${d.tone}25` }}>
+                          <DocumentTextIcon className="h-5 w-5" style={{ color: d.tone }} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-slate-800 truncate" style={{ margin: 0 }}>{d.name}</p>
+                          <p className="text-[11px] text-slate-400 mt-0.5" style={{ margin: '2px 0 0' }}>{d.meta}</p>
+                        </div>
+                        <ArrowTopRightOnSquareIcon className="h-4 w-4 text-slate-400 flex-shrink-0" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Results Table (legacy — shown when enterprise register is disabled) ── */}
+          {extractedData && !LL_REGISTER.enabled && (
             <div className="rounded-2xl overflow-hidden ll-section" style={{
               background: 'white',
               border: '1px solid rgba(37,99,235,0.1)',
@@ -1394,8 +3058,8 @@ const LineList = () => {
             </div>
           )}
 
-          {/* ── Info Panel (idle) — coloured feature tiles with hover lift ── */}
-          {!extractedData && !isProcessing && (
+          {/* ── Info Panel (idle) — soft-coded off (LL_SHOW_WHAT_GETS_EXTRACTED) ── */}
+          {LL_SHOW_WHAT_GETS_EXTRACTED && !extractedData && !isProcessing && (
             <div className="rounded-2xl p-6 mt-4 ll-section" style={{
               background: 'white',
               border: '1px solid rgba(37,99,235,0.1)',
@@ -1447,6 +3111,144 @@ const LineList = () => {
 
         </div>
       </div>
+
+      {/* ── Edit line modal ── */}
+      {regEditRow && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(15,23,42,0.45)', backdropFilter: 'blur(3px)' }}
+          onClick={() => setRegEditRow(null)}>
+          <div className="w-full max-w-lg rounded-2xl overflow-hidden"
+            style={{ background: 'white', boxShadow: '0 24px 60px rgba(15,23,42,0.25)', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}
+            onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid #f1f5f9' }}>
+              <div>
+                <h3 className="text-base font-bold text-slate-900" style={{ margin: 0 }}>Edit line</h3>
+                <p className="text-xs text-slate-400 font-mono" style={{ margin: '2px 0 0' }}>{regEditRow.original_detection || 'New line'}</p>
+              </div>
+              <button onClick={() => setRegEditRow(null)}
+                className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors"
+                style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="px-5 py-4 overflow-y-auto grid grid-cols-2 gap-3" style={{ flex: 1 }}>
+              {COLUMNS.map(c => (
+                <div key={c.key} className={c.key === 'original_detection' ? 'col-span-2' : ''}>
+                  <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-1">{c.label}</label>
+                  <input
+                    value={regEditForm[c.key] ?? ''}
+                    onChange={e => setRegEditForm(f => ({ ...f, [c.key]: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm rounded-lg outline-none"
+                    style={{ border: '1px solid #e2e8f0', color: '#334155', background: '#f8fafc' }}
+                    onFocus={e => { e.target.style.borderColor = 'rgba(15,118,110,0.45)'; e.target.style.boxShadow = '0 0 0 3px rgba(15,118,110,0.08)'; }}
+                    onBlur={e => { e.target.style.borderColor = '#e2e8f0'; e.target.style.boxShadow = 'none'; }}
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="px-5 py-4 flex gap-2" style={{ borderTop: '1px solid #f1f5f9' }}>
+              <button onClick={() => setRegEditRow(null)}
+                className="flex-1 px-4 py-2.5 rounded-xl text-xs font-bold transition-all hover:bg-slate-50"
+                style={{ border: '1px solid #cbd5e1', color: '#475569', background: 'white', cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button onClick={handleRegEditSave}
+                className="flex-1 px-4 py-2.5 rounded-xl text-xs font-bold text-white transition-all"
+                style={{ background: '#0f766e', border: 'none', cursor: 'pointer', boxShadow: '0 4px 12px rgba(15,118,110,0.25)' }}>
+                Save changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Save notice toast (auto-dismisses) ── */}
+      {savedNotice && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold text-white shadow-lg"
+          style={{ background: '#0f766e', animation: 'll-fade-up 0.25s ease both' }}>
+          <CheckCircleIcon className="h-4 w-4" /> {savedNotice}
+        </div>
+      )}
+
+      {/* ── Saved Outputs modal — re-download or reload past extractions ── */}
+      {savedOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(15,23,42,0.45)', backdropFilter: 'blur(3px)' }}
+          onClick={() => setSavedOpen(false)}>
+          <div className="w-full max-w-2xl rounded-2xl overflow-hidden"
+            style={{ background: 'white', boxShadow: '0 24px 60px rgba(15,23,42,0.25)', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}
+            onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid #f1f5f9' }}>
+              <div>
+                <h3 className="text-base font-bold text-slate-900" style={{ margin: 0 }}>Saved outputs</h3>
+                <p className="text-xs text-slate-400" style={{ margin: '2px 0 0' }}>Previously exported line lists — download or reopen in the register</p>
+              </div>
+              <button onClick={() => setSavedOpen(false)}
+                className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors"
+                style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="overflow-y-auto" style={{ flex: 1 }}>
+              {savedLoading ? (
+                <div className="px-5 py-12 text-center text-sm text-slate-400">Loading saved outputs…</div>
+              ) : savedOutputs.length === 0 ? (
+                <div className="px-5 py-12 text-center">
+                  <FolderIcon className="h-10 w-10 mx-auto mb-2" style={{ color: '#94a3b8', opacity: 0.5 }} />
+                  <p className="text-sm text-slate-500">No saved outputs yet.</p>
+                  <p className="text-xs text-slate-400 mt-1">Exports are saved automatically when you click Export.</p>
+                </div>
+              ) : (
+                savedOutputs.map(o => (
+                  <div key={o.id} className="flex items-center gap-3 px-5 py-3.5" style={{ borderBottom: '1px solid #f8fafc' }}>
+                    <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{ background: 'rgba(15,118,110,0.08)', border: '1px solid rgba(15,118,110,0.18)' }}>
+                      <DocumentTextIcon className="h-5 w-5" style={{ color: '#0f766e' }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-slate-800 truncate" style={{ margin: 0 }}>{o.excel_filename || `line_list_${o.id}.xlsx`}</p>
+                      <p className="text-[11px] text-slate-400" style={{ margin: '2px 0 0' }}>
+                        {o.processing_date} · {o.total_lines} lines · {o.file_size_mb} MB · {o.processed_by}
+                      </p>
+                    </div>
+                    {o.has_file ? (
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <button
+                          onClick={() => openSavedOutput(o)}
+                          disabled={savedBusyId === o.id}
+                          className="px-3 py-1.5 rounded-lg text-[11px] font-bold transition-colors"
+                          style={{ border: '1px solid rgba(15,118,110,0.35)', color: '#0f766e', background: 'white', cursor: 'pointer' }}>
+                          {savedBusyId === o.id ? '…' : 'Open'}
+                        </button>
+                        <button
+                          onClick={() => downloadSavedOutput(o)}
+                          disabled={savedBusyId === o.id}
+                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-bold text-white transition-colors"
+                          style={{ background: '#0f766e', border: 'none', cursor: 'pointer' }}>
+                          <ArrowDownTrayIcon className="h-3.5 w-3.5" /> {savedBusyId === o.id ? '…' : 'Download'}
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-[11px] text-slate-400 flex-shrink-0">File unavailable</span>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Managed Legend Sheets modal (shared V1 system) ── */}
+      {LL_LEGENDS.enabled && (
+        <LegendSheetsModal
+          open={legendModalOpen}
+          onClose={() => setLegendModalOpen(false)}
+          section={LL_LEGENDS.section}
+          projectId={activeProject?.project_id}
+          onActiveChange={handleLegendActiveChange}
+        />
+      )}
     </>
   );
 };

@@ -12,6 +12,7 @@ import useSidebarDrawer from "../../hooks/useSidebarDrawer";
 import "./Sidebar.css";
 import { FEATURE_FLAGS } from "../../config/features.config";
 import { canManageReplica } from "../../services/fileReplica.service";
+import { canManageAIKeys } from "../../services/aiAPIKeys.service";
 import {
   QHSE_MODULE_LABELS,
 } from "../../config/qhseModules.config";
@@ -363,6 +364,8 @@ const Sidebar = ({
           description: subFeature.description,
           moduleCode: subFeature.moduleCode,
           badge: subFeature.badge,
+          // SOFT-CODED: propagate enabled:false so hidden features stay hidden even for super admin
+          enabled: subFeature.enabled,
         })),
       })),
     },
@@ -790,7 +793,7 @@ const Sidebar = ({
 
     // Check if user has the required module (soft-coded RBAC)
     if (item.moduleCode) {
-      return canAccessRouteModule(userModules, resolveRouteModule(item.moduleCode, item.path?.split('?')[0] || '', item.path?.split('?')[1] || ''));
+      return canAccessRouteModule(userModules, resolveRouteModule(item.moduleCode, item.path?.split('?')[0] || '', item.path?.split('?')[1] || ''), userData?.department);
     }
 
     // Items without moduleCode are accessible by default
@@ -927,6 +930,13 @@ const Sidebar = ({
           icon: FolderIcon,
           path: "/admin/file-server-replica",
           description: "Server connections, project folders, and synchronization",
+        }] : []),
+        ...(canManageAIKeys(user) ? [{
+          id: "aiAPIKeys",
+          title: "9.8 AI API Keys",
+          icon: ShieldCheckIcon,
+          path: "/admin/ai-api-keys",
+          description: "Central AI provider credentials and connection tests",
         }] : []),
         // SOFT-CODED: Subscription feature disabled for in-house deployment
         // {

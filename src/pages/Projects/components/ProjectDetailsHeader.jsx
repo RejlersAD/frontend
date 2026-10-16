@@ -1,5 +1,5 @@
 /* eslint-disable react/prop-types */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { AlertCircle, AlertTriangle, ArrowLeft, CalendarDays, CheckCircle2, ChevronDown, Clock3, Coins, Download, FileText, Flag, Folder, Home, MoreHorizontal, Pencil, Plus, RefreshCw, Save, Share, ShieldCheck, Sparkles, Upload } from 'lucide-react'
 import { PROJECT_VIEW_MODES } from '../../../config/projectControl.config'
 import { formatDate, projectManagerName } from '../useProjectPerformance'
@@ -23,19 +23,12 @@ const AREAS = [
 const STATUS = { planning: 'Planning', active: 'In progress', on_hold: 'On hold', completed: 'Completed', cancelled: 'Cancelled' }
 
 export default function ProjectDetailsHeader({ projects, selectedProject, selectedProjectId, onSelectProject, loading, error,
-  phaseFlags, onSelectView, onNavigate, onCreate, onEdit, onImport, onArchive, onRefresh, onExport,
+  phaseFlags, onSelectView, onNavigate, onCreate, onEdit, onImport, onDelete, deletingProject = false, onRefresh, onExport,
   performance, onOpenDialog, activeView = 'project-dashboard', scheduleMode = 'planner',
-  schedulePerformance, onUpdateSchedule, commercialPerformance, onUpdateCommercial,
+  schedulePerformance, onUpdateSchedule, onScheduleControlsMount, commercialPerformance, onUpdateCommercial,
   milestoneControl, onAddMilestone, riskControl, onAddRiskRecord, estimateControl, onNewEstimate,
   documentControl, onAddDocument, onAnalyzeAgreement, agreementStatus }) {
   const menu = useRef(null), addMenu = useRef(null)
-  const [scheduleState, setScheduleState] = useState(null)
-  useEffect(() => {
-    setScheduleState(null)
-    const receive = event => { if (String(event.detail?.projectId) === String(selectedProjectId)) setScheduleState(event.detail) }
-    window.addEventListener('radai:master-schedule-state', receive)
-    return () => window.removeEventListener('radai:master-schedule-state', receive)
-  }, [selectedProjectId])
   useEffect(() => {
     const dismiss = event => {
       for (const ref of [menu, addMenu]) {
@@ -54,7 +47,6 @@ export default function ProjectDetailsHeader({ projects, selectedProject, select
   useEffect(() => {
     menu.current?.removeAttribute('open')
     addMenu.current?.removeAttribute('open')
-    if (activeView !== 'plan-baseline') setScheduleState(null)
   }, [activeView])
   const run = action => { menu.current?.removeAttribute('open'); action?.() }
   const add = action => { addMenu.current?.removeAttribute('open'); addMenu.current?.querySelector('summary')?.focus(); action?.() }
@@ -76,21 +68,20 @@ export default function ProjectDetailsHeader({ projects, selectedProject, select
     : isMilestones ? milestoneControl : isRisk ? riskControl : isEstimates ? estimateControl : isDocuments ? documentControl : performance
   const activeModel = activePerformance?.model
   const activeBusy = loading || activePerformance?.loading
-  const primaryLabel = isSchedule ? scheduleMode === 'planner' ? 'Save draft' : 'Update schedule'
+  const primaryLabel = isSchedule ? 'Open Master Schedule'
     : isCommercial ? 'Update commercial' : isMilestones ? 'Add milestone' : activeView === 'epc-lifecycle' ? 'Edit project details' : 'Update progress'
-  const primaryAction = isSchedule ? scheduleMode === 'planner' ? () => window.dispatchEvent(new Event('radai:save-master-schedule')) : onUpdateSchedule
+  const primaryAction = isSchedule ? onUpdateSchedule
     : isCommercial ? onUpdateCommercial : isMilestones ? onAddMilestone : onEdit
   const PrimaryIcon = isSchedule ? Save : isMilestones ? Plus : Share
-  const primaryDisabled = !project || activeBusy || (isSchedule && scheduleMode === 'planner' && !scheduleState?.canSave) || (isMilestones && !activeModel?.canCreate)
+  const primaryDisabled = !project || activeBusy || (isMilestones && !activeModel?.canCreate)
   const addLabel = isEstimates ? 'New estimate' : isDocuments ? 'Add document' : 'Add'
   const addDisabled = !project || activeBusy || (isDocuments ? !activeModel?.canUpload : !activeModel?.canCreate)
   const exportLabel = isDocuments || isRisk ? 'Export register' : isEstimates ? 'Export estimate' : isMilestones ? 'Export milestone report'
     : isSchedule ? 'Export schedule' : isCommercial ? 'Export commercial' : 'Export'
   const exportDisabled = !project || activeBusy || (isDocuments && !activeModel?.availability?.list)
     || (isEstimates && !activeModel?.availability?.selected) || ((isRisk || isMilestones) && !activeModel?.rows?.length)
-    || (isSchedule && (scheduleMode === 'planner' ? !scheduleState?.hasActivities : !activeModel?.activities?.length)) || (isCommercial && !activeModel?.availability?.commercial)
-  const exportAction = isSchedule && scheduleMode === 'planner'
-    ? () => window.dispatchEvent(new CustomEvent('radai:export-master-schedule', { detail: { projectId: selectedProjectId } })) : onExport
+    || (isSchedule && !activeModel?.activities?.length) || (isCommercial && !activeModel?.availability?.commercial)
+  const exportAction = onExport
   const enabled = key => {
     const area = PROJECT_VIEW_MODES.find(item => item.key === key)
     return !area?.phaseFlag || phaseFlags?.[area.phaseFlag] !== false
@@ -98,8 +89,7 @@ export default function ProjectDetailsHeader({ projects, selectedProject, select
   const extras = PROJECT_VIEW_MODES.filter(item => !AREAS.some(area => area.key === item.key)
     && (!item.phaseFlag || (item.phaseLabel ? phaseFlags?.[item.phaseFlag] === true : enabled(item.key))))
   const actionCount = model?.actions?.length ?? 0
-  const scheduleIssueCount = Number.isFinite(scheduleState?.issueCount) ? scheduleState.issueCount : actionCount
-  const scheduleDataDate = schedulePerformance?.model?.dataDate || model?.dataDate
+  const scheduleDataDate = schedulePerformance?.model?.generationId || schedulePerformance?.model?.analysisRunId ? null : schedulePerformance?.model?.dataDate || model?.dataDate
   const HealthIcon = health?.tone === 'success' ? CheckCircle2 : AlertTriangle
   return <header className={`pd-header${isSchedule ? ' pd-schedule-header' : ''}`} aria-label="Project details">
     <div className="pd-heading-content">
@@ -108,12 +98,11 @@ export default function ProjectDetailsHeader({ projects, selectedProject, select
       </div>
       <h1 title={project?.name}>{project?.name || (loading ? 'Loading project…' : 'Select a project')}</h1>
       <div className="pd-header-actions">
-        {isSchedule && <button type="button" className="pd-button pd-primary pd-resolve-action" onClick={() => window.dispatchEvent(new CustomEvent('radai:review-schedule-issues', { detail: { projectId: selectedProjectId } }))} disabled={!project || activeBusy}><AlertTriangle size={17} />{scheduleIssueCount ? `Resolve ${scheduleIssueCount} ${scheduleIssueCount === 1 ? 'issue' : 'issues'}` : 'Resolve issues'}</button>}
         {isRisk || isEstimates || isDocuments ? <details className="pd-menu pd-add-menu" ref={addMenu}><summary className="pd-button pd-primary" aria-label={addLabel} aria-disabled={addDisabled} onClick={event => { if (addDisabled) event.preventDefault() }}><Plus size={16} />{isEstimates ? 'New estimate' : 'Add'}<ChevronDown size={14} /></summary><div className="pd-menu-content">
           {isRisk && [['risk', 'Add risk', ShieldCheck], ['issue', 'Add issue', AlertTriangle], ['change_request', 'Add change', FileText]].map(([type, label, Icon]) => <button type="button" key={type} onClick={() => add(() => onAddRiskRecord(type))}><Icon size={15} />{label}</button>)}
           {isEstimates && [['create', 'Blank estimate'], ['copy', 'Copy version'], ['import', 'Import Excel']].map(([type, label]) => <button type="button" key={type} disabled={type === 'copy' && !activeModel?.canCopy} onClick={() => add(() => onNewEstimate(type))}><FileText size={15} />{label}</button>)}
           {isDocuments && <><button type="button" onClick={() => add(onAddDocument)}><FileText size={15} />New document</button><button type="button" disabled><Upload size={15} />Upload revision</button><button type="button" disabled><Folder size={15} />Create transmittal</button><p className="pd-menu-note">Revision control and transmittals are not configured for these documents.</p></>}
-        </div></details> : <button type="button" className={`pd-button ${isSchedule ? 'pd-save-action' : 'pd-primary'}`} onClick={primaryAction} disabled={primaryDisabled}><PrimaryIcon size={16} />{primaryLabel}</button>}
+        </div></details> : (!isSchedule || scheduleMode === 'documents') && <button type="button" className={`pd-button ${isSchedule ? scheduleMode === 'planner' ? 'pd-save-action' : '' : 'pd-primary'}`} onClick={primaryAction} disabled={primaryDisabled}><PrimaryIcon size={16} />{primaryLabel}</button>}
         {!isSchedule && <button type="button" className="pd-button" onClick={() => onOpenDialog('actions')} disabled={!model || busy}><AlertCircle size={17} />{actionCount ? `Resolve ${actionCount} ${actionCount === 1 ? 'issue' : 'issues'}` : 'Review issues'}</button>}
         <button type="button" className="pd-button pd-export-action" aria-label={exportLabel} onClick={exportAction} disabled={exportDisabled} title={exportLabel === 'Export' ? 'Print or save the project report as PDF' : exportLabel}><Download size={18} />Export</button>
         <details className="pd-menu" ref={menu}><summary className="pd-button pd-icon-button" aria-label="More project actions"><MoreHorizontal size={19} /></summary><div className="pd-menu-content">
@@ -126,10 +115,10 @@ export default function ProjectDetailsHeader({ projects, selectedProject, select
           <button type="button" onClick={() => run(onImport)}><Upload size={15} />Import from QHSE</button>
           <button type="button" onClick={() => run(onCreate)}><Plus size={15} />New project</button>
           {extras.map(area => <button type="button" key={area.key} onClick={() => run(() => area.route ? onNavigate(area.route) : onSelectView(area.key))}>{area.label}</button>)}
-          <button type="button" className="pd-danger-action" disabled={!project} onClick={() => run(onArchive)}>Delete project</button>
+          <button type="button" className="pd-danger-action" disabled={!project || deletingProject} onClick={() => run(onDelete)}>{deletingProject ? 'Deleting project…' : 'Delete project'}</button>
         </div></details>
       </div>
-      {project && isSchedule ? <div className="pd-project-facts">
+      {project && isSchedule ? <div className="pd-schedule-facts-row"><div className="pd-project-facts" role="region" aria-label="Project schedule facts" tabIndex={0}>
         <div className="pd-project-code">{project.code || 'Code not recorded'}</div>
         <div className="pd-client"><span className="pd-fact-label">Client:</span><strong>{project.client_name || 'Not recorded'}</strong></div>
         <div className="pd-manager"><span className="pd-fact-label">Project manager:</span><strong>{manager}</strong></div>
@@ -137,7 +126,7 @@ export default function ProjectDetailsHeader({ projects, selectedProject, select
         <div className="pd-health"><span className="pd-fact-label">Overall health</span><span className={`pd-pill pd-health-${health?.tone || 'neutral'}`}>{health && <HealthIcon size={13} />}{health?.label || 'Not assessed'}</span></div>
         <div className="pd-baseline"><span className="pd-fact-label">Baseline</span><span className={`pd-pill ${approved ? 'pd-baseline-approved' : 'pd-baseline-unavailable'}`}>{approved ? 'Approved' : baselineKnown ? 'Not approved' : 'Unavailable'}</span></div>
         <div className="pd-report-date"><span className="pd-fact-label">Data date</span><span className="pd-pill pd-data-date">{formatDate(scheduleDataDate, 'Not set')}</span></div>
-      </div> : project && <div className="pd-project-facts">
+      </div>{scheduleMode === 'planner' && <div ref={onScheduleControlsMount} className="pd-schedule-controls-host" />}</div> : project && <div className="pd-project-facts">
         <div className="pd-project-code">{project.code || 'Code not recorded'}</div>
         <div className="pd-client">Client: <strong>{project.client_name || 'Not recorded'}</strong></div>
         <div className="pd-manager"><span className="pd-person-avatar" aria-hidden="true">{initials}</span><span><strong>{manager}</strong><small>{managerRole}</small></span></div>

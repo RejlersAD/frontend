@@ -5,6 +5,7 @@
  */
 
 import { ROUTES } from './routes.config'
+import envConfig from './environment.config'
 import {
   BeakerIcon,
   WrenchIcon,
@@ -19,7 +20,8 @@ import {
   CircleStackIcon,
   DocumentMagnifyingGlassIcon,
   DocumentCheckIcon,
-  CubeIcon
+  CubeIcon,
+  BookOpenIcon
 } from '@heroicons/react/24/outline'
 
 // SOFT-CODED: P&ID Feature Naming Configuration
@@ -33,6 +35,16 @@ const PID_NAMING_CONFIG = {
 
 // SOFT-CODED: Toggle visibility of Digitization > Datasheets in frontend navigation
 const ENABLE_DIGITIZATION_DATASHEET_FEATURE = false
+
+// SOFT-CODED: hide Non-TEFF Metadata Generator EVERYWHERE (all environments,
+// incl. local development) — application parked. Sidebar entry and Solutions
+// card hidden for all users incl. super admin. Direct URL access unaffected.
+// Flip to `false` to restore; set NON_TEFF_PROD_ONLY = true to hide only in
+// production while keeping local access.
+const HIDE_NON_TEFF_EVERYWHERE = true
+const NON_TEFF_PROD_ONLY = false
+const NON_TEFF_HIDDEN = HIDE_NON_TEFF_EVERYWHERE
+  || (NON_TEFF_PROD_ONLY && envConfig.getEnvironment() === 'production')
 
 /**
  * Engineering Disciplines Configuration
@@ -84,7 +96,9 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/process/pfd-quality-checker',
         description: 'Deterministic PFD quality checks — equipment tags, streams, title block & safety',
         moduleCode: 'pfd_quality',
-        badge: ''
+        badge: '',
+        // SOFT-CODED: hidden for ALL users (incl. super admin) — parked for now
+        enabled: false
       },
       // SOFT-CODED: PFD Verification disabled — source files preserved
       // {
@@ -105,27 +119,29 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/process/datasheet',
         description: 'Process equipment datasheets',
         moduleCode: 'process_datasheet',
-        badge: ''
+        badge: '',
+        // SOFT-CODED: hidden for ALL users (incl. super admin) — under development
+        enabled: false
       },
       {
-        id: 'hmbExtractor',
-        name: 'HMB Extractor',
-        fullName: 'Heat & Material Balance Extractor',
-        icon: DocumentMagnifyingGlassIcon,
-        path: ROUTES.HMB_EXTRACTOR,
-        description: 'Extract stream data from Heat & Material Balance documents',
+        id: 'hmbStreamTableConsolidator',
+        name: 'HMB Consolidator',
+        fullName: 'HMB Stream Table Consolidator',
+        icon: CircleStackIcon,
+        path: ROUTES.HMB_STREAM_TABLE_CONSOLIDATOR,
+        description: 'Compare HYSYS stream tables locally across multiple cases',
         moduleCode: 'hmb_extractor',
-        badge: ''
-      }
-    ,      {        id: 'lineList',
+        badge: 'NEW'
+      },
+      {
+        id: 'lineList',
         name: 'Line List',
         fullName: 'Line List - Base Extraction',
         icon: TableCellsIcon,
         path: '/engineering/process/line-list',
         description: 'Extract 8 base columns from P&ID (P&ID-only, no enrichment)',
         moduleCode: 'pid_line_list'
-      }
-      ,
+      },
       {
         id: 'equipmentList',
         name: 'Equipment List',
@@ -177,6 +193,7 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/piping/datasheet',
         description: 'Piping component datasheets',
         moduleCode: 'piping_datasheet',
+        enabled: false,
       }
     ]
   },
@@ -222,7 +239,9 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/instrument/datasheet',
         description: 'Instrument specification datasheets',
         moduleCode: 'instrument_datasheet',
-        badge: ''
+        badge: '',
+        // SOFT-CODED: hidden for ALL users (incl. super admin) — under development
+        enabled: false
       }
     ]
   },
@@ -258,7 +277,7 @@ export const ENGINEERING_DISCIPLINES = {
         moduleCode: 'electrical_checklist',
         badge: ''
       },
-      // SOFT-CODED: Electrical Datasheet - RE-ENABLED
+      // SOFT-CODED: Electrical Datasheet hidden for ALL users (incl. super admin) — under development
       {
         id: 'electricalDatasheets',
         name: 'Datasheets',
@@ -267,7 +286,8 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/electrical/datasheet',
         description: '27 electrical engineering initiatives - Datasheets, diagrams, layouts, schedules',
         moduleCode: 'electrical_datasheet',
-        badge: ''
+        badge: '',
+        enabled: false
       }
     ]
   },
@@ -348,7 +368,9 @@ export const ENGINEERING_DISCIPLINES = {
         path: '/engineering/digitization/non-teff-metadata',
         description: 'Extract metadata from Non-TEFF documents (PDF, Excel, Word, AutoCAD)',
         moduleCode: 'non_teff_metadata',
-        badge: ''
+        badge: '',
+        // SOFT-CODED: hidden in production (env-aware — local unaffected)
+        enabled: !NON_TEFF_HIDDEN
       },
       {
         id: 'smartPlant3D',
@@ -365,6 +387,32 @@ export const ENGINEERING_DISCIPLINES = {
       // route still at /engineering/digitization/valve-standards). Previously
       // duplicated here as a sibling sub-feature by mistake; removed 2026-08-27
       // to avoid a second top-level Digitization menu item for the same feature.
+    ]
+  },
+
+  // SOFT-CODED: 1.8 Legend Manager — central legend-sheet library shared by
+  // all engineering extraction tools (Line List, Equipment List, Instrument
+  // Index, P&ID QC …). Configure once per project; every tool inherits.
+  legendManager: {
+    id: 'legendManager',
+    name: 'Legend Manager',
+    fullName: 'Legend Sheet Manager',
+    icon: BookOpenIcon,
+    description: 'Central legend-sheet library — one legend pack per project, inherited by every extraction tool',
+    color: 'indigo',
+    gradient: 'from-indigo-500 to-blue-600',
+    order: 8,
+    subFeatures: [
+      {
+        id: 'manageLegends',
+        name: 'Manage Legends',
+        fullName: 'Legend Sheet Manager',
+        icon: BookOpenIcon,
+        path: '/engineering/legends',
+        description: 'Central legend-sheet library — manage per-section legends and project legend packs',
+        moduleCode: 'legend_manager',
+        badge: ''
+      }
     ]
   }
 }
@@ -498,7 +546,6 @@ export const hasAccess = (moduleCode, userModules, isAdmin) => {
 }
 
 export default ENGINEERING_DISCIPLINES
-
 
 
 

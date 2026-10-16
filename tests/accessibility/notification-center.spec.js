@@ -46,10 +46,11 @@ async function prepare(page, options = {}) {
     else if (path.endsWith('/notifications/categories/')) response = [...new Set(state.notifications.map(item => item.category_name))].map((name, index) => ({ id: index + 1, name, is_active: true }))
     else if (path.endsWith('/notifications/unread_count/')) response = { unread_count: unread() }
     else if (method === 'GET' && path.endsWith('/notifications/')) {
-      const serverPageSize = state.serverPageSize || state.notifications.length || 1
       const pageNumber = Number(url.searchParams.get('page') || 1)
+      state.onListRequest?.(pageNumber, state)
+      const serverPageSize = state.serverPageSize || state.notifications.length || 1
       const offset = (pageNumber - 1) * serverPageSize
-      response = { count: state.countOverride ?? state.notifications.length, next: offset + serverPageSize < state.notifications.length ? `/api/v1/notifications/?page=${pageNumber + 1}` : null, previous: null, results: structuredClone(state.notifications.slice(offset, offset + serverPageSize)) }
+      response = { count: state.countOverride ?? state.notifications.length, next: offset + serverPageSize < state.notifications.length ? `/api/v1/notifications/?page=${pageNumber + 1}` : null, previous: null, results: structuredClone(state.notifications.slice(offset, offset + serverPageSize)), ...state.listResponseOverride }
     } else if (method === 'POST' && path.endsWith('/notifications/mark_as_read/')) {
       let changed = 0
       state.notifications.forEach(item => {
@@ -305,6 +306,45 @@ test('server pagination loads the complete inbox before calculating filters and 
   expect(state.errors).toEqual([])
 })
 
+test('a terminal page with a stale server count loads actual notifications after one bounded retry', async ({ page }) => {
+  const state = await prepare(page, { countOverride: 15 })
+  await ready(page)
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  await expect(stat(page, 'All', 14)).toBeVisible()
+  await expect(stat(page, 'Unread', 2)).toBeVisible()
+  await expect(rows(page)).toHaveCount(10)
+  await page.getByRole('button', { name: 'Next', exact: true }).click()
+  await expect(rows(page)).toHaveCount(4)
+  await expect(row(page, 'Document 6 available')).toBeVisible()
+  expect(state.requests.filter(request => request.path === '/api/v1/notifications/').map(request => new URLSearchParams(request.query).get('page'))).toEqual([null, null])
+  expect(writes(state)).toEqual([])
+  expect(state.errors).toEqual([])
+})
+
+test('notifications arriving between pages are recovered by a second traversal with actual totals', async ({ page }) => {
+  let arrived = false
+  const incomingTitle = 'New notification received during loading'
+  const state = await prepare(page, {
+    serverPageSize: 7,
+    onListRequest: (pageNumber, fixture) => {
+      if (pageNumber !== 2 || arrived) return
+      arrived = true
+      fixture.notifications.unshift({ id: 200, title: incomingTitle, message: 'A synthetic update arrived between page requests.', category_name: 'INFO', priority: 'NORMAL', is_read: false, created_at: now.toISOString(), metadata: {} })
+    },
+  })
+  await ready(page)
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  await expect(stat(page, 'All', 15)).toBeVisible()
+  await expect(stat(page, 'Unread', 3)).toBeVisible()
+  await expect(row(page, incomingTitle)).toBeVisible()
+  await page.getByRole('button', { name: 'Next', exact: true }).click()
+  await expect(rows(page)).toHaveCount(5)
+  await expect(row(page, 'Document 6 available')).toBeVisible()
+  expect(state.requests.filter(request => request.path === '/api/v1/notifications/').map(request => new URLSearchParams(request.query).get('page'))).toEqual([null, '2', '3', null, '2', '3'])
+  expect(writes(state)).toEqual([])
+  expect(state.errors).toEqual([])
+})
+
 test('priority filter clears cleanly and a row menu action persists without opening a source record', async ({ page }) => {
   const state = await prepare(page)
   await ready(page)
@@ -322,20 +362,45 @@ test('priority filter clears cleanly and a row menu action persists without open
   expect(state.errors).toEqual([])
 })
 
-test('an incomplete refresh preserves the last complete inbox and allows retry', async ({ page }) => {
+test('a cyclic next-page link preserves the previous inbox and allows retry', async ({ page }) => {
   const state = await prepare(page)
   await ready(page)
   await row(page, firstTitle).click()
   await page.getByRole('button', { name: 'Filters', exact: true }).click()
-  state.countOverride = 15
+  state.listResponseOverride = { next: '/api/v1/notifications/?page=1' }
   await page.getByRole('button', { name: 'Refresh', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('The complete notification inbox could not be loaded')
   await expect(stat(page, 'All', 14)).toBeVisible()
   await expect(row(page, firstTitle)).toHaveAttribute('aria-pressed', 'true')
-  delete state.countOverride
+  delete state.listResponseOverride
   await page.getByRole('button', { name: 'Retry', exact: true }).click()
   await expect(page.getByRole('alert')).toHaveCount(0)
   await expect(stat(page, 'All', 14)).toBeVisible()
+  expect(writes(state)).toEqual([])
+  expect(state.errors).toEqual([])
+})
+
+test('a malformed refresh retains rows, selection and search until a successful retry', async ({ page }) => {
+  const state = await prepare(page)
+  await ready(page)
+  await page.getByRole('searchbox', { name: 'Search notifications' }).fill('0480')
+  await row(page, firstTitle).click()
+  await page.getByRole('button', { name: 'Filters', exact: true }).click()
+  state.listResponseOverride = { results: null }
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('The complete notification inbox could not be loaded')
+  await expect(stat(page, 'All', 14)).toBeVisible()
+  await expect(rows(page)).toHaveCount(2)
+  await expect(row(page, firstTitle)).toHaveAttribute('aria-pressed', 'true')
+  await expect(details(page).getByRole('heading', { name: firstTitle, exact: true })).toBeVisible()
+  await expect(page.getByRole('searchbox', { name: 'Search notifications' })).toHaveValue('0480')
+  delete state.listResponseOverride
+  await page.getByRole('button', { name: 'Retry', exact: true }).click()
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  await expect(stat(page, 'All', 14)).toBeVisible()
+  await expect(rows(page)).toHaveCount(2)
+  await expect(row(page, firstTitle)).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('searchbox', { name: 'Search notifications' })).toHaveValue('0480')
   expect(writes(state)).toEqual([])
   expect(state.errors).toEqual([])
 })

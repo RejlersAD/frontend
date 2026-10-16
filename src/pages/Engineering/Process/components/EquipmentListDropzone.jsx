@@ -22,8 +22,14 @@ const MAX_MB = 15
  *   activeEquipmentList  — currently-active EL summary (or null)
  *   onUploaded(data)     — called with the API response when parse succeeds
  *   disabled             — parent-controlled (e.g. during PDF extraction)
+ *   projectId            — active project's UUID, sent with the upload
+ *                          request but NOT used to scope it — the Master
+ *                          Equipment List is deliberately global (one per
+ *                          user account, not per project); see
+ *                          PIDCheckerV2.jsx's top-of-file comment for the
+ *                          full trace.
  */
-export default function EquipmentListDropzone({ activeEquipmentList, onUploaded, disabled }) {
+export default function EquipmentListDropzone({ activeEquipmentList, onUploaded, disabled, projectId }) {
   const fileRef = useRef(null)
   const [uploading, setUploading] = useState(false)
   const [pct, setPct] = useState(0)
@@ -38,7 +44,7 @@ export default function EquipmentListDropzone({ activeEquipmentList, onUploaded,
     }
     setUploading(true); setPct(0)
     try {
-      const data = await uploadEquipmentList(f, { onProgress: setPct })
+      const data = await uploadEquipmentList(f, { onProgress: setPct, projectId })
       toast.success(`Uploaded — ${data.total_rows} equipment items parsed`)
       onUploaded?.(data)
     } catch (err) {

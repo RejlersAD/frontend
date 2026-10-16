@@ -8,6 +8,7 @@ const EXTRACT_ENDPOINT = `${BASE_PATH}/extract-line-tags/`
 const EXTRACTIONS_ENDPOINT = `${BASE_PATH}/extractions/`
 const LEGENDS_ENDPOINT = `${BASE_PATH}/legends/`
 const LEGENDS_DEFAULT_TEMPLATE_ENDPOINT = `${BASE_PATH}/legends/default-template/`
+const LEGENDS_PACK_UPLOAD_ENDPOINT = `${BASE_PATH}/legends/pack-upload/`
 const LEGENDS_LOOKUP_ADD_ENDPOINT = `${BASE_PATH}/legends/add-lookup/`
 const LEGENDS_LOOKUP_EDIT_ENDPOINT = `${BASE_PATH}/legends/edit-lookup/`
 const LEGENDS_LOOKUP_DELETE_ENDPOINT = `${BASE_PATH}/legends/delete-lookup/`
@@ -63,7 +64,27 @@ export const LEGEND_SECTIONS = [
   { id: 'instrument_typical_letter', label: 'Instrument Typical Letter' },
   { id: 'drawing_cont', label: 'Drawing Continuations' },
   { id: 'general_instrument', label: 'General Instrument or Function Symbols' },
+  { id: 'electrical', label: 'Electrical' },
 ]
+
+// SOFT-CODED: discipline grouping for the Legend Manager, aligned with the
+// Engineering sidebar numbering (1.1 Process … 1.7 Digitization, 1.8 Legend
+// Manager). Each discipline lists the legend section IDs it owns — section
+// IDs themselves are unchanged so all backend data stays compatible.
+export const LEGEND_DISCIPLINES = [
+  { id: 'process',         number: '1.1', label: 'Process',         sections: ['line_list', 'equipment_list', 'scope_symbols', 'limit_line', 'drawing_cont', 'miscellaneous'] },
+  { id: 'piping',          number: '1.2', label: 'Piping',          sections: ['piping', 'valve', 'pipe_connection', 'pipe_end', 'special_piping', 'other_specialties'] },
+  { id: 'instrumentation', number: '1.3', label: 'Instrumentation', sections: ['instrument_index', 'instrument_function', 'instrument_signal', 'instrument_typical_letter', 'general_instrument', 'actuator_symbols', 'flow_detector', 'control_valve_regulator'] },
+  { id: 'electrical',      number: '1.4', label: 'Electrical',      sections: ['electrical'] },
+  { id: 'civil',           number: '1.5', label: 'Civil',           sections: [] },
+  { id: 'mechanical',      number: '1.6', label: 'Mechanical',      sections: ['equipment_symbols'] },
+  { id: 'digitization',    number: '1.7', label: 'Digitization',    sections: [] },
+]
+
+// Section ID → discipline lookup (derived)
+export const LEGEND_SECTION_DISCIPLINE = Object.fromEntries(
+  LEGEND_DISCIPLINES.flatMap(d => d.sections.map(s => [s, d.id]))
+)
 
 // Extraction modes
 export const MODE_OCR = 'ocr'
@@ -150,9 +171,13 @@ export async function deleteExtraction(extractionId) {
 // Legend Sheets — user-owned per-section rule sets
 // ═════════════════════════════════════════════════════════════════════
 
-export async function listLegends(section) {
-  const params = section ? { section } : undefined
-  const res = await apiClient.get(LEGENDS_ENDPOINT, { params })
+export async function listLegends(section, projectId) {
+  const params = {}
+  if (section) params.section = section
+  // Optional project scope — returns project-pack legends (inherited, any
+  // uploader) alongside the user's own; rows carry an `inherited` flag.
+  if (projectId) params.project_id = projectId
+  const res = await apiClient.get(LEGENDS_ENDPOINT, { params: Object.keys(params).length ? params : undefined })
   return res.data
 }
 
@@ -183,6 +208,63 @@ export async function activateLegend(legendId) {
 export async function getLegendDefaultTemplate(section) {
   const res = await apiClient.get(LEGENDS_DEFAULT_TEMPLATE_ENDPOINT, { params: { section } })
   return res.data
+}
+
+// Upload ONE project legend pack file (PDF/image) — the backend AI-parses it
+// and auto-splits it into per-section project legends that every tool inherits.
+export async function uploadLegendPack({ file, projectId, name = '', useAi = true }) {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('project_id', projectId)
+  if (name) form.append('name', name)
+  form.append('use_ai', useAi ? 'true' : 'false')
+  const res = await apiClient.post(LEGENDS_PACK_UPLOAD_ENDPOINT, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return res.data
+}
+
+// Smart multi-sheet Excel workbook import — preview the per-sheet section
+// prediction first (nothing written), then import with the confirmed map.
+const LEGENDS_WORKBOOK_PREVIEW_ENDPOINT = `${BASE_PATH}/legends/workbook-preview/`
+const LEGENDS_WORKBOOK_IMPORT_ENDPOINT = `${BASE_PATH}/legends/workbook-import/`
+const LEGENDS_WORKBOOK_EXPORT_ENDPOINT = `${BASE_PATH}/legends/workbook-export/`
+
+export async function previewLegendWorkbook({ file }) {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await apiClient.post(LEGENDS_WORKBOOK_PREVIEW_ENDPOINT, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return res.data
+}
+
+export async function importLegendWorkbook({ file, sheetMap, projectId }) {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('project_id', projectId)
+  form.append('sheet_map', JSON.stringify(sheetMap || {}))
+  const res = await apiClient.post(LEGENDS_WORKBOOK_IMPORT_ENDPOINT, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return res.data
+}
+
+// Server-side formatted workbook export — styled fields/code tables plus the
+// section symbol pictures embedded as images (the client-side SheetJS export
+// cannot embed images). Returns { blob, filename }.
+export async function exportLegendWorkbook({ projectId, section, legendId } = {}) {
+  const res = await apiClient.get(LEGENDS_WORKBOOK_EXPORT_ENDPOINT, {
+    params: {
+      ...(projectId ? { project_id: projectId } : {}),
+      ...(section ? { section } : {}),
+      ...(legendId ? { legend_id: legendId } : {}),
+    },
+    responseType: 'blob',
+  })
+  const disposition = String(res.headers?.['content-disposition'] || '')
+  const match = disposition.match(/filename="?([^";]+)"?/i)
+  return { blob: res.data, filename: match ? match[1] : 'legend_workbook.xlsx' }
 }
 
 // Add/edit/delete ONE lookup entry in the user's active legend for a
@@ -276,7 +358,7 @@ export async function validateLineTags(payload) {
   if (payload.legendId) body.legend_id = payload.legendId
   if (payload.useAi) {
     body.vision_provider = payload.provider
-    body.vision_api_key = payload.apiKey
+    if (payload.apiKey) body.vision_api_key = payload.apiKey
   }
   const res = await apiClient.post(VALIDATE_ENDPOINT, body, { timeout: REQUEST_TIMEOUT_MS })
   return res.data
@@ -340,7 +422,7 @@ export async function crossCheck(payload) {
   if (payload.projectId) body.project_id = payload.projectId
   if (payload.useAi) {
     body.vision_provider = payload.provider
-    body.vision_api_key = payload.apiKey
+    if (payload.apiKey) body.vision_api_key = payload.apiKey
   }
   const res = await apiClient.post(CROSS_CHECK_ENDPOINT, body, { timeout: REQUEST_TIMEOUT_MS })
   return res.data
@@ -429,7 +511,7 @@ export async function equipmentCrossCheck(payload) {
     && Object.keys(payload.equipmentAttributes).length > 0
   if (payload.useAi || hasAttrs) {
     body.vision_provider = payload.provider
-    body.vision_api_key = payload.apiKey
+    if (payload.apiKey) body.vision_api_key = payload.apiKey
   }
   if (hasAttrs) {
     body.equipment_attributes = payload.equipmentAttributes
@@ -521,7 +603,7 @@ export async function instrumentCrossCheck(payload) {
     && Object.keys(payload.instrumentAttributes).length > 0
   if (payload.useAi || hasAttrs) {
     body.vision_provider = payload.provider
-    body.vision_api_key = payload.apiKey
+    if (payload.apiKey) body.vision_api_key = payload.apiKey
   }
   if (hasAttrs) {
     body.instrument_attributes = payload.instrumentAttributes
@@ -541,7 +623,7 @@ export async function extractEquipmentTagsFromPid(file, { provider, apiKey } = {
   const form = new FormData()
   form.append(UPLOAD_FIELD, file)
   form.append('provider', provider || '')
-  form.append('api_key', apiKey || '')
+  if (apiKey) form.append('api_key', apiKey)
   const res = await apiClient.post(EXTRACT_EQUIPMENT_TAGS_ENDPOINT, form, {
     timeout: REQUEST_TIMEOUT_MS,
     headers: { 'Content-Type': 'multipart/form-data' },
@@ -564,7 +646,7 @@ export async function extractInstrumentTagsFromPid(file, { provider, apiKey, onP
   const form = new FormData()
   form.append(UPLOAD_FIELD, file)
   form.append('provider', provider || '')
-  form.append('api_key', apiKey || '')
+  if (apiKey) form.append('api_key', apiKey)
   const dispatch = await apiClient.post(EXTRACT_INSTRUMENT_TAGS_ENDPOINT, form, {
     timeout: REQUEST_TIMEOUT_MS,
     headers: { 'Content-Type': 'multipart/form-data' },
@@ -665,7 +747,7 @@ export async function downloadTokenReport({ format = 'xlsx', since, until } = {}
 export default {
   extractLineTags, listExtractions, getExtraction, deleteExtraction,
   listLegends, getLegend, createLegend, updateLegend, deleteLegend,
-  activateLegend, getLegendDefaultTemplate,
+  activateLegend, getLegendDefaultTemplate, exportLegendWorkbook,
   addLegendLookupEntry, editLegendLookupEntry, deleteLegendLookupEntry, listLookupSections,
   getSymbolImages,
   getDefaultSymbolImages, uploadSymbolImage, deleteSymbolImage,

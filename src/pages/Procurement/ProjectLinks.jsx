@@ -102,8 +102,9 @@ export default function ProjectLinks() {
       if (error.response?.status === 409 || error.response?.data?.expected_folder_project_id) setConflict(true)
     } finally { mutationInFlight.current = false; if (active.current) setPreparing(false) }
   }
-  const created = order => {
-    setCreateProject(null); setFilter('all'); setSearch(order?.po_number || ''); setDebouncedSearch(order?.po_number || ''); setPage(1)
+  const created = (order, { close = false } = {}) => {
+    if (close) setCreateProject(null)
+    setFilter('all'); setSearch(order?.po_number || ''); setDebouncedSearch(order?.po_number || ''); setPage(1)
     setSelectedOrderId(order?.id ? String(order.id) : ''); setRevision(value => value + 1)
     setNotice(order?.po_number ? `${order.po_number} was saved.` : 'Purchase order saved.')
   }
