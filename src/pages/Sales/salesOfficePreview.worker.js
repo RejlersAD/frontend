@@ -6,11 +6,14 @@ globalThis.Buffer = Buffer;
 
 self.onmessage = async ({ data }) => {
   try {
-    if (!(data?.buffer instanceof ArrayBuffer) || !['xlsx', 'docx', 'msg'].includes(data.kind)) throw new Error('Unsupported document preview.');
+    if (!(data?.buffer instanceof ArrayBuffer) || !['xlsx', 'docx', 'msg', 'eml'].includes(data.kind)) throw new Error('Unsupported document preview.');
     let content;
     if (data.kind === 'xlsx') {
       const { parseWorkbook } = await import('./salesOfficeWorkbook.js');
       content = parseWorkbook(data.buffer);
+    } else if (data.kind === 'eml') {
+      const { parseEml } = await import('./salesOfficeDocuments.js');
+      content = parseEml(data.buffer);
     } else {
       if (data.kind === 'docx') {
         const { validateOfficeZip } = await import('./salesOfficeWorkbook.js');

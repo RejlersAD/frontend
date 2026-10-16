@@ -41,6 +41,19 @@ const DEFAULT_SECTION = LEGEND_SECTIONS[0]?.id || 'line_list'
 const JSON_INDENT = 2
 const DEFAULT_SEPARATOR = '-'
 
+// ── Soft-coded: smart Back navigation ───────────────────────────────────────
+// Maps legend sections to the tool that owns them, so "Back" always returns
+// the user to the application they came from — even without an explicit
+// `returnTo` param. Add new sections/tools here without touching logic.
+export const SMART_BACK_CONFIG = {
+  sectionHomes: {
+    instrument_index: { route: '/engineering/instrument/index',        label: 'Instrument Index' },
+    line_list:        { route: '/engineering/process/line-list',       label: 'Line List' },
+    equipment_list:   { route: '/engineering/process/equipment-list',  label: 'Equipment List' },
+  },
+  fallback: { route: '/engineering/process/pid-checker-v2', label: 'P&ID Checker V2' },
+}
+
 function prettyJson(obj) {
   try { return JSON.stringify(obj, null, JSON_INDENT) } catch { return '' }
 }
@@ -58,6 +71,25 @@ function fieldsFromDefinition(def) {
 export default function LegendSheetsCanvas({ projectId = null, projectName = '', onWorkbookImport, importVersion = 0, importedSection = null }) {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
+
+  // ── Soft-coded: smart Back-button resolution (enterprise pattern) ───────
+  // Priority:
+  //   1. Explicit `returnTo` query param (caller-driven, validated internal)
+  //   2. `section` query param → owning tool via SECTION_HOME_MAP below
+  //   3. Fallback: P&ID Checker V2 (legacy default)
+  const returnToParam = params.get('returnTo')
+  const returnFromLabel = params.get('from') || ''
+  const sectionParam = params.get('section') || ''
+  const sectionHome = SMART_BACK_CONFIG.sectionHomes[sectionParam] || null
+  const isSafeInternal = (p) =>
+    typeof p === 'string' && p.startsWith('/') && !p.startsWith('//')
+
+  const backTarget = isSafeInternal(returnToParam)
+    ? returnToParam
+    : (sectionHome?.route || SMART_BACK_CONFIG.fallback.route)
+  const backLabel = returnFromLabel
+    ? `Back to ${returnFromLabel}`
+    : (sectionHome ? `Back to ${sectionHome.label}` : `Back to ${SMART_BACK_CONFIG.fallback.label}`)
   const initialSection = params.get('section') || DEFAULT_SECTION
 
   const [activeSection, setActiveSection] = useState(initialSection)
@@ -591,15 +623,15 @@ export default function LegendSheetsCanvas({ projectId = null, projectName = '',
       }}>
         <button
           type="button"
-          onClick={() => navigate('/engineering/process/pid-checker-v2')}
-          title="Back to P&ID Checker V2"
+          onClick={() => navigate(backTarget)}
+          title={backLabel}
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 6,
             padding: '6px 10px', borderRadius: 8, border: `1px solid ${THEME_BORDER}`,
             background: '#fff', color: THEME_TEXT, cursor: 'pointer', fontSize: 12,
           }}
         >
-          <ArrowLeft size={14} /> Back
+          <ArrowLeft size={14} /> {backLabel}
         </button>
 
         <div style={{

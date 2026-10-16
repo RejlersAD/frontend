@@ -50,6 +50,7 @@ test("selecting a row opens the persistent detail rail and full record remains a
   await expect(rail(page)).toContainText("Seawater intake engineering study");
   await expect(rail(page).getByRole("tab")).toHaveText([
     "Overview",
+    "Analysis",
     "Activity",
   ]);
   await expect(
@@ -67,6 +68,7 @@ test("selecting a row opens the persistent detail rail and full record remains a
   await rail(page)
     .getByRole("tab", { name: "Overview", exact: true })
     .press("ArrowRight");
+  await rail(page).getByRole("tab", { name: "Analysis", exact: true }).press("ArrowRight");
   await expect(
     rail(page).getByRole("tab", { name: "Activity", exact: true }),
   ).toBeFocused();

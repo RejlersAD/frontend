@@ -4,6 +4,7 @@ import ReactQuill from "react-quill";
 import { Loader2, RefreshCw } from "lucide-react";
 import "react-quill/dist/quill.snow.css";
 import "./SalesLetterEditor.css";
+import { letterExtractionStatus } from './salesLetterExtraction';
 
 const QUILL_MODULES = {
   toolbar: [
@@ -135,7 +136,9 @@ export default function SalesLetterEditor({
       ...(letter?.custom_data || {}),
       letterhead: { ...head, signature_titles },
     };
-    const body = paragraphs.map((p) => p.trim()).filter(Boolean).join("\n\n");
+    const editedBody = paragraphs.map((p) => p.trim()).filter(Boolean).join("\n\n");
+    const originalBody = (letter?.body || "").split("\n\n").map((p) => p.trim()).filter(Boolean).join("\n\n");
+    const body = editedBody === originalBody ? letter.body : editedBody;
     return { subject, body, custom_data };
   }, [head, letter, paragraphs, subject]);
 
@@ -168,7 +171,7 @@ export default function SalesLetterEditor({
         <div>
           <h3>Edit Letter</h3>
           <div className="sl-editor-hint">
-            Press <kbd>Ctrl+S</kbd> to save. Changes regenerate the PDF/DOCX and
+            Press <kbd>Ctrl+S</kbd> to save. Changed content updates the PDF/DOCX and
             re-attach them to the Correspondence folder.
           </div>
         </div>
@@ -268,6 +271,7 @@ export default function SalesLetterEditor({
           {/* Recipient */}
           <div className="sl-editor-section">
             <h4>Recipient (To)</h4>
+            <p className="sl-editor-hint">{letterExtractionStatus(letter)}</p>
             <div className="sl-editor-grid">
               <Field
                 label="Name"
@@ -475,7 +479,7 @@ export default function SalesLetterEditor({
               <Loader2 className="sl-spin" size={16} /> Saving…
             </>
           ) : (
-            "Save & Regenerate"
+            "Save changes"
           )}
         </button>
       </div>

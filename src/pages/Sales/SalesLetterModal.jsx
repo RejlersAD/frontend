@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import PropTypes from "prop-types";
 import {
   AlertCircle,
@@ -94,6 +94,7 @@ export default function SalesLetterModal({
   const [pdfError, setPdfError] = useState(null);
   // Bumped after every regenerate so the preview iframe reloads the PDF.
   const [previewEpoch, setPreviewEpoch] = useState(0);
+  const preparing = useRef(false);
 
   useEffect(() => {
     if (initialLetterType && step === "select") {
@@ -119,6 +120,29 @@ export default function SalesLetterModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  useEffect(() => {
+    if (!open || !deal || !selectedType) return;
+    let cancelled = false;
+    const checkExisting = async () => {
+      try {
+        const response = await salesService.getLetters(deal.id);
+        const letters = Array.isArray(response) ? response : response?.results;
+        if (!Array.isArray(letters)) return;
+        const existing = letters.find((letter) => letter.letter_type === selectedType && letter.status !== "archived");
+        if (existing && !cancelled) {
+          setGeneratedLetter(existing);
+          setStep("preview");
+        }
+      } catch (err) {
+        // ignore
+      }
+    };
+    checkExisting();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, deal, selectedType]);
+
   const pdfUrl = useMemo(() => {
     if (!open || !deal || !generatedLetter) return null;
     return salesService.buildLetterPreviewUrl(generatedLetter, previewEpoch) || null;
@@ -140,7 +164,8 @@ export default function SalesLetterModal({
   }, [deal]);
 
   const handleGenerate = useCallback(async () => {
-    if (!selectedType) return;
+    if (!selectedType || preparing.current) return;
+    preparing.current = true;
     setLoading(true);
     setError("");
     setPdfError(null);
@@ -154,6 +179,8 @@ export default function SalesLetterModal({
       setStep("preview");
       onLetterGenerated?.(letter);
     } catch (err) {
+      setGeneratedLetter(null);
+      setStep("select");
       const msg =
         err.response?.data?.detail ||
         err.response?.data?.letter_type?.[0] ||
@@ -161,6 +188,7 @@ export default function SalesLetterModal({
       setError(msg);
       onError?.(msg);
     } finally {
+      preparing.current = false;
       setLoading(false);
     }
   }, [deal, selectedType, onLetterGenerated, onError]);
