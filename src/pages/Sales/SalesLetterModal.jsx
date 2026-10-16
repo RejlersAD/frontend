@@ -120,6 +120,29 @@ export default function SalesLetterModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  useEffect(() => {
+    if (!open || !deal || !selectedType) return;
+    let cancelled = false;
+    const checkExisting = async () => {
+      try {
+        const response = await salesService.getLetters(deal.id);
+        const letters = Array.isArray(response) ? response : response?.results;
+        if (!Array.isArray(letters)) return;
+        const existing = letters.find((letter) => letter.letter_type === selectedType && letter.status !== "archived");
+        if (existing && !cancelled) {
+          setGeneratedLetter(existing);
+          setStep("preview");
+        }
+      } catch (err) {
+        // ignore
+      }
+    };
+    checkExisting();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, deal, selectedType]);
+
   const pdfUrl = useMemo(() => {
     if (!open || !deal || !generatedLetter) return null;
     return salesService.buildLetterPreviewUrl(generatedLetter, previewEpoch) || null;
@@ -156,6 +179,8 @@ export default function SalesLetterModal({
       setStep("preview");
       onLetterGenerated?.(letter);
     } catch (err) {
+      setGeneratedLetter(null);
+      setStep("select");
       const msg =
         err.response?.data?.detail ||
         err.response?.data?.letter_type?.[0] ||
