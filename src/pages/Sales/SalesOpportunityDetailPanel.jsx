@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import {
   ArrowLeft,
   ArrowRight,
+  BarChart3,
   CheckCircle2,
   Clock3,
   Copy,
@@ -18,6 +19,7 @@ import {
   XCircle,
 } from "lucide-react";
 import SalesOpportunityHistory from "./SalesOpportunityHistory";
+import SalesOpportunityAnalysis from "./SalesOpportunityAnalysis.jsx";
 import SalesOpportunityWorkspace from "./SalesOpportunityWorkspace.jsx";
 import { opportunityMoney } from "./salesOpportunityRegistration";
 import {
@@ -53,7 +55,7 @@ const scopeLabels = {
   epcm: "EPCM",
   pmc: "PMC",
 };
-const tabs = ["Overview", "Activity"];
+const tabs = ["Overview", "Analysis", "Activity"];
 const formatDate = (value, includeTime = false) => {
   const raw = text(value);
   if (!raw) return "Not provided";
@@ -535,7 +537,7 @@ export default function SalesOpportunityDetailPanel({
               onClick={() => activate(tab)}
               onKeyDown={moveTab}
             >
-              {tab}
+              {tab === 'Analysis' && <BarChart3 size={14} aria-hidden="true" style={{ verticalAlign: 'middle', marginRight: 5 }} />}{tab}
             </button>
           ))}
         </div>
@@ -560,6 +562,7 @@ export default function SalesOpportunityDetailPanel({
             />
           </div>
         )}
+        {activeTab === "Analysis" && <SalesOpportunityAnalysis key={record.id} record={record} />}
         {activeTab === "Overview" && (
           <>
             <Section number={1} title="Identity">

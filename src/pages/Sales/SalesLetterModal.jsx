@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import PropTypes from "prop-types";
 import {
   AlertCircle,
@@ -94,6 +94,7 @@ export default function SalesLetterModal({
   const [pdfError, setPdfError] = useState(null);
   // Bumped after every regenerate so the preview iframe reloads the PDF.
   const [previewEpoch, setPreviewEpoch] = useState(0);
+  const preparing = useRef(false);
 
   useEffect(() => {
     if (initialLetterType && step === "select") {
@@ -140,7 +141,8 @@ export default function SalesLetterModal({
   }, [deal]);
 
   const handleGenerate = useCallback(async () => {
-    if (!selectedType) return;
+    if (!selectedType || preparing.current) return;
+    preparing.current = true;
     setLoading(true);
     setError("");
     setPdfError(null);
@@ -161,6 +163,7 @@ export default function SalesLetterModal({
       setError(msg);
       onError?.(msg);
     } finally {
+      preparing.current = false;
       setLoading(false);
     }
   }, [deal, selectedType, onLetterGenerated, onError]);
