@@ -38,7 +38,9 @@ test('Analysis presents a cited executive brief, requirements, dates, relationsh
   const { state } = await setup(page);
   await expect(pane(page).getByRole('heading', { name: 'What is this opportunity?', exact: true })).toBeVisible();
   await expect(pane(page)).toContainText('Partial analysis');
-  await expect(pane(page)).toContainText('501');
+  await pane(page).getByRole('button', { name: 'Sources', exact: true }).click();
+  await expect(pane(page)).toContainText('501 sources inventoried');
+  await pane(page).getByRole('button', { name: 'Brief', exact: true }).click();
   await expect(pane(page)).toContainText('RFQ-2026-100');
   await pane(page).locator('summary').first().click();
   await expect(pane(page).locator('blockquote').first()).toContainText('Technical inspection proposal is required.');

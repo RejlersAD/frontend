@@ -418,6 +418,9 @@ export default function SalesOpportunityAnalysis({ record }) {
           {view === "Sources" && (
             <section className="soa-section">
               <h3>Source coverage</h3>
+              <p className="soa-coverage-note">
+                {counts.total || 0} sources inventoried · {counts.ready || 0} ready · {counts.partial || 0} partial.
+              </p>
               {!hasResult && result.relationships?.length > 0 && (
                 <p className="soa-coverage-note">
                   Shared document references were detected during text extraction,
