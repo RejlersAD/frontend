@@ -224,6 +224,190 @@ export const UPLOAD_CONFIG = {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// STAGE-BY-STAGE USER INSTRUCTIONS & GATING (soft-coded)
+// Mirrors the Instrument Index 4-stage guided flow: each stage carries
+// its own instruction panel and an unlock gate — a stage's content stays
+// hidden until the previous stage is addressed. Edit copy/routes here.
+// ─────────────────────────────────────────────────────────────────────
+export const IO_STAGE_FLOW = [
+  {
+    id: 'upload',
+    num: 1,
+    title: 'Upload I/O List PDF or P&ID Drawing',
+    isUnlocked: () => true,
+    isComplete: (s) => Boolean(s.file),
+    instruction: {
+      heading: 'How to provide your document — pick any ONE option',
+      bullets: [
+        'Drag & drop the PDF onto the drop zone below.',
+        'Click the drop zone to browse and select the PDF from your computer.',
+      ],
+      note: 'I/O List PDFs (Comments Resolution Sheet + structured table) and P&ID drawing PDFs are both accepted — the type is auto-detected. Your draft is auto-saved on this device, so you can continue later.',
+    },
+  },
+  {
+    id: 'legend',
+    num: 2,
+    title: 'Legend Cross-Check',
+    optional: true,
+    isUnlocked: (s) => Boolean(s.file),
+    isComplete: (s) => Boolean(s.legendAcked),
+    instruction: {
+      heading: 'Cross-check your project legends',
+      bullets: [
+        'You will be redirected to the Legends Manager — review or configure the symbol legends there, then use the return banner to come back.',
+        'Legend verification runs only when an active legend is configured — without one, extraction still works, just without symbol cross-verification.',
+        'Facing any difficulty with legends? Raise a request with the ICT department via My Enquiries.',
+      ],
+      // action intentionally null — the UploadCard renders the redirect
+      // button itself so it can mark this stage as visited before leaving.
+      action: null,
+      // returnTo/from let the Legend Manager render its "return" banner.
+      legendManagerRoute: '/engineering/legends?section=instrument_index&returnTo=/engineering/instrument/datasheet/io-list&from=IO%20List',
+      continueLabel: 'Open Legend Manager →',
+      skipLabel: 'Skip this step →',
+      note: 'Optional — extraction works without a legend, but a configured legend improves verification accuracy.',
+    },
+  },
+  {
+    id: 'metadata',
+    num: 3,
+    title: 'Document Info',
+    // Chained: opens only after the legend stage is addressed (acknowledged or skipped).
+    isUnlocked: (s) => Boolean(s.file) && Boolean(s.legendAcked),
+    isComplete: (s) => Boolean(s.meta && s.meta.document_number && s.meta.revision_label),
+    instruction: {
+      heading: 'Fill in the document details',
+      bullets: [
+        'Document number and Revision are required — they keep multi-revision CRS chains cleanly separated.',
+        'Plant / Unit and CRS chain ID help group revisions across the project.',
+      ],
+      note: 'Project name is auto-filled from the active project.',
+    },
+  },
+  {
+    id: 'vision',
+    num: 4,
+    title: 'AI Extraction Key — BYOK (P&ID drawings)',
+    // optional flag renders the "(optional)" badge — don't repeat it in title
+    optional: true,
+    // Chained: opens only after the required Document Info fields are filled.
+    isUnlocked: (s) =>
+      Boolean(s.file) && Boolean(s.legendAcked) &&
+      Boolean(s.meta && s.meta.document_number && s.meta.revision_label),
+    isComplete: (s) => Boolean(s.visionApiKey && s.visionApiKey.trim()),
+    instruction: {
+      heading: 'Add your AI vision key (only for P&ID drawing PDFs)',
+      bullets: [
+        'Plain I/O List PDFs never need a key — they use free PyMuPDF extraction.',
+        'For P&ID drawings, your own Claude / OpenAI key gives the best accuracy — it is used for this request only and never stored on the server.',
+        "Don't have a key? Raise a ticket with the ICT department via My Enquiries to get one issued.",
+      ],
+      action: { label: 'Raise a ticket with ICT', route: '/my-enquiries' },
+      note: 'Optional — leave blank to use basic OCR (a real, working fallback).',
+    },
+  },
+]
+
+// ─────────────────────────────────────────────────────────────────────
+// DRAFT AUTO-SAVE (soft-coded) — IndexedDB, per project.
+// Persists the selected file + document info so a user waiting on an
+// ICT-issued AI key can close the browser and continue later.
+// SECURITY: the vision API key is NEVER persisted.
+// ─────────────────────────────────────────────────────────────────────
+export const IO_AUTOSAVE = {
+  enabled:    true,
+  dbName:     'radai_io_list',
+  storeName:  'upload_drafts',
+  debounceMs: 500,
+  savedLabel: '💾 Draft auto-saved',
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// WORKSPACE SESSION (soft-coded) — keeps the open project in
+// sessionStorage so the Legend Manager round-trip returns the user to
+// the same project workspace. Tab-scoped only.
+// ─────────────────────────────────────────────────────────────────────
+export const IO_WORKSPACE_SESSION = {
+  enabled:    true,
+  storageKey: 'io_list_active_project',
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// SUBMIT GATE (soft-coded) — "Upload & Extract" stays disabled until all
+// four stages are explicitly verified by the user. Stage 4 is a required
+// CHOICE: either a BYOK key that passed Test, or an explicit opt-in to
+// free Basic OCR. Edit labels/hints here without touching JSX.
+// ─────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────
+// ENTERPRISE REGISTER UI (soft-coded) — I/O Table presentation layer.
+// KPI strip, filter dropdowns, pagination footer, row detail drawer and
+// data-quality badges. Purely presentational — editing/export logic
+// untouched. enabled:false restores the plain table.
+// ─────────────────────────────────────────────────────────────────────
+export const IO_REGISTER_UI = {
+  enabled:  true,
+  accent:   '#0f766e',
+  accentSoft: '#f0fdfa',
+  pageSize: 25,
+  pageSizeOptions: [10, 25, 50, 100],
+  // KPI cards (values computed in the panel from the row data)
+  kpis: [
+    { id: 'total',       label: 'Total points',   color: '#0f766e' },
+    { id: 'instruments', label: 'Instruments',    color: '#0369a1' },
+    { id: 'lines',       label: 'Lines / Equip.', color: '#7c3aed' },
+    { id: 'signals',     label: 'Signal types',   color: '#b45309' },
+    { id: 'dq',          label: 'Data quality',   color: '#be123c' },
+  ],
+  // Filter dropdowns — values derived from the row data at runtime
+  filters: [
+    { key: 'signal_type', label: 'Signal' },
+    { key: 'kind',        label: 'Type' },
+  ],
+  drawer: {
+    enabled: true,
+    title:   'I/O Point Details',
+    subtitle: 'Full extracted record for the selected row',
+  },
+  // Data-quality badge: a row is flagged when ANY listed field is blank
+  dq: {
+    enabled: true,
+    badge: 'DQ',
+    tooltip: 'Data quality: expected field(s) missing on this row',
+    requiredAny: ['service_description', 'signal_type'],
+  },
+}
+
+export const IO_SUBMIT_GATE = {
+  enabled: true,
+  // Stage 4 choice cards
+  choices: {
+    byok: {
+      id: 'byok',
+      label: 'Use my AI key (BYOK)',
+      desc: 'Best accuracy for P&ID drawings — enter your key in P&ID Drawing options and click Test to validate it.',
+      icon: '🔑',
+    },
+    ocr: {
+      id: 'ocr',
+      label: 'Continue with Basic OCR',
+      desc: 'Free, no key needed — lower accuracy on dense or rotated P&ID drawings.',
+      icon: '🆓',
+    },
+  },
+  // Checklist shown above the disabled button until everything is verified
+  checklistTitle: 'Verify each step to enable Upload & Extract:',
+  stages: [
+    { id: 'upload',   label: 'PDF uploaded' },
+    { id: 'legend',   label: 'Legend cross-check addressed' },
+    { id: 'metadata', label: 'Document number & revision filled' },
+    { id: 'vision',   label: 'AI key choice confirmed (BYOK tested or Basic OCR)' },
+  ],
+  byokTestHint: 'Key entered — click Test in P&ID Drawing options to validate it.',
+  readyLabel: 'Upload & Extract',
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // P&ID DRAWING — BYOK VISION OPTIONS (I/O List's own sessionStorage keys,
 // distinct from apps/pid_checker_v2's — kept isolated per this module's
 // standing rule of no cross-app coupling)
@@ -232,11 +416,27 @@ export const PID_VISION_CONFIG = {
   sessionStorageProviderKey: 'io_list_vision_provider',
   sessionStorageApiKeyKey:   'io_list_vision_api_key',
   sessionStorageThoroughKey: 'io_list_vision_thorough',
+  sessionStorageModelKey:    'io_list_vision_model',
   providers: [
     { value: 'claude', label: 'Claude' },
     { value: 'openai', label: 'OpenAI' },
   ],
   defaultProvider: 'claude',
+  // Soft-coded BYOK model picker — mirrors the backend whitelist
+  // (pid_vision_extractor.ALLOWED_VISION_MODELS). '' = provider default.
+  models: {
+    claude: [
+      { value: '',                          label: 'Claude default (Sonnet 5)' },
+      { value: 'claude-sonnet-5',           label: 'Claude Sonnet 5' },
+      { value: 'claude-opus-5',             label: 'Claude Opus 5 (most capable)' },
+      { value: 'claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5' },
+    ],
+    openai: [
+      { value: '',             label: 'OpenAI default (GPT-4o)' },
+      { value: 'gpt-4o',       label: 'GPT-4o' },
+      { value: 'gpt-4o-mini',  label: 'GPT-4o mini (cheaper)' },
+    ],
+  },
   hint: 'AI Vision recommended for P&ID drawings — your key is used for this request only and never stored on the server.',
 }
 
