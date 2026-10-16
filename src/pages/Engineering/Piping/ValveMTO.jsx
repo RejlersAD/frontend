@@ -24,6 +24,7 @@
  */
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   TableCellsIcon, CloudArrowUpIcon, CheckCircleIcon,
   ArrowsPointingOutIcon, ArrowsPointingInIcon, MagnifyingGlassIcon,
@@ -33,7 +34,6 @@ import {
 } from '@heroicons/react/24/outline';
 import apiClient from '../../../services/api.service';
 import useAIProviderStatus from '../../../hooks/useAIProviderStatus';
-import PlatformAIStatus from '../../../components/ai/PlatformAIStatus';
 import { buildValveMTOReview } from '../../../config/valveMTOReview';
 import ValveMTOExtractionReview from './components/ValveMTOExtractionReview';
 
@@ -354,6 +354,196 @@ const normalizeRows = (list = []) => (Array.isArray(list) ? list.map(normalizeRo
 const renumber = (rows) => rows.map((r, i) => ({ ...r, sl_no: i + 1 }));
 
 // ---------------------------------------------------------------------------
+// Step-by-step unlock flow — same STAGE_FLOW pattern as InstrumentIndex.jsx:
+// each stage carries its own `isUnlocked(state)` gate and `isComplete(state)`
+// check. A stage's content stays hidden (VmStageGate) until the previous
+// stage is completed (or explicitly skipped, for optional stages). Edit
+// gates/copy here without touching JSX.
+// ---------------------------------------------------------------------------
+const VM_STAGE_FLOW = [
+  {
+    id: 'upload',
+    num: 1,
+    title: 'Upload P&ID Drawing (PDF)',
+    optional: false,
+    isUnlocked: () => true,
+    isComplete: (s) => Boolean(s.pidDocument),
+    instruction: {
+      heading: 'How to provide your P&ID — pick any ONE option',
+      bullets: [
+        'Drag & drop the P&ID PDF onto the drop zone below.',
+        'Click the drop zone to browse and select the PDF from your computer.',
+      ],
+      note: 'Single-page and multi-page PDFs are supported.',
+    },
+  },
+  {
+    id: 'engine',
+    num: 2,
+    title: 'Extraction Engine',
+    optional: false,
+    isUnlocked: (s) => Boolean(s.pidDocument),
+    isComplete: (s) => Boolean(s.engineComplete),
+    instruction: {
+      heading: 'Choose extraction engine',
+      bullets: [
+        'Local OCR uses legend symbols to detect valves — free, no API key needed.',
+        'AI Vision uses Claude/OpenAI to read the drawing — more accurate, needs API key.',
+      ],
+    },
+  },
+  {
+    id: 'legend',
+    num: 3,
+    title: 'Valve Legend',
+    optional: true,
+    isUnlocked: (s) => Boolean(s.pidDocument) && Boolean(s.engineComplete),
+    isComplete: (s) => Boolean(s.legendComplete),
+    instruction: {
+      heading: 'Configure your valve legend',
+      bullets: [
+        'Open the Legend Manager to review and configure valve symbols for this project.',
+        'Extracted values are verified against your active legend symbols.',
+        'Facing difficulty with legends? Raise a request with ICT via My Enquiries.',
+      ],
+      note: 'Optional — you may skip this step, but a configured legend improves extraction accuracy. After aligning legends, use the Return banner to come back here.',
+    },
+  },
+];
+
+// BYOK sub-instruction inside Stage 2 (AI Vision only) — same text/action/
+// route as Instrument Index's own STAGE_FLOW 'byok' stage instruction.
+// AI Vision is personal-key-only now (no shared/central credential option).
+const VM_BYOK_INSTRUCTION = {
+  heading: 'Add your AI extraction key (BYOK)',
+  bullets: [
+    'Provide your own OpenAI or Claude API key — required for AI Vision extraction and never stored.',
+    "Don't have a key? Raise a ticket with the ICT department via My Enquiries to get one issued.",
+  ],
+  note: 'A personal API key is required to use AI Vision.',
+};
+
+// Scan Mode sub-instruction inside Stage 2 (AI Vision only) — moved out of
+// its own stage; Local OCR has no Vision calls to tune, so there's nothing
+// for it to gate separately any more.
+const VM_SCANMODE_INSTRUCTION = {
+  heading: 'Select scan mode',
+  bullets: [
+    'Quick Scan: ~1 API call per page — fast and cheap, good for clear drawings.',
+    'Thorough Scan: ~8 API calls per page tiled — more accurate on dense or low-quality drawings.',
+  ],
+  note: 'Use Thorough Scan for best results.',
+};
+
+// Same ICT ticket route Instrument Index's own STAGE_FLOW/LEGEND_ATTACH_CONFIG
+// use (`/my-enquiries`) — found by reading InstrumentIndex.jsx directly.
+const VM_ICT_ROUTE = '/my-enquiries';
+
+// Submit-gate checklist copy — same role as Instrument Index's
+// II_SUBMIT_GATE.stages, read by both the bottom checklist and (indirectly,
+// via vmAllStagesVerified) the Extract button's disabled condition.
+const VM_SUBMIT_GATE_STAGES = [
+  { id: 'upload', label: 'P&ID PDF uploaded' },
+  { id: 'engine', label: 'Extraction engine configured' },
+  { id: 'legend', label: 'Legend addressed (active or skipped)' },
+];
+
+// Soft-coded per-stage "User Instruction" panel — identical styling to
+// Instrument Index's own StageInstruction — purely presentational.
+// `instruction` can be passed directly (for sub-instructions, e.g. the BYOK
+// box inside Stage 2, that aren't tied to a whole VM_STAGE_FLOW entry);
+// otherwise falls back to `stage.instruction`. `actions`: optional array of
+// {label, route} (navigates) or {label, onClick} (runs a callback instead —
+// e.g. opening the Legend modal rather than navigating to a route).
+function VmStageInstruction({ stage, instruction, actions }) {
+  const navigate = useNavigate();
+  const { heading, bullets = [], note } = instruction || stage?.instruction || {};
+  if (!heading) return null;
+  return (
+    <div className="mb-4 rounded-lg border border-sky-200 bg-sky-50/60 p-4">
+      <p className="text-xs font-bold uppercase tracking-wider text-sky-700 mb-2">
+        📘 User Instruction — {heading}
+      </p>
+      <ul className="list-disc list-inside space-y-1 text-xs text-slate-600">
+        {bullets.map((b, i) => <li key={i}>{b}</li>)}
+      </ul>
+      {!!actions?.length && (
+        <div className="flex flex-wrap gap-2 mt-3">
+          {actions.map((a) => (
+            <button
+              key={a.label}
+              type="button"
+              onClick={() => (a.onClick ? a.onClick() : navigate(a.route))}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-sky-700 bg-white hover:bg-sky-50 border border-sky-300 rounded-md transition-colors"
+            >
+              {a.label} <ArrowTopRightOnSquareIcon className="w-3.5 h-3.5" />
+            </button>
+          ))}
+        </div>
+      )}
+      {note && <p className="mt-2 text-[11px] italic text-slate-400">{note}</p>}
+    </div>
+  );
+}
+
+// Soft-coded locked placeholder — identical styling to Instrument Index's
+// own StageGate — shown in place of a stage's content until its
+// `isUnlocked(state)` gate passes.
+function VmStageGate({ stage }) {
+  return (
+    <div className="border border-dashed border-gray-200 rounded-lg p-4 mb-4 bg-gray-50/60 flex items-center gap-3 opacity-80">
+      <span className="flex items-center justify-center h-6 w-6 rounded-full bg-gray-100 text-gray-400 text-xs font-bold border border-gray-200 shrink-0">
+        🔒
+      </span>
+      <div>
+        <p className="text-sm font-semibold text-gray-400">
+          {stage.num}. {stage.title}
+          {stage.optional && <span className="ml-1 text-[10px] font-normal text-gray-400">(optional)</span>}
+        </p>
+        <p className="text-xs text-gray-400 mt-0.5">Complete the previous step to unlock this stage.</p>
+      </div>
+    </div>
+  );
+}
+
+// Soft-coded "skip" affordance for optional stages — identical styling to
+// Instrument Index's own StageSkipButton. Skipping marks the stage as
+// addressed so the next stage unlocks; no effect on core extraction logic.
+function VmStageSkipButton({ stage, onSkip, warning }) {
+  if (!stage.optional) return null;
+  return (
+    <div className="mb-4">
+      <button
+        type="button"
+        onClick={onSkip}
+        className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-slate-500 hover:text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-md transition-colors"
+        title={`Continue without "${stage.title}"`}
+      >
+        Skip this step →
+      </button>
+      {warning && <p className="text-[11px] text-amber-600 mt-1">{warning}</p>}
+    </div>
+  );
+}
+
+// Per-stage numbered badge — same visual language as Instrument Index's
+// inline headings (coloured when unlocked, grey when locked), plus a green
+// check once the stage is complete.
+function VmStageHeading({ stage, unlocked, complete, colourClass }) {
+  return (
+    <h2 className={`text-lg font-semibold mb-3 flex items-center gap-2 ${unlocked ? 'text-gray-800' : 'text-gray-400'}`}>
+      <span className={`h-6 w-6 rounded-full text-xs font-bold flex items-center justify-center ${unlocked ? colourClass : 'bg-gray-100 text-gray-400'}`}>
+        {stage.num}
+      </span>
+      {stage.title}
+      {stage.optional && <span className="text-xs font-normal text-gray-400">(optional)</span>}
+      {complete && <CheckCircleIcon className="h-4 w-4 text-emerald-500" />}
+      {!unlocked && <span className="text-xs">🔒</span>}
+    </h2>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 const ValveMTO = () => {
@@ -374,15 +564,44 @@ const ValveMTO = () => {
   const [procTipIdx, setProcTipIdx]     = useState(0);
   const [error, setError]               = useState(null);
   const [extractionWarnings, setExtractionWarnings] = useState([]);
-  const [extractionMode, setExtractionMode] = useState('local');
+  // null = nothing selected yet (neither engine choice card picked) —
+  // was 'local' by default, which meant Stage 2 could look complete
+  // before the user ever touched anything. Now the user must explicitly
+  // pick one of the two choice cards.
+  const [extractionMode, setExtractionMode] = useState(null);
   const [visionProvider, setVisionProvider] = useState('openai');
   const [credentialMode, setCredentialMode] = useState('central');
   const [visionApiKey, setVisionApiKey] = useState('');
   const [isTestingKey, setIsTestingKey] = useState(false);
+  // keyTestResult is a status string, not an object — one of:
+  // null ("not tested yet"), 'empty', 'testing', 'valid', 'invalid',
+  // 'rate_limited'. Reset to null whenever the key/provider changes (see
+  // their onChange handlers) so a previously-passed test never silently
+  // carries over to a DIFFERENT key.
   const [keyTestResult, setKeyTestResult] = useState(null);
   const centralAI = useAIProviderStatus(visionProvider);
-  const canUseVision = !isTestingKey && (credentialMode === 'byok'
-    ? Boolean(visionApiKey.trim()) : centralAI.canUseAI);
+  // AI Vision only "can run" once the key has actually tested valid.
+  const canUseVision = !isTestingKey && keyTestResult === 'valid';
+
+  // ── Stage 2 completion — picking "Local OCR" is itself completion (no
+  // further confirmation step needed now that it's an explicit choice
+  // card, not a pre-selected dropdown default); AI Vision requires a
+  // PASSED key test before Stage 3 can unlock.
+  const engineComplete = extractionMode === 'local'
+    ? true
+    : extractionMode === 'vision' && keyTestResult === 'valid';
+
+  // ── Stage-flow gating (soft-coded UI only — no core logic) ───────────────
+  // Same pattern as InstrumentIndex.jsx: tracks optional stages the user
+  // explicitly skipped so the next stage can unlock. Gating rules live in
+  // VM_STAGE_FLOW above.
+  const [skippedStages, setSkippedStages] = useState({});
+  const skipStage = (id) => setSkippedStages((prev) => ({ ...prev, [id]: true }));
+  // Quick Scan (1 Vision call/page, fast) vs Thorough Scan (tiled, more
+  // calls/page, more accurate on dense drawings) — previously hardcoded to
+  // VM_UPLOAD.scanModeDefault with no visible control; now a real toggle,
+  // still defaulting to 'thorough'.
+  const [scanMode, setScanMode] = useState(VM_UPLOAD.scanModeDefault);
 
   // ── Register state ─────────────────────────────────────────────────────
   const [rows, setRows]               = useState([]);
@@ -407,6 +626,37 @@ const ValveMTO = () => {
   // ── Managed Legend Sheets (Valve MTO's OWN isolated legend system) ──────
   const [legendModalOpen, setLegendModalOpen] = useState(false);
   const [activeLegends, setActiveLegends]     = useState({});   // section → legend
+
+  // ── Stage-flow state — fed into VM_STAGE_FLOW's isUnlocked/isComplete,
+  // same shape/role as InstrumentIndex.jsx's own stageFlowState. ──────────
+  // BUG FIX: used to be just "legend active or skipped", independent of
+  // pidDocument/engineComplete — so the checklist's "Legend addressed"
+  // item could show green purely because the PROJECT already had an
+  // active legend from a previous session, even with no PDF uploaded and
+  // no engine chosen yet in the current flow. Now requires Stage 1 and
+  // Stage 2 to genuinely be done first, same as Stage 3's own isUnlocked
+  // gate already requires to even show its content.
+  const legendComplete = Boolean(pidDocument) && engineComplete &&
+    (Boolean(Object.keys(activeLegends).length) || Boolean(skippedStages.legend));
+  const stageFlowState = {
+    pidDocument,
+    extractionMode,
+    canUseVision,
+    engineComplete,
+    legendComplete,
+    activeLegendsCount: Object.keys(activeLegends).length,
+    skipped: skippedStages,
+  };
+
+  // ── Submit gate (soft-coded; mirrors Instrument Index's II_SUBMIT_GATE) ──
+  // Extract stays disabled until every stage is verified. 3 stages now —
+  // Scan Mode moved inside Stage 2 (AI Vision only), no longer its own gate.
+  const vmStageVerified = {
+    upload: Boolean(pidDocument),
+    engine: engineComplete,
+    legend: legendComplete,
+  };
+  const vmAllStagesVerified = Object.values(vmStageVerified).every(Boolean);
 
   // -------------------------------------------------------------------------
   // Local cache helpers (keyed per organizer project) — declared before the
@@ -742,14 +992,33 @@ const ValveMTO = () => {
   // -------------------------------------------------------------------------
   // Submit extraction job — POST multipart → 202 {job_id} → poll
   // -------------------------------------------------------------------------
+  // Best-effort rate-limit detection: the backend's test_api_key()
+  // (apps.pid_verification.services.piping_valve_mto_extractor) doesn't
+  // classify rate-limiting as its own outcome — a 429 from the provider
+  // falls through to the same generic "Connection test failed: <exc>"
+  // message as any other failure, with valid=False either way. Since
+  // only this frontend file is in scope, "valid but rate-limited" can
+  // only be inferred from the message text, not a real backend signal.
+  const RATE_LIMIT_PATTERN = /rate.?limit|too many requests|429/i;
+
   const handleTestApiKey = async () => {
-    if (!visionApiKey.trim() || isTestingKey) return;
+    if (!visionApiKey.trim()) {
+      setKeyTestResult('empty');
+      return;
+    }
+    if (isTestingKey) return;
     setIsTestingKey(true);
-    setKeyTestResult(null);
+    setKeyTestResult('testing');
     try {
-      setKeyTestResult(await valveMtoService.testApiKey(visionProvider, visionApiKey.trim()));
-    } catch {
-      setKeyTestResult({ valid: false, message: 'Connection test could not be completed. Check the server connection and retry.' });
+      const result = await valveMtoService.testApiKey(visionProvider, visionApiKey.trim());
+      if (result?.valid) {
+        setKeyTestResult('valid');
+      } else {
+        setKeyTestResult(RATE_LIMIT_PATTERN.test(String(result?.message || '')) ? 'rate_limited' : 'invalid');
+      }
+    } catch (err) {
+      const msg = String(err?.response?.data?.message || err?.message || '');
+      setKeyTestResult(RATE_LIMIT_PATTERN.test(msg) ? 'rate_limited' : 'invalid');
     } finally {
       setIsTestingKey(false);
     }
@@ -779,7 +1048,7 @@ const ValveMTO = () => {
 
     const formData = new FormData();
     formData.append(VM_UPLOAD.fileField, pidDocument);
-    formData.append(VM_UPLOAD.scanModeField, VM_UPLOAD.scanModeDefault);
+    formData.append(VM_UPLOAD.scanModeField, scanMode);
     formData.append('extraction_mode', extractionMode);
     if (extractionMode === 'vision') {
       formData.append('vision_provider', visionProvider);
@@ -1315,117 +1584,11 @@ const ValveMTO = () => {
               )}
             </div>
 
-            <label className="block text-xs font-semibold text-slate-600 mb-4">
-              Extraction engine
-              <select value={extractionMode} onChange={event => {
-                setExtractionMode(event.target.value);
-                setKeyTestResult(null);
-                if (event.target.value === 'local') setVisionApiKey('');
-              }}
-                disabled={isProcessing || isTestingKey} className="block mt-1 p-2 border border-slate-200 rounded-lg bg-white">
-                <option value="local">Local OCR + legend symbols (no AI quota required)</option>
-                <option value="vision">AI Vision (requires available provider quota)</option>
-              </select>
-              <span className="block mt-1 font-normal">
-                Local mode needs a complete workbook imported in this manager. Output is a review draft;
-                unknown specifications and area allocations remain blank.
-                {' '}AI Vision uses adaptive native-PDF detail regions, with rotated local OCR.
-                Detailed A0 drawings require more provider calls and runtime.
-              </span>
-            </label>
-
-            {extractionMode === 'vision' && (
-              <div className="mb-4 space-y-2">
-                <label className="block text-xs font-semibold text-slate-600">
-                  AI provider
-                  <select value={visionProvider} onChange={event => {
-                    setVisionProvider(event.target.value);
-                    setVisionApiKey('');
-                    setKeyTestResult(null);
-                  }}
-                    disabled={isProcessing || isTestingKey} className="block mt-1 p-2 border border-slate-200 rounded-lg bg-white">
-                    {VM_VISION_PROVIDERS.map(provider => (
-                      <option key={provider.id} value={provider.id}>{provider.label}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block text-xs font-semibold text-slate-600">
-                  Credential source
-                  <select value={credentialMode} onChange={event => {
-                    setCredentialMode(event.target.value);
-                    setVisionApiKey('');
-                    setKeyTestResult(null);
-                  }} disabled={isProcessing || isTestingKey}
-                    className="block mt-1 p-2 border border-slate-200 rounded-lg bg-white">
-                    <option value="central">Central administrator credentials</option>
-                    <option value="byok">Personal API key (BYOK)</option>
-                  </select>
-                </label>
-                {credentialMode === 'central' ? <PlatformAIStatus provider={visionProvider} /> : (
-                  <div className="space-y-2 rounded-lg border border-slate-200 p-3">
-                    <label className="block text-xs font-semibold text-slate-600">
-                      Personal API key
-                      <input type="password" value={visionApiKey} autoComplete="off"
-                        disabled={isProcessing || isTestingKey}
-                        onChange={event => { setVisionApiKey(event.target.value); setKeyTestResult(null); }}
-                        className="block mt-1 w-full p-2 border border-slate-200 rounded-lg bg-white" />
-                    </label>
-                    <p className="text-xs text-slate-500">
-                      BYOK uses only your key, independently of central credentials or provider disabling.
-                      It is kept in memory for this page and is cleared on reload or provider/source changes.
-                    </p>
-                    <button type="button" onClick={handleTestApiKey}
-                      disabled={!visionApiKey.trim() || isProcessing || isTestingKey}
-                      className="rounded border border-slate-300 px-3 py-1 text-xs font-semibold disabled:opacity-50">
-                      {isTestingKey ? 'Testing key...' : 'Test API key'}
-                    </button>
-                    {keyTestResult && (
-                      <p role="status" className={`text-xs ${keyTestResult.valid ? 'text-emerald-700' : 'text-red-700'}`}>
-                        {keyTestResult.message}
-                      </p>
-                    )}
-                  </div>
-                )}
-                <p className="text-xs text-slate-500">
-                  AI Vision sends drawing images and active Legend Manager text and symbol pictures to the selected provider.
-                  Reference pictures guide classification and are not valves to count.
-                  Testing a key sends only a short synthetic prompt and may incur a small provider charge.
-                  AI results still require engineering review.
-                </p>
-              </div>
-            )}
-
-            {/* Active legend status — the backend extractor injects the user's
-                ACTIVE ValveMTOLegend per section into the Vision prompt
-                server-side (no request parameter needed), so we just surface
-                what's active. Uses Valve MTO's OWN legend table — activation
-                here never affects P&ID Verification V1/V2. */}
-            {VM_LEGENDS.enabled && (
-              <div className="flex items-center gap-2 mb-4 text-xs flex-wrap" style={{ color: '#64748b' }}>
-                <BookOpenIcon className="h-4 w-4 text-blue-500" />
-                <span className="font-semibold text-slate-600">Active legends:</span>
-                {VM_LEGENDS.sections.filter(s => activeLegends[s]).length === 0 ? (
-                  <span className="italic text-slate-400">none — import a valve legend workbook for local extraction</span>
-                ) : (
-                  VM_LEGENDS.sections.filter(s => activeLegends[s]).map(s => (
-                    <span key={s} className="px-2 py-0.5 rounded-full font-medium"
-                      style={{ background: 'rgba(59,130,246,0.07)', color: '#1d4ed8', border: '1px solid rgba(59,130,246,0.18)' }}
-                      title={s}>
-                      {activeLegends[s].name}
-                    </span>
-                  ))
-                )}
-                <button onClick={openLegendModal}
-                  className="font-semibold text-blue-600 hover:text-blue-800 hover:underline transition-colors"
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-                  Manage
-                </button>
-              </div>
-            )}
-
-            {/* Drop zone */}
+            {/* ── Stage 1 · Upload P&ID Drawing (PDF) — always unlocked ── */}
+            <VmStageHeading stage={VM_STAGE_FLOW[0]} unlocked complete={vmStageVerified.upload} colourClass="bg-blue-100 text-blue-700" />
+            <VmStageInstruction stage={VM_STAGE_FLOW[0]} />
             <div
-              className="relative rounded-xl cursor-pointer overflow-hidden mb-5"
+              className="relative rounded-xl cursor-pointer overflow-hidden mb-3"
               style={{
                 border: pidDocument ? '2px solid rgba(37,99,235,0.45)' : '2px dashed rgba(37,99,235,0.22)',
                 background: pidDocument ? 'rgba(37,99,235,0.04)' : 'rgba(37,99,235,0.015)',
@@ -1475,20 +1638,244 @@ const ValveMTO = () => {
                     </div>
                     <div className="text-center">
                       <p className="text-slate-600 font-medium text-sm">Drop a P&amp;ID PDF or click to browse</p>
-                      <p className="text-slate-400 text-xs mt-1">PDF only · Multi-page drawings supported · Thorough scan</p>
+                      <p className="text-slate-400 text-xs mt-1">Single and multi-page PDFs supported</p>
                     </div>
                   </>
                 )}
               </div>
             </div>
 
+            {/* ── Stage 2 · Extraction Engine (gated) ── */}
+            {!VM_STAGE_FLOW[1].isUnlocked(stageFlowState) ? (
+              <VmStageGate stage={VM_STAGE_FLOW[1]} />
+            ) : (
+            <>
+            <VmStageHeading stage={VM_STAGE_FLOW[1]} unlocked complete={vmStageVerified.engine} colourClass="bg-cyan-100 text-cyan-700" />
+            <VmStageInstruction stage={VM_STAGE_FLOW[1]} />
+            {/* ── Engine choice cards (soft-coded) — replaces the old
+                dropdown; same card style as Instrument Index's own
+                byok/shared choice buttons (see II_SUBMIT_GATE.choices in
+                InstrumentIndex.jsx): grey/unselected by default, blue ring
+                + checkmark once picked. Picking either one IS the engine
+                choice — no separate "confirm" step for Local OCR any more,
+                since a dropdown-with-a-default doesn't exist here to need
+                defending against. ── */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+              {[
+                { id: 'local', icon: '🔍', title: 'Local OCR', lines: ['Free — no API key needed', 'Uses legend symbols only'] },
+                { id: 'vision', icon: '🤖', title: 'AI Vision', lines: ['More accurate extraction', 'Requires Claude/OpenAI key'] },
+              ].map(opt => {
+                const selected = extractionMode === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    disabled={isProcessing || isTestingKey}
+                    onClick={() => {
+                      setExtractionMode(opt.id);
+                      setKeyTestResult(null);
+                      // AI Vision is personal-key-only — credentialMode has
+                      // no visible control any more, but handleExtract still
+                      // reads it to build the request, so keep it pinned to
+                      // 'byok' whenever vision is selected.
+                      setCredentialMode(opt.id === 'vision' ? 'byok' : 'central');
+                      if (opt.id === 'local') setVisionApiKey('');
+                    }}
+                    className={`text-left rounded-xl border p-4 transition-all ${
+                      selected
+                        ? 'border-blue-400 bg-blue-50/60 ring-2 ring-blue-200'
+                        : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    <p className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                      <span>{opt.icon}</span> {opt.title}
+                      {selected && <CheckCircleIcon className="h-4 w-4 text-emerald-600 ml-auto" />}
+                    </p>
+                    {opt.lines.map(line => (
+                      <p key={line} className="text-[11px] text-slate-500 mt-1 leading-snug">{line}</p>
+                    ))}
+                  </button>
+                );
+              })}
+            </div>
+
+            {extractionMode === 'vision' && (
+              <div className="mb-4 space-y-2">
+                <VmStageInstruction
+                  instruction={VM_BYOK_INSTRUCTION}
+                  actions={[{ label: 'Raise a ticket with ICT', route: VM_ICT_ROUTE }]}
+                />
+                <label className="block text-xs font-semibold text-slate-600">
+                  AI provider
+                  <select value={visionProvider} onChange={event => {
+                    setVisionProvider(event.target.value);
+                    setVisionApiKey('');
+                    setKeyTestResult(null);
+                  }}
+                    disabled={isProcessing || isTestingKey} className="block mt-1 p-2 border border-slate-200 rounded-lg bg-white">
+                    {VM_VISION_PROVIDERS.map(provider => (
+                      <option key={provider.id} value={provider.id}>{provider.label}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <div className="space-y-2 rounded-lg border border-slate-200 p-3">
+                  <label className="block text-xs font-semibold text-slate-600">
+                    Personal API key
+                    <input type="password" value={visionApiKey} autoComplete="off"
+                      disabled={isProcessing || isTestingKey}
+                      onChange={event => { setVisionApiKey(event.target.value); setKeyTestResult(null); }}
+                      className="block mt-1 w-full p-2 border border-slate-200 rounded-lg bg-white" />
+                  </label>
+                  <p className="text-xs text-slate-500">
+                    Your key is kept in memory for this page only and is cleared on reload or provider changes.
+                  </p>
+                  <button type="button" onClick={handleTestApiKey}
+                    disabled={isProcessing || isTestingKey}
+                    className="rounded border border-slate-300 px-3 py-1 text-xs font-semibold disabled:opacity-50">
+                    {isTestingKey ? 'Testing key...' : 'Test API key'}
+                  </button>
+                  {(() => {
+                    const KEY_TEST_DISPLAY = {
+                      empty:        { icon: '⚠️', text: 'Please enter an API key first', cls: 'text-amber-600' },
+                      testing:      { icon: '🔄', text: 'Testing connection...', cls: 'text-slate-500' },
+                      valid:        { icon: '✅', text: 'Connected — API key is valid', cls: 'text-emerald-700' },
+                      invalid:      { icon: '❌', text: 'Invalid API key — please check and try again', cls: 'text-red-700' },
+                      rate_limited: { icon: '⚠️', text: 'API key valid but rate limited — try again shortly', cls: 'text-amber-600' },
+                    };
+                    const state = KEY_TEST_DISPLAY[keyTestResult] || { icon: '○', text: 'Not tested yet', cls: 'text-slate-400' };
+                    return (
+                      <p role="status" className={`text-xs font-medium flex items-center gap-1.5 ${state.cls}`}>
+                        <span className={keyTestResult === 'testing' ? 'inline-block animate-spin' : 'inline-block'}>{state.icon}</span>
+                        {state.text}
+                      </p>
+                    );
+                  })()}
+                </div>
+                <p className="text-xs text-slate-500">
+                  AI Vision sends drawing images and active Legend Manager text and symbol pictures to the selected provider.
+                  Reference pictures guide classification and are not valves to count.
+                  Testing a key sends only a short synthetic prompt and may incur a small provider charge.
+                  AI results still require engineering review.
+                </p>
+
+                {/* ── Scan Mode — moved inside Stage 2 (AI Vision only);
+                    shown once a key has been entered, matching "shown
+                    after choosing key". ── */}
+                {engineComplete && (
+                  <>
+                    <VmStageInstruction instruction={VM_SCANMODE_INSTRUCTION} />
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <div className="inline-flex rounded-lg border border-slate-300 overflow-hidden">
+                        <button
+                          type="button"
+                          onClick={() => setScanMode('quick')}
+                          disabled={isProcessing}
+                          className={`px-3 py-1.5 text-xs font-semibold ${scanMode === 'quick' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+                        >
+                          Quick Scan
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setScanMode('thorough')}
+                          disabled={isProcessing}
+                          className={`px-3 py-1.5 text-xs font-semibold border-l border-slate-300 ${scanMode === 'thorough' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+                        >
+                          Thorough Scan
+                        </button>
+                      </div>
+                      <span className="text-[11px] text-slate-500">
+                        {scanMode === 'quick'
+                          ? '~1 API call/page — fast, lower cost'
+                          : '~up to 8 API calls/page (tiled) — slower, more accurate on dense or rotated drawings'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400">Default: Thorough Scan.</p>
+                  </>
+                )}
+              </div>
+            )}
+            </>
+            )}
+
+            {/* ── Stage 3 · Valve Legend (gated, optional) ── */}
+            {!VM_STAGE_FLOW[2].isUnlocked(stageFlowState) ? (
+              <VmStageGate stage={VM_STAGE_FLOW[2]} />
+            ) : (
+            <>
+            <VmStageHeading stage={VM_STAGE_FLOW[2]} unlocked complete={vmStageVerified.legend} colourClass="bg-indigo-100 text-indigo-700" />
+            <VmStageInstruction
+              stage={VM_STAGE_FLOW[2]}
+              actions={[
+                { label: 'Open Legend Manager', onClick: openLegendModal },
+                { label: 'Raise a Request (ICT)', route: VM_ICT_ROUTE },
+              ]}
+            />
+            {/* Active legend status — the backend extractor injects the user's
+                ACTIVE ValveMTOLegend per section into the Vision prompt
+                server-side (no request parameter needed), so we just surface
+                what's active. Uses Valve MTO's OWN legend table — activation
+                here never affects P&ID Verification V1/V2. */}
+            {VM_LEGENDS.enabled && (
+              <div className="flex items-center gap-2 mb-2 text-xs flex-wrap" style={{ color: '#64748b' }}>
+                <BookOpenIcon className="h-4 w-4 text-blue-500" />
+                <span className="font-semibold text-slate-600">Active legends:</span>
+                {VM_LEGENDS.sections.filter(s => activeLegends[s]).length === 0 ? (
+                  <span className="italic text-slate-400">none — import a valve legend workbook for local extraction</span>
+                ) : (
+                  VM_LEGENDS.sections.filter(s => activeLegends[s]).map(s => (
+                    <span key={s} className="px-2 py-0.5 rounded-full font-medium"
+                      style={{ background: 'rgba(59,130,246,0.07)', color: '#1d4ed8', border: '1px solid rgba(59,130,246,0.18)' }}
+                      title={s}>
+                      {activeLegends[s].name}
+                    </span>
+                  ))
+                )}
+                <button onClick={openLegendModal}
+                  className="font-semibold text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                  Manage Legends
+                </button>
+              </div>
+            )}
+            {!vmStageVerified.legend && (
+              <VmStageSkipButton
+                stage={VM_STAGE_FLOW[2]}
+                onSkip={() => skipStage('legend')}
+                warning="Skipping legend reduces accuracy for Local OCR mode."
+              />
+            )}
+            </>
+            )}
+
+            {/* ── Submit gate checklist — same role as Instrument Index's
+                II_SUBMIT_GATE checklist ── */}
+            {!vmAllStagesVerified && (
+              <div className="rounded-xl border border-slate-200 bg-white/80 px-4 py-3 mb-3 shadow-sm">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+                  Verify each step to enable extraction:
+                </p>
+                <ul className="flex flex-wrap gap-x-4 gap-y-1.5">
+                  {VM_SUBMIT_GATE_STAGES.map(s => (
+                    <li key={s.id} className={`inline-flex items-center gap-1.5 text-[11px] font-medium ${vmStageVerified[s.id] ? 'text-emerald-600' : 'text-slate-400'}`}>
+                      {vmStageVerified[s.id]
+                        ? <CheckCircleIcon className="h-3.5 w-3.5" />
+                        : <span className="inline-block h-3.5 w-3.5 rounded-full border border-slate-300" />}
+                      {s.label}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {/* Action row */}
             <div className="flex items-center gap-3 flex-wrap">
               <button
                 onClick={handleExtract}
-                disabled={!pidDocument || isProcessing || isTestingKey || (extractionMode === 'vision' && !canUseVision)}
+                disabled={!pidDocument || isProcessing || !vmAllStagesVerified || isTestingKey}
+                title={!vmAllStagesVerified ? 'Verify each step above before extracting.' : ''}
                 className="inline-flex items-center gap-2 px-6 py-3 text-sm font-bold text-white rounded-xl transition-all"
-                style={!pidDocument || isProcessing ? {
+                style={!pidDocument || isProcessing || !vmAllStagesVerified ? {
                   background: '#cbd5e1', cursor: 'not-allowed', border: 'none',
                 } : {
                   background: 'linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)',
@@ -1528,6 +1915,36 @@ const ValveMTO = () => {
               )}
             </div>
 
+            {/* ── Help panel (empty state) — same style as Instrument Index's
+                own "About Instrument Index Extraction" panel. Hidden once
+                there are results, same as Instrument Index hides its own
+                panel once `result` exists. Ordered AFTER the Action row
+                (buttons) per explicit request — Steps → checklist →
+                buttons → About. ── */}
+            {!hasResults && !isProcessing && (
+              <div className="bg-purple-50 border border-purple-200 rounded-xl p-6 mt-5">
+                <h3 className="text-lg font-semibold text-purple-900 mb-3">
+                  ℹ️ About Valve MTO Extraction
+                </h3>
+                <ul className="space-y-2 text-purple-800 text-sm">
+                  {[
+                    ['P&ID Upload Only', 'Upload the P&ID in PDF format — single page or multi-page drawings.'],
+                    ['AI Vision', 'Extracts Gate, Globe, Ball, Check, Butterfly, Control Valves, PSVs, MOVs, SDVs, BDVs and more. Local OCR: Recognizes valve symbols from your imported legend workbook only.'],
+                    ['Tag Number Recognition', 'Motor operated and control valves with tags are automatically read — e.g. MOV-2002, SDV-101, PSV-186.'],
+                    ['Piping Class Auto-fill', 'Piping material class extracted from line number — e.g. 6-PL-DC3N-8166-P → DC3N.'],
+                    ['Register Output', 'Results shown in valve register with ISLAND/FIELD/COMBINED tabs, validation and review workflow.'],
+                    ['Excel Export', 'Two download options — standard MTO workbook (customer format) or full data export with all fields including confidence and location.'],
+                    ['Legend Required for Local OCR', 'Local OCR cannot run without an imported legend workbook — it will fail with no fallback. AI Vision works without a legend but accuracy improves with one.'],
+                  ].map(([title, desc]) => (
+                    <li key={title} className="flex items-start gap-2">
+                      <span className="font-bold text-purple-600 mt-0.5">•</span>
+                      <span><strong>{title}:</strong> {desc}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {/* Processing progress — mirrors LineList's processing card */}
             {isProcessing && (
               <div className="mt-5 rounded-xl p-5" style={{
@@ -1553,9 +1970,12 @@ const ValveMTO = () => {
           </div>
 
           {/* ═══ RESULTS — Enterprise Valve MTO Register (template-aligned) ═══
-              Always rendered once a project is open — even with 0 rows — so the
-              manual "Add Row" flow works for a fresh register. */}
-          {!isProcessing && (
+              BUG FIX: used to always render once a project was open, even with
+              0 rows, showing an empty table before any extraction/import ever
+              ran. Now only renders once there's actual data (hasResults is set
+              true by extraction completion, import, or a hydrated cache — see
+              setHasResults call sites). */}
+          {!isProcessing && hasResults && (
             <div id="valve-mto-register" className="rounded-2xl p-6 vm-section" style={{
               background: 'white',
               border: '1px solid rgba(15,118,110,0.16)',
