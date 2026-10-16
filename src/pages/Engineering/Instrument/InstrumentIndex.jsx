@@ -541,7 +541,9 @@ const LEGEND_ATTACH_CONFIG = {
 };
 
 // Smart guidance card shown when legend PDF upload is disabled (soft-coded).
-function LegendGuidanceCard() {
+// onAction (optional) runs before navigating to the Legend Manager — marks
+// the legend stage addressed for the submit gate.
+function LegendGuidanceCard({ onAction }) {
   const navigate = useNavigate();
   return (
     <div className="border border-dashed border-cyan-200 rounded-lg p-4 mb-4 bg-cyan-50/40">
@@ -555,7 +557,7 @@ function LegendGuidanceCard() {
           <div className="flex flex-wrap gap-2 mt-3">
             <button
               type="button"
-              onClick={() => navigate(LEGEND_ATTACH_CONFIG.legendManager.route)}
+              onClick={() => { onAction?.(); navigate(LEGEND_ATTACH_CONFIG.legendManager.route); }}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white rounded-md transition-all hover:-translate-y-px"
               style={{ background: 'linear-gradient(135deg,#0891b2,#0e7490)', boxShadow: '0 2px 8px rgba(8,145,178,0.3)' }}
             >
@@ -576,7 +578,9 @@ function LegendGuidanceCard() {
 }
 
 // Soft-coded per-stage "User Instruction" panel — purely presentational.
-function StageInstruction({ stage }) {
+// onAction (optional) runs before following the action route — used so the
+// Legend Manager redirect also marks the legend stage as addressed.
+function StageInstruction({ stage, onAction }) {
   const navigate = useNavigate();
   const { heading, bullets = [], note, action } = stage.instruction || {};
   if (!heading) return null;
@@ -591,7 +595,7 @@ function StageInstruction({ stage }) {
       {action && (
         <button
           type="button"
-          onClick={() => navigate(action.route)}
+          onClick={() => { onAction?.(); navigate(action.route); }}
           className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-sky-700 bg-white hover:bg-sky-50 border border-sky-300 rounded-md transition-colors"
         >
           {action.label} <ArrowTopRightOnSquareIcon className="w-3.5 h-3.5" />
@@ -716,6 +720,7 @@ const II_SESSION_CACHE = {
   revision: '0',
   projectName: '',
   skippedStages: {},
+  byokChoice: '',                // submit-gate choice — the API key itself is NEVER cached
 };
 
 // ─── Soft-coded: IndexedDB auto-save (per-project draft) ────────────────────
@@ -817,6 +822,37 @@ const II_REGISTER_UI = {
     bubbleMinPx:    22,
     bubbleMaxPx:    46,
   },
+};
+
+// ─── Soft-coded: submit gate ─────────────────────────────────────────────────
+// "Extract Instrument Index" stays disabled until all four stages are
+// explicitly verified by the user. Stage 4 is a required CHOICE: a BYOK key
+// entered, or an explicit opt-in to the shared engines. Mirrors the IO List
+// submit gate. enabled:false restores legacy behaviour (file+project only).
+const II_SUBMIT_GATE = {
+  enabled: true,
+  choices: {
+    byok: {
+      id: 'byok',
+      label: 'Use my AI key (BYOK)',
+      desc: 'Best accuracy — paste your Claude / OpenAI key below. Never stored.',
+      icon: '🔑',
+    },
+    shared: {
+      id: 'shared',
+      label: 'Continue with shared engines',
+      desc: 'No key needed — uses the platform shared engines (can be quota-limited).',
+      icon: '⚙️',
+    },
+  },
+  checklistTitle: 'Verify each step to enable extraction:',
+  stages: [
+    { id: 'upload',   label: 'P&ID PDF uploaded' },
+    { id: 'legend',   label: 'Legend step addressed (cross-checked or skipped)' },
+    { id: 'metadata', label: 'Drawing info filled or skipped' },
+    { id: 'byok',     label: 'AI key choice confirmed' },
+  ],
+  byokKeyHint: 'Key choice selected — paste your API key below to complete.',
 };
 
 const DEFAULT_COLOUR = { bg: '#F5F5F5', text: '#333333' };
@@ -1096,6 +1132,23 @@ const InstrumentIndex = () => {
     skipped: skippedStages,
   };
 
+  // ── Submit gate (soft-coded; II_SUBMIT_GATE) ────────────────────────────
+  // Stage 4 is a required CHOICE: 'byok' (key entered) or 'shared'
+  // (explicit opt-in to shared engines). Extract stays disabled until all
+  // four stages are verified.
+  const [byokChoice, setByokChoice] = useState(
+    II_SESSION_CACHE.enabled ? (II_SESSION_CACHE.byokChoice || '') : ''
+  );  // '' | 'byok' | 'shared'
+  const iiStageVerified = {
+    upload:   Boolean(pidFile),
+    legend:   Boolean(legendFile) || Boolean(skippedStages.legend),
+    metadata: Boolean(drawingNumber || drawingTitle) || Boolean(skippedStages.metadata),
+    byok:     byokChoice === 'shared' || (byokChoice === 'byok' && Boolean(byokApiKey.trim())),
+  };
+  const iiAllStagesVerified =
+    !II_SUBMIT_GATE.enabled ||
+    II_SUBMIT_GATE.stages.every(s => iiStageVerified[s.id]);
+
   // ── Auto-save: hydration + debounced persistence (soft-coded) ────────────
   // hydratedProjectRef tracks which project id has been hydrated from
   // IndexedDB, so we never overwrite a saved draft before restoring it.
@@ -1120,6 +1173,7 @@ const InstrumentIndex = () => {
           if (draft.drawingTitle)  setDrawingTitle(draft.drawingTitle);
           if (draft.revision)      setRevision(draft.revision);
           if (draft.skippedStages) setSkippedStages(draft.skippedStages);
+          if (draft.byokChoice)    setByokChoice(draft.byokChoice);
           if (draft.savedAt)       setDraftSavedAt(draft.savedAt);
         }
       } catch (_) { /* IDB unavailable (private mode etc.) — in-memory cache still works */ }
@@ -1156,7 +1210,7 @@ const InstrumentIndex = () => {
   useEffect(() => {
     if (II_SESSION_CACHE.enabled) {
       Object.assign(II_SESSION_CACHE, {
-        pidFile, legendFile, drawingNumber, drawingTitle, revision, projectName, skippedStages,
+        pidFile, legendFile, drawingNumber, drawingTitle, revision, projectName, skippedStages, byokChoice,
         projectId: activeProject?.id || null,
       });
     }
@@ -1165,7 +1219,7 @@ const InstrumentIndex = () => {
     if (!pid || hydratedProjectRef.current !== pid) return;  // wait for hydration
     const t = setTimeout(() => {
       const draft = {
-        pidFile, legendFile, drawingNumber, drawingTitle, revision, projectName, skippedStages,
+        pidFile, legendFile, drawingNumber, drawingTitle, revision, projectName, skippedStages, byokChoice,
         savedAt: new Date().toISOString(),
         // NOTE: II_AUTOSAVE.excludeKeys (e.g. byokApiKey) are intentionally
         // omitted — secrets are never persisted.
@@ -1175,7 +1229,7 @@ const InstrumentIndex = () => {
         .catch(() => { /* non-fatal — in-memory cache still protects navigation */ });
     }, II_AUTOSAVE.debounceMs);
     return () => clearTimeout(t);
-  }, [pidFile, legendFile, drawingNumber, drawingTitle, revision, projectName, skippedStages, activeProject?.id]);
+  }, [pidFile, legendFile, drawingNumber, drawingTitle, revision, projectName, skippedStages, byokChoice, activeProject?.id]);
 
   // Processing state
   const [isProcessing, setIsProcessing]     = useState(false);
@@ -2270,8 +2324,9 @@ const InstrumentIndex = () => {
             {!pidFile && <span className="text-xs">🔒</span>}
           </h2>
 
-          {/* Stage 2 · User Instruction (soft-coded) */}
-          <StageInstruction stage={STAGE_FLOW[1]} />
+          {/* Stage 2 · User Instruction (soft-coded) — opening the Legend
+              Manager also marks this stage addressed for the submit gate */}
+          <StageInstruction stage={STAGE_FLOW[1]} onAction={() => skipStage('legend')} />
 
           {/* Legend attach: PDF drop zone (soft-coded flag) or smart guidance card */}
           {LEGEND_ATTACH_CONFIG.pdfUploadEnabled ? (
@@ -2304,7 +2359,7 @@ const InstrumentIndex = () => {
             </div>
           </div>
           ) : (
-            <LegendGuidanceCard />
+            <LegendGuidanceCard onAction={() => skipStage('legend')} />
           )}
           {!STAGE_FLOW[1].isComplete(stageFlowState) && (
             <StageSkipButton stage={STAGE_FLOW[1]} onSkip={() => skipStage('legend')} />
@@ -2366,6 +2421,41 @@ const InstrumentIndex = () => {
 
           {/* Stage 4 · User Instruction (soft-coded) */}
           <StageInstruction stage={STAGE_FLOW[3]} />
+
+          {/* ── Stage 4 · required key choice (soft-coded; II_SUBMIT_GATE) ──
+              Extract stays disabled until BYOK-vs-shared is decided. */}
+          {II_SUBMIT_GATE.enabled && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
+              {[II_SUBMIT_GATE.choices.byok, II_SUBMIT_GATE.choices.shared].map(c => {
+                const active = byokChoice === c.id;
+                const verified = c.id === 'shared' ? active : (active && Boolean(byokApiKey.trim()));
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    disabled={!pidFile}
+                    onClick={() => setByokChoice(c.id)}
+                    className={`text-left rounded-xl border p-3 transition-all ${
+                      verified
+                        ? 'border-emerald-400 bg-emerald-50/60 ring-2 ring-emerald-200'
+                        : active
+                          ? 'border-purple-400 bg-purple-50/60 ring-2 ring-purple-200'
+                          : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
+                    } ${!pidFile ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    <p className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <span>{c.icon}</span> {c.label}
+                      {verified && <CheckCircleIcon className="h-4 w-4 text-emerald-600 ml-auto" />}
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-1 leading-snug">{c.desc}</p>
+                    {active && c.id === 'byok' && !byokApiKey.trim() && (
+                      <p className="text-[11px] font-medium text-amber-700 mt-1.5">{II_SUBMIT_GATE.byokKeyHint}</p>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           <div className={`rounded-lg border p-4 ${pidFile ? 'border-purple-200 bg-purple-50/40' : 'border-gray-200 bg-gray-50 opacity-60'}`}>
             <p className="text-xs text-gray-600 mb-3">
@@ -2448,14 +2538,43 @@ const InstrumentIndex = () => {
         </div>
 
         {/* ── Action button ───────────────────────────────────────────── */}
-        <div className="flex flex-wrap gap-3 mb-6 ii-section" style={{ animationDelay: '0.15s' }}>
+        <div className="mb-6 ii-section" style={{ animationDelay: '0.15s' }}>
+        {/* ── Submit gate checklist (soft-coded; II_SUBMIT_GATE) ── */}
+        {II_SUBMIT_GATE.enabled && !iiAllStagesVerified && activeProject && (
+          <div className="rounded-xl border border-slate-200 bg-white/80 px-4 py-3 mb-3 shadow-sm">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+              {II_SUBMIT_GATE.checklistTitle}
+            </p>
+            <ul className="flex flex-wrap gap-x-4 gap-y-1.5">
+              {II_SUBMIT_GATE.stages.map(s => (
+                <li key={s.id} className={`inline-flex items-center gap-1.5 text-[11px] font-medium ${iiStageVerified[s.id] ? 'text-emerald-600' : 'text-slate-400'}`}>
+                  {iiStageVerified[s.id]
+                    ? <CheckCircleIcon className="h-3.5 w-3.5" />
+                    : <span className="inline-block h-3.5 w-3.5 rounded-full border border-slate-300" />}
+                  {s.label}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <div className="flex flex-wrap gap-3">
           <button
-            onClick={handleExtract}
-            disabled={!pidFile || isProcessing || !activeProject}
-            title={!activeProject ? 'Select or create an active project first' : ''}
+            onClick={() => {
+              if (II_SUBMIT_GATE.enabled && !iiAllStagesVerified) {
+                setError('Please verify all steps above (including the AI key choice) before extracting.');
+                return;
+              }
+              handleExtract();
+            }}
+            disabled={!pidFile || isProcessing || !activeProject || (II_SUBMIT_GATE.enabled && !iiAllStagesVerified)}
+            title={
+              !activeProject ? 'Select or create an active project first'
+              : (II_SUBMIT_GATE.enabled && !iiAllStagesVerified) ? II_SUBMIT_GATE.checklistTitle
+              : ''
+            }
             className="ii-action-btn flex-1 sm:flex-none px-8 py-3.5 rounded-xl font-semibold text-sm relative overflow-hidden"
             style={
-              !pidFile || isProcessing || !activeProject
+              !pidFile || isProcessing || !activeProject || (II_SUBMIT_GATE.enabled && !iiAllStagesVerified)
                 ? { background: '#f1f5f9', color: '#94a3b8', cursor: 'not-allowed', border: '1px solid #e2e8f0', transition: 'all 0.25s' }
                 : { background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', color: 'white', border: 'none', boxShadow: '0 4px 18px rgba(59,130,246,0.32)', transition: 'all 0.25s', cursor: 'pointer' }
             }
@@ -2494,6 +2613,7 @@ const InstrumentIndex = () => {
             </>
           )}
         </div>
+        </div>{/* /ii-section action + gate wrapper */}
 
         {/* ── Progress bar ────────────────────────────────────────────── */}
         {isProcessing && (
