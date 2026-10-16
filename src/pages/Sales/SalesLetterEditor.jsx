@@ -135,7 +135,9 @@ export default function SalesLetterEditor({
       ...(letter?.custom_data || {}),
       letterhead: { ...head, signature_titles },
     };
-    const body = paragraphs.map((p) => p.trim()).filter(Boolean).join("\n\n");
+    const editedBody = paragraphs.map((p) => p.trim()).filter(Boolean).join("\n\n");
+    const originalBody = (letter?.body || "").split("\n\n").map((p) => p.trim()).filter(Boolean).join("\n\n");
+    const body = editedBody === originalBody ? letter.body : editedBody;
     return { subject, body, custom_data };
   }, [head, letter, paragraphs, subject]);
 
@@ -168,7 +170,7 @@ export default function SalesLetterEditor({
         <div>
           <h3>Edit Letter</h3>
           <div className="sl-editor-hint">
-            Press <kbd>Ctrl+S</kbd> to save. Changes regenerate the PDF/DOCX and
+            Press <kbd>Ctrl+S</kbd> to save. Changed content updates the PDF/DOCX and
             re-attach them to the Correspondence folder.
           </div>
         </div>
@@ -475,7 +477,7 @@ export default function SalesLetterEditor({
               <Loader2 className="sl-spin" size={16} /> Saving…
             </>
           ) : (
-            "Save & Regenerate"
+            "Save changes"
           )}
         </button>
       </div>

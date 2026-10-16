@@ -18,6 +18,17 @@ const EMAIL_REQUEST_OPTIONS = {
 };
 
 class SalesService {
+  async getOpportunityAnalysis(id, signal) {
+    return (await apiClient.get(`${BASE_URL}/deals/${id}/analysis/`, { ...EMAIL_REQUEST_OPTIONS, signal })).data;
+  }
+
+  async startOpportunityAnalysis(id, retry = false, signal) {
+    return (await apiClient.post(`${BASE_URL}/deals/${id}/analysis/`, { retry }, { ...EMAIL_REQUEST_OPTIONS, signal })).data;
+  }
+
+  async getOpportunityAnalysisSources(id, offset = 0, signal) {
+    return (await apiClient.get(`${BASE_URL}/deals/${id}/analysis/sources/`, { ...EMAIL_REQUEST_OPTIONS, params: { offset }, signal })).data;
+  }
   getApiOrigin() {
     if (API_BASE_URL.startsWith('http')) {
       return new URL(API_BASE_URL).origin;
