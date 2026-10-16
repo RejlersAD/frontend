@@ -180,8 +180,8 @@ const INST_HOW_IT_WORKS = [
   },
   {
     step: '2',
-    title: 'AI Vision Multi-Pass Scan',
-    desc:  '7-pass scan: standard + 90°/270° rotations + 4 quadrant tiles. Catches every instrument bubble, no matter the orientation. Optionally bring your own Claude / OpenAI key (BYOK) for maximum accuracy — never stored.',
+    title: 'Direct BYOK AI Vision',
+    desc:  'Direct AI Vision on your own Claude / OpenAI key (BYOK, never stored): every page is split into 4 zoomed tiles and read by the model — no OCR stack in between. Test your key first; a key with no credits is reported immediately.',
     icon:  CpuChipIcon,
     accent: '#6366f1',
     border: '#c7d2fe',
@@ -2556,7 +2556,7 @@ const InstrumentIndex = () => {
                 >
                   {(byokProvider === 'claude'
                     ? [
-                        ['', 'Claude default (auto)'],
+                        ['', 'Claude default (Opus 5)'],
                         ['claude-sonnet-5', 'Claude Sonnet 5'],
                         ['claude-opus-5', 'Claude Opus 5'],
                         ['claude-sonnet-4-5-20250929', 'Claude Sonnet 4.5'],
@@ -2581,10 +2581,10 @@ const InstrumentIndex = () => {
                   {byokCostEstimate ? (
                     <p>
                       <b>Estimated BYOK cost for this drawing: {byokCostEstimate.text}</b>
-                      {' '}· {BYOK_COST_CONFIG.pricing[byokProvider]?.label} · 7-pass scan
+                      {' '}· {BYOK_COST_CONFIG.pricing[byokProvider]?.label} · direct Vision (4 zoomed tiles/page)
                     </p>
                   ) : (
-                    <p><b>Estimated BYOK cost</b> appears here once the drawing pages are counted ({BYOK_COST_CONFIG.pricing[byokProvider]?.label}, 7-pass scan).</p>
+                    <p><b>Estimated BYOK cost</b> appears here once the drawing pages are counted ({BYOK_COST_CONFIG.pricing[byokProvider]?.label}, direct Vision).</p>
                   )}
                   <p className="text-amber-700/80 mt-0.5">{BYOK_COST_CONFIG.disclaimer}</p>
                 </div>
