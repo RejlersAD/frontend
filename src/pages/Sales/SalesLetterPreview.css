@@ -22,6 +22,17 @@
   min-height: 100vh;
 }
 
+.sl-preview-source {
+  margin: 0;
+  padding: 10px 16px;
+  border-bottom: 1px solid #e5e7eb;
+  color: #4b5563;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  flex-shrink: 0;
+}
+
 .sl-preview-header {
   display: flex;
   align-items: center;

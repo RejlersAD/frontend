@@ -4,6 +4,7 @@ import ReactQuill from "react-quill";
 import { Loader2, RefreshCw } from "lucide-react";
 import "react-quill/dist/quill.snow.css";
 import "./SalesLetterEditor.css";
+import { letterExtractionStatus } from './salesLetterExtraction';
 
 const QUILL_MODULES = {
   toolbar: [
@@ -270,6 +271,7 @@ export default function SalesLetterEditor({
           {/* Recipient */}
           <div className="sl-editor-section">
             <h4>Recipient (To)</h4>
+            <p className="sl-editor-hint">{letterExtractionStatus(letter)}</p>
             <div className="sl-editor-grid">
               <Field
                 label="Name"

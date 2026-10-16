@@ -18,6 +18,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import "./SalesLetterPreview.css";
+import { letterExtractionStatus } from "./salesLetterExtraction";
 
 export default function SalesLetterPreview({
   letter,
@@ -279,6 +280,7 @@ export default function SalesLetterPreview({
         </div>
       </div>
 
+      <p className="sl-preview-source" role="status">{letterExtractionStatus(letter)}</p>
       <div className="sl-preview-content">
         {(error || pdfError) && (
           <div className="sl-preview-error">
