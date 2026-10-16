@@ -621,13 +621,6 @@ const NotificationPanel = () => {
     );
   };
 
-  const handleMarkAsRead = async id => {
-    if (id === null || id === undefined || !notifications.some(item => item.id === id && !item.is_read)) return
-    await runNotificationAction(id, () => notificationService.markAsRead(id), () => {
-      setNotifications(current => current.map(item => item.id === id ? { ...item, is_read: true } : item))
-    }, 'The notification could not be marked as read. Please retry.')
-  }
-
   const handleMarkAllAsRead = async () => {
     if (actionPendingRef.current) return
     setBulkLoading(true)
@@ -946,8 +939,6 @@ const NotificationPanel = () => {
             </footer>
           </aside>
         )}
-      </div>
-
       {["po", "pr"].includes(previewType) &&
         previewId &&
         createPortal(
