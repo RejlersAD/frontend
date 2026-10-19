@@ -180,8 +180,8 @@ const INST_HOW_IT_WORKS = [
   },
   {
     step: '2',
-    title: 'AI Vision Multi-Pass Scan',
-    desc:  '7-pass scan: standard + 90°/270° rotations + 4 quadrant tiles. Catches every instrument bubble, no matter the orientation. Optionally bring your own Claude / OpenAI key (BYOK) for maximum accuracy — never stored.',
+    title: 'Direct BYOK AI Vision',
+    desc:  'Direct AI Vision on your own Claude / OpenAI key (BYOK, never stored): every page is split into 4 zoomed tiles and read by the model — no OCR stack in between. Test your key first; a key with no credits is reported immediately.',
     icon:  CpuChipIcon,
     accent: '#6366f1',
     border: '#c7d2fe',
@@ -393,11 +393,15 @@ const API_BASE = getApiBaseUrl();
 // instrument tags per page don't trip a fixed 10-min cap.  Override at build
 // time via VITE_INSTRUMENT_INDEX_UPLOAD_TIMEOUT_MS (milliseconds).
 // Must stay <= Vite proxy `proxyTimeout` (see frontend/vite.config.js) and
-// <= Gunicorn worker timeout (30 min). Default: 28 min — leaves headroom
-// for dense 5-page ADNOC P&IDs even when AI providers are slow.
+// <= Gunicorn worker timeout (40 min per gunicorn_config.py) / the Celery
+// task soft limit (50 min — pid_analysis/tasks.py II_TASK_SOFT_LIMIT_S).
+// Default: 55 min — the Celery task may legitimately run up to 50 min on
+// dense multi-page P&IDs; the old 28-min cap aborted polling while the
+// server was still working (and a Railway deploy can also restart the
+// worker, redelivering the job). Override via VITE_INSTRUMENT_INDEX_UPLOAD_TIMEOUT_MS.
 const UPLOAD_TIMEOUT_MS = Number(
   import.meta.env?.VITE_INSTRUMENT_INDEX_UPLOAD_TIMEOUT_MS
-) || 1_680_000;
+) || 3_300_000;
 
 // ─── Network resilience (soft-coded) ─────────────────────────────────────────
 // Railway's edge proxy / shared infra occasionally drops long-running HTTPS
@@ -519,7 +523,7 @@ const STAGE_FLOW = [
         "Don't have a key? Raise a ticket with the ICT department via My Enquiries to get one issued.",
       ],
       action: { label: 'Raise a ticket with ICT', route: '/my-enquiries' },
-      note: 'Optional — leave empty to use the shared engines (which can be quota-limited).',
+      note: 'Your own key gives the best accuracy and is never stored. Don\'t have one? Raise a ticket with ICT via My Enquiries.',
     },
   },
 ];
@@ -831,6 +835,9 @@ const II_REGISTER_UI = {
 // submit gate. enabled:false restores legacy behaviour (file+project only).
 const II_SUBMIT_GATE = {
   enabled: true,
+  // BYOK-only mode: hide the "shared engines" choice — extraction requires
+  // the user's own AI key. Flip to false to restore both choices.
+  byokOnly: true,
   choices: {
     byok: {
       id: 'byok',
@@ -1119,6 +1126,32 @@ const InstrumentIndex = () => {
   const [byokProvider, setByokProvider]   = useState('claude');
   const [byokApiKey, setByokApiKey]       = useState('');
   const [byokModel, setByokModel]         = useState('');
+  // BYOK key self-test (soft-coded) — validates the key server-side with
+  // one minimal call before a long extraction run. Required in byokOnly mode.
+  const [byokTesting, setByokTesting]     = useState(false);
+  const [byokTestResult, setByokTestResult] = useState(null);   // { valid, message }
+
+  const handleByokTest = async () => {
+    if (!byokApiKey.trim()) { setByokTestResult({ valid: false, message: 'Enter an API key first.' }); return; }
+    setByokTesting(true); setByokTestResult(null);
+    try {
+      const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+      const resp = await fetch(`${API_BASE}/pid/instrument-index/test-key/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ provider: byokProvider, api_key: byokApiKey.trim(), model: byokModel || undefined }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      setByokTestResult({ valid: Boolean(data.valid), message: data.message || (data.valid ? 'Key valid' : 'Test failed') });
+    } catch (e) {
+      setByokTestResult({ valid: false, message: e.message || 'Connection test failed' });
+    } finally {
+      setByokTesting(false);
+    }
+  };
 
   // ── Stage-flow gating (soft-coded UI only — no core logic) ───────────────
   // Tracks optional stages the user explicitly skipped so the next stage
@@ -1143,7 +1176,8 @@ const InstrumentIndex = () => {
     upload:   Boolean(pidFile),
     legend:   Boolean(legendFile) || Boolean(skippedStages.legend),
     metadata: Boolean(drawingNumber || drawingTitle) || Boolean(skippedStages.metadata),
-    byok:     byokChoice === 'shared' || (byokChoice === 'byok' && Boolean(byokApiKey.trim())),
+    byok:     (byokChoice === 'shared' && !II_SUBMIT_GATE.byokOnly)
+              || (byokChoice === 'byok' && Boolean(byokApiKey.trim()) && byokTestResult?.valid === true),
   };
   const iiAllStagesVerified =
     !II_SUBMIT_GATE.enabled ||
@@ -1558,7 +1592,7 @@ const InstrumentIndex = () => {
         // eslint-disable-next-line no-constant-condition
         while (true) {
           if (Date.now() > deadline) {
-            throw new Error(`Extraction timed out after ${Math.round(UPLOAD_TIMEOUT_MS / 60000)} min. Try splitting the PDF into single-sheet files.`);
+            throw new Error(`Extraction timed out after ${Math.round(UPLOAD_TIMEOUT_MS / 60000)} min on this browser. The server job may still finish — wait a minute and re-run with BYOK (your own key is much faster), or split the PDF into single-sheet files.`);
           }
           await new Promise(r => setTimeout(r, 4000));
           let st;
@@ -1590,7 +1624,7 @@ const InstrumentIndex = () => {
       clearTimeout(abort);
       let msg;
       if (err.name === 'AbortError') {
-        msg = `Upload timed out after ${Math.round(UPLOAD_TIMEOUT_MS / 60000)} min. Try splitting the PDF into single-sheet files.`;
+        msg = `Upload timed out after ${Math.round(UPLOAD_TIMEOUT_MS / 60000)} min on this browser. The server job may still finish — re-run with BYOK (your own key is much faster), or split the PDF into single-sheet files.`;
       } else if (isTransientNetworkError(err)) {
         msg = CONN_RESET_HELP_MSG;
       } else {
@@ -2426,9 +2460,12 @@ const InstrumentIndex = () => {
               Extract stays disabled until BYOK-vs-shared is decided. */}
           {II_SUBMIT_GATE.enabled && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
-              {[II_SUBMIT_GATE.choices.byok, II_SUBMIT_GATE.choices.shared].map(c => {
+              {(II_SUBMIT_GATE.byokOnly
+                ? [II_SUBMIT_GATE.choices.byok]
+                : [II_SUBMIT_GATE.choices.byok, II_SUBMIT_GATE.choices.shared]
+              ).map(c => {
                 const active = byokChoice === c.id;
-                const verified = c.id === 'shared' ? active : (active && Boolean(byokApiKey.trim()));
+                const verified = c.id === 'shared' ? active : (active && Boolean(byokApiKey.trim()) && byokTestResult?.valid === true);
                 return (
                   <button
                     key={c.id}
@@ -2448,8 +2485,10 @@ const InstrumentIndex = () => {
                       {verified && <CheckCircleIcon className="h-4 w-4 text-emerald-600 ml-auto" />}
                     </p>
                     <p className="text-[11px] text-slate-500 mt-1 leading-snug">{c.desc}</p>
-                    {active && c.id === 'byok' && !byokApiKey.trim() && (
-                      <p className="text-[11px] font-medium text-amber-700 mt-1.5">{II_SUBMIT_GATE.byokKeyHint}</p>
+                    {active && c.id === 'byok' && !verified && (
+                      <p className="text-[11px] font-medium text-amber-700 mt-1.5">
+                        {byokApiKey.trim() ? 'Key entered — click Test Connection below to validate it.' : II_SUBMIT_GATE.byokKeyHint}
+                      </p>
                     )}
                   </button>
                 );
@@ -2461,14 +2500,17 @@ const InstrumentIndex = () => {
             <p className="text-xs text-gray-600 mb-3">
               Provide your own <b>OpenAI</b> or <b>Claude</b> API key for the most accurate extraction —
               it is used <b>before</b> the shared engines (which can be quota-limited) and is
-              <b> never stored</b>. Leave empty to use the shared engines.
+              <b> never stored</b>.{' '}
+              {II_SUBMIT_GATE.byokOnly
+                ? <b>A key is required to run extraction.</b>
+                : 'Leave empty to use the shared engines.'}
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Provider</label>
                 <select
                   value={byokProvider}
-                  onChange={e => { setByokProvider(e.target.value); setByokModel(''); }}
+                  onChange={e => { setByokProvider(e.target.value); setByokModel(''); setByokTestResult(null); }}
                   disabled={isProcessing || !pidFile}
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-purple-500 disabled:bg-gray-100"
                 >
@@ -2478,27 +2520,43 @@ const InstrumentIndex = () => {
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">API Key</label>
-                <input
-                  type="password"
-                  value={byokApiKey}
-                  onChange={e => setByokApiKey(e.target.value)}
-                  placeholder={byokProvider === 'claude' ? 'sk-ant-…' : 'sk-…'}
-                  autoComplete="off"
-                  disabled={isProcessing || !pidFile}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 disabled:bg-gray-100"
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    value={byokApiKey}
+                    onChange={e => { setByokApiKey(e.target.value); setByokTestResult(null); }}
+                    placeholder={byokProvider === 'claude' ? 'sk-ant-…' : 'sk-…'}
+                    autoComplete="off"
+                    disabled={isProcessing || !pidFile}
+                    className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 disabled:bg-gray-100"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleByokTest}
+                    disabled={isProcessing || !pidFile || byokTesting || !byokApiKey.trim()}
+                    className="px-3 py-2 text-xs font-semibold border border-purple-300 text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                    title="Validate the key with one minimal provider call"
+                  >
+                    {byokTesting ? 'Testing…' : '⚡ Test'}
+                  </button>
+                </div>
+                {byokTestResult && (
+                  <p className={`text-[11px] mt-1.5 ${byokTestResult.valid ? 'text-emerald-600' : 'text-red-600'}`}>
+                    {byokTestResult.valid ? '✓ ' : '✕ '}{byokTestResult.message}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Model</label>
                 <select
                   value={byokModel}
-                  onChange={e => setByokModel(e.target.value)}
+                  onChange={e => { setByokModel(e.target.value); setByokTestResult(null); }}
                   disabled={isProcessing || !pidFile}
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-purple-500 disabled:bg-gray-100"
                 >
                   {(byokProvider === 'claude'
                     ? [
-                        ['', 'Claude default (auto)'],
+                        ['', 'Claude default (Opus 5)'],
                         ['claude-sonnet-5', 'Claude Sonnet 5'],
                         ['claude-opus-5', 'Claude Opus 5'],
                         ['claude-sonnet-4-5-20250929', 'Claude Sonnet 4.5'],
@@ -2523,10 +2581,10 @@ const InstrumentIndex = () => {
                   {byokCostEstimate ? (
                     <p>
                       <b>Estimated BYOK cost for this drawing: {byokCostEstimate.text}</b>
-                      {' '}· {BYOK_COST_CONFIG.pricing[byokProvider]?.label} · 7-pass scan
+                      {' '}· {BYOK_COST_CONFIG.pricing[byokProvider]?.label} · direct Vision (4 zoomed tiles/page)
                     </p>
                   ) : (
-                    <p><b>Estimated BYOK cost</b> appears here once the drawing pages are counted ({BYOK_COST_CONFIG.pricing[byokProvider]?.label}, 7-pass scan).</p>
+                    <p><b>Estimated BYOK cost</b> appears here once the drawing pages are counted ({BYOK_COST_CONFIG.pricing[byokProvider]?.label}, direct Vision).</p>
                   )}
                   <p className="text-amber-700/80 mt-0.5">{BYOK_COST_CONFIG.disclaimer}</p>
                 </div>

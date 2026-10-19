@@ -885,7 +885,7 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
   // until all four stages are verified.
   const [keyChoice, setKeyChoice] = useState('')   // '' | 'byok' | 'ocr'
   const visionVerified =
-    keyChoice === 'ocr' ||
+    (keyChoice === 'ocr' && !IO_SUBMIT_GATE.byokOnly) ||
     (keyChoice === 'byok' && Boolean(visionApiKey.trim()) && testResult?.valid === true)
   const ioStageState = { file, meta, legendAcked, visionApiKey, keyChoice }
   const stageVerified = {
@@ -1163,7 +1163,10 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
             Upload & Extract stays disabled until this is decided. */}
         {IO_SUBMIT_GATE.enabled && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {[IO_SUBMIT_GATE.choices.byok, IO_SUBMIT_GATE.choices.ocr].map(c => {
+            {(IO_SUBMIT_GATE.byokOnly
+              ? [IO_SUBMIT_GATE.choices.byok]
+              : [IO_SUBMIT_GATE.choices.byok, IO_SUBMIT_GATE.choices.ocr]
+            ).map(c => {
               const active = keyChoice === c.id
               const verified = c.id === 'ocr' ? active : (active && testResult?.valid === true)
               return (
@@ -1292,8 +1295,10 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
                 Used for this request only and never stored on the server. No key?{' '}
                 <Link to="/my-enquiries" className="font-semibold text-indigo-600 hover:underline">
                   Raise a ticket with ICT
-                </Link>{' '}
-                or leave blank to use basic OCR.
+                </Link>
+                {IO_SUBMIT_GATE.byokOnly
+                  ? ' — a key is required for P&ID drawing extraction.'
+                  : ' or leave blank to use basic OCR.'}
               </p>
 
               {testResult && (

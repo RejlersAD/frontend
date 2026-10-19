@@ -216,8 +216,12 @@ function DocumentDetails({
   const removeVersion = async (version = null) => {
     if (!detail?.can_delete || deleting) return;
     const targetLabel = version ? `version ${version.id}` : "this document";
+    const lastVersion =
+      !version && Array.isArray(versions?.versions) && versions.versions.length <= 1;
     const confirmed = globalThis.confirm(
-      `Delete ${targetLabel}? This keeps newer and older revisions that still exist.`,
+      lastVersion
+        ? "Delete this document? This removes the document and all its stored versions."
+        : `Delete ${targetLabel}? This keeps newer and older revisions that still exist.`,
     );
     if (!confirmed) return;
     setDeleting(true);
@@ -228,7 +232,7 @@ function DocumentDetails({
         folder.key,
         version?.file_id || file.id,
       );
-      if (!response?.deleted_id || !response.current?.id)
+      if (!response?.deleted_id)
         throw new Error("The delete result could not be verified.");
       if (!alive.current) return;
       onVersionSaved({

@@ -59,10 +59,14 @@ export async function listActiveLegends(section) {
   return res.data
 }
 
+// SOFT-CODED: same reasoning as pidCheckerV2API.LEGEND_WORKBOOK_TIMEOUT_MS —
+// S3 image archival makes production imports slower than the 120 s default.
+const LEGEND_WORKBOOK_TIMEOUT_MS = 10 * 60 * 1000   // 10 min
+
 export async function previewLegendWorkbook({ file }) {
   const body = new FormData()
   body.append('file', file)
-  const { data } = await apiClient.post(`${LEGENDS_ENDPOINT}workbook-preview/`, body)
+  const { data } = await apiClient.post(`${LEGENDS_ENDPOINT}workbook-preview/`, body, { timeout: LEGEND_WORKBOOK_TIMEOUT_MS })
   return data
 }
 
@@ -70,6 +74,6 @@ export async function importLegendWorkbook({ file, sheetMap }) {
   const body = new FormData()
   body.append('file', file)
   body.append('sheet_map', JSON.stringify(sheetMap))
-  const { data } = await apiClient.post(`${LEGENDS_ENDPOINT}workbook-import/`, body)
+  const { data } = await apiClient.post(`${LEGENDS_ENDPOINT}workbook-import/`, body, { timeout: LEGEND_WORKBOOK_TIMEOUT_MS })
   return data
 }
