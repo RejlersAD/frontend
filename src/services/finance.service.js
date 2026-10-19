@@ -128,6 +128,14 @@ const financeService = {
     return response.data;
   },
 
+  async getReceivablesWorkbookSync() {
+    return (await apiClient.get(`${API_BASE}/dashboard/receivables/refresh/`, { timeout: 10000, suppressErrorToast: true })).data;
+  },
+
+  async refreshReceivablesWorkbook() {
+    return (await apiClient.post(`${API_BASE}/dashboard/receivables/refresh/`, {}, { timeout: 180000, suppressErrorToast: true })).data;
+  },
+
   /** Paginated customer invoice rows and totals for the whole selected cohort. */
   async getCustomerInvoiceRegister(filters = {}) {
     const params = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== '' && value !== undefined && value !== null));

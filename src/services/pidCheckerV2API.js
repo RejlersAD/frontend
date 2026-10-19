@@ -230,11 +230,18 @@ const LEGENDS_WORKBOOK_PREVIEW_ENDPOINT = `${BASE_PATH}/legends/workbook-preview
 const LEGENDS_WORKBOOK_IMPORT_ENDPOINT = `${BASE_PATH}/legends/workbook-import/`
 const LEGENDS_WORKBOOK_EXPORT_ENDPOINT = `${BASE_PATH}/legends/workbook-export/`
 
+// SOFT-CODED: workbook imports can take minutes in production — every
+// embedded symbol image is archived to S3 server-side (writes are
+// parallelised, but a 100+-symbol workbook still takes a while). The shared
+// apiClient default (120 s) aborted these calls mid-import (ECONNABORTED).
+const LEGEND_WORKBOOK_TIMEOUT_MS = 10 * 60 * 1000   // 10 min
+
 export async function previewLegendWorkbook({ file }) {
   const form = new FormData()
   form.append('file', file)
   const res = await apiClient.post(LEGENDS_WORKBOOK_PREVIEW_ENDPOINT, form, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: LEGEND_WORKBOOK_TIMEOUT_MS,
   })
   return res.data
 }
@@ -246,6 +253,7 @@ export async function importLegendWorkbook({ file, sheetMap, projectId }) {
   form.append('sheet_map', JSON.stringify(sheetMap || {}))
   const res = await apiClient.post(LEGENDS_WORKBOOK_IMPORT_ENDPOINT, form, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: LEGEND_WORKBOOK_TIMEOUT_MS,
   })
   return res.data
 }

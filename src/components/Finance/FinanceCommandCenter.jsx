@@ -51,6 +51,10 @@ export default function FinanceCommandCenter({ embedded = false, dataScope = 'fi
   const [dialog, setDialog] = useState(null);
   const [dismissed, setDismissed] = useState(false);
   const [exportMessage, setExportMessage] = useState('');
+  const [workbookSync, setWorkbookSync] = useState(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncFeedback, setSyncFeedback] = useState(null);
+  const syncRun = useRef(0), syncPollTimer = useRef(null), syncDeadlineTimer = useRef(null), syncInFlight = useRef(false);
   const [options, setOptions] = useState({ currencies: [], companies: [] });
   const [registerPaymentStatus, setRegisterPaymentStatus] = useState('');
   const registerRef = useRef(null);
@@ -64,9 +68,11 @@ export default function FinanceCommandCenter({ embedded = false, dataScope = 'fi
       if (request !== sequence.current) return;
       if (response?.schema_version !== '1.0' || !response.sources || !response.kpis || !Array.isArray(response.customers)) throw new Error('The receivables response is incomplete. Please refresh.');
       setData(response); setOptions({ currencies: [...new Set([...(response.filters?.currencies || []), ...(receivableReadable(response.sources.receivables) && response.currency ? [response.currency] : [])])], companies: response.filters?.companies || [] });
+      if (!syncInFlight.current) setWorkbookSync(response.sharepoint_sync || null);
     }).catch(requestError => {
       if (request !== sequence.current) return;
       const detail = requestError?.response?.data;
+      setWorkbookSync(null);
       setError(typeof detail?.detail === 'string' ? detail.detail : requestError?.response?.status === 403 ? 'You do not have access to this finance dashboard.' : detail && typeof detail === 'object' ? Object.values(detail).flat().join(' ') : requestError?.message || 'The receivables dashboard could not be loaded.');
     }).finally(() => { if (request === sequence.current) setLoading(false); });
     return () => { sequence.current += 1; };
@@ -122,6 +128,73 @@ export default function FinanceCommandCenter({ embedded = false, dataScope = 'fi
   const collectionRoute = useCallback(company => receivableCollectionRoute({ currency, company: filters.company }, company), [currency, filters.company]);
   const hideMenu = () => { if (menuRef.current) { menuRef.current.open = false; menuRef.current.querySelector('summary')?.focus(); } };
   const reload = () => { hideMenu(); setRefresh(value => value + 1); };
+  const refreshWorkbook = async () => {
+    hideMenu();
+    if (syncInFlight.current || printing) return;
+    if (dataScope !== 'finance' || !workbookSync?.can_refresh) {
+      setSyncFeedback({ message: workbookSync?.status === 'disabled'
+        ? 'Workbook checking is disabled. Reloading the latest published data.'
+        : 'Reloading the latest published data. You do not have access to check the workbook from this view.' });
+      setRefresh(value => value + 1);
+      return;
+    }
+    const run = ++syncRun.current;
+    syncInFlight.current = true; setSyncing(true);
+    setSyncFeedback({ message: 'Checking SharePoint workbook…' });
+    const current = () => run === syncRun.current;
+    const finish = () => {
+      syncRun.current += 1; syncInFlight.current = false; setSyncing(false);
+      clearTimeout(syncPollTimer.current); clearTimeout(syncDeadlineTimer.current);
+    };
+    const fail = requestError => {
+      if (!current()) return;
+      const body = requestError?.response?.data;
+      if ([401, 403].includes(requestError?.response?.status)) {
+        setWorkbookSync(null);
+        setSyncFeedback({ error: true, message: 'Workbook checking is not permitted. Reloading the current view to verify access.' });
+        finish(); setRefresh(value => value + 1);
+        return;
+      }
+      if (body?.sync) setWorkbookSync(body.sync);
+      setSyncFeedback({ error: true, message: `${typeof body?.detail === 'string' ? body.detail : requestError?.message || 'The workbook could not be checked.'} The last published values remain displayed.` });
+      finish();
+    };
+    const poll = async () => {
+      if (!current()) return;
+      try {
+        const status = await financeService.getReceivablesWorkbookSync();
+        if (!current()) return;
+        setWorkbookSync(status);
+        if (status.status === 'syncing') {
+          syncPollTimer.current = setTimeout(poll, 2000);
+          return;
+        }
+        if (status.status === 'restricted') { fail({ response: { status: 403 } }); return; }
+        if (status.status !== 'idle') throw new Error(status.status === 'failed'
+          ? 'The workbook refresh failed.' : 'Workbook refresh status is unavailable.');
+        setSyncFeedback({ message: 'Reloading the latest published data.' });
+        finish(); setRefresh(value => value + 1);
+      } catch (requestError) { fail(requestError); }
+    };
+    try {
+      const result = await financeService.refreshReceivablesWorkbook();
+      if (!current()) return;
+      if (result?.sync) setWorkbookSync(result.sync);
+      if (result?.status === 'busy') {
+        setSyncFeedback({ message: 'A workbook refresh is already in progress. Waiting for it to finish…' });
+        syncPollTimer.current = setTimeout(poll, 2000);
+        syncDeadlineTimer.current = setTimeout(() => {
+          if (!current()) return;
+          setSyncFeedback({ message: 'Workbook refresh is still running. The dashboard will check for published updates automatically.' });
+          finish();
+        }, 120000);
+        return;
+      }
+      if (!['synchronized', 'unchanged'].includes(result?.status)) throw new Error('The workbook refresh response was incomplete.');
+      setSyncFeedback({ message: result.status === 'unchanged' ? 'Workbook checked. No changes were found.' : 'Workbook changes were published.' });
+      finish(); setRefresh(value => value + 1);
+    } catch (requestError) { fail(requestError); }
+  };
   const exportReport = () => {
     if (!data || !readable || loading) return;
     const url = URL.createObjectURL(new Blob([receivablesCsv(data)], { type: 'text/csv;charset=utf-8;' }));
@@ -139,9 +212,11 @@ export default function FinanceCommandCenter({ embedded = false, dataScope = 'fi
         <label className="ar-filter ar-period"><span>Period</span><div><select aria-label="Period" title="Monthly chart window; current totals include all open invoices" value={filters.months} onChange={event => change('months', event.target.value)}><option value="6">Last 6 months</option><option value="12">Last 12 months</option><option value="24">Last 24 months</option></select><ChevronDownIcon aria-hidden="true" /></div></label>
         <label className="ar-filter ar-asof"><span>As of</span><div><input aria-label="As of" type="date" value={asOf} max={receivablesToday()} onChange={event => change('as_of', event.target.value)} title="Age current recorded balances relative to this date" /><span className="ar-date-display" aria-hidden="true">{receivableDate(asOf)}</span></div></label>
       </div>
-      <div className="ar-header-actions"><div>{workbookMode ? <button type="button" className="ar-button ar-primary" disabled={!readable} onClick={() => reviewWorkbookInvoices('overdue')}>Review overdue invoices</button> : <Link className={`ar-button ar-primary${!readable ? ' is-disabled' : ''}`} to={readable ? collectionRoute() : '#'} aria-disabled={!readable} onClick={event => { if (!readable) event.preventDefault(); }}>Open collection queue</Link>}<button type="button" className="ar-button ar-export" onClick={exportReport} disabled={loading || !readable}><ArrowDownTrayIcon />Export</button><details className="ar-more-menu" ref={menuRef} onKeyDown={event => { if (event.key === 'Escape') { hideMenu(); event.currentTarget.querySelector('summary')?.focus(); } }}><summary className="ar-button ar-icon-button" aria-label="More dashboard options"><EllipsisHorizontalIcon /></summary><div><button type="button" onClick={reload} disabled={loading}><ArrowPathIcon />Refresh data</button><button type="button" onClick={() => { hideMenu(); setDialog('sources'); }}><InformationCircleIcon />Source coverage</button><button type="button" disabled={!readable} onClick={() => { hideMenu(); setDialog('customers'); }}><UserIcon />View all customers</button></div></details></div><p className="ar-updated">{loading ? 'Updating receivables…' : data?.source_updated_at ? `Last updated: ${financeDate(data.source_updated_at, true)}` : 'Source update not recorded'}</p></div>
+      <div className="ar-header-actions"><div>{workbookMode ? <button type="button" className="ar-button ar-primary" disabled={!readable} onClick={() => reviewWorkbookInvoices('overdue')}>Review overdue invoices</button> : <Link className={`ar-button ar-primary${!readable ? ' is-disabled' : ''}`} to={readable ? collectionRoute() : '#'} aria-disabled={!readable} onClick={event => { if (!readable) event.preventDefault(); }}>Open collection queue</Link>}<button type="button" className="ar-button ar-export" onClick={exportReport} disabled={loading || !readable}><ArrowDownTrayIcon />Export</button><details className="ar-more-menu" ref={menuRef} onKeyDown={event => { if (event.key === 'Escape') { hideMenu(); event.currentTarget.querySelector('summary')?.focus(); } }}><summary className="ar-button ar-icon-button" aria-label="More dashboard options"><EllipsisHorizontalIcon /></summary><div><button type="button" onClick={refreshWorkbook} disabled={loading || syncing || printing}><ArrowPathIcon />{syncing ? 'Checking workbook…' : 'Refresh data'}</button><button type="button" onClick={() => { hideMenu(); setDialog('sources'); }}><InformationCircleIcon />Source coverage</button><button type="button" disabled={!readable} onClick={() => { hideMenu(); setDialog('customers'); }}><UserIcon />View all customers</button></div></details></div><p className="ar-updated" data-testid="finance-snapshot-published">{loading ? 'Updating receivables…' : (data?.sharepoint_sync?.snapshot_published_at || data?.source_updated_at) ? `${workbookMode ? 'Snapshot published' : 'Last updated'}: ${financeDate(data?.sharepoint_sync?.snapshot_published_at || data.source_updated_at, true)}` : 'Source update not recorded'}</p>
+        {(workbookMode || workbookSync) && <p className="ar-updated" data-testid="finance-workbook-checked">Last checked: {workbookSync?.last_checked_at ? financeDate(workbookSync.last_checked_at, true) : 'Not recorded'}</p>}</div>
     </header>
     {error && <div className="ar-error" role="alert"><ExclamationTriangleIcon /><span>{error}</span><button type="button" onClick={reload}>Try again</button></div>}
+    {syncFeedback && <div className={syncFeedback.error ? 'ar-error' : 'ar-export-message'} role={syncFeedback.error ? 'alert' : 'status'} data-testid="finance-sync-feedback"><span>{syncFeedback.message}</span>{!syncing && <button type="button" aria-label="Dismiss workbook refresh message" onClick={() => setSyncFeedback(null)}><XMarkIcon /></button>}</div>}
     {exportMessage && <p className="ar-export-message" role="status">{exportMessage}<button type="button" aria-label="Dismiss export message" onClick={() => setExportMessage('')}><XMarkIcon /></button></p>}
     <section className="ar-kpis" aria-label="Receivables key performance indicators">{RECEIVABLE_KPIS.map(([id, label, tone]) => <article className={`ar-kpi ar-kpi-${tone}`} key={id} data-testid={`finance-kpi-${id}`}><h2 title={data?.definitions?.[id] || RECEIVABLE_DEFINITIONS[id]}>{label}</h2><div><strong>{loading ? '—' : receivableMoney(receivableRawValue(data?.kpis?.[id]), currency)}</strong><span title={receivableMetricNote(data?.kpis?.[id], data?.amount_basis)}>{loading ? 'Loading balances…' : receivableMetricNote(data?.kpis?.[id], data?.amount_basis)}</span></div></article>)}</section>
     <WorkbookSummaryCards summary={data?.workbook_summary} loading={loading} />

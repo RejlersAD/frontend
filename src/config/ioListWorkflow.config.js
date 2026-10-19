@@ -304,7 +304,7 @@ export const IO_STAGE_FLOW = [
         "Don't have a key? Raise a ticket with the ICT department via My Enquiries to get one issued.",
       ],
       action: { label: 'Raise a ticket with ICT', route: '/my-enquiries' },
-      note: 'Optional — leave blank to use basic OCR (a real, working fallback).',
+      note: 'Your own key gives the best accuracy and is never stored. Don\'t have one? Raise a ticket with ICT via My Enquiries.',
     },
   },
 ]
@@ -380,6 +380,9 @@ export const IO_REGISTER_UI = {
 
 export const IO_SUBMIT_GATE = {
   enabled: true,
+  // BYOK-only mode: hide the "Basic OCR" choice — P&ID extraction requires
+  // the user's own AI key (tested). Flip to false to restore both choices.
+  byokOnly: true,
   // Stage 4 choice cards
   choices: {
     byok: {
