@@ -35,3 +35,21 @@ identically when the previous justification module is loaded (baseline log:
 Sales opportunities, unlike that older test's 404 expectation. No access policy
 is changed. The dialog Axe check also exposes existing summary text contrast
 (`#6b7a90`); its CSS is unchanged in this terminology patch.
+
+## Push preparation
+
+Aligned with fetched development and main, including concurrent remote Equipment
+List updates; merges completed without conflicts. The main-base PR contains the
+terminology work and Analysis test-selector correction, retaining current Radai
+UI naming. The orphaned backend ignore-file merge marker is removed.
+
+Release checks: 36 selected helper tests pass, including Forecast. Seven additional
+Analysis browser journeys pass after correcting stale Copilot selectors; its Axe
+case reports existing contrast (selected Brief text `#6366f1` on white). This is
+separate from the existing dialog contrast failure above. Build evidence after
+remote alignment: `artifacts/go-release-production-build.log`.
+
+Local `manage.py migrate --check --noinput` exits 0. `radai_dev` contains 629
+applied migrations, including all 32 Sales migrations through
+`0032_letter_fingerprints`. No migration or model changes are introduced here.
+Production database state is not covered by this local verification.

@@ -7,7 +7,7 @@ import {
 
 const pane = (page) =>
   page.getByRole("region", {
-    name: "Opportunity analysis Copilot",
+    name: "Opportunity analysis Radai",
     exact: true,
   });
 const citation = {
@@ -209,7 +209,7 @@ test("background processing is honest and hides unverified brief output", async 
 }) => {
   await setup(page, { status: "queued" });
   await expect(pane(page)).toContainText("42 of 600 text sections analyzed");
-  await expect(pane(page)).toContainText("Copilot is reading your documents");
+  await expect(pane(page)).toContainText("Radai is reading your documents");
   await expect(
     pane(page).getByRole("button", { name: "Download brief" }),
   ).toBeDisabled();
@@ -258,7 +258,7 @@ test("new source changes automatically queue refresh and hide the prior brief", 
     });
   });
   await expect.poll(() => posts, { timeout: 25000 }).toBeGreaterThan(0);
-  await expect(pane(page)).toContainText("Copilot is reading your documents");
+  await expect(pane(page)).toContainText("Radai is reading your documents");
   await expect(pane(page)).not.toContainText(citation.text);
 });
 
@@ -317,7 +317,7 @@ test("keyboard tab navigation and responsive Analysis remain accessible", async 
   });
 });
 
-test("Copilot keeps advisory scores separate from source-backed brief navigation", async ({
+test("Radai keeps advisory scores separate from source-backed brief navigation", async ({
   page,
 }) => {
   await setup(page, { copilot: true });
