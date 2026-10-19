@@ -2,7 +2,6 @@ import {
   businessDate,
   opportunityMoney,
 } from "./salesOpportunityRegistration.js";
-
 export const ACTIVE_STAGES = [
   "lead",
   "qualified",
@@ -54,8 +53,9 @@ export const typeLabel = (value) => {
     techno_commercial: "Techno Commerical",
     other: "Others",
   };
-  return Object.hasOwn(labels, value)
-    ? labels[value]
+  const key = String(value || "").toLowerCase();
+  return Object.hasOwn(labels, key)
+    ? labels[key]
     : humanize(value) || "Not provided";
 };
 export const services = (record) =>

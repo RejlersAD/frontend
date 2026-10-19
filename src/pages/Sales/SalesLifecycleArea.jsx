@@ -27,6 +27,7 @@ import {
 
 import salesService from "../../services/sales.service";
 import SalesActionDialog from "./SalesActionDialog";
+import SalesBidDecisionDialog from "./SalesBidDecisionDialog";
 import SalesOpportunityHistory from "./SalesOpportunityHistory";
 import SalesOpportunityRegistrationDialog from "./SalesOpportunityRegistrationDialog";
 import SalesLetterModal from "./SalesLetterModal.jsx";
@@ -1522,37 +1523,18 @@ export default function SalesLifecycleArea() {
     if (actionId === "bid_decision")
       return showAction(
         {
-          title: "Record bid/no-bid decision",
+          title: "Record Bid / No-Bid Decision",
           submitLabel: "Record decision",
-          description:
-            "Choose a decision and explain the reason. AI can help draft or rewrite your justification.",
-          fields: [
-            {
-              name: "decision",
-              label: "Decision*",
-              type: "select",
-              required: true,
-              options: [
-                { value: "bid", label: "Go" },
-                { value: "no_bid", label: "No-go" },
-              ],
-            },
-            {
-              name: "reason",
-              label: "Decision justification",
-              type: "bid_justification",
-              opportunityId: String(record.id),
-              full: true,
-            },
-          ],
+          redesignedBidDecision: true,
+          fields: [],
           execute: (values) =>
             salesService.recordBidDecision(
               record.id,
               values.decision,
-              values.reason,
+              values.bid_justification,
             ),
         },
-        { decision: "bid" },
+        {},
       );
     if (actionId === "ceo_decision")
       return showAction(
@@ -2205,7 +2187,43 @@ export default function SalesLifecycleArea() {
         deal={record}
         initialLetterType={letterModal.letterType}
       />
-      {actionDialog && (
+      {actionDialog && actionDialog.redesignedBidDecision ? (
+        <SalesBidDecisionDialog
+          record={record}
+          busy={actionBusy}
+          error={actionError}
+          onClose={() => { if (!actionBusy) setActionDialog(null); }}
+          onReadyChange={(ready) => {
+            setActionDialog((current) => (current?.redesignedBidDecision ? { ...current, ready } : current));
+          }}
+          onSubmit={async (values) => {
+            if (actionBusy) return;
+            setActionBusy(true);
+            setActionError('');
+            const selectedId = record?.id;
+            const request = recordRequest.current;
+            try {
+              const result = await actionDialog.execute(values);
+              setActionWarnings((result?.warnings || [])
+                .map((warning) => (typeof warning === 'string' ? warning : warning?.message))
+                .filter(Boolean));
+              setActionDialog(null);
+              await load();
+              if (selectedId && request === recordRequest.current) {
+                const updated = await config.get(selectedId);
+                if (request === recordRequest.current) setRecord(updated);
+              }
+            } catch (requestError) {
+              if (request === recordRequest.current) {
+                setActionError(apiError(requestError, `${actionDialog.title} could not be completed.`));
+              }
+            } finally {
+              if (request === recordRequest.current) setActionBusy(false);
+            }
+          }}
+        />
+      ) : null}
+      {actionDialog && !actionDialog.redesignedBidDecision && (
         <SalesActionDialog
           action={actionDialog}
           values={actionValues}
