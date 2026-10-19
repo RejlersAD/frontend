@@ -28,17 +28,17 @@ import {
   validateAnalysis,
 } from "./salesOpportunityAnalysis";
 import {
-  copilotActions,
-  copilotConfidence,
-  copilotScore,
+  RadaiActions,
+  RadaiConfidence,
+  RadaiScore,
   riskSeverity,
   scoreColor,
   SCORE_RING,
-} from "./salesOpportunityCopilot";
+} from "./salesOpportunityRadai";
 import "./SalesOpportunityAnalysis.css";
 
 const views = [
-  "Copilot",
+  "Radai",
   "Brief",
   "Submissions",
   "Risks",
@@ -47,7 +47,7 @@ const views = [
   "Sources",
 ];
 const sectionsFor = {
-  Copilot: ["brief", "client_need", "risk", "next_step"],
+  Radai: ["brief", "client_need", "risk", "next_step"],
   Brief: ["brief", "client_need", "next_step"],
   Submissions: ["submission"],
   Risks: ["risk"],
@@ -63,7 +63,7 @@ const message = (error) =>
 export default function SalesOpportunityAnalysis({ record }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
-  const [view, setView] = useState("Copilot");
+  const [view, setView] = useState("Radai");
   const [busy, setBusy] = useState(false);
   const [dark, setDark] = useState(false);
   const [openSections, setOpenSections] = useState({
@@ -88,9 +88,9 @@ export default function SalesOpportunityAnalysis({ record }) {
   const sourceStale = data?.stale;
   const sourceUpdatedAt = data?.updated_at;
 
-  const score = useMemo(() => copilotScore(record, data), [record, data]);
-  const confidence = useMemo(() => copilotConfidence(data), [data]);
-  const nextActions = useMemo(() => copilotActions(record, data), [record, data]);
+  const score = useMemo(() => RadaiScore(record, data), [record, data]);
+  const confidence = useMemo(() => RadaiConfidence(data), [data]);
+  const nextActions = useMemo(() => RadaiActions(record, data), [record, data]);
   const visibleActions = showAllActions ? nextActions : nextActions.slice(0, 3);
   const ringSize = SCORE_RING.size;
   const ringRadius = SCORE_RING.radius;
@@ -305,18 +305,14 @@ export default function SalesOpportunityAnalysis({ record }) {
     );
 
   return (
-    <section className={`soa soa-copilot ${dark ? "soa-dark" : ""}`} aria-label="Opportunity analysis Copilot">
+    <section className={`soa soa-Radai ${dark ? "soa-dark" : ""}`} aria-label="Opportunity analysis Radai">
       <header className="soa-hero glass">
         <div className="soa-title">
           <span className="soa-mark" aria-hidden="true">
             <Sparkles size={20} />
           </span>
           <div>
-            <span className="cp-ai-badge">
-              <Sparkles size={12} aria-hidden="true" />
-              RADAI COPILOT
-            </span>
-            <h2>Opportunity Intelligence</h2>
+             <h2>Opportunity Intelligence</h2>
             <p>Qualify, decide and act — grounded in your tender documents.</p>
           </div>
         </div>
@@ -353,7 +349,7 @@ export default function SalesOpportunityAnalysis({ record }) {
         </div>
       )}
       {busy && !data && (
-        <div className="cp-skeleton" role="status" aria-label="Loading Copilot workspace">
+        <div className="cp-skeleton" role="status" aria-label="Loading Radai workspace">
           <div className="cp-sk-hero glass">
             <div className="cp-sk-ring" aria-hidden="true" />
             <div className="cp-sk-lines">
@@ -368,7 +364,7 @@ export default function SalesOpportunityAnalysis({ record }) {
               <div className="cp-sk-line cp-sk-w70" />
             </div>
           ))}
-          <span className="cp-sr">Copilot is reading your documents…</span>
+          <span className="cp-sr">Radai is reading your documents…</span>
         </div>
       )}
       {data && (
@@ -412,10 +408,10 @@ export default function SalesOpportunityAnalysis({ record }) {
           <nav className="soa-nav cp-nav" aria-label="Analysis sections">
             {views.map((item) => (
               <button type="button" key={item} onClick={() => setView(item)} aria-current={view === item ? "page" : undefined}>
-                {item === "Copilot" ? (
+                {item === "Radai" ? (
                   <>
                     <Sparkles size={13} aria-hidden="true" />
-                    Copilot
+                    Radai
                   </>
                 ) : (
                   item
@@ -430,7 +426,7 @@ export default function SalesOpportunityAnalysis({ record }) {
                 {counts.total === 0 && !processing
                   ? "No attached sources yet"
                   : processing
-                    ? "Copilot is reading your documents"
+                    ? "Radai is reading your documents"
                     : data.status === "failed" || data.status === "blocked"
                       ? "Analysis could not verify these documents"
                       : "No source-supported findings yet"}
@@ -441,7 +437,7 @@ export default function SalesOpportunityAnalysis({ record }) {
                   : data.status === "failed" || data.status === "blocked"
                     ? analysisFailureMessage(data)
                     : counts.total === 0
-                      ? "Attach readable tender documents to unlock the Copilot brief."
+                      ? "Attach readable tender documents to unlock the Radai brief."
                       : "No findings were verified. Review source coverage or attach additional files."}
               </p>
               {!processing && counts.total > 0 && (
@@ -451,7 +447,7 @@ export default function SalesOpportunityAnalysis({ record }) {
               )}
             </div>
           )}
-          {view === "Copilot" && hasResult && (
+          {view === "Radai" && hasResult && (
             <div className="cp-workspace">
               <div className="cp-hero glass">
                 <div className="cp-hero-grid">
