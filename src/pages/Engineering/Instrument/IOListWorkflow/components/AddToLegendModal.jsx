@@ -184,3 +184,4 @@ const AddToLegendModal = ({
 }
 
 export default AddToLegendModal
+

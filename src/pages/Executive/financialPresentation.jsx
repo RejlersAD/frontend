@@ -64,3 +64,4 @@ export function FinancialMetricValue({ metric, compact = true }) {
   if (metric.unit === 'days') return `${value} days`;
   return value;
 }
+

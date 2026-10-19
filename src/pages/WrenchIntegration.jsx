@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useSelector } from 'react-redux'
 import { isUserAdmin } from '../utils/rbac.utils'
 import wrenchService from '../services/wrench.service'
@@ -33,17 +33,17 @@ import {
   ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline'
 
-// ─── Constants ───────────────────────────────────────────────────────────────
+// --- Constants ---------------------------------------------------------------
 
 const SYNC_DIRECTIONS = [
   {
     value:       'wrench_to_radai',
-    label:       'Wrench → RADAI',
+    label:       'Wrench ? RADAI',
     shortLabel:  'Pull',
     description: 'Retrieve document or transmittal metadata. No canonical records are imported.',
-    icon:        '⬇️',
+    icon:        '??',
     badge:       'Metadata',
-    // Visual tokens — change here to restyle, never hardcode below
+    // Visual tokens � change here to restyle, never hardcode below
     gradient:    'from-blue-500 to-indigo-600',
     ring:        'ring-blue-400/50',
     activeBg:    'bg-blue-50 border-blue-400',
@@ -54,10 +54,10 @@ const SYNC_DIRECTIONS = [
   },
   {
     value:       'radai_to_wrench',
-    label:       'RADAI → Wrench',
+    label:       'RADAI ? Wrench',
     shortLabel:  'Push',
     description: 'Unavailable: outbound synchronization is not implemented.',
-    icon:        '⬆️',
+    icon:        '??',
     badge:       'Unavailable',
     gradient:    'from-emerald-500 to-teal-600',
     ring:        'ring-emerald-400/50',
@@ -69,10 +69,10 @@ const SYNC_DIRECTIONS = [
   },
   {
     value:       'wrench_to_s3',
-    label:       'Wrench → S3',
+    label:       'Wrench ? S3',
     shortLabel:  'S3 Export',
     description: 'Export Wrench data to your AWS S3 bucket (batch or real-time).',
-    icon:        '☁️',
+    icon:        '??',
     badge:       'AWS S3',
     gradient:    'from-orange-500 to-amber-500',
     ring:        'ring-orange-400/50',
@@ -108,7 +108,7 @@ const STATUS_ICONS = {
   partial: ExclamationTriangleIcon,
 }
 
-// ─── Sub-components ──────────────────────────────────────────────────────────
+// --- Sub-components ----------------------------------------------------------
 
 const StatusBadge = ({ status }) => {
   const Icon = STATUS_ICONS[status] || ClockIcon
@@ -183,7 +183,7 @@ const ReadRecovery = ({ resource, read }) => {
       ? `${resource} could not be loaded. Automatic attempts stopped; retry when the service is available. Previously loaded data may be stale.`
       : read.status === 'retrying'
         ? `${resource} is unavailable. Retrying once; your selections are preserved.`
-        : `Loading ${resource.toLowerCase()}…`
+        : `Loading ${resource.toLowerCase()}�`
   return (
     <div className="flex flex-wrap items-start gap-3 mb-4">
       <div className="flex-1"><Alert type={read.status === 'denied' ? 'error' : 'warning'} message={message} /></div>
@@ -195,10 +195,10 @@ const ReadRecovery = ({ resource, read }) => {
   )
 }
 
-// ─── Soft-coded: minimum token length for basic sanity check (matches backend)
+// --- Soft-coded: minimum token length for basic sanity check (matches backend)
 const _MIN_TOKEN_LENGTH = 32
 
-// ─── Token Injection Section ──────────────────────────────────────────────────
+// --- Token Injection Section --------------------------------------------------
 // Allows pasting a pre-shared token from the Wrench team directly, bypassing
 // username/password login. The rolling-token refresh from each API response
 // automatically keeps the token current once injected.
@@ -264,7 +264,7 @@ const TokenInjectionSection = ({ onSaved }) => {
             value={token}
             onChange={(e) => setToken(e.target.value)}
             rows={4}
-            placeholder="Paste the Wrench session token here…"
+            placeholder="Paste the Wrench session token here�"
             className="w-full px-3 py-2 text-xs font-mono border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition resize-none"
           />
 
@@ -281,7 +281,7 @@ const TokenInjectionSection = ({ onSaved }) => {
               className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 disabled:opacity-50 text-white text-sm font-semibold rounded-lg shadow-sm transition-all duration-200"
             >
               {saving ? <ArrowPathIcon className="w-4 h-4 animate-spin" /> : <KeyIcon className="w-4 h-4" />}
-              {saving ? 'Saving…' : 'Save Token'}
+              {saving ? 'Saving�' : 'Save Token'}
             </button>
           </div>
         </div>
@@ -290,7 +290,7 @@ const TokenInjectionSection = ({ onSaved }) => {
   )
 }
 
-// ─── Configuration Panel ─────────────────────────────────────────────────────
+// --- Configuration Panel -----------------------------------------------------
 
 const ConfigPanel = ({ config, onSaved, onVerify }) => {
   const [form, setForm] = useState({
@@ -298,7 +298,7 @@ const ConfigPanel = ({ config, onSaved, onVerify }) => {
     svc_url: config?.svc_url || '',
     server_id: config?.server_id ?? 1,
     login_name: config?.login_name || '',
-    password: '',           // always blank – write-only, never returned by API
+    password: '',           // always blank � write-only, never returned by API
     is_password_encrypted: config?.is_password_encrypted ?? 0,
     otp: '',                // never persisted server-side; sent only at login time
     language: config?.language || '',
@@ -447,7 +447,7 @@ const ConfigPanel = ({ config, onSaved, onVerify }) => {
           <p className="text-xs text-gray-400 mt-1">Must use HTTPS. Used for login and document operations.</p>
         </div>
 
-        {/* SVC URL (optional) — with Auto-Detect */}
+        {/* SVC URL (optional) � with Auto-Detect */}
         <div>
           <div className="flex items-center justify-between mb-1">
             <label className="block text-sm font-medium text-gray-700">
@@ -465,7 +465,7 @@ const ConfigPanel = ({ config, onSaved, onVerify }) => {
               {detecting
                 ? <ArrowPathIcon className="w-3.5 h-3.5 animate-spin" />
                 : <MagnifyingGlassIcon className="w-3.5 h-3.5" />}
-              {detecting ? 'Probing…' : 'Auto-Detect'}
+              {detecting ? 'Probing�' : 'Auto-Detect'}
             </button>
           </div>
           <input
@@ -479,19 +479,19 @@ const ConfigPanel = ({ config, onSaved, onVerify }) => {
             Leave blank if DocumentSearch runs on the same host as the WebAPI. Use Auto-Detect to probe common patterns.
             <br />
             <span className="text-gray-500">
-              Tip: pasting the full AtomSVC metadata URL (e.g. <code className="font-mono">…/SVC/AtomSVC.svc/</code>)
-              is fine — the system trims it automatically.
+              Tip: pasting the full AtomSVC metadata URL (e.g. <code className="font-mono">�/SVC/AtomSVC.svc/</code>)
+              is fine � the system trims it automatically.
             </span>
           </p>
 
-          {/* Probe results — clickable candidates */}
+          {/* Probe results � clickable candidates */}
           {detectResult && (
             <div className="mt-2 border border-gray-200 rounded-lg overflow-hidden text-xs">
               <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 font-medium text-gray-600">
                 Probed {detectResult.candidates.length} candidate{detectResult.candidates.length === 1 ? '' : 's'}
                 {detectResult.recommended && (
                   <span className="ml-2 text-emerald-600">
-                    · Best match: <span className="font-mono">{detectResult.recommended}</span>
+                    � Best match: <span className="font-mono">{detectResult.recommended}</span>
                   </span>
                 )}
               </div>
@@ -573,7 +573,7 @@ const ConfigPanel = ({ config, onSaved, onVerify }) => {
               type={showPassword ? 'text' : 'password'}
               value={form.password}
               onChange={handleChange('password')}
-              placeholder={config ? '••••••••••••••••' : 'Enter Wrench account password'}
+              placeholder={config ? '����������������' : 'Enter Wrench account password'}
               className={`${inputClass} pr-20`}
               autoComplete="new-password"
             />
@@ -599,7 +599,7 @@ const ConfigPanel = ({ config, onSaved, onVerify }) => {
           />
         </div>
 
-        {/* ── Advanced / Optional Login Parameters ── */}
+        {/* -- Advanced / Optional Login Parameters -- */}
         <div className="border border-gray-200 rounded-lg overflow-hidden">
           <button
             type="button"
@@ -611,7 +611,7 @@ const ConfigPanel = ({ config, onSaved, onVerify }) => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 4a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
               </svg>
               Advanced Login Parameters
-              <span className="text-xs text-gray-400 font-normal">(optional – from SmartProject API spec)</span>
+              <span className="text-xs text-gray-400 font-normal">(optional � from SmartProject API spec)</span>
             </span>
             {showAdvanced
               ? <ChevronUpIcon className="w-4 h-4 text-gray-400" />
@@ -631,8 +631,8 @@ const ConfigPanel = ({ config, onSaved, onVerify }) => {
                   onChange={(e) => setForm((p) => ({ ...p, is_password_encrypted: Number(e.target.value) }))}
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition"
                 >
-                  <option value={0}>0 – Plain-text password (default)</option>
-                  <option value={1}>1 – Pre-encrypted password</option>
+                  <option value={0}>0 � Plain-text password (default)</option>
+                  <option value={1}>1 � Pre-encrypted password</option>
                 </select>
                 <p className="text-xs text-gray-400 mt-1">
                   Set to 1 only if the Wrench server expects a pre-hashed password.
@@ -716,7 +716,7 @@ const ConfigPanel = ({ config, onSaved, onVerify }) => {
             className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-slate-800 to-slate-700 hover:from-slate-700 hover:to-slate-600 disabled:opacity-50 text-white text-sm font-semibold rounded-xl shadow-md shadow-slate-400/20 transition-all duration-200"
           >
             {saving ? <ArrowPathIcon className="w-4 h-4 animate-spin" /> : <LinkIcon className="w-4 h-4" />}
-            {saving ? 'Saving…' : 'Save Configuration'}
+            {saving ? 'Saving�' : 'Save Configuration'}
           </button>
 
           {config && (
@@ -727,7 +727,7 @@ const ConfigPanel = ({ config, onSaved, onVerify }) => {
               className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 disabled:opacity-50 text-white text-sm font-semibold rounded-xl shadow-md shadow-green-400/20 transition-all duration-200"
             >
               {verifying ? <ArrowPathIcon className="w-4 h-4 animate-spin" /> : <CheckCircleIcon className="w-4 h-4" />}
-              {verifying ? 'Testing…' : 'Test Connection'}
+              {verifying ? 'Testing�' : 'Test Connection'}
             </button>
           )}
         </div>
@@ -741,15 +741,15 @@ const ConfigPanel = ({ config, onSaved, onVerify }) => {
         </div>
       )}
 
-      {/* ── Pre-shared Token Injection ─────────────────────────────────────── */}
+      {/* -- Pre-shared Token Injection --------------------------------------- */}
       {config && <TokenInjectionSection onSaved={() => {}} />}
     </div>
   )
 }
 
-// ─── Sync Panel ───────────────────────────────────────────────────────────────
+// --- Sync Panel ---------------------------------------------------------------
 
-// Direction value that maps to the dedicated S3 Export tab — kept soft-coded so a
+// Direction value that maps to the dedicated S3 Export tab � kept soft-coded so a
 // rename here is the only change needed if the value ever changes.
 const _S3_SYNC_DIRECTION = 'wrench_to_s3'
 
@@ -804,7 +804,7 @@ const SyncPanel = ({ logs, onTrigger, onGoToS3Tab, capabilities = [], available,
         <div className="p-6 space-y-5">
           {alert && <Alert type={alert.type} message={alert.message} />}
 
-          {/* Direction selector — 3-column card grid */}
+          {/* Direction selector � 3-column card grid */}
           <div>
             <label className="block text-sm font-medium text-gray-600 mb-3 flex items-center gap-2">
               <span className="w-1 h-4 rounded-full bg-gradient-to-b from-blue-500 to-indigo-600 inline-block" />
@@ -898,14 +898,14 @@ const SyncPanel = ({ logs, onTrigger, onGoToS3Tab, capabilities = [], available,
           {!isS3Direction && (!available || !supported) && (
             <Alert type="warning" message={!available
               ? 'Synchronization unavailable while configuration cannot be verified. Recover configuration above; your selection is preserved.'
-              : 'Unavailable: this operation is not implemented. Select Wrench → RADAI with Documents or Transmittals for metadata retrieval. No projects, users or outbound records will be synchronized.'} />
+              : 'Unavailable: this operation is not implemented. Select Wrench ? RADAI with Documents or Transmittals for metadata retrieval. No projects, users or outbound records will be synchronized.'} />
           )}
           {isS3Direction && (
             <div className="flex items-start gap-3 p-4 rounded-lg bg-orange-50 border border-orange-200 text-sm">
               <CloudArrowUpIcon className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
               <div>
                 <p className="font-medium text-orange-800">Use the S3 Export tab for this direction</p>
-                <p className="text-orange-700 mt-0.5">Wrench → AWS S3 supports both batch and real-time export with dedicated controls. Click below to go there.</p>
+                <p className="text-orange-700 mt-0.5">Wrench ? AWS S3 supports both batch and real-time export with dedicated controls. Click below to go there.</p>
               </div>
             </div>
           )}
@@ -927,7 +927,7 @@ const SyncPanel = ({ logs, onTrigger, onGoToS3Tab, capabilities = [], available,
             ) : (
               <ArrowsRightLeftIcon className="w-4 h-4" />
             )}
-            {syncing ? 'Syncing…' : isS3Direction ? 'Go to S3 Export →' : 'Run Sync'}
+            {syncing ? 'Syncing�' : isS3Direction ? 'Go to S3 Export ?' : 'Run Sync'}
           </button>
         </div>
       </div>
@@ -958,7 +958,7 @@ const SyncPanel = ({ logs, onTrigger, onGoToS3Tab, capabilities = [], available,
                   <div className="flex items-center gap-3">
                     <SyncLogBadge log={log} />
                     <span className="text-sm text-gray-700">
-                      {log.direction.replace('_', ' → ')} · {log.entity_type}
+                      {log.direction.replace('_', ' ? ')} � {log.entity_type}
                     </span>
                     {log.records_synced > 0 && (
                       <span className="text-xs text-gray-400">
@@ -1010,12 +1010,12 @@ const SyncPanel = ({ logs, onTrigger, onGoToS3Tab, capabilities = [], available,
   )
 }
 
-// ─── Documents & Transmittals Panel ──────────────────────────────────────────
+// --- Documents & Transmittals Panel ------------------------------------------
 
-// Soft-coded column priority list — matched against whatever fields the Wrench API returns.
+// Soft-coded column priority list � matched against whatever fields the Wrench API returns.
 // First keys found in the data win; remaining slots are filled from any extra fields.
 const TRANSMITTAL_COL_PRIORITY = [
-  // ── Fields confirmed from this Wrench instance (highest priority) ──
+  // -- Fields confirmed from this Wrench instance (highest priority) --
   { key: 'TRANS_REF_NO',       label: 'Trans. Ref No.' },
   { key: 'TRANS_ID',           label: 'Trans. ID' },
   { key: 'ORDER_NO',           label: 'Order No.' },
@@ -1023,7 +1023,7 @@ const TRANSMITTAL_COL_PRIORITY = [
   { key: 'TRANS_DESC',         label: 'Description' },
   { key: 'DIST_LIST_DESC',     label: 'Distribution List' },
   { key: 'PROJECT_ID',         label: 'Project ID' },
-  // ── Generic fallbacks for other Wrench instances ──
+  // -- Generic fallbacks for other Wrench instances --
   { key: 'TRANS_NO',           label: 'Trans. No.' },
   { key: 'TRANSMITTAL_NO',     label: 'Trans. No.' },
   { key: 'NO',                 label: 'No.' },
@@ -1087,7 +1087,7 @@ const _IDOC_KEY = 'IDOC_ID'
 // Soft-coded: candidate field names for a human-readable document number (used as filename hint).
 const _DOC_NO_KEYS = ['DOC_NO', 'DOCUMENT_NO']
 
-// ─── Project / Folder Browser — soft-coded constants ─────────────────────────
+// --- Project / Folder Browser � soft-coded constants -------------------------
 // All field names, separators, and limits are configured here so the browser
 // adapts to different Wrench deployments without code changes.
 const _PROJECT_KEY        = 'ORDER_NO'  // primary project / order identifier
@@ -1130,7 +1130,7 @@ function parseGenealogyPath(raw) {
  *         totalDocs,            // recursive count
  *       }
  *   } }
- * Pure / side-effect free → safe to call inside useMemo.
+ * Pure / side-effect free ? safe to call inside useMemo.
  */
 function buildProjectTree(documents) {
   const root = { projects: {} }
@@ -1189,9 +1189,9 @@ function buildProjectTree(documents) {
 
 /**
  * Resolve a node in the tree from a breadcrumb-path array.
- *   []                          → root (project list)
- *   ['5900737']                 → that project node
- *   ['5900737', 'Engineering']  → a folder inside the project
+ *   []                          ? root (project list)
+ *   ['5900737']                 ? that project node
+ *   ['5900737', 'Engineering']  ? a folder inside the project
  */
 function resolveTreeNode(root, pathArr) {
   if (!root) return null
@@ -1206,8 +1206,8 @@ function resolveTreeNode(root, pathArr) {
   return { kind: pathArr.length === 1 ? 'project' : 'folder', node }
 }
 
-// ─── Project Browser View — purely presentational ─────────────────────────────
-// Receives a built tree + current breadcrumb path. Renders projects → folders →
+// --- Project Browser View � purely presentational -----------------------------
+// Receives a built tree + current breadcrumb path. Renders projects ? folders ?
 // documents progressively. The same `onDownload` / `downloading` props used by
 // the flat table are reused, so download behaviour is unchanged.
 const ProjectBrowserView = ({ tree, path, onPathChange, onDownload, downloading }) => {
@@ -1246,11 +1246,11 @@ const ProjectBrowserView = ({ tree, path, onPathChange, onDownload, downloading 
         </button>
         {path.map((seg, i) => (
           <React.Fragment key={`${seg}-${i}`}>
-            <span className="text-gray-300">›</span>
+            <span className="text-gray-300">�</span>
             <button
               type="button"
               onClick={() => onPathChange(path.slice(0, i + 1))}
-              className={`px-2 py-1 rounded-md transition truncate max-w-[260px] ${
+              className={`px-2 py-1 rounded-md transition truncate max-w-4xl ${
                 i === path.length - 1
                   ? 'bg-blue-100 text-blue-700 font-semibold'
                   : 'text-gray-600 hover:bg-gray-100'
@@ -1263,7 +1263,7 @@ const ProjectBrowserView = ({ tree, path, onPathChange, onDownload, downloading 
         ))}
       </div>
 
-      {/* ROOT — project grid */}
+      {/* ROOT � project grid */}
       {resolved.kind === 'root' && (
         projectsList.length === 0 ? (
           <div className="p-10 text-center text-sm text-gray-400">No projects returned by Wrench for this filter.</div>
@@ -1309,7 +1309,7 @@ const ProjectBrowserView = ({ tree, path, onPathChange, onDownload, downloading 
         )
       )}
 
-      {/* PROJECT or FOLDER — sub-folders + leaf documents */}
+      {/* PROJECT or FOLDER � sub-folders + leaf documents */}
       {resolved.kind !== 'root' && (() => {
         const node     = resolved.node
         const subFolders = Object.values(node.folders).sort((a, b) =>
@@ -1329,8 +1329,8 @@ const ProjectBrowserView = ({ tree, path, onPathChange, onDownload, downloading 
                   <p className="text-sm text-blue-700">{node.order_description}</p>
                 )}
                 <p className="text-xs text-blue-600 mt-1">
-                  {node.totalDocs} total document{node.totalDocs === 1 ? '' : 's'} ·
-                  {' '}{subFolders.length} top-level folder{subFolders.length === 1 ? '' : 's'} ·
+                  {node.totalDocs} total document{node.totalDocs === 1 ? '' : 's'} �
+                  {' '}{subFolders.length} top-level folder{subFolders.length === 1 ? '' : 's'} �
                   {' '}{docs.length} at project root
                 </p>
               </div>
@@ -1392,7 +1392,7 @@ const ProjectBrowserView = ({ tree, path, onPathChange, onDownload, downloading 
                           return (
                             <tr key={`${idocId || idx}`} className="hover:bg-blue-50/40 transition">
                               {DOC_COLUMNS.filter((c) => c.key !== 'ORDER_NO' && c.key !== 'GENEALOGY_STRING').map((col) => (
-                                <td key={col.key} className="px-3 py-2 text-gray-700 max-w-[220px] truncate" title={doc[col.key] || ''}>
+                                <td key={col.key} className="px-3 py-2 text-gray-700 max-w-4xl truncate" title={doc[col.key] || ''}>
                                   {doc[col.key] || <span className="text-gray-300">&mdash;</span>}
                                 </td>
                               ))}
@@ -1407,7 +1407,7 @@ const ProjectBrowserView = ({ tree, path, onPathChange, onDownload, downloading 
                                     {isDl
                                       ? <ArrowPathIcon className="w-3 h-3 animate-spin" />
                                       : <ArrowDownTrayIcon className="w-3 h-3" />}
-                                    {isDl ? '…' : 'Download'}
+                                    {isDl ? '�' : 'Download'}
                                   </button>
                                 ) : (
                                   <span className="text-gray-300">&mdash;</span>
@@ -1458,7 +1458,7 @@ function deriveColumns(rows, priorityList, maxCols) {
   return cols
 }
 
-// ─── Shared download helper used by both the Transmittals sub-table and Document Search ──
+// --- Shared download helper used by both the Transmittals sub-table and Document Search --
 // Isolated into its own component so each row manages its own loading state independently.
 const TransDownloadButton = ({ doc }) => {
   const [busy, setBusy] = useState(false)
@@ -1483,7 +1483,7 @@ const TransDownloadButton = ({ doc }) => {
       a.remove()
       URL.revokeObjectURL(url)
     } catch (_) {
-      // Silent — error surfaced by the parent alert if needed
+      // Silent � error surfaced by the parent alert if needed
     } finally {
       setBusy(false)
     }
@@ -1500,12 +1500,12 @@ const TransDownloadButton = ({ doc }) => {
       {busy
         ? <ArrowPathIcon className="w-3 h-3 animate-spin" />
         : <ArrowDownTrayIcon className="w-3 h-3" />}
-      {busy ? '…' : 'DL'}
+      {busy ? '�' : 'DL'}
     </button>
   )
 }
 
-// ─── Transmittals browser ─────────────────────────────────────────────────────
+// --- Transmittals browser -----------------------------------------------------
 
 const TransmittalsSection = ({ configured, onGoToConfig }) => {
   const [page, setPage] = useState(1)
@@ -1522,7 +1522,7 @@ const TransmittalsSection = ({ configured, onGoToConfig }) => {
 
   const fetchDocs = useCallback(async (orderNo, row = {}) => {
     if (!orderNo) return
-    // Soft-coded: candidate field names for the transmittal ID — backend tries all of them
+    // Soft-coded: candidate field names for the transmittal ID � backend tries all of them
     const transId = row['TRANS_ID'] || row['TRANS_REF_NO'] || row['TRANSMITTAL_ID'] || ''
     setDocCache((prev) => ({ ...prev, [orderNo]: { loading: true, error: null, documents: null, cols: [] } }))
     try {
@@ -1603,7 +1603,7 @@ const TransmittalsSection = ({ configured, onGoToConfig }) => {
             type="text"
             value={filterText}
             onChange={(e) => setFilterText(e.target.value)}
-            placeholder="Filter loaded results…"
+            placeholder="Filter loaded results�"
             className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition"
           />
         </div>
@@ -1614,7 +1614,7 @@ const TransmittalsSection = ({ configured, onGoToConfig }) => {
           className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium border border-gray-300 rounded-lg bg-white hover:bg-gray-50 disabled:opacity-50 transition"
         >
           <ArrowPathIcon className={`w-4 h-4 ${loadingTrans ? 'animate-spin' : ''}`} />
-          {loadingTrans ? 'Loading…' : 'Reload'}
+          {loadingTrans ? 'Loading�' : 'Reload'}
         </button>
       </div>
 
@@ -1686,7 +1686,7 @@ const TransmittalsSection = ({ configured, onGoToConfig }) => {
                           {derivedCols.map((col) => (
                             <td
                               key={col.key}
-                              className="px-4 py-2.5 text-gray-700 max-w-[220px] truncate"
+                              className="px-4 py-2.5 text-gray-700 max-w-4xl truncate"
                               title={String(row[col.key] ?? '')}
                             >
                               {row[col.key] != null && row[col.key] !== ''
@@ -1696,7 +1696,7 @@ const TransmittalsSection = ({ configured, onGoToConfig }) => {
                           ))}
                         </tr>
 
-                        {/* ── Expanded document sub-table ─────────────────── */}
+                        {/* -- Expanded document sub-table ------------------- */}
                         {isExpanded && (
                           <tr>
                             <td colSpan={derivedCols.length + 1} className="px-0 py-0 bg-blue-50">
@@ -1719,7 +1719,7 @@ const TransmittalsSection = ({ configured, onGoToConfig }) => {
 
                                 {/* Loading */}
                                 {cache.loading && (
-                                  <div className="px-4 py-4 text-xs text-gray-400">Loading documents…</div>
+                                  <div className="px-4 py-4 text-xs text-gray-400">Loading documents�</div>
                                 )}
 
                                 {/* Error */}
@@ -1756,7 +1756,7 @@ const TransmittalsSection = ({ configured, onGoToConfig }) => {
                                               {cache.cols.map((c) => (
                                                 <td
                                                   key={c.key}
-                                                  className="px-3 py-2 text-gray-700 max-w-[200px] truncate"
+                                                  className="px-3 py-2 text-gray-700 max-w-4xl truncate"
                                                   title={String(doc[c.key] ?? '')}
                                                 >
                                                   {doc[c.key] != null && doc[c.key] !== ''
@@ -1799,7 +1799,7 @@ const TransmittalsSection = ({ configured, onGoToConfig }) => {
                 disabled={page === 1 || loadingTrans}
                 className="px-4 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 transition"
               >
-                ← Previous
+                ? Previous
               </button>
               <span className="text-xs text-gray-500">Page {page}</span>
               <button
@@ -1808,7 +1808,7 @@ const TransmittalsSection = ({ configured, onGoToConfig }) => {
                 disabled={(data.transmittals?.length ?? 0) < TRANSMITTAL_PAGE_SIZE || loadingTrans}
                 className="px-4 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 transition"
               >
-                Next →
+                Next ?
               </button>
             </div>
           )}
@@ -1818,12 +1818,12 @@ const TransmittalsSection = ({ configured, onGoToConfig }) => {
   )
 }
 
-// ─── Document Search section ──────────────────────────────────────────────────
+// --- Document Search section --------------------------------------------------
 
 // Soft-coded: page size options offered in the rows-per-page selector
 const DOC_PAGE_SIZE_OPTIONS = [25, 50, 100, 200]
 
-// Soft-coded fallback discipline list — used when DocumentSearch API is unreachable.
+// Soft-coded fallback discipline list � used when DocumentSearch API is unreachable.
 // These cover the standard O&G engineering disciplines. Edit here to add project-specific ones.
 const _FALLBACK_DISCIPLINES = [
   'ARCH', 'CIVIL', 'COMM', 'CONTROL', 'ELEC', 'FIRE',
@@ -1831,13 +1831,13 @@ const _FALLBACK_DISCIPLINES = [
   'STRUCTURAL', 'TELECOM', 'GENERAL',
 ]
 
-// ── Smart Search soft-coded constants ────────────────────────────────────────
+// -- Smart Search soft-coded constants ----------------------------------------
 // localStorage key for recent successful queries (per-browser, no PII)
 const _RECENT_SEARCH_KEY   = 'wrench.docSearch.recents'
 const _RECENT_SEARCH_LIMIT = 8
 // Number of discipline quick-pick pills shown next to the smart bar
 const _DISCIPLINE_PILL_COUNT = 6
-// Quick range chips — the label is shown; resolver returns { from, to } as ISO
+// Quick range chips � the label is shown; resolver returns { from, to } as ISO
 const _QUICK_RANGES = [
   { key: 'today',     label: 'Today' },
   { key: 'week',      label: 'Last 7 Days' },
@@ -1846,15 +1846,15 @@ const _QUICK_RANGES = [
   { key: 'quarter',   label: 'This Quarter' },
   { key: 'year',      label: 'This Year' },
 ]
-// Token grammar for the smart bar — order matters (longest prefix first)
-//   disc:<code>          → discipline
-//   discipline:<code>    → discipline
-//   from:YYYY-MM-DD      → date_from (ISO, naturally parseable by <input type=date>)
-//   to:YYYY-MM-DD        → date_to
-//   after:YYYY-MM-DD     → alias of from:
-//   before:YYYY-MM-DD    → alias of to:
-//   last:30d / last:6w / last:3m / last:1y → relative date_from = today - N
-//   #year                → this:year shortcut (e.g. #2024 → year 2024-01-01..2024-12-31)
+// Token grammar for the smart bar � order matters (longest prefix first)
+//   disc:<code>          ? discipline
+//   discipline:<code>    ? discipline
+//   from:YYYY-MM-DD      ? date_from (ISO, naturally parseable by <input type=date>)
+//   to:YYYY-MM-DD        ? date_to
+//   after:YYYY-MM-DD     ? alias of from:
+//   before:YYYY-MM-DD    ? alias of to:
+//   last:30d / last:6w / last:3m / last:1y ? relative date_from = today - N
+//   #year                ? this:year shortcut (e.g. #2024 ? year 2024-01-01..2024-12-31)
 const _SMART_TOKEN_PATTERNS = [
   { kind: 'discipline', re: /^(?:disc|discipline):([\w-]+)$/i },
   { kind: 'from',       re: /^(?:from|after):(\d{4}-\d{2}-\d{2})$/i },
@@ -1869,7 +1869,7 @@ const _toWrenchDate = (isoDate, endOfDay = false) => {
   return isoDate.replace(/-/g, '/') + (endOfDay ? ' 23:59' : ' 00:00')
 }
 
-// ── Pure date helpers (ISO 'YYYY-MM-DD') for quick-range resolver ───────────
+// -- Pure date helpers (ISO 'YYYY-MM-DD') for quick-range resolver -----------
 const _pad2 = (n) => String(n).padStart(2, '0')
 const _isoOf = (d) => `${d.getFullYear()}-${_pad2(d.getMonth() + 1)}-${_pad2(d.getDate())}`
 const _isoToday = () => _isoOf(new Date())
@@ -1902,13 +1902,13 @@ const _resolveQuickRange = (key) => {
 
 /**
  * Parse a free-form smart-search string into structured filters.
- * Pure / no side effects → safe to call on every keystroke.
+ * Pure / no side effects ? safe to call on every keystroke.
  *
  * Examples:
- *   "P16093 disc:ELEC last:30d"   → discipline=ELEC, doc_no=P16093, date_from=today-30d
+ *   "P16093 disc:ELEC last:30d"   ? discipline=ELEC, doc_no=P16093, date_from=today-30d
  *   "from:2024-01-01 to:2024-06-30 pump"
- *   "#2024 INST"                  → discipline=INST, year 2024
- *   "VESSEL"                      → discipline=VESSEL (if known) else doc_no=VESSEL
+ *   "#2024 INST"                  ? discipline=INST, year 2024
+ *   "VESSEL"                      ? discipline=VESSEL (if known) else doc_no=VESSEL
  *
  * @param {string} input
  * @param {string[]} knownDisciplines  (case-insensitive matching list)
@@ -1944,7 +1944,7 @@ const parseSmartQuery = (input, knownDisciplines = []) => {
       break
     }
     if (matched) continue
-    // Bare token → discipline if it matches a known one, otherwise part of doc_no
+    // Bare token ? discipline if it matches a known one, otherwise part of doc_no
     if (upperKnown.includes(tok.toUpperCase()) && !out.discipline) {
       out.discipline = tok.toUpperCase()
     } else {
@@ -1955,7 +1955,7 @@ const parseSmartQuery = (input, knownDisciplines = []) => {
   return out
 }
 
-// ─── Module-level cache for the slow `listTransmittals` call ─────────────────
+// --- Module-level cache for the slow `listTransmittals` call -----------------
 // Wrench's GetTransmittalList returns the full set every time and may take several
 // minutes. We share the in-flight Promise across mounts/StrictMode double-effects
 // AND cache the resolved result for `_PROJECT_LIST_CACHE_TTL_MS` so re-opening the
@@ -1998,7 +1998,7 @@ const _fetchProjectListShared = (pageSize, maxPages) => {
 const _invalidateProjectListCache = () => { _projectListCache = null }
 
 const DocumentSearchSection = ({ config, onGoToConfig }) => {
-  // ─── Soft-coded constants (no magic numbers) ──────────────────────────────
+  // --- Soft-coded constants (no magic numbers) ------------------------------
   const _PROJECT_FETCH_PAGE_SIZE = 500     // Wrench listTransmittals page size
   const _PROJECT_FETCH_MAX_PAGES = 20      // safety cap when paginating
   const _PROJECT_DOC_FETCH_SIZE  = 100     // documents per project drill-down (smaller = faster perceived response)
@@ -2012,12 +2012,12 @@ const DocumentSearchSection = ({ config, onGoToConfig }) => {
   void config; void onGoToConfig;
 
 
-  // ─── State ────────────────────────────────────────────────────────────────
+  // --- State ----------------------------------------------------------------
   const [projectsRaw,       setProjectsRaw]       = useState([])    // raw transmittals
   const [loadingProjects,   setLoadingProjects]   = useState(false)
   const [alert,             setAlert]             = useState(null)
   const [filterText,        setFilterText]        = useState('')
-  // browsePath: [] = project grid, [orderNo] = project root, [orderNo, f1, f2…] = folder
+  // browsePath: [] = project grid, [orderNo] = project root, [orderNo, f1, f2�] = folder
   const [browsePath,        setBrowsePath]        = useState([])
   // Per-project doc cache: { [orderNo]: { loading, docs, error } }
   const [projectDocsCache,  setProjectDocsCache]  = useState({})
@@ -2025,7 +2025,7 @@ const DocumentSearchSection = ({ config, onGoToConfig }) => {
   // Per-project diagnostic verification: { [orderNo]: { loading, report, error } }
   const [verifyState,       setVerifyState]       = useState({})
 
-  // ─── Aggregate transmittals → unique projects ─────────────────────────────
+  // --- Aggregate transmittals ? unique projects -----------------------------
   const projects = useMemo(() => {
     const map = new Map()
     for (const t of projectsRaw) {
@@ -2058,7 +2058,7 @@ const DocumentSearchSection = ({ config, onGoToConfig }) => {
     )
   }, [projects, filterText])
 
-  // ─── Load all projects (transmittals) ─────────────────────────────────────
+  // --- Load all projects (transmittals) -------------------------------------
   // Uses the module-level shared fetcher so StrictMode double-effects, tab
   // re-mounts, and concurrent components all share ONE in-flight request and a
   // short-lived result cache (see _fetchProjectListShared above).
@@ -2075,7 +2075,7 @@ const DocumentSearchSection = ({ config, onGoToConfig }) => {
     } catch (err) {
       const isTimeout = err?.code === 'ECONNABORTED' || /timeout/i.test(err?.message || '')
       const message = isTimeout
-        ? 'Wrench is taking longer than expected to return the project list. The request is still in flight on the server — wait a moment and click Reload, or verify the Wrench connection in Configuration.'
+        ? 'Wrench is taking longer than expected to return the project list. The request is still in flight on the server � wait a moment and click Reload, or verify the Wrench connection in Configuration.'
         : (err?.response?.data?.detail || err?.message || 'Failed to load projects from Wrench.')
       setAlert({ type: isTimeout ? 'warning' : 'error', message })
     } finally {
@@ -2086,7 +2086,7 @@ const DocumentSearchSection = ({ config, onGoToConfig }) => {
   // Auto-load on mount
   useEffect(() => { loadProjects() }, [loadProjects])
 
-  // ─── Fetch documents for a project on demand ──────────────────────────────
+  // --- Fetch documents for a project on demand ------------------------------
   const ensureProjectDocs = useCallback(async (orderNo) => {
     if (!orderNo) return
     const existing = projectDocsCache[orderNo]
@@ -2121,7 +2121,7 @@ const DocumentSearchSection = ({ config, onGoToConfig }) => {
     if (browsePath.length >= 1) ensureProjectDocs(browsePath[0])
   }, [browsePath, ensureProjectDocs])
 
-  // ─── Diagnostic verification (soft-coded) ─────────────────────────────────
+  // --- Diagnostic verification (soft-coded) ---------------------------------
   // Runs the backend `trans-documents/verify` endpoint to explain why a
   // project's document list is empty (no docs vs. config / endpoint issue).
   const runVerification = useCallback(async (orderNo) => {
@@ -2145,7 +2145,7 @@ const DocumentSearchSection = ({ config, onGoToConfig }) => {
     }
   }, [])
 
-  // ─── Resolve folder tree for current project ──────────────────────────────
+  // --- Resolve folder tree for current project ------------------------------
   const currentProjectTree = useMemo(() => {
     if (browsePath.length === 0) return null
     const orderNo = browsePath[0]
@@ -2166,7 +2166,7 @@ const DocumentSearchSection = ({ config, onGoToConfig }) => {
     return { kind: 'folder', node }
   }, [currentProjectTree, browsePath])
 
-  // ─── Download a single document ───────────────────────────────────────────
+  // --- Download a single document -------------------------------------------
   const handleDownload = useCallback(async (doc) => {
     const idocId = doc[_IDOC_KEY]
     if (!idocId) return
@@ -2196,7 +2196,7 @@ const DocumentSearchSection = ({ config, onGoToConfig }) => {
     }
   }, [])
 
-  // ─── Render ───────────────────────────────────────────────────────────────
+  // --- Render ---------------------------------------------------------------
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -2207,11 +2207,11 @@ const DocumentSearchSection = ({ config, onGoToConfig }) => {
               <FolderIcon className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-white">Document Search — Projects</h3>
+              <h3 className="text-lg font-semibold text-white">Document Search � Projects</h3>
               <p className="text-xs text-blue-100/80 mt-0.5">
                 {loadingProjects
-                  ? 'Loading projects from Wrench…'
-                  : `${projects.length} project${projects.length === 1 ? '' : 's'} • click any project to browse its folders`}
+                  ? 'Loading projects from Wrench�'
+                  : `${projects.length} project${projects.length === 1 ? '' : 's'} � click any project to browse its folders`}
               </p>
             </div>
           </div>
@@ -2222,7 +2222,7 @@ const DocumentSearchSection = ({ config, onGoToConfig }) => {
                 type="text"
                 value={filterText}
                 onChange={(e) => setFilterText(e.target.value)}
-                placeholder="Filter projects by number or name…"
+                placeholder="Filter projects by number or name�"
                 className="pl-9 pr-3 py-2 w-full md:w-80 text-sm bg-white/10 backdrop-blur border border-white/20 rounded-lg text-white placeholder:text-white/60 focus:bg-white/20 focus:ring-2 focus:ring-white/30 outline-none transition"
               />
             </div>
@@ -2243,7 +2243,7 @@ const DocumentSearchSection = ({ config, onGoToConfig }) => {
         Note: project browsing & document downloads in this view both use Wrench REST
         endpoints (list-transmittals + Document/Get + Document/Download) that require
         only the session token. The legacy SVC URL is only used by the OData/AtomSVC
-        search fallback — irrelevant here — so we intentionally do NOT surface any
+        search fallback � irrelevant here � so we intentionally do NOT surface any
         "SVC URL is not configured" warning. If a specific download fails because the
         document is only reachable via OData, the per-row download handler will
         surface the actual error via the alert area below.
@@ -2255,7 +2255,7 @@ const DocumentSearchSection = ({ config, onGoToConfig }) => {
       {loadingProjects && projects.length === 0 && (
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
           <ArrowPathIcon className="w-10 h-10 text-blue-400 animate-spin mx-auto" />
-          <p className="mt-3 text-sm text-gray-500">Fetching all projects from Wrench…</p>
+          <p className="mt-3 text-sm text-gray-500">Fetching all projects from Wrench�</p>
         </div>
       )}
 
@@ -2278,11 +2278,11 @@ const DocumentSearchSection = ({ config, onGoToConfig }) => {
           </button>
           {browsePath.map((seg, i) => (
             <React.Fragment key={`${seg}-${i}`}>
-              <span className="text-gray-300">›</span>
+              <span className="text-gray-300">�</span>
               <button
                 type="button"
                 onClick={() => setBrowsePath(browsePath.slice(0, i + 1))}
-                className={`px-2 py-1 rounded-md transition truncate max-w-[260px] ${
+                className={`px-2 py-1 rounded-md transition truncate max-w-4xl ${
                   i === browsePath.length - 1
                     ? 'bg-blue-100 text-blue-700 font-semibold'
                     : 'text-gray-600 hover:bg-gray-100'
@@ -2351,7 +2351,7 @@ const DocumentSearchSection = ({ config, onGoToConfig }) => {
           return (
             <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
               <ArrowPathIcon className="w-8 h-8 text-blue-400 animate-spin mx-auto" />
-              <p className="mt-3 text-sm text-gray-500">Loading documents for {orderNo}…</p>
+              <p className="mt-3 text-sm text-gray-500">Loading documents for {orderNo}�</p>
             </div>
           )
         }
@@ -2363,11 +2363,11 @@ const DocumentSearchSection = ({ config, onGoToConfig }) => {
           const vState  = verifyState[orderNo] || {}
           const vReport = vState.report
           const verdict = vReport?.conclusion?.verdict
-          // Soft-coded verdict → fully-static class mapping (Tailwind JIT-safe)
+          // Soft-coded verdict ? fully-static class mapping (Tailwind JIT-safe)
           const _VERDICT_STYLES = {
             no_documents_for_project:     { title: 'Confirmed: no documents linked to this project',
                                             box: 'bg-amber-50 border-amber-200',   text: 'text-amber-800',   sub: 'text-amber-700' },
-            documents_exist_unexpectedly: { title: 'Documents exist — refresh required',
+            documents_exist_unexpectedly: { title: 'Documents exist � refresh required',
                                             box: 'bg-emerald-50 border-emerald-200', text: 'text-emerald-800', sub: 'text-emerald-700' },
             svc_url_missing:              { title: 'DocumentSearch SVC URL is missing',
                                             box: 'bg-rose-50 border-rose-200',     text: 'text-rose-800',    sub: 'text-rose-700' },
@@ -2377,7 +2377,7 @@ const DocumentSearchSection = ({ config, onGoToConfig }) => {
                                             box: 'bg-slate-50 border-slate-200',   text: 'text-slate-800',   sub: 'text-slate-700' },
             config_error:                 { title: 'Wrench configuration error',
                                             box: 'bg-rose-50 border-rose-200',     text: 'text-rose-800',    sub: 'text-rose-700' },
-            unknown:                      { title: 'Inconclusive — see details',
+            unknown:                      { title: 'Inconclusive � see details',
                                             box: 'bg-slate-50 border-slate-200',   text: 'text-slate-800',   sub: 'text-slate-700' },
           }
           const vStyle = _VERDICT_STYLES[verdict] || _VERDICT_STYLES.unknown
@@ -2397,7 +2397,7 @@ const DocumentSearchSection = ({ config, onGoToConfig }) => {
                   {vState.loading ? (
                     <ArrowPathIcon className="w-4 h-4 animate-spin" />
                   ) : null}
-                  {vState.loading ? 'Verifying…' : (vReport ? 'Re-run verification' : 'Verify & validate configuration')}
+                  {vState.loading ? 'Verifying�' : (vReport ? 'Re-run verification' : 'Verify & validate configuration')}
                 </button>
               </div>
 
@@ -2430,25 +2430,25 @@ const DocumentSearchSection = ({ config, onGoToConfig }) => {
                     <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-gray-600">
                       <div className="bg-white border border-gray-200 rounded p-2">
                         <p className="font-semibold text-gray-700">Configuration</p>
-                        <p>base_url: {vReport.config?.has_base_url ? '✓ set' : '✗ missing'}</p>
-                        <p>svc_url: {vReport.config?.has_svc_url ? '✓ set' : '✗ missing'}</p>
-                        <p>token: {vReport.token?.acquired ? '✓ acquired' : `✗ ${vReport.token?.error || 'failed'}`}</p>
+                        <p>base_url: {vReport.config?.has_base_url ? '? set' : '? missing'}</p>
+                        <p>svc_url: {vReport.config?.has_svc_url ? '? set' : '? missing'}</p>
+                        <p>token: {vReport.token?.acquired ? '? acquired' : `? ${vReport.token?.error || 'failed'}`}</p>
                       </div>
                       <div className="bg-white border border-gray-200 rounded p-2">
                         <p className="font-semibold text-gray-700">DocumentSearch</p>
                         <p>broad: {vReport.doc_search?.broad?.ok
-                          ? `✓ total=${vReport.doc_search.broad.total}`
-                          : `✗ ${vReport.doc_search?.broad?.error?.slice(0, 80) || 'failed'}`}</p>
+                          ? `? total=${vReport.doc_search.broad.total}`
+                          : `? ${vReport.doc_search?.broad?.error?.slice(0, 80) || 'failed'}`}</p>
                         <p>by ORDER_NO: {vReport.doc_search?.by_order_no?.ok
-                          ? `✓ total=${vReport.doc_search.by_order_no.total}`
-                          : `✗ ${vReport.doc_search?.by_order_no?.error?.slice(0, 80) || 'failed'}`}</p>
+                          ? `? total=${vReport.doc_search.by_order_no.total}`
+                          : `? ${vReport.doc_search?.by_order_no?.error?.slice(0, 80) || 'failed'}`}</p>
                       </div>
                       <div className="bg-white border border-gray-200 rounded p-2 sm:col-span-2">
                         <p className="font-semibold text-gray-700">REST per-transmittal probes</p>
                         <ul className="mt-1 space-y-0.5">
                           {(vReport.rest_probes || []).map((p, i) => (
                             <li key={i} className="font-mono text-[11px]">
-                              {p.ok ? '✓' : '✗'} {p.path} → {p.http_status ?? 'no response'}
+                              {p.ok ? '?' : '?'} {p.path} ? {p.http_status ?? 'no response'}
                             </li>
                           ))}
                         </ul>
@@ -2486,8 +2486,8 @@ const DocumentSearchSection = ({ config, onGoToConfig }) => {
                 <p className="font-mono font-bold text-xl text-blue-900">{node.order_no}</p>
                 {node.order_description && <p className="text-sm text-blue-700">{node.order_description}</p>}
                 <p className="text-xs text-blue-600 mt-1">
-                  {node.totalDocs} document{node.totalDocs === 1 ? '' : 's'} ·{' '}
-                  {subFolders.length} top-level folder{subFolders.length === 1 ? '' : 's'} ·{' '}
+                  {node.totalDocs} document{node.totalDocs === 1 ? '' : 's'} �{' '}
+                  {subFolders.length} top-level folder{subFolders.length === 1 ? '' : 's'} �{' '}
                   {docs.length} at root
                 </p>
               </div>
@@ -2550,8 +2550,8 @@ const DocumentSearchSection = ({ config, onGoToConfig }) => {
                             {DOC_COLUMNS
                               .filter((c) => c.key !== 'ORDER_NO' && c.key !== 'GENEALOGY_STRING')
                               .map((col) => (
-                                <td key={col.key} className="px-3 py-2 text-gray-700 max-w-[220px] truncate" title={doc[col.key] || ''}>
-                                  {doc[col.key] || <span className="text-gray-300">—</span>}
+                                <td key={col.key} className="px-3 py-2 text-gray-700 max-w-4xl truncate" title={doc[col.key] || ''}>
+                                  {doc[col.key] || <span className="text-gray-300">�</span>}
                                 </td>
                               ))}
                             <td className="px-3 py-2">
@@ -2563,9 +2563,9 @@ const DocumentSearchSection = ({ config, onGoToConfig }) => {
                                   className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-600 border border-blue-300 rounded-md hover:bg-blue-50 disabled:opacity-50 transition"
                                 >
                                   {isDl ? <ArrowPathIcon className="w-3 h-3 animate-spin" /> : <ArrowDownTrayIcon className="w-3 h-3" />}
-                                  {isDl ? '…' : 'Download'}
+                                  {isDl ? '�' : 'Download'}
                                 </button>
-                              ) : <span className="text-gray-300">—</span>}
+                              ) : <span className="text-gray-300">�</span>}
                             </td>
                           </tr>
                         )
@@ -2588,7 +2588,7 @@ const DocumentSearchSection = ({ config, onGoToConfig }) => {
   )
 }
 
-// ─── Combined Documents Panel (inner tabs) ────────────────────────────────────
+// --- Combined Documents Panel (inner tabs) ------------------------------------
 
 const DOC_INNER_TABS = [
   { id: 'transmittals', label: 'Transmittals', icon: ArrowsRightLeftIcon },
@@ -2645,7 +2645,7 @@ const DocumentSearchPanel = ({ config, configured, onGoToConfig }) => {
   )
 }
 
-// ─── Overview Stats ───────────────────────────────────────────────────────────
+// --- Overview Stats -----------------------------------------------------------
 
 const OverviewStats = ({ config, logs, configStatus, logsStatus }) => {
   const total = logsStatus === 'ready' ? logs.length : 'Unavailable'
@@ -2688,20 +2688,20 @@ const OverviewStats = ({ config, logs, configStatus, logsStatus }) => {
   )
 }
 
-// ─── S3 Export Panel ─────────────────────────────────────────────────────────
+// --- S3 Export Panel ---------------------------------------------------------
 
 const S3_MODES = [
   {
     value: 'batch',
     label: 'Batch Export',
-    icon: '📦',
+    icon: '??',
     description: 'Full one-off export of all Wrench data to S3. Processes all pages then completes.',
   },
   {
     value: 'realtime',
     label: 'Real-time',
-    icon: '🔄',
-    description: 'Continuous polling — exports new pages to S3 every 30 s until you stop it.',
+    icon: '??',
+    description: 'Continuous polling � exports new pages to S3 every 30 s until you stop it.',
   },
 ]
 
@@ -2723,7 +2723,7 @@ const DEFAULT_S3_PREFIX    = 'wrench/'
 const S3_BUCKET_DISPLAY    = 'wrench-radai'  // cosmetic label only
 const S3_POLL_INTERVAL_MS  = 5000            // auto-refresh when a job is in_progress
 
-// Library Mirror Watcher — soft-coded labels / defaults
+// Library Mirror Watcher � soft-coded labels / defaults
 const _LIB_WATCHER_TITLE      = 'Library Mirror Watcher'
 const _LIB_WATCHER_SUBTITLE   = 'Wrench to S3 library monitoring'
 const _LIB_WATCHER_HELP       = 'Continuously detects added / changed documents in Wrench and syncs them to S3 under library/{order_no}/{discipline}/{doc_type}/{doc_no}/rev_{revision}/'
@@ -2736,7 +2736,7 @@ const S3SyncPanel = ({ configured, available, onGoToConfig }) => {
   const [s3Prefix, setS3Prefix]           = useState(DEFAULT_S3_PREFIX)
   const [showAdvanced, setShowAdvanced]   = useState(false)
 
-  // Library Mirror Watcher state — additive
+  // Library Mirror Watcher state � additive
   const [libOrderNo,   setLibOrderNo]   = useState('')
   const [libStarting,  setLibStarting]  = useState(false)
   const [libAlert,     setLibAlert]     = useState(null)
@@ -2785,7 +2785,7 @@ const S3SyncPanel = ({ configured, available, onGoToConfig }) => {
     (j) => j.mode === 'realtime' && (j.status === 'in_progress' || j.status === 'pending'),
   )
 
-  // Library Mirror Watcher handlers — additive
+  // Library Mirror Watcher handlers � additive
   const libraryRead = useWrenchRead(wrenchService.getLibraryWatchers, {
     enabled: configured && available, parse: parseHistory, pollWhen: hasActiveJobs, pollInterval: S3_POLL_INTERVAL_MS,
   })
@@ -2875,7 +2875,7 @@ const S3SyncPanel = ({ configured, available, onGoToConfig }) => {
               </div>
               <div>
                 <h3 className="font-semibold text-white">Export to AWS S3</h3>
-                <p className="text-xs text-orange-100/80">Wrench → RADAI → S3 pipeline</p>
+                <p className="text-xs text-orange-100/80">Wrench ? RADAI ? S3 pipeline</p>
               </div>
             </div>
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono bg-white/20 text-white border border-white/30 backdrop-blur-sm">
@@ -2961,7 +2961,7 @@ const S3SyncPanel = ({ configured, available, onGoToConfig }) => {
                 <p className="mt-1 text-xs text-gray-400">
                   S3 path:{' '}
                   <span className="font-mono">
-                    s3://{S3_BUCKET_DISPLAY}/{s3Prefix || DEFAULT_S3_PREFIX}{entityType}/year=…/
+                    s3://{S3_BUCKET_DISPLAY}/{s3Prefix || DEFAULT_S3_PREFIX}{entityType}/year=�/
                   </span>
                 </p>
               </div>
@@ -2986,12 +2986,12 @@ const S3SyncPanel = ({ configured, available, onGoToConfig }) => {
             {starting
               ? <ArrowPathIcon className="w-4 h-4 animate-spin" />
               : <CloudArrowUpIcon className="w-4 h-4" />}
-            {starting ? 'Starting…' : `Start ${mode === 'batch' ? 'Batch Export' : 'Real-time Export'}`}
+            {starting ? 'Starting�' : `Start ${mode === 'batch' ? 'Batch Export' : 'Real-time Export'}`}
           </button>
         </div>
       </div>
 
-      {/* ── Library Mirror Watcher (continuous Wrench → S3 sync) ─────────────── */}
+      {/* -- Library Mirror Watcher (continuous Wrench ? S3 sync) --------------- */}
       <div className="bg-white rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-200/80 overflow-hidden">
         <div className="px-6 py-5 bg-gradient-to-r from-emerald-600 via-teal-500 to-cyan-500">
           <div className="flex items-center justify-between">
@@ -3005,7 +3005,7 @@ const S3SyncPanel = ({ configured, available, onGoToConfig }) => {
               </div>
             </div>
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono bg-white/20 text-white border border-white/30 backdrop-blur-sm">
-              library/{'{order_no}'}/…
+              library/{'{order_no}'}/�
             </span>
           </div>
         </div>
@@ -3036,7 +3036,7 @@ const S3SyncPanel = ({ configured, available, onGoToConfig }) => {
               {libStarting
                 ? <ArrowPathIcon className="w-4 h-4 animate-spin" />
                 : <ArrowPathIcon className="w-4 h-4" />}
-              {libStarting ? 'Starting…' : 'Start Library Sync'}
+              {libStarting ? 'Starting�' : 'Start Library Sync'}
             </button>
           </div>
 
@@ -3057,12 +3057,12 @@ const S3SyncPanel = ({ configured, available, onGoToConfig }) => {
                     return (
                       <tr key={w.id} className="hover:bg-gray-50">
                         <td className="px-3 py-2 font-mono text-gray-500">#{w.id}</td>
-                        <td className="px-3 py-2 font-mono">{lw.order_no || w.job_details?.order_no || '—'}</td>
+                        <td className="px-3 py-2 font-mono">{lw.order_no || w.job_details?.order_no || '�'}</td>
                         <td className="px-3 py-2">
                           <JobStatusBadge job={w} />
                         </td>
-                        <td className="px-3 py-2 font-mono">{lw.uploaded_total ?? w.records_exported ?? '—'}</td>
-                        <td className="px-3 py-2 text-gray-500">{lw.last_tick || '—'}</td>
+                        <td className="px-3 py-2 font-mono">{lw.uploaded_total ?? w.records_exported ?? '�'}</td>
+                        <td className="px-3 py-2 text-gray-500">{lw.last_tick || '�'}</td>
                         <td className="px-3 py-2">
                           {(w.status === 'in_progress' || w.status === 'pending') && (
                             <button
@@ -3127,7 +3127,7 @@ const S3SyncPanel = ({ configured, available, onGoToConfig }) => {
                     <td className="px-4 py-2.5 text-gray-500 font-mono">#{job.id}</td>
                     <td className="px-4 py-2.5">
                       <span className="capitalize font-medium text-gray-700">
-                        {job.mode === 'realtime' ? '🔄 Real-time' : '📦 Batch'}
+                        {job.mode === 'realtime' ? '?? Real-time' : '?? Batch'}
                       </span>
                     </td>
                     <td className="px-4 py-2.5 text-gray-600 capitalize">{job.entity_type}</td>
@@ -3135,14 +3135,14 @@ const S3SyncPanel = ({ configured, available, onGoToConfig }) => {
                       <JobStatusBadge job={job} />
                     </td>
                     <td className="px-4 py-2.5 text-gray-700 font-mono">
-                      {job.records_exported != null ? job.records_exported.toLocaleString() : '—'}
+                      {job.records_exported != null ? job.records_exported.toLocaleString() : '�'}
                     </td>
-                    <td className="px-4 py-2.5 text-gray-700 font-mono">{job.pages_processed ?? '—'}</td>
+                    <td className="px-4 py-2.5 text-gray-700 font-mono">{job.pages_processed ?? '�'}</td>
                     <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap">
-                      {job.started_at ? new Date(job.started_at).toLocaleString() : '—'}
+                      {job.started_at ? new Date(job.started_at).toLocaleString() : '�'}
                     </td>
                     <td className="px-4 py-2.5 text-gray-500">
-                      {job.duration_seconds != null ? `${Number(job.duration_seconds).toFixed(1)}s` : '—'}
+                      {job.duration_seconds != null ? `${Number(job.duration_seconds).toFixed(1)}s` : '�'}
                     </td>
                     <td className="px-4 py-2.5">
                       {(job.status === 'in_progress' || job.status === 'pending') && job.mode === 'realtime' && (
@@ -3167,7 +3167,7 @@ const S3SyncPanel = ({ configured, available, onGoToConfig }) => {
   )
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+// --- Main Page ----------------------------------------------------------------
 
 const TABS = [
   { id: 'overview',   label: 'Overview',       icon: InformationCircleIcon },
@@ -3343,7 +3343,7 @@ const WrenchIntegration = () => {
           <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center shadow-lg shadow-blue-500/20">
             <ArrowPathIcon className="w-6 h-6 text-white animate-spin" />
           </div>
-          <p className="text-sm text-gray-400 font-medium">Loading Wrench data…</p>
+          <p className="text-sm text-gray-400 font-medium">Loading Wrench data�</p>
         </div>
       ) : (
         <div>
@@ -3369,7 +3369,7 @@ const WrenchIntegration = () => {
                   {[
                     'Go to the Configuration tab and enter the Wrench WebAPI Server URL, Server ID, login name, and password.',
                     'Optionally enter the DocumentSearch Service URL if it runs on a different host than the WebAPI.',
-                    'Click “Test Connection” to verify RADAI can authenticate with Wrench (a real login is performed).',
+                    'Click �Test Connection� to verify RADAI can authenticate with Wrench (a real login is performed).',
                     'Use the Sync tab for supported document or transmittal metadata retrieval. Outbound synchronization is unavailable.',
                     'Use the Documents tab to search and browse the Wrench document repository directly.',
                     'All activity is recorded in the Sync History and in the RBAC Audit Log.',
@@ -3410,9 +3410,9 @@ const WrenchIntegration = () => {
                           <SyncLogBadge log={log} />
                           <div>
                             <span className="text-sm text-gray-700 font-medium group-hover:text-gray-900 transition-colors duration-150">
-                              {log.direction.replace(/_/g, ' → ')}
+                              {log.direction.replace(/_/g, ' ? ')}
                             </span>
-                            <span className="mx-1.5 text-gray-300">·</span>
+                            <span className="mx-1.5 text-gray-300">�</span>
                             <span className="text-xs text-gray-500 capitalize">{log.entity_type}</span>
                           </div>
                         </div>
@@ -3478,3 +3478,4 @@ const WrenchIntegration = () => {
 }
 
 export default WrenchIntegration
+

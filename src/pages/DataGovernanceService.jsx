@@ -612,3 +612,4 @@ const DataGovernanceService = () => {
 }
 
 export default DataGovernanceService
+

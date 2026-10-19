@@ -38,3 +38,4 @@ ScheduleWarnings.propTypes = {
   onClose: PropTypes.func.isRequired, onReview: PropTypes.func.isRequired, onInputs: PropTypes.func.isRequired,
   onSources: PropTypes.func.isRequired, children: PropTypes.node,
 }
+

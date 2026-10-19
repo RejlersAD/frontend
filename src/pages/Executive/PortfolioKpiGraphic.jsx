@@ -52,3 +52,4 @@ export default function PortfolioKpiGraphic({ id, label, values = [], color, kin
     {illustrative && <span className="pp-kpi-graphic-caption" aria-hidden="true">Illustrative</span>}
   </span>;
 }
+

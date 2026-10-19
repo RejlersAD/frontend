@@ -1031,7 +1031,7 @@ export default function CableSchedulePage() {
                   {pidPdfFile && (
                     <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white border border-fuchsia-200 text-[11px] text-gray-700">
                       <CheckBadgeIcon className="h-3.5 w-3.5 text-emerald-600" />
-                      <span className="font-mono truncate max-w-[200px]">{pidPdfFile.name}</span>
+                      <span className="font-mono truncate max-w-4xl">{pidPdfFile.name}</span>
                       <span className="text-gray-500">({Math.round(pidPdfFile.size / 1024)} KB)</span>
                     </div>
                   )}
@@ -1047,7 +1047,7 @@ export default function CableSchedulePage() {
                   {legendPdfFile && (
                     <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white border border-fuchsia-200 text-[11px] text-gray-700">
                       <CheckBadgeIcon className="h-3.5 w-3.5 text-emerald-600" />
-                      <span className="font-mono truncate max-w-[200px]">{legendPdfFile.name}</span>
+                      <span className="font-mono truncate max-w-4xl">{legendPdfFile.name}</span>
                     </div>
                   )}
                 </label>
@@ -1481,3 +1481,4 @@ export default function CableSchedulePage() {
     </div>
   )
 }
+

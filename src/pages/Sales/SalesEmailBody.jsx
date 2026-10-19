@@ -116,3 +116,4 @@ SalesEmailBody.propTypes = {
   bodyContent: PropTypes.array,
 };
 SalesEmailBody.defaultProps = { bodyText: "", bodyContent: null };
+

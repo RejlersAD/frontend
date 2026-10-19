@@ -227,3 +227,4 @@ export default function ProcurementRegister({ orders, loading, error, pendingUpl
     {linkOrder && <PurchaseRequisitionLinkDialog order={linkOrder} onClose={() => setLinkOrder(null)} onLinked={linked} />}
   </section>
 }
+

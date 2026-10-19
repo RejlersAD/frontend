@@ -562,3 +562,4 @@ const PredictiveInsights = () => {
 };
 
 export default PredictiveInsights;
+

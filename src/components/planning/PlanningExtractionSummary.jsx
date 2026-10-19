@@ -9,3 +9,4 @@ export default function PlanningExtractionSummary({ summary }) {
   </div></section>
 }
 PlanningExtractionSummary.propTypes = { summary: PropTypes.object }
+

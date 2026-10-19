@@ -103,3 +103,4 @@ export default function PlanningSourceVerification({ plan, onClose, onInputs }) 
 PlanningSourceVerification.propTypes = {
   plan: PropTypes.object.isRequired, onClose: PropTypes.func.isRequired, onInputs: PropTypes.func,
 }
+

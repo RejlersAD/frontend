@@ -79,3 +79,4 @@ SalesClientRegister.propTypes = {
   onRefresh: PropTypes.func.isRequired, onSelect: PropTypes.func.isRequired, onRetryRecord: PropTypes.func.isRequired,
   onOpenFullRecord: PropTypes.func.isRequired, onEdit: PropTypes.func.isRequired, onCreate: PropTypes.func.isRequired,
 };
+

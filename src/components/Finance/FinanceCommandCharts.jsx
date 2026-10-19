@@ -157,3 +157,4 @@ export function ReceivablesAgeing({ source, currency }) {
   </section>;
 }
 ReceivablesAgeing.propTypes = { source: PropTypes.object, currency: PropTypes.string };
+

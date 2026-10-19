@@ -1828,7 +1828,7 @@ const DeptCell = ({ col, emp, dept, onSelect, navigate }) => {
     return raw && raw !== "—" ? (
       <a
         href={`mailto:${raw}`}
-        className="text-xs text-blue-600 hover:underline truncate block max-w-[180px]"
+        className="text-xs text-blue-600 hover:underline truncate block max-w-4xl"
       >
         {raw}
       </a>
@@ -5426,3 +5426,4 @@ export default function HREmployees() {
     </div>
   );
 }
+

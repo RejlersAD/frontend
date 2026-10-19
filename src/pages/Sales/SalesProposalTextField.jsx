@@ -51,3 +51,4 @@ export default function SalesProposalTextField({ field, label, value, values, op
   </div>;
 }
 SalesProposalTextField.propTypes = { field: PropTypes.string.isRequired, label: PropTypes.string.isRequired, value: PropTypes.string.isRequired, values: PropTypes.object.isRequired, opportunityId: PropTypes.string, quoteId: PropTypes.string, contextVersion: PropTypes.oneOfType([PropTypes.number, PropTypes.string]), busy: PropTypes.bool.isRequired, enabled: PropTypes.bool, required: PropTypes.bool, onChange: PropTypes.func.isRequired };
+

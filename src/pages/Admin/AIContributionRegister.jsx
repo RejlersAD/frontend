@@ -76,3 +76,4 @@ export default function AIContributionRegister({ rows, modules, module, setModul
   </div>;
 }
 AIContributionRegister.propTypes = { rows: PropTypes.array.isRequired, modules: PropTypes.array.isRequired, module: PropTypes.string.isRequired, setModule: PropTypes.func.isRequired, model: PropTypes.string.isRequired, resetModel: PropTypes.func.isRequired, status: PropTypes.string.isRequired, setStatus: PropTypes.func.isRequired, onRowsChange: PropTypes.func.isRequired, onMethodology: PropTypes.func.isRequired, onMonthly: PropTypes.func.isRequired, truncated: PropTypes.bool };
+

@@ -539,7 +539,7 @@ const AnalysisLoader = ({ elapsedSec, fileName }) => {
           </div>
           <span className="text-sm font-bold text-slate-800">Analysing PFD Drawing</span>
           {fileName && (
-            <span className="hidden sm:inline text-xs text-slate-400 truncate max-w-[200px] font-mono">· {fileName}</span>
+            <span className="hidden sm:inline text-xs text-slate-400 truncate max-w-4xl font-mono">· {fileName}</span>
           )}
         </div>
         <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-mono tabular-nums"
@@ -2029,7 +2029,7 @@ const PFDQualityChecker = () => {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-0.5">Analysis Complete</p>
-                    <p className="text-sm font-bold text-slate-800 truncate max-w-[260px]" title={results.file_name}>{results.file_name}</p>
+                    <p className="text-sm font-bold text-slate-800 truncate max-w-4xl" title={results.file_name}>{results.file_name}</p>
                   </div>
                   {/* Stat chips with countUp animation */}
                   <div className="flex items-center gap-2 flex-wrap">
@@ -2400,11 +2400,11 @@ const PFDQualityChecker = () => {
                             </span>
                           </td>
                           <td className="px-4 py-3 text-xs font-mono text-slate-500 whitespace-nowrap">{f.rule_id}</td>
-                          <td className="px-4 py-3 text-xs text-slate-700 max-w-[220px]">
+                          <td className="px-4 py-3 text-xs text-slate-700 max-w-4xl">
                             <p className="line-clamp-3">{f.issue_observed}</p>
                             {f.evidence && <p className="text-slate-400 mt-1 italic text-[11px] line-clamp-2">{f.evidence}</p>}
                           </td>
-                          <td className="px-4 py-3 text-xs text-slate-600 max-w-[200px]">
+                          <td className="px-4 py-3 text-xs text-slate-600 max-w-4xl">
                             <p className="line-clamp-3">{f.action_required}</p>
                           </td>
                           <td className="px-4 py-3">
@@ -3142,7 +3142,7 @@ const PFDQualityChecker = () => {
                                 return (
                                   <div key={cat}>
                                     <div className="flex items-center justify-between mb-1">
-                                      <span className="text-xs font-semibold text-slate-700 truncate max-w-[120px]" title={cat}>{cat}</span>
+                                      <span className="text-xs font-semibold text-slate-700 truncate max-w-4xl" title={cat}>{cat}</span>
                                       <div className="flex items-center gap-1.5 flex-shrink-0">
                                         <span className="text-xs font-black" style={{ color:col }}>{cnt}</span>
                                         <span className="text-[10px] text-slate-400">({pct}%)</span>
@@ -3255,3 +3255,4 @@ const PFDQualityChecker = () => {
 };
 
 export default PFDQualityChecker;
+

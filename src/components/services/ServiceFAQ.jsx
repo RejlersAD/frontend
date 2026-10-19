@@ -45,3 +45,4 @@ const ServiceFAQ = ({ faqs, title = 'Frequently Asked Questions', subtitle }) =>
 }
 
 export default ServiceFAQ
+

@@ -80,3 +80,4 @@ export default function SalesEmailCustomerMatch({ information, clients, onUseCli
 
 SalesEmailCustomerMatch.propTypes = { information: PropTypes.object, clients: PropTypes.array, onUseClient: PropTypes.func, disabled: PropTypes.bool, clientChoice: PropTypes.string };
 SalesEmailCustomerMatch.defaultProps = { information: null, clients: [], onUseClient: null, disabled: false, clientChoice: "" };
+

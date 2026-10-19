@@ -80,3 +80,4 @@ export default function SalesEmailIntelligence({ information }) {
 ReviewEvidence.propTypes = { value: PropTypes.object.isRequired, sources: PropTypes.array };
 SalesEmailIntelligence.propTypes = { information: PropTypes.object };
 SalesEmailIntelligence.defaultProps = { information: null };
+

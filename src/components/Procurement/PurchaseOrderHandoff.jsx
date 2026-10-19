@@ -66,3 +66,4 @@ export default function PurchaseOrderHandoff({ title, fetchPage, onSelect, actio
   </section>;
 }
 PurchaseOrderHandoff.propTypes = { title: PropTypes.string.isRequired, fetchPage: PropTypes.func.isRequired, onSelect: PropTypes.func.isRequired, actionLabel: PropTypes.string.isRequired, kind: PropTypes.string, reloadKey: PropTypes.number };
+

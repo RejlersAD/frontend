@@ -163,7 +163,7 @@ const PurchaseOrderExcelImport = ({ isOpen, onClose, onImported }) => {
                               {row.source_po_number !== row.po_number && <p className="mt-1 text-[10px] font-normal text-gray-500">Source: {row.source_po_number}</p>}
                             </td>
                             <td className="whitespace-nowrap px-3 py-2 text-gray-700">{row.pr_number}</td>
-                            <td className="max-w-[220px] px-3 py-2 text-gray-600">{row.supplier_name || '-'}</td>
+                            <td className="max-w-4xl px-3 py-2 text-gray-600">{row.supplier_name || '-'}</td>
                             <td className="px-3 py-2">
                               <span className={`rounded-full px-2 py-1 font-semibold ${row.pr_linked ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
                                 {row.pr_linked ? `Linked: ${row.pr_id}` : 'PR not found'}
@@ -174,7 +174,7 @@ const PurchaseOrderExcelImport = ({ isOpen, onClose, onImported }) => {
                               <span className={`rounded-full px-2 py-1 font-semibold ${row.status === 'ready' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
                                 {row.status === 'ready' ? 'Ready' : 'Blocked'}
                               </span>
-                              {row.warnings?.length > 0 && <p className="mt-1 max-w-[280px] text-[11px] text-amber-700">{row.warnings.join(' ')}</p>}
+                              {row.warnings?.length > 0 && <p className="mt-1 max-w-4xl text-[11px] text-amber-700">{row.warnings.join(' ')}</p>}
                             </td>
                           </tr>
                         ))}
@@ -216,3 +216,4 @@ PurchaseOrderExcelImport.propTypes = {
 };
 
 export default PurchaseOrderExcelImport;
+

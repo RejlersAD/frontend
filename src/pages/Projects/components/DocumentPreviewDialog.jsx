@@ -51,3 +51,4 @@ export default function DocumentPreviewDialog({ document: row, onClose }) {
     </div><div className="dc-dialog-footer"><button type="button" className="pp-button" onClick={onClose}>Close</button><button type="button" className="pp-button pp-primary" disabled={!state.blob || state.loading} onClick={() => saveDocumentBlob(state.blob, row)}><Download size={14} aria-hidden="true" />Download file</button></div>
   </dialog>
 }
+

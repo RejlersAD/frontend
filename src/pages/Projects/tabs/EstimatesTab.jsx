@@ -133,3 +133,4 @@ export default function EstimatesTab({ project, estimateControl: control, estima
     {estimateDialog && <EstimateControlDialogs key={`${selected?.id || project.id}:${estimateDialog.type}:${estimateDialog.line?.id || ''}`} dialog={estimateDialog} project={project} model={model} onClose={() => onEstimateDialog(null)} onSaved={onSaved} />}
   </div>
 }
+

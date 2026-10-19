@@ -140,3 +140,4 @@ export default function ProjectDetailsHeader({ projects, selectedProject, select
     {project && <nav className="pd-tabs" aria-label="Project work areas"><ul>{AREAS.filter(area => area.dialog || enabled(area.key)).map(({ key, label, icon: Icon, dialog }) => <li key={key}><button type="button" aria-current={!dialog && (key === activeView || key === 'commercial-dashboard' && activeView === 'cost-dashboard') ? 'page' : undefined} onClick={() => dialog ? onOpenDialog(key) : onSelectView(key)}><Icon size={isSchedule ? 17 : 18} />{label}</button></li>)}</ul></nav>}
   </header>
 }
+

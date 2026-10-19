@@ -33,3 +33,4 @@ export default function SalesProposalOpportunitySelector({ value, selected, busy
   </div>;
 }
 SalesProposalOpportunitySelector.propTypes = { value: PropTypes.string, selected: PropTypes.object, busy: PropTypes.bool, onChange: PropTypes.func.isRequired };
+

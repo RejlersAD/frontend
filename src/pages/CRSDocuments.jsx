@@ -1454,3 +1454,4 @@ export default withDashboardControls(CRSDocumentsWithRefresh, {
   autoRefreshInterval: 30000, // 30 seconds
   storageKey: 'crsDocumentsPageControls',
 });
+

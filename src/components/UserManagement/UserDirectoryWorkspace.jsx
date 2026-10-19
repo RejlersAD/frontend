@@ -217,3 +217,4 @@ UserDirectoryWorkspace.propTypes = {
   onEdit: PropTypes.func.isRequired, onOpen: PropTypes.func.isRequired, onRoles: PropTypes.func.isRequired,
   onReset: PropTypes.func.isRequired, onActivate: PropTypes.func.isRequired, onDelete: PropTypes.func, onRefresh: PropTypes.func.isRequired,
 };
+

@@ -166,3 +166,4 @@ RecordedApprovalHistory.propTypes = {
   onEditingChange: PropTypes.func.isRequired,
   hidePendingAssignments: PropTypes.bool,
 };
+

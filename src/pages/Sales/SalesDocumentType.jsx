@@ -141,3 +141,4 @@ export function SalesDocumentTag({ recordId, folderKey, file, onSaved }) {
   </form>;
 }
 SalesDocumentTag.propTypes = sharedProps;
+

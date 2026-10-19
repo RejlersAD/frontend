@@ -200,3 +200,4 @@ export const SafetyEmptyState = ({ title, message, icon: Icon = Shield }) => {
     </div>
   );
 };
+

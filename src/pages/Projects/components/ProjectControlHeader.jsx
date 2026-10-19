@@ -4,3 +4,4 @@ import ProjectDetailsHeader from './ProjectDetailsHeader'
 export default function ProjectControlHeader(props) {
   return <ProjectDetailsHeader {...props} />
 }
+

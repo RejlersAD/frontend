@@ -319,3 +319,4 @@ PlanningReviewPanel.propTypes = {
   refreshKey: PropTypes.oneOfType([PropTypes.number, PropTypes.string]), onBack: PropTypes.func, onInputs: PropTypes.func, onAnalyze: PropTypes.func, onRebuild: PropTypes.func, onCompare: PropTypes.func, onOpenAdvanced: PropTypes.func,
   onContinue: PropTypes.func, onLoaded: PropTypes.func, onSavingChanged: PropTypes.func, selectedVersionId: PropTypes.string, onVersionChange: PropTypes.func,
 }
+

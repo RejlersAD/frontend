@@ -258,3 +258,4 @@ export default function EmployeesTable({ actionsTarget }) {
     {editing && <EmployeeEditModal employee={editing} onClose={() => setEditing(null)} onSaved={(updated) => { setEmployees((previous) => previous.map((employee) => employee.id === updated.id ? updated : employee)); setEditing(null) }} />}
   </div>
 }
+

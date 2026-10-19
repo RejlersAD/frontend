@@ -227,3 +227,4 @@ ScheduleBasisPanel.propTypes = {
   projectId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
   intelligenceRunId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
 }
+

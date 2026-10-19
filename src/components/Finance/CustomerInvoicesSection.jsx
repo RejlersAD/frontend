@@ -145,3 +145,4 @@ export default function CustomerInvoicesSection({ currency = '', company = '', a
   </section>;
 }
 CustomerInvoicesSection.propTypes = { currency: PropTypes.string, company: PropTypes.string, asOf: PropTypes.string, paymentStatus: PropTypes.string, onPaymentStatusChange: PropTypes.func, sectionRef: PropTypes.object, refreshKey: PropTypes.oneOfType([PropTypes.string, PropTypes.number]), enabled: PropTypes.bool, dataScope: PropTypes.oneOf(['finance', 'executive']), onSnapshotChange: PropTypes.func };
+

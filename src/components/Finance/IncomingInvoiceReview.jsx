@@ -147,3 +147,4 @@ export default function IncomingInvoiceReview({ invoice, onClose, onRefresh }) {
 }
 
 IncomingInvoiceReview.propTypes = { invoice: PropTypes.object, onClose: PropTypes.func.isRequired, onRefresh: PropTypes.func };
+

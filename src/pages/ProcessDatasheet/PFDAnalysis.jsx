@@ -111,7 +111,7 @@ const PumpHydraulicTabbedPage = () => {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       {/* ── Header ──────────────────────────────────────────────────── */}
       <div className="bg-white border-b border-slate-200 shadow-sm">
-        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <button
@@ -162,7 +162,7 @@ const PumpHydraulicTabbedPage = () => {
         </div>
 
         {/* ── Tab Bar (sub-pages) ──────────────────────────────────── */}
-        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex gap-1 overflow-x-auto -mb-px">
             {PUMP_HYDRAULIC_TABS.map((tab) => {
               const Icon = tab.icon;
@@ -187,7 +187,7 @@ const PumpHydraulicTabbedPage = () => {
       </div>
 
       {/* ── Tab Content ────────────────────────────────────────────── */}
-      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {savedNotice && (
           <div className="mb-4 flex items-center gap-2 p-3 rounded-lg border border-slate-200 bg-white shadow-sm text-sm text-slate-700">
             <Save className="w-4 h-4 text-blue-600" />
@@ -253,3 +253,4 @@ const PumpHydraulicTabbedPage = () => {
 };
 
 export default PumpHydraulicTabbedPage;
+

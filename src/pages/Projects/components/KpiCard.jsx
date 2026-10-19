@@ -36,3 +36,4 @@ export default function KpiCard({ label, value, tone = 'slate', isCurrency = fal
     </div>
   )
 }
+

@@ -409,3 +409,4 @@ const AnalyticsCharts = ({ analyticsData }) => {
 };
 
 export default AnalyticsCharts;
+

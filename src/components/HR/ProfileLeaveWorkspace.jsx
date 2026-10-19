@@ -70,3 +70,4 @@ export function ProfileLeaveRequests({ requests = [], loading }) {
     })}<p className="pt-3 text-xs text-slate-500">{visible.length} of {requests.length} loaded requests</p></div>}
   </LeavePanel>
 }
+

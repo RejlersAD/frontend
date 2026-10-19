@@ -68,3 +68,4 @@ export default function GoodsReceiptDeleteDialog({ receipt, onClose, onDeleted, 
   </dialog>;
 }
 GoodsReceiptDeleteDialog.propTypes = { receipt: PropTypes.object.isRequired, onClose: PropTypes.func.isRequired, onDeleted: PropTypes.func.isRequired, onUnavailable: PropTypes.func.isRequired };
+

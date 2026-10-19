@@ -160,3 +160,4 @@ export default function FinancialPerformance({ currency = 'AED', refreshKey = 0,
   </div>;
 }
 FinancialPerformance.propTypes = { report: PropTypes.object, currency: PropTypes.string, refreshKey: PropTypes.number, printing: PropTypes.bool, onSnapshotChange: PropTypes.func, onExplain: PropTypes.func.isRequired };
+

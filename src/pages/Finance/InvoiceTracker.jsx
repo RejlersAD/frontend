@@ -228,3 +228,4 @@ export default function InvoiceTracker() {
     <ImportExcelModal open={importOpen} onClose={() => setImportOpen(false)} onImported={() => setReloadKey(value => value + 1)} />
   </>;
 }
+

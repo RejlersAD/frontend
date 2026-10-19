@@ -238,3 +238,4 @@ SalesEmailAssistant.propTypes = {
   information: PropTypes.object,
   onUnavailable: PropTypes.func,
 };
+

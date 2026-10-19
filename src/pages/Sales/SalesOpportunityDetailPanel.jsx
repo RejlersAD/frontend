@@ -859,3 +859,4 @@ SalesOpportunityDetailPanel.propTypes = {
   ),
   locked: PropTypes.bool,
 };
+

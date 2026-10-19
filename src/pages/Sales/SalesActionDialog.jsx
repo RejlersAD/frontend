@@ -201,3 +201,4 @@ SalesActionDialog.propTypes = {
   currentRecordId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
 };
 SalesActionDialog.defaultProps = { error: "" };
+

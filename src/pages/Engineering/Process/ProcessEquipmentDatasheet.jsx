@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Process Equipment Datasheet Generator
  * SOFT-CODED: P&ID upload page for automatic equipment detection and datasheet generation
  * Features:
@@ -414,7 +414,7 @@ const ProcessEquipmentDatasheet = () => {
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
   };
 
-  /* ── Redesigned UI ─────────────────────────────────────────────────────── */
+  /* -- Redesigned UI ------------------------------------------------------- */
   return (
     <div className="min-h-screen bg-slate-950 relative overflow-hidden">
 
@@ -427,7 +427,7 @@ const ProcessEquipmentDatasheet = () => {
 
       <div className="relative max-w-7xl mx-auto p-6">
 
-        {/* ── Page Header ─────────────────────────────────────────────────── */}
+        {/* -- Page Header --------------------------------------------------- */}
         <div className="mb-10">
           <button
             onClick={() => navigate(page.backRoute)}
@@ -458,11 +458,11 @@ const ProcessEquipmentDatasheet = () => {
           {/* Capability pills */}
           <div className="flex flex-wrap gap-2">
             {[
-              { icon: '🔍', label: 'Tag Extraction' },
-              { icon: '⚙️', label: 'Equipment Detection' },
-              { icon: '📋', label: 'Auto Datasheets' },
-              { icon: '🔗', label: 'Connection Mapping' },
-              { icon: '📊', label: 'Excel Export' },
+              { icon: '??', label: 'Tag Extraction' },
+              { icon: '??', label: 'Equipment Detection' },
+              { icon: '??', label: 'Auto Datasheets' },
+              { icon: '??', label: 'Connection Mapping' },
+              { icon: '??', label: 'Excel Export' },
             ].map(cap => (
               <span key={cap.label} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-slate-300 text-xs font-medium">
                 <span>{cap.icon}</span>{cap.label}
@@ -471,7 +471,7 @@ const ProcessEquipmentDatasheet = () => {
           </div>
         </div>
 
-        {/* ── Main Grid ───────────────────────────────────────────────────── */}
+        {/* -- Main Grid ----------------------------------------------------- */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
           {/* Left Column: Upload + Project Info */}
@@ -667,7 +667,7 @@ const ProcessEquipmentDatasheet = () => {
           </div>
         </div>
 
-        {/* ── Error ──────────────────────────────────────────────────────────── */}
+        {/* -- Error ------------------------------------------------------------ */}
         {error && (
           <div className="mt-5 rounded-xl bg-red-500/10 border border-red-500/30 p-4">
             <div className="flex items-start gap-3">
@@ -691,7 +691,7 @@ const ProcessEquipmentDatasheet = () => {
           </div>
         )}
 
-        {/* ── Warning ────────────────────────────────────────────────────────── */}
+        {/* -- Warning ---------------------------------------------------------- */}
         {warning && (
           <div className="mt-5 rounded-xl bg-amber-500/10 border border-amber-500/30 p-4">
             <div className="flex items-start gap-3">
@@ -704,7 +704,7 @@ const ProcessEquipmentDatasheet = () => {
           </div>
         )}
 
-        {/* ── Analyse Button ─────────────────────────────────────────────────── */}
+        {/* -- Analyse Button --------------------------------------------------- */}
         {!uploading && !uploadResult && files.length > 0 && (
           <div className="mt-5">
             <button
@@ -720,7 +720,7 @@ const ProcessEquipmentDatasheet = () => {
           </div>
         )}
 
-        {/* ── Processing Panel ───────────────────────────────────────────────── */}
+        {/* -- Processing Panel ------------------------------------------------- */}
         {uploading && (
           <div className="mt-5 rounded-2xl bg-slate-900 border border-slate-800 p-6">
             <div className="flex items-center gap-3 mb-5">
@@ -754,7 +754,7 @@ const ProcessEquipmentDatasheet = () => {
           </div>
         )}
 
-        {/* ── Results Panel ──────────────────────────────────────────────────── */}
+        {/* -- Results Panel ---------------------------------------------------- */}
         {uploadResult && !uploading && (
           <div className="mt-5 rounded-2xl bg-slate-900 border border-emerald-500/30 p-6">
             <div className="flex items-center gap-4 mb-6">
@@ -816,3 +816,4 @@ const ProcessEquipmentDatasheet = () => {
 };
 
 export default ProcessEquipmentDatasheet;
+

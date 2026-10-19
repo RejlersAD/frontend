@@ -181,3 +181,4 @@ SalesEmailSourceEvidence.propTypes = { sourceIds: PropTypes.array, sources: Prop
 SalesEmailSourceEvidence.defaultProps = { sourceIds: null, sources: null };
 SalesEmailAnalysis.propTypes = { analysis: PropTypes.object, savedContent: PropTypes.bool, nextStepRef: PropTypes.shape({ current: PropTypes.any }) };
 SalesEmailAnalysis.defaultProps = { analysis: null, savedContent: false, nextStepRef: null };
+

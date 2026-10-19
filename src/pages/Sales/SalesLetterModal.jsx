@@ -608,3 +608,4 @@ SalesLetterModal.propTypes = {
   ]),
   open: PropTypes.bool,
 };
+

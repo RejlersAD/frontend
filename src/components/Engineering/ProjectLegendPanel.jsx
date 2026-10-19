@@ -167,7 +167,7 @@ const ProjectLegendPanel = ({
             }} />
             <span className="text-sm font-semibold text-slate-700">{statusLabel}</span>
             {inherited && (
-              <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full"
+              <span className="text-xs font-bold uppercase tracking-wide px-2 py-0.5 rounded-full"
                 style={{ background: 'rgba(99,102,241,0.10)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.25)' }}>
                 Project Pack
               </span>
@@ -206,3 +206,4 @@ const ProjectLegendPanel = ({
 };
 
 export default ProjectLegendPanel;
+

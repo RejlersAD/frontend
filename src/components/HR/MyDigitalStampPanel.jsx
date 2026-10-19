@@ -138,3 +138,4 @@ export default function MyDigitalStampPanel() {
     </div>
   </section>
 }
+

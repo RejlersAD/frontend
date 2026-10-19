@@ -145,3 +145,4 @@ GenerationEvidenceWorkspace.propTypes = {
   navigation: PropTypes.node,
   analysisState: PropTypes.shape({ pending: PropTypes.bool, message: PropTypes.string }),
 }
+

@@ -229,3 +229,4 @@ export function PortfolioConcentration({ portfolio, onExplain, printing = false 
     </div>
   </section>;
 }
+

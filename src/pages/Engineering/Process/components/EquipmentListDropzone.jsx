@@ -115,3 +115,4 @@ export default function EquipmentListDropzone({ activeEquipmentList, onUploaded,
     </div>
   )
 }
+

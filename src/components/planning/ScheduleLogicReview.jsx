@@ -187,3 +187,4 @@ export default function ScheduleLogicReview({ plan, tasks, busy = false, readOnl
 const commonProps = { plan: PropTypes.object.isRequired, tasks: PropTypes.array.isRequired, busy: PropTypes.bool, readOnly: PropTypes.bool, onApplyUpdates: PropTypes.func, onConfirmParallel: PropTypes.func, onEditTask: PropTypes.func }
 LogicGroupEditor.propTypes = { ...commonProps, group: PropTypes.object.isRequired }
 ScheduleLogicReview.propTypes = { ...commonProps, canCreateDraft: PropTypes.bool, onCreateDraft: PropTypes.func, onCalculate: PropTypes.func }
+

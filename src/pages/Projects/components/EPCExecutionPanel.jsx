@@ -101,3 +101,4 @@ export default function EPCExecutionPanel({ project, rows, options, controlScope
     {['submit', 'review', 'accept'].includes(dialog?.type) && selected && <WorkAction action={dialog.type} row={selected} onSaved={onSaved} onClose={closed} onOpenDocument={onOpenDocument} />}
   </>
 }
+

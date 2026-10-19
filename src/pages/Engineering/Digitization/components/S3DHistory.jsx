@@ -38,7 +38,7 @@ export default function S3DHistory({ onBack, onOpenJob }) {
     return () => { active = false; };
   }, [projectId, page, retry]);
 
-  return <main className="mx-auto max-w-[1600px] px-6 py-6 text-slate-900">
+  return <main className="mx-auto max-w-4xl px-6 py-6 text-slate-900">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div><h1 className="text-2xl font-semibold">History Logs</h1><p className="text-sm text-slate-600">Project folders and extraction runs. Only explicitly saved results are marked as saved.</p></div>
       <button type="button" onClick={onBack} className="rounded-lg border border-blue-600 bg-white px-4 py-2 text-sm font-semibold text-blue-600">Upload document</button>
@@ -77,3 +77,4 @@ export default function S3DHistory({ onBack, onOpenJob }) {
     </div>}
   </main>;
 }
+

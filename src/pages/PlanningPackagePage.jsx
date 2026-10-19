@@ -4615,7 +4615,7 @@ const PlanningPackagePage = ({ embedded = false, documentWorkflow = false, enter
 
   return (
     <div className={`project-control-workspace bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 ${embedded ? 'w-full' : 'min-h-screen px-4 py-6 sm:px-6 sm:py-8'}`}>
-      <div className={embedded ? 'w-full' : 'mx-auto w-full max-w-[1800px]'}>
+      <div className={embedded ? 'w-full' : 'mx-auto w-full max-w-4xl'}>
         {!embedded && <div className="mb-4 flex flex-wrap items-center justify-between gap-2"><button type="button" onClick={() => navigate('/projects')} className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600">← Back to Project Control</button><button type="button" onClick={() => navigate('/planning-packages/docs')} className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50">Workflow &amp; Docs</button></div>}
 
         {/* Hero header */}
@@ -4740,3 +4740,4 @@ PlanningPackagePage.propTypes = {
 };
 
 export default PlanningPackagePage;
+

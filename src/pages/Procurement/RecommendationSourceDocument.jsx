@@ -87,3 +87,4 @@ RecommendationSourceDocument.propTypes = {
   error: PropTypes.string,
   embedded: PropTypes.bool,
 }
+

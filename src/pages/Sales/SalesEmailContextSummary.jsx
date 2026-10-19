@@ -113,3 +113,4 @@ SalesEmailContextSummary.propTypes = {
   senderEmail: PropTypes.string, sentAt: PropTypes.string, receivedAt: PropTypes.string, converted: PropTypes.bool, classificationCode: PropTypes.string,
 };
 SalesEmailContextSummary.defaultProps = { information: null, senderName: "", senderEmail: "", sentAt: "", receivedAt: "", converted: false, classificationCode: "" };
+

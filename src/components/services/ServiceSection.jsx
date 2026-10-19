@@ -51,3 +51,4 @@ export const SectionHeader = ({ title, subtitle, tone = 'light' }) => (
     )}
   </div>
 )
+

@@ -281,3 +281,4 @@ function WorkflowStatusPanel({ workflow, compact = false }) {
 }
 
 export default WorkflowStatusPanel
+

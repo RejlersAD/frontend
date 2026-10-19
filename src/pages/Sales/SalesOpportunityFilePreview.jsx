@@ -117,3 +117,4 @@ export default function SalesOpportunityFilePreview({ recordId, folderKey, stora
 }
 
 SalesOpportunityFilePreview.propTypes = { recordId: PropTypes.string.isRequired, folderKey: PropTypes.string.isRequired, storage: PropTypes.oneOf(['radai', 'sharepoint']).isRequired, file: PropTypes.object.isRequired, onClose: PropTypes.func.isRequired };
+

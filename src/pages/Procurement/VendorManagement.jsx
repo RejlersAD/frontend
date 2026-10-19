@@ -732,9 +732,9 @@ const VendorManagement = () => {
                                   {(vendor.name || 'V').slice(0, 2).toUpperCase()}
                                 </span>
                                 <div className="min-w-0">
-                                  <p className="max-w-[260px] truncate text-sm font-bold text-slate-900">{vendor.name}</p>
+                                  <p className="max-w-4xl truncate text-sm font-bold text-slate-900">{vendor.name}</p>
                                   <p className="mt-0.5 text-xs font-medium text-[#008f80]">{vendor.vendor_code}</p>
-                                  <div className="mt-2 flex max-w-[280px] flex-wrap gap-1">
+                                  <div className="mt-2 flex max-w-4xl flex-wrap gap-1">
                                     {(Array.isArray(vendor.categories) ? vendor.categories : []).slice(0, 2).map(category => (
                                       <span key={category} className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">{category}</span>
                                     ))}
@@ -751,11 +751,11 @@ const VendorManagement = () => {
                               <div className="mt-2 h-2 w-36 overflow-hidden rounded-full bg-slate-100">
                                 <div className={`h-full rounded-full ${completeness.score >= 85 ? 'bg-[#00a896]' : completeness.score >= 60 ? 'bg-amber-400' : 'bg-rose-500'}`} style={{ width: `${completeness.score}%` }} />
                               </div>
-                              {completeness.missing.length > 0 && <p className="mt-2 max-w-[170px] truncate text-xs text-slate-500" title={completeness.missing.map(field => field.label).join(', ')}>Missing: {completeness.missing[0].label}{completeness.missing.length > 1 ? ` +${completeness.missing.length - 1}` : ''}</p>}
+                              {completeness.missing.length > 0 && <p className="mt-2 max-w-4xl truncate text-xs text-slate-500" title={completeness.missing.map(field => field.label).join(', ')}>Missing: {completeness.missing[0].label}{completeness.missing.length > 1 ? ` +${completeness.missing.length - 1}` : ''}</p>}
                             </td>
                             <td className="px-5 py-4 align-top text-xs text-slate-600">
                               <p className="font-semibold text-slate-800">{vendor.contact_person || 'Contact missing'}</p>
-                              <p className="mt-1 max-w-[210px] truncate">{vendor.email || 'Email missing'}</p>
+                              <p className="mt-1 max-w-4xl truncate">{vendor.email || 'Email missing'}</p>
                               <p className="mt-1">{vendor.phone || 'Phone missing'}</p>
                             </td>
                             <td className="px-5 py-4 align-top">
@@ -1139,3 +1139,4 @@ const VendorManagement = () => {
 };
 
 export default VendorManagement;
+

@@ -153,7 +153,7 @@ const CRSMultipleRevision = ({ pageControls, refetch }) => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50/30 to-indigo-50/30 pb-8">
       {/* Main Container */}
-      <div className="max-w-[1920px] mx-auto px-3 sm:px-4 lg:px-6 py-4 lg:py-6 mt-20 sm:mt-16 lg:mt-6">
+      <div className="max-w-4xl mx-auto px-3 sm:px-4 lg:px-6 py-4 lg:py-6 mt-20 sm:mt-16 lg:mt-6">
         
         {/* Page Header */}
         <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-4 sm:p-5 mb-6">
@@ -434,3 +434,4 @@ export default withDashboardControls(CRSMultipleRevision, {
   storageKey: 'crsMultipleRevisionPageControls',
   pageTitle: 'CRS Multiple Revision',
 });
+

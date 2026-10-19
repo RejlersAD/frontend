@@ -73,3 +73,4 @@ export default function EPCLifecycleTab({ project, refreshVersion = 0, onEdit, o
     {stage === 'execution' && state.data.items !== null && <EPCExecutionPanel project={project} rows={items} options={state.data.options} controlScope={controlScope} selected={detail.id === activeId ? detail.data : null} loadingDetail={detail.loading} detailError={detail.error} onSelect={setSelectedId} onSaved={saved} onSelectView={onSelectView} onOpenDocument={onOpenDocument} />}
   </div>
 }
+

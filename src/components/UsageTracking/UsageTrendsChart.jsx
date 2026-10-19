@@ -156,3 +156,4 @@ const UsageTrendsChart = ({ trendData, timeRange }) => {
 };
 
 export default UsageTrendsChart;
+

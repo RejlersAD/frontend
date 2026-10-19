@@ -8,3 +8,4 @@ export default function SalesEmailPageHeader({ children }) {
 }
 
 SalesEmailPageHeader.propTypes = { children: PropTypes.node };
+

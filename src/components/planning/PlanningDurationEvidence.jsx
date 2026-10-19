@@ -29,3 +29,4 @@ export default function PlanningDurationEvidence({ review }) {
   </section>
 }
 PlanningDurationEvidence.propTypes = { review: PropTypes.object }
+

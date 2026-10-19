@@ -52,3 +52,4 @@ export function WorkforceUnavailable({ section, title = 'Not available' }) {
 export function WorkforceSourceNote({ section }) {
   return section?.description ? <p className="wf-source-note">{section.description}</p> : null;
 }
+

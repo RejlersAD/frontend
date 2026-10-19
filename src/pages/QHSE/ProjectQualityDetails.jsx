@@ -339,7 +339,7 @@ const ProjectQualityDetails = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-slate-50 p-6">
       {/* Header Section */}
-      <div className="max-w-[1920px] mx-auto">
+      <div className="max-w-4xl mx-auto">
         {/* Title and Actions Bar */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
@@ -794,3 +794,4 @@ const StatCard = ({ title, value, icon: Icon, color, trend }) => {
 };
 
 export default ProjectQualityDetails;
+

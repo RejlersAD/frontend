@@ -200,10 +200,10 @@ const PWAInstallModal = ({ isOpen, onClose, onInstall }) => {
               >
                 <div className="text-2xl mb-1">{benefit.icon}</div>
                 <div className="text-xs font-bold text-white mb-1">{benefit.title}</div>
-                <div className="text-[10px] font-semibold mb-1" style={{ color: theme.secondary }}>
+                <div className="text-xs font-semibold mb-1" style={{ color: theme.secondary }}>
                   {benefit.metric}
                 </div>
-                <div className="text-[10px] text-gray-400 leading-tight">
+                <div className="text-xs text-gray-400 leading-tight">
                   {benefit.description}
                 </div>
               </div>
@@ -379,3 +379,4 @@ const PWAInstallModal = ({ isOpen, onClose, onInstall }) => {
 }
 
 export default PWAInstallModal
+

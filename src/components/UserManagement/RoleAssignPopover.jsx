@@ -259,3 +259,4 @@ function RoleAssignPopover({ userId, userLabel = '', currentRoles = [], allRoles
 }
 
 export default RoleAssignPopover;
+

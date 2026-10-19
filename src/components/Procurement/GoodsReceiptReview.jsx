@@ -146,3 +146,4 @@ export default function GoodsReceiptReview({ receipt, onClose, onOpen, onDelete,
   </aside>;
 }
 GoodsReceiptReview.propTypes = { receipt: PropTypes.object, onClose: PropTypes.func.isRequired, onOpen: PropTypes.func.isRequired, onDelete: PropTypes.func.isRequired, onPrint: PropTypes.func, onChanged: PropTypes.func, capabilities: PropTypes.object, asOfDate: PropTypes.string };
+

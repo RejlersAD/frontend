@@ -165,3 +165,4 @@ export function RiskConcentration({ risk, onExplain }) {
     <p className="rc-panel-note">Risk counts, project contract values and quality observations are not substituted for residual exposure.</p>
   </section>;
 }
+

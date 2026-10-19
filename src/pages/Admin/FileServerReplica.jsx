@@ -351,3 +351,4 @@ export default function FileServerReplica() {
   if (!Replica.canManageReplica(user)) return <section className="m-6 rounded-xl border border-slate-200 bg-white p-6"><h1 className="text-xl font-semibold text-slate-900">Administrator access required</h1><p className="mt-2 text-sm text-slate-600">Your account cannot manage file server connections.</p></section>
   return <ReplicaConsole />
 }
+

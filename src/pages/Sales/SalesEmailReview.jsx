@@ -205,3 +205,4 @@ SalesEmailReview.propTypes = {
   activeTab: PropTypes.oneOf(["summary", "evidence", "ask"]),
   onTabChange: PropTypes.func,
 };
+

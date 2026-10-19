@@ -127,3 +127,4 @@ ProcurementImportVendorReview.propTypes = {
   disabled: PropTypes.bool,
   compact: PropTypes.bool,
 };
+

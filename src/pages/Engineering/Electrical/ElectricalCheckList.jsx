@@ -1137,7 +1137,7 @@ const ElectricalCheckList = () => {
                       <tbody>
                         {projectChecklists.map((job) => (
                           <tr key={job.id} className="border-b border-gray-100 hover:bg-gray-50">
-                            <td className="py-3 pr-4 font-medium text-gray-900 max-w-[220px] truncate" title={job.checklist_name}>
+                            <td className="py-3 pr-4 font-medium text-gray-900 max-w-4xl truncate" title={job.checklist_name}>
                               {job.checklist_name || `Checklist #${job.id}`}
                             </td>
                             <td className="py-3 pr-4 whitespace-nowrap">
@@ -1633,3 +1633,4 @@ const ElectricalCheckList = () => {
 };
 
 export default ElectricalCheckList;
+

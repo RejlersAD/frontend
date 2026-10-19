@@ -184,3 +184,4 @@ RecommendationSupplierPricing.propTypes = {
   manualIcv: PropTypes.object, setManualIcv: PropTypes.func.isRequired, onSaveManualIcv: PropTypes.func.isRequired,
   onPriceDescriptionChange: PropTypes.func,
 };
+

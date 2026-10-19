@@ -196,7 +196,7 @@ const PerformanceView = () => (
     <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8">
       <div className="relative grid grid-cols-1 lg:grid-cols-3 gap-8 items-center">
         <div className="flex justify-center lg:justify-start">
-          <div className="bg-white/95 rounded-2xl p-4 shadow-2xl w-full max-w-[280px] min-h-[280px] flex items-center justify-center">
+          <div className="bg-white/95 rounded-2xl p-4 shadow-2xl w-full max-w-4xl min-h-[280px] flex items-center justify-center">
             <SafetyScoreDisplay size="lg" />
           </div>
         </div>
@@ -237,3 +237,4 @@ export default withDashboardControls(HealthSafetyWithRefresh, {
   autoRefreshInterval: 30000,
   storageKey: 'qhseHealthSafetyPageControls',
 });
+

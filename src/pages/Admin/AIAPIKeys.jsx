@@ -163,3 +163,4 @@ export default function AIAPIKeys() {
   if (!API.canManageAIKeys(user)) return <Denied />
   return <AIKeysConsole key={user?.user?.id || user?.id} />
 }
+

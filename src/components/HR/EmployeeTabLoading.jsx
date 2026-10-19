@@ -18,3 +18,4 @@ export default function EmployeeTabLoading({ message = 'Loading your employee pr
     </div>
   )
 }
+

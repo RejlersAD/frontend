@@ -280,3 +280,4 @@ export const QualityEmptyState = ({ message, icon: Icon = FileCheck }) => {
     </div>
   );
 };
+

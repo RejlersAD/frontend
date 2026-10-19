@@ -416,3 +416,4 @@ PrimaveraActivitiesGantt.propTypes = {
   onShowLogicChange: PropTypes.func, onZoomChange: PropTypes.func, onFitTimelineChange: PropTypes.func,
   onDelete: PropTypes.func, onEditWbs: PropTypes.func, onDeleteWbs: PropTypes.func, canEditWbs: PropTypes.func,
 }
+

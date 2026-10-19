@@ -539,3 +539,4 @@ const AlertDetailsModal = ({ alert, onClose, onAcknowledge, onResolve }) => {
 
 
 export default RealTimeAlertDashboard;
+

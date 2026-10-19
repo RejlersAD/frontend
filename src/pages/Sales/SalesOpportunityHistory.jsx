@@ -181,3 +181,4 @@ export default function SalesOpportunityHistory({ events = [] }) {
   </section>;
 }
 SalesOpportunityHistory.propTypes = { events: PropTypes.array };
+

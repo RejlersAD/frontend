@@ -85,3 +85,4 @@ export default function PlanningResourcePlan({ projectId, versionId, readOnly = 
   </section>
 }
 PlanningResourcePlan.propTypes = { projectId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired, versionId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]), readOnly: PropTypes.bool, onChanged: PropTypes.func }
+

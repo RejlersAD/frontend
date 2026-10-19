@@ -281,7 +281,7 @@ export default function QhseImportModal({
                         />
                       </td>
                       {previewColumns.map((c) => (
-                        <td key={c.key} className="px-2 py-2 text-slate-700 truncate max-w-[220px]" title={String(row[c.key] ?? '')}>
+                        <td key={c.key} className="px-2 py-2 text-slate-700 truncate max-w-4xl" title={String(row[c.key] ?? '')}>
                           {row[c.key] ?? <span className="text-slate-300">—</span>}
                         </td>
                       ))}
@@ -364,3 +364,4 @@ export default function QhseImportModal({
     </div>
   )
 }
+

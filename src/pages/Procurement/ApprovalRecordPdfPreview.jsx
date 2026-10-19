@@ -129,3 +129,4 @@ ApprovalRecordPdfPreview.propTypes = {
   onSourceUploaded: PropTypes.func,
   onShowOriginalPr: PropTypes.func,
 };
+

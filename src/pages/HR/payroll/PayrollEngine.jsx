@@ -1,10 +1,10 @@
-ï»¿/**
- * Payroll Engine â€” Monthly automation shell.
+/**
+ * Payroll Engine — Monthly automation shell.
  *
  * Props (passed by parent Payroll.jsx):
- *   activeRunId   â€” UUID/PK of a run to deep-link into (from ?run= query)
- *   onSelectRun   â€” bubbles run selection back to parent (kept for URL sync)
- *   onSwitchTab   â€” bubbles top-level tab changes back to parent (unused here)
+ *   activeRunId   — UUID/PK of a run to deep-link into (from ?run= query)
+ *   onSelectRun   — bubbles run selection back to parent (kept for URL sync)
+ *   onSwitchTab   — bubbles top-level tab changes back to parent (unused here)
  *
  * Internal sub-tabs live in payroll/engine/. Selecting a run from the
  * 'runs' tab shows RunDetail in place; clicking "All runs" returns.
@@ -47,7 +47,7 @@ export default function PayrollEngine({ activeRunId, initialTab, onSelectRun, on
   const [canvasModeKey] = useState(readStoredCanvas)
   const [employeeActionsTarget, setEmployeeActionsTarget] = useState(null)
 
-  // Deep-link contract: parent supplies ?run=<id> â†’ jump into detail view
+  // Deep-link contract: parent supplies ?run=<id> ? jump into detail view
   useEffect(() => {
     if (activeRunId) {
       setSelectedRunId(activeRunId)
@@ -135,3 +135,4 @@ export default function PayrollEngine({ activeRunId, initialTab, onSelectRun, on
     </div>
   )
 }
+

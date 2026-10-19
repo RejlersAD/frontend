@@ -96,3 +96,4 @@ PlanningSequenceReview.propTypes = {
   returnFocusElement: PropTypes.object,
   busy: PropTypes.bool, error: PropTypes.string, onClose: PropTypes.func.isRequired, onApply: PropTypes.func.isRequired,
 }
+

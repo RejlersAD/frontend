@@ -45,3 +45,4 @@ SalesEmailMessageHeader.propTypes = {
   subject: PropTypes.string, senderName: PropTypes.string, senderEmail: PropTypes.string,
   to: PropTypes.string, receivedAt: PropTypes.string, dateLabel: PropTypes.string, children: PropTypes.node,
 };
+

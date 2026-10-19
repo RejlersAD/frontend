@@ -53,7 +53,7 @@ const errorMessage = (error, fallback) => {
 
 const Metric = ({ label, value, suffix = '' }) => (
   <div className="rounded-xl border border-white/10 bg-white/10 px-3 py-2.5 backdrop-blur-sm">
-    <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-100">{label}</p>
+    <p className="text-xs font-semibold uppercase tracking-wider text-blue-100">{label}</p>
     <p className="mt-0.5 text-lg font-bold text-white">{value ?? 0}{suffix}</p>
   </div>
 )
@@ -155,7 +155,7 @@ export default function ProbationPerformancePanel({ employee, currentUser }) {
           <div className="flex items-start gap-4">
             <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-700"><HeroIcons.DocumentChartBarIcon className="h-5 w-5" /></span>
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-blue-700">Probation checkpoint</p>
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-700">Probation checkpoint</p>
               <h3 className="mt-1 text-base font-bold text-slate-950">100-day performance report</h3>
               <p className="mt-1 text-sm text-slate-500">Open the report only when you are ready to review its RADAI insights.</p>
             </div>
@@ -173,7 +173,7 @@ export default function ProbationPerformancePanel({ employee, currentUser }) {
       <section className="overflow-hidden rounded-2xl border border-blue-200 bg-white shadow-sm">
         <div className="bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-900 px-6 py-7 text-white">
           <div className="flex flex-wrap items-center justify-between gap-5">
-            <div className="flex items-start gap-4"><span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15"><HeroIcons.DocumentChartBarIcon className="h-6 w-6" /></span><div><p className="text-[11px] font-bold uppercase tracking-[0.2em] text-blue-200">Probation checkpoint</p><h3 className="mt-1 text-xl font-bold">100-day performance report</h3><p className="mt-1 max-w-xl text-sm text-blue-100">Generate an evidence-based review from RADAI activity, project, profile and attendance records.</p></div></div>
+            <div className="flex items-start gap-4"><span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15"><HeroIcons.DocumentChartBarIcon className="h-6 w-6" /></span><div><p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-200">Probation checkpoint</p><h3 className="mt-1 text-xl font-bold">100-day performance report</h3><p className="mt-1 max-w-xl text-sm text-blue-100">Generate an evidence-based review from RADAI activity, project, profile and attendance records.</p></div></div>
             {mayGenerate && <button type="button" onClick={generate} disabled={saving} className="rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-blue-950 shadow-sm hover:bg-blue-50 disabled:opacity-50">{saving ? 'Generating…' : 'Generate from RADAI'}</button>}
           </div>
         </div>
@@ -195,7 +195,7 @@ export default function ProbationPerformancePanel({ employee, currentUser }) {
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <header className="bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-900 px-6 py-6 text-white">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex items-start gap-4"><span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/20"><HeroIcons.DocumentChartBarIcon className="h-6 w-6" /></span><div><div className="flex flex-wrap items-center gap-2"><h3 className="text-lg font-bold">100-day performance report</h3><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${report.status === 'submitted' ? 'bg-emerald-400/20 text-emerald-100 ring-1 ring-emerald-300/30' : 'bg-amber-300/20 text-amber-100 ring-1 ring-amber-200/30'}`}>{report.status}</span></div><p className="mt-1 text-xs text-blue-100">Review period {formatDate(snapshot.period?.start || report.joining_date)} – {formatDate(snapshot.period?.end || report.due_date)} · Due {formatDate(report.due_date)}</p><p className="mt-1 text-xs text-blue-200">Created by {report.created_by_name || 'HR / Manager'}</p></div></div>
+          <div className="flex items-start gap-4"><span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/20"><HeroIcons.DocumentChartBarIcon className="h-6 w-6" /></span><div><div className="flex flex-wrap items-center gap-2"><h3 className="text-lg font-bold">100-day performance report</h3><span className={`rounded-full px-2.5 py-1 text-xs font-bold uppercase tracking-wide ${report.status === 'submitted' ? 'bg-emerald-400/20 text-emerald-100 ring-1 ring-emerald-300/30' : 'bg-amber-300/20 text-amber-100 ring-1 ring-amber-200/30'}`}>{report.status}</span></div><p className="mt-1 text-xs text-blue-100">Review period {formatDate(snapshot.period?.start || report.joining_date)} – {formatDate(snapshot.period?.end || report.due_date)} · Due {formatDate(report.due_date)}</p><p className="mt-1 text-xs text-blue-200">Created by {report.created_by_name || 'HR / Manager'}</p></div></div>
           {editable && <button type="button" onClick={refreshInsights} disabled={refreshing} className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-3.5 py-2 text-xs font-bold text-white hover:bg-white/15 disabled:opacity-50"><HeroIcons.ArrowPathIcon className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />{refreshing ? 'Refreshing…' : 'Refresh RADAI insights'}</button>}
         </div>
         <div className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
@@ -210,24 +210,24 @@ export default function ProbationPerformancePanel({ employee, currentUser }) {
 
       <div className="space-y-7 p-6">
         <section>
-          <div className="mb-4 flex flex-wrap items-end justify-between gap-2"><div><p className="text-[11px] font-bold uppercase tracking-[0.16em] text-blue-700">Manager assessment</p><h4 className="mt-1 text-base font-bold text-slate-950">Performance ratings</h4></div>{averageRating > 0 && <p className="text-sm font-semibold text-slate-600">Average <span className="ml-1 text-xl font-bold text-blue-700">{averageRating.toFixed(1)}</span><span className="text-slate-400"> / 5</span></p>}</div>
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-2"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-700">Manager assessment</p><h4 className="mt-1 text-base font-bold text-slate-950">Performance ratings</h4></div>{averageRating > 0 && <p className="text-sm font-semibold text-slate-600">Average <span className="ml-1 text-xl font-bold text-blue-700">{averageRating.toFixed(1)}</span><span className="text-slate-400"> / 5</span></p>}</div>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {RATING_FIELDS.map(([field, label]) => (
               <div key={field} className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5">
                 <p className="text-xs font-bold text-slate-800">{label}</p>
                 <div className="mt-3 flex gap-1.5">{[1,2,3,4,5].map((rating) => <button key={rating} type="button" disabled={!editable} title={RATING_LABELS[rating - 1]} onClick={() => setForm((previous) => ({ ...previous, [field]: rating }))} className={`flex h-8 flex-1 items-center justify-center rounded-lg text-xs font-bold transition ${Number(form[field]) === rating ? 'bg-blue-700 text-white shadow-sm' : 'border border-slate-200 bg-white text-slate-500 hover:border-blue-300 hover:text-blue-700'} disabled:cursor-default disabled:hover:border-slate-200`}>{rating}</button>)}</div>
-                <p className="mt-2 min-h-4 text-[10px] font-medium text-slate-500">{form[field] ? RATING_LABELS[Number(form[field]) - 1] : 'Select 1–5'}</p>
+                <p className="mt-2 min-h-4 text-xs font-medium text-slate-500">{form[field] ? RATING_LABELS[Number(form[field]) - 1] : 'Select 1–5'}</p>
               </div>
             ))}
           </div>
         </section>
 
         <section>
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><p className="text-[11px] font-bold uppercase tracking-[0.16em] text-violet-700">System-generated analysis</p><h4 className="mt-1 text-base font-bold text-slate-950">RADAI performance insights</h4></div><div className="inline-flex items-center gap-1.5 rounded-full bg-violet-50 px-3 py-1.5 text-[10px] font-bold text-violet-700"><HeroIcons.SparklesIcon className="h-3.5 w-3.5" />Generated {formatDate(report.insights_generated_at, true)}</div></div>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-violet-700">System-generated analysis</p><h4 className="mt-1 text-base font-bold text-slate-950">RADAI performance insights</h4></div><div className="inline-flex items-center gap-1.5 rounded-full bg-violet-50 px-3 py-1.5 text-xs font-bold text-violet-700"><HeroIcons.SparklesIcon className="h-3.5 w-3.5" />Generated {formatDate(report.insights_generated_at, true)}</div></div>
           <div className="grid gap-4 lg:grid-cols-2">
             {INSIGHT_FIELDS.map(([field, label, InsightIcon, tone], index) => <article key={field} className={`rounded-xl border p-4 ${tone} ${index === INSIGHT_FIELDS.length - 1 ? 'lg:col-span-2' : ''}`}><div className="flex items-start gap-3"><span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/80"><InsightIcon className="h-4 w-4" /></span><div><div className="flex items-center gap-2"><h5 className="text-xs font-bold uppercase tracking-wide">{label}</h5><HeroIcons.LockClosedIcon className="h-3 w-3 opacity-60" title="Generated from RADAI records" /></div><p className="mt-2 text-sm leading-6 text-slate-700">{report[field] || 'No system insight is currently available.'}</p></div></div></article>)}
           </div>
-          <p className="mt-3 flex items-start gap-2 text-[11px] leading-5 text-slate-500"><HeroIcons.InformationCircleIcon className="mt-0.5 h-4 w-4 shrink-0" />Narrative sections are generated only from recorded RADAI data and cannot be manually edited. Refresh before submission to include the latest records.</p>
+          <p className="mt-3 flex items-start gap-2 text-xs leading-5 text-slate-500"><HeroIcons.InformationCircleIcon className="mt-0.5 h-4 w-4 shrink-0" />Narrative sections are generated only from recorded RADAI data and cannot be manually edited. Refresh before submission to include the latest records.</p>
         </section>
 
         {error && <p className="rounded-xl bg-red-50 px-4 py-3 text-xs text-red-700">{error}</p>}
@@ -238,3 +238,4 @@ export default function ProbationPerformancePanel({ employee, currentUser }) {
     </section>
   )
 }
+

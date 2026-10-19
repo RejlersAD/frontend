@@ -711,3 +711,4 @@ function defaultSyncAdapter(data) {
 }
 
 export default DatasheetGeneratorTemplate;
+

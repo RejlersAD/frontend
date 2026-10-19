@@ -57,3 +57,4 @@ export default function PayrollApprovalDialog({ action, cycle, onClose, onConfir
     </dialog>, document.body,
   )
 }
+

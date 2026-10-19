@@ -395,3 +395,4 @@ function severityStyles(sev) {
   if (sev === SEVERITY_WARNING) return { color: '#b45309', bg: '#fffbeb', border: '#fcd34d', Icon: AlertTriangle }
   return { color: '#b91c1c', bg: '#fef2f2', border: '#fecaca', Icon: XCircle }
 }
+

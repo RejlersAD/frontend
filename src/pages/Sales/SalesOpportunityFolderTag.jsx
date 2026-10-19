@@ -63,3 +63,4 @@ export default function SalesOpportunityFolderTag({ opportunityId, folder, canEd
 }
 
 SalesOpportunityFolderTag.propTypes = { opportunityId: PropTypes.string.isRequired, folder: PropTypes.object.isRequired, canEdit: PropTypes.bool.isRequired, onSaved: PropTypes.func.isRequired, onReload: PropTypes.func.isRequired };
+

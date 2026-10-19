@@ -176,3 +176,4 @@ export default function FullOnboardingOverview({ employee = {}, recordId, focusI
     </>}
   </div>
 }
+

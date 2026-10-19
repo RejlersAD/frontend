@@ -765,8 +765,8 @@ const AIChampion = () => {
                               </div>
                             </div>
                             <div className="min-w-0">
-                              <div className="font-medium text-slate-800 truncate max-w-[180px]">{r.user?.name || r.user?.email}</div>
-                              <div className="text-[11px] text-slate-500 truncate max-w-[180px]">{r.user?.email}</div>
+                              <div className="font-medium text-slate-800 truncate max-w-4xl">{r.user?.name || r.user?.email}</div>
+                              <div className="text-[11px] text-slate-500 truncate max-w-4xl">{r.user?.email}</div>
                             </div>
                           </div>
                         </td>
@@ -1521,3 +1521,4 @@ const HonoraryEditorModal = ({ mode, draft, onCancel, onSave }) => {
 };
 
 export default AIChampion;
+

@@ -428,3 +428,4 @@ const DeductionModal = ({ slip, onClose, onSuccess }) => {
 };
 
 export default DeductionModal;
+

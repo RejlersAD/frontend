@@ -263,7 +263,7 @@ const InvoiceRegisterDetail = ({ direction }) => {
   return (
     <div className="invoice-detail-shell min-h-screen bg-slate-50">
       <header className="border-b border-slate-200 bg-white px-4 py-3 text-slate-900 lg:px-8">
-        <div className="mx-auto flex max-w-[1700px] flex-col justify-between gap-3 sm:flex-row sm:items-center">
+        <div className="mx-auto flex max-w-4xl flex-col justify-between gap-3 sm:flex-row sm:items-center">
           <div className="flex min-w-0 items-center gap-3">
             <button
               type="button"
@@ -282,10 +282,11 @@ const InvoiceRegisterDetail = ({ direction }) => {
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-[1600px] p-4 lg:p-7">{loading && !invoice ? <div className="flex h-72 items-center justify-center text-sm text-slate-500"><ArrowPathIcon className="mr-2 h-5 w-5 animate-spin" /> Loading complete invoice record…</div> : error ? <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-5 text-rose-700"><p className="font-bold">Invoice could not be opened</p><p className="mt-1 text-sm">{error}</p><div className="mt-4 flex flex-wrap gap-3">{identityConflict && <Link to={`${listPath}?review_duplicates=${encodeURIComponent(id)}`} className="rounded-lg bg-rose-700 px-4 py-2 text-sm font-semibold text-white">Review duplicates for invoice ID {id}</Link>}<button onClick={() => navigate(listPath)} className="rounded-lg border border-rose-300 px-4 py-2 text-sm font-semibold">Return to register</button></div></div> : incoming ? <IncomingDetail invoice={invoice} /> : <OutgoingDetail invoice={invoice} onChanged={load} />}</main>
+      <main className="mx-auto max-w-4xl p-4 lg:p-7">{loading && !invoice ? <div className="flex h-72 items-center justify-center text-sm text-slate-500"><ArrowPathIcon className="mr-2 h-5 w-5 animate-spin" /> Loading complete invoice record…</div> : error ? <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-5 text-rose-700"><p className="font-bold">Invoice could not be opened</p><p className="mt-1 text-sm">{error}</p><div className="mt-4 flex flex-wrap gap-3">{identityConflict && <Link to={`${listPath}?review_duplicates=${encodeURIComponent(id)}`} className="rounded-lg bg-rose-700 px-4 py-2 text-sm font-semibold text-white">Review duplicates for invoice ID {id}</Link>}<button onClick={() => navigate(listPath)} className="rounded-lg border border-rose-300 px-4 py-2 text-sm font-semibold">Return to register</button></div></div> : incoming ? <IncomingDetail invoice={invoice} /> : <OutgoingDetail invoice={invoice} onChanged={load} />}</main>
     </div>
   );
 };
 InvoiceRegisterDetail.propTypes = { direction: PropTypes.oneOf(['incoming', 'outgoing']).isRequired };
 
 export default InvoiceRegisterDetail;
+

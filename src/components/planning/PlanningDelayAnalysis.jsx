@@ -68,3 +68,4 @@ export default function PlanningDelayAnalysis({ projectId, baselineId, readOnly 
   </section>
 }
 PlanningDelayAnalysis.propTypes = { projectId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired, baselineId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]), readOnly: PropTypes.bool }
+

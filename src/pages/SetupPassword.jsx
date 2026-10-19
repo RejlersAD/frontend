@@ -398,3 +398,4 @@ const SetupPassword = () => {
 };
 
 export default SetupPassword;
+

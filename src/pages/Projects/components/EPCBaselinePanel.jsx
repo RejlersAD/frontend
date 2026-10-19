@@ -72,3 +72,4 @@ export default function EPCBaselinePanel({ project, data, links, requisitions, c
     {dialog?.type === 'details' && <EPCModal title="EPC baseline source" onClose={close} footer={<button type="button" className="pp-button" onClick={close}>Close</button>}><EPCFacts rows={[[ 'Baseline', dialog.row.name], ['Revision', dialog.row.revision], ['Data date', epcDate(dialog.row.data_date)], ['Captured', epcDate(dialog.row.approved_at)], ['Approved budget', epcMoney(dialog.row.budget_total, dialog.row.currency)], ['Checksum', dialog.row.checksum]]} /><h3><Link2 size={15} aria-hidden="true" /> Recorded source manifest</h3><pre className="epc-source-json" tabIndex={0} aria-label="Baseline source manifest">{JSON.stringify(dialog.row.manifest || {}, null, 2)}</pre></EPCModal>}
   </>
 }
+

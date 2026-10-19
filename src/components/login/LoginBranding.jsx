@@ -330,7 +330,7 @@ const LoginBranding = () => {
           {TRUST_BADGES.items.map((b) => (
             <span
               key={b.code}
-              className="inline-flex items-center text-[10px] font-bold tracking-wide text-white/85 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full px-2.5 py-1 hover:bg-white/15 transition-colors"
+              className="inline-flex items-center text-xs font-bold tracking-wide text-white/85 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full px-2.5 py-1 hover:bg-white/15 transition-colors"
             >
               <span className="w-1.5 h-1.5 rounded-full mr-1.5" style={{ backgroundColor: '#7FCAB5' }} />
               {b.label}
@@ -346,7 +346,7 @@ const LoginBranding = () => {
             <div className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: '#7FCAB5' }}></div>
             <span>System Online</span>
             {LIVE_PULSE.enabled && (
-              <span className="ml-2 inline-flex items-center text-[10px] font-bold bg-emerald-500/15 text-emerald-200 border border-emerald-400/30 rounded-full px-2 py-0.5">
+              <span className="ml-2 inline-flex items-center text-xs font-bold bg-emerald-500/15 text-emerald-200 border border-emerald-400/30 rounded-full px-2 py-0.5">
                 <span className="relative flex h-1.5 w-1.5 mr-1.5">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-75" />
                   <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-300" />
@@ -412,3 +412,4 @@ const LoginBranding = () => {
 }
 
 export default LoginBranding
+

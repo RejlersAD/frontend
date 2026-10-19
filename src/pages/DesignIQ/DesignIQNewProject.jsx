@@ -744,3 +744,4 @@ Standards: API, ASME, ISO compliance`,
 };
 
 export default DesignIQNewProject;
+

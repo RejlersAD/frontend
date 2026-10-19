@@ -119,3 +119,4 @@ SalesEmailDetectedInformation.propTypes = {
 SalesEmailDetectedInformation.defaultProps = { information: null, subject: "" };
 ClassificationQuotes.propTypes = { evidence: PropTypes.any, sources: PropTypes.any };
 SuggestedClassification.propTypes = { classification: PropTypes.any, sources: PropTypes.any };
+

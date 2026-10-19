@@ -262,3 +262,4 @@ SalesSharedMailboxSetup.propTypes = {
   access: PropTypes.shape({ canManage: PropTypes.bool, canCreate: PropTypes.bool, canUpdate: PropTypes.bool, canSync: PropTypes.bool }).isRequired,
   onClose: PropTypes.func.isRequired,
 };
+

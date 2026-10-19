@@ -712,7 +712,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
         </div>
       </div>}
       <div className={pageMode ? 'min-h-[calc(100vh-4rem)] bg-slate-50' : 'fixed inset-0 z-50 overflow-y-auto bg-slate-50'}>
-        <div className="mx-auto min-h-full w-full max-w-[1680px] px-4 py-5 sm:px-6 lg:px-8">
+        <div className="mx-auto min-h-full w-full max-w-4xl px-4 py-5 sm:px-6 lg:px-8">
           {submissionConflict && <div role="alert" className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
             <p>{submissionConflict}</p><p>Reload and review the latest recommendation before continuing.</p>
             <button type="button" className="mt-2 font-semibold underline" onClick={reloadLatestRecord} disabled={reloadingRecord}>{reloadingRecord ? 'Reloading...' : 'Reload latest version'}</button>
@@ -1106,7 +1106,7 @@ const PurchaseRequisitionApproval = ({ isOpen, onClose, requisition: initialRequ
                         <button type="button" onClick={() => navigate('/profile?tab=signature')} className="text-xs font-semibold text-indigo-600 hover:text-indigo-800">Manage signature</button>
                       </div>
                       <div className={`flex min-h-20 items-center justify-center rounded-lg border p-3 ${signatureError ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-gray-50'}`}>
-                        {signatureLoading ? <ArrowPathIcon className="h-5 w-5 animate-spin text-indigo-600" /> : signature ? <img src={signature} alt="Saved signature" className="max-h-16 max-w-[220px] object-contain" /> : <p className="text-center text-xs font-medium text-amber-700">{signatureError}</p>}
+                        {signatureLoading ? <ArrowPathIcon className="h-5 w-5 animate-spin text-indigo-600" /> : signature ? <img src={signature} alt="Saved signature" className="max-h-16 max-w-4xl object-contain" /> : <p className="text-center text-xs font-medium text-amber-700">{signatureError}</p>}
                       </div>
                       <p className="mt-1 text-[11px] text-gray-500">This image will be copied into the approval record.</p>
                     </div>
@@ -1264,3 +1264,4 @@ PurchaseRequisitionApproval.propTypes = {
 };
 
 export default PurchaseRequisitionApproval;
+

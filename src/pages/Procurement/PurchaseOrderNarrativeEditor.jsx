@@ -163,3 +163,4 @@ export default function PurchaseOrderNarrativeEditor({ value = '', onChange, dis
 }
 
 PurchaseOrderNarrativeEditor.propTypes = { value: PropTypes.string, onChange: PropTypes.func.isRequired, disabled: PropTypes.bool };
+

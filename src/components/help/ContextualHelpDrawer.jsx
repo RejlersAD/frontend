@@ -127,7 +127,7 @@ export default function ContextualHelpDrawer() {
         <header className="flex-none border-b border-slate-200 bg-white px-5 py-4 dark:border-slate-700 dark:bg-slate-900">
           <div className="flex items-start gap-3">
             <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-blue-700 dark:text-blue-300">{helpContext.moduleLabel} only</p>
+              <p className="text-xs font-bold uppercase tracking-[0.15em] text-blue-700 dark:text-blue-300">{helpContext.moduleLabel} only</p>
               <h2 id="contextual-help-title" className="mt-1 truncate text-xl font-bold">{helpContext.title}</h2>
             </div>
             <button ref={closeRef} type="button" onClick={() => closeHelp()} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-slate-800 dark:hover:text-white" aria-label="Close help">
@@ -154,3 +154,4 @@ export default function ContextualHelpDrawer() {
     document.body,
   )
 }
+

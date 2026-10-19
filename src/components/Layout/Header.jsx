@@ -187,7 +187,7 @@ const Header = ({ sidebarOpen, setSidebarOpen, showSidebar, profilePhotoUrl }) =
                 aria-haspopup="menu"
                 aria-expanded={userMenuOpen}
               >
-                <span className="relative flex h-9 w-9 flex-none items-center justify-center overflow-hidden rounded-full bg-blue-600 text-[11px] font-bold text-white ring-1 ring-slate-200 dark:ring-slate-600">
+                <span className="relative flex h-9 w-9 flex-none items-center justify-center overflow-hidden rounded-full bg-blue-600 text-xs font-bold text-white ring-1 ring-slate-200 dark:ring-slate-600">
                   {profilePhoto && (
                     <img
                       key={profilePhoto}
@@ -201,7 +201,7 @@ const Header = ({ sidebarOpen, setSidebarOpen, showSidebar, profilePhotoUrl }) =
                 </span>
                 <span className="hidden min-w-0 max-w-36 xl:block">
                   <span className="block truncate text-sm font-semibold leading-4 text-slate-800 dark:text-white">{firstName}</span>
-                  <span className="block truncate text-[10px] leading-4 text-slate-500 dark:text-slate-400">{roleLabel}</span>
+                  <span className="block truncate text-xs leading-4 text-slate-500 dark:text-slate-400">{roleLabel}</span>
                 </span>
                 <ChevronDownIcon className={`hidden h-4 w-4 text-slate-400 transition-transform sm:block ${userMenuOpen ? 'rotate-180' : ''}`} />
               </button>
@@ -228,7 +228,7 @@ const Header = ({ sidebarOpen, setSidebarOpen, showSidebar, profilePhotoUrl }) =
                   </div>
 
                   <div className="border-t border-slate-100 p-2 dark:border-slate-800">
-                    <div className="px-3 pb-1.5 pt-1 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Navigation</div>
+                    <div className="px-3 pb-1.5 pt-1 text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Navigation</div>
                     {primaryNavItems.map((item) => renderPrimaryNavItem(item, true))}
                   </div>
 
@@ -260,3 +260,4 @@ const Header = ({ sidebarOpen, setSidebarOpen, showSidebar, profilePhotoUrl }) =
 }
 
 export default Header
+

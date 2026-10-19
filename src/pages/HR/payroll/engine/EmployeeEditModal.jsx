@@ -329,3 +329,4 @@ export default function EmployeeEditModal({ employee, onClose, onSaved }) {
     </div>
   )
 }
+

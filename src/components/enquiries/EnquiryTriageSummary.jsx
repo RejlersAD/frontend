@@ -55,3 +55,4 @@ export default function EnquiryTriageSummary({ item, detail, loading = false, er
     </>}
   </aside>;
 }
+

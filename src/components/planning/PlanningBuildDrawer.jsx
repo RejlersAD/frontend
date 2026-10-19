@@ -101,3 +101,4 @@ export default function PlanningBuildDrawer({ projectId, readOnly = false, onClo
   </section></PlanningContextDrawer>
 }
 PlanningBuildDrawer.propTypes = { projectId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]).isRequired, readOnly: PropTypes.bool, onClose: PropTypes.func.isRequired, onApplied: PropTypes.func.isRequired, onEvidence: PropTypes.func, onProfile: PropTypes.func }
+

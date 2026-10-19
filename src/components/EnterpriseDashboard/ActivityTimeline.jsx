@@ -209,3 +209,4 @@ const PLACEHOLDER_ACTIVITIES = [
 ]
 
 export default ActivityTimeline
+

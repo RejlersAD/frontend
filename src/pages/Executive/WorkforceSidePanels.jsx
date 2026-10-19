@@ -142,3 +142,4 @@ export function WorkforceDistribution({ workforce, onExplain, printing = false }
     <WorkforceSourceNote section={section} />
   </section>;
 }
+

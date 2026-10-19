@@ -97,3 +97,4 @@ export function RiskUpdateForm({ model, row, onClose, onSaved }) {
   }
   return <RiskDialog title="Add update" onClose={onClose} busy={busy} footer={<><button type="button" className="pp-button" onClick={onClose} disabled={busy}>Cancel</button><button type="submit" form={id} className="pp-button pp-primary" disabled={busy || !body.trim()}>{busy ? 'Saving…' : 'Save update'}</button></>}><p>{row.code} · {row.title}</p><form id={id} onSubmit={submit} className="rc-form-grid">{error && <div className="rc-form-error" role="alert">{error}</div>}<label className="rc-form-wide">Update<textarea required autoFocus rows={5} maxLength={8000} value={body} onChange={event => setBody(event.target.value)} /></label></form></RiskDialog>
 }
+

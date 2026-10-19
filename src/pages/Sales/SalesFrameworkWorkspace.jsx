@@ -72,3 +72,4 @@ SalesFrameworkWorkspace.propTypes = {
   onRetry: PropTypes.func.isRequired, onEdit: PropTypes.func.isRequired, onOpenFullRecord: PropTypes.func.isRequired,
   onRefresh: PropTypes.func.isRequired, onAction: PropTypes.func.isRequired, actions: PropTypes.array.isRequired, locked: PropTypes.bool.isRequired,
 };
+

@@ -19,7 +19,7 @@ const LoginForm = ({ loginSchema, isLoading, onSubmit, loginGate, onDismissGate 
     <div className="mx-auto w-full max-w-lg">
       <header className="mb-8 text-center">
         <img src="/assets/Rejlers_Logo.png" alt="Rejlers" className="mx-auto mb-5 h-12 w-auto" />
-        <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.22em] text-cyan-700">RADAI secure access</p>
+        <p className="mb-2 text-xs font-bold uppercase tracking-[0.22em] text-cyan-700">RADAI secure access</p>
         <h1 className="text-3xl font-light tracking-[0.14em] text-[#15395f] sm:text-4xl">User Login</h1>
       </header>
 
@@ -123,7 +123,7 @@ const LoginForm = ({ loginSchema, isLoading, onSubmit, loginGate, onDismissGate 
         )}
       </Formik>
 
-      <footer className="mt-7 flex items-center justify-center gap-2 border-t border-slate-200 pt-4 text-[11px] text-slate-600">
+      <footer className="mt-7 flex items-center justify-center gap-2 border-t border-slate-200 pt-4 text-xs text-slate-600">
         <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
         <span>Secure encrypted connection</span>
       </footer>
@@ -149,3 +149,4 @@ LoginForm.propTypes = {
 }
 
 export default LoginForm
+

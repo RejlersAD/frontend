@@ -97,3 +97,4 @@ export function DepartmentDetail({ department, onExplain }) {
   if (!department) return null;
   return <section className="cc-panel cc-department-detail"><div className="cc-panel-heading"><h2>{department.label} performance</h2><Status status={department.status} /></div><div className="cc-detail-metrics">{department.metrics.map(metric => <button key={metric.id} onClick={() => onExplain(metric)}><span>{metric.label}<InformationCircleIcon aria-hidden="true" /></span><strong><MetricValue metric={metric} /></strong><small>{metric.description}</small></button>)}</div><div className="cc-panel-footer"><RouteLink route={department.status === 'restricted' ? null : department.route} arrow>Open {department.label}</RouteLink></div></section>;
 }
+

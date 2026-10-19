@@ -130,3 +130,4 @@ export default function DocumentControlDialogs({ dialog, onClose, onSaved, proje
   if (['reviews', 'transmittals', 'deliverables'].includes(dialog.type)) return <WorkflowInformation key={key} type={dialog.type} {...props} />
   return null
 }
+

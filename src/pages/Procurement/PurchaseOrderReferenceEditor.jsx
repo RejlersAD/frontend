@@ -165,3 +165,4 @@ PurchaseOrderReferenceEditor.propTypes = {
   order: PropTypes.object.isRequired,
   editor: PropTypes.shape({ number: PropTypes.string.isRequired, setNumber: PropTypes.func.isRequired, saving: PropTypes.bool.isRequired, error: PropTypes.string.isRequired, save: PropTypes.func.isRequired, close: PropTypes.func.isRequired }).isRequired,
 };
+

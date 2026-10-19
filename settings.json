@@ -1,0 +1,15 @@
+{
+  "tailwindCSS.emmetCompletions": true,
+  "tailwindCSS.includeLanguages": {
+    "javascript": "javascriptreact",
+    "typescript": "typescriptreact",
+    "html": "html",
+    "css": "css"
+  },
+  "tailwindCSS.experimental.classRegex": [
+    ["cva\\(([^)]*)\\)", "[\"'`]([^\"'`]*)\"']"]
+  ],
+  "editor.quickSuggestions": {
+    "strings": "on"
+  }
+}

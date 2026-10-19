@@ -93,3 +93,4 @@ const DepartmentUsageChart = ({ departments, timeRange }) => {
 };
 
 export default DepartmentUsageChart;
+

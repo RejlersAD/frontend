@@ -125,3 +125,4 @@ export default function InstrumentIndexDropzone({ activeInstrumentIndex, onUploa
     </div>
   )
 }
+

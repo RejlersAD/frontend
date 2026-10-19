@@ -216,3 +216,4 @@ export default function WelcomeHero({ userContext, kpis, loading, generatedAt })
     </div>
   )
 }
+

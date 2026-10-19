@@ -79,3 +79,4 @@ SalesFrameworkRegister.propTypes = {
   onOpenFullRecord: PropTypes.func.isRequired, onEdit: PropTypes.func.isRequired, onCreate: PropTypes.func.isRequired,
   onAction: PropTypes.func.isRequired, actions: PropTypes.array.isRequired, locked: PropTypes.bool.isRequired,
 };
+

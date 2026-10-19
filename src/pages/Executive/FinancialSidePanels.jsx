@@ -153,3 +153,4 @@ export function FinancialControls({ report, financial, currency, onExplain }) {
     <div className="fp-panel-footer"><span className="fp-panel-note">Approved reporting sources required</span><RouteLink route={sourceRoute}>{sourceLabel}</RouteLink></div>
   </section>;
 }
+

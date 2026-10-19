@@ -102,3 +102,4 @@ export default function SalesProposalDocumentDialog({ open, quote, currentDocume
 }
 
 SalesProposalDocumentDialog.propTypes = { open: PropTypes.bool.isRequired, quote: PropTypes.object, currentDocument: PropTypes.object, canBind: PropTypes.bool.isRequired, onClose: PropTypes.func.isRequired, onBound: PropTypes.func.isRequired, onRefresh: PropTypes.func.isRequired };
+

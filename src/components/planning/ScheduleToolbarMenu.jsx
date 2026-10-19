@@ -41,3 +41,4 @@ ScheduleToolbarMenu.propTypes = {
   label: PropTypes.node.isRequired, children: PropTypes.node.isRequired,
   className: PropTypes.string, disabled: PropTypes.bool, name: PropTypes.string.isRequired,
 }
+

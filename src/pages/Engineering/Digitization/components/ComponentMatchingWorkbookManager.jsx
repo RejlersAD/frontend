@@ -286,7 +286,7 @@ const ComponentMatchingWorkbookManager = ({ projectId }) => {
                       {file ? (
                         <>
                           <CheckCircleIcon className="w-4 h-4 text-emerald-600" />
-                          <span className="text-xs font-medium text-gray-900 dark:text-white truncate max-w-[120px]">
+                          <span className="text-xs font-medium text-gray-900 dark:text-white truncate max-w-4xl">
                             {file.name}
                           </span>
                         </>
@@ -383,3 +383,4 @@ const ComponentMatchingWorkbookManager = ({ projectId }) => {
 };
 
 export default ComponentMatchingWorkbookManager;
+

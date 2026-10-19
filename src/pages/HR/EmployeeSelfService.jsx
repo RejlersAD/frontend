@@ -2332,14 +2332,14 @@ function ActivityHeatmap({ summary }) {
   return (
     <div>
       <p className="text-xs font-medium text-slate-500 mb-2">{cfg.heatmapTitle}</p>
-      <div className="flex gap-[3px]">
-        <div className="flex flex-col gap-[3px] mr-1 mt-[18px]">
+      <div className="flex gap-4">
+        <div className="flex flex-col gap-4 mr-1 mt-4">
           {dayLabels.map((l, i) => (
             <div key={i} className="h-3 w-3 text-[9px] text-slate-400 flex items-center justify-center">{l}</div>
           ))}
         </div>
         {grid.map((week, wi) => (
-          <div key={wi} className="flex flex-col gap-[3px]">
+          <div key={wi} className="flex flex-col gap-4">
             <div className="h-[14px] text-[9px] text-slate-400">
               {week[0].slice(8, 10) === '01' ? new Date(week[0]).toLocaleString('default', { month: 'short' }) : ''}
             </div>
@@ -3038,7 +3038,7 @@ function DailyTrackerTab({ currentUser }) {
                     return (
                     <tr key={log.id} className="hover:bg-amber-50/30 transition-colors">
                       <td className="px-4 py-3 font-medium text-slate-700 whitespace-nowrap">{log.user_full_name}</td>
-                      <td className="px-4 py-3 text-slate-800 max-w-[200px] truncate">{log.task_title}</td>
+                      <td className="px-4 py-3 text-slate-800 max-w-4xl truncate">{log.task_title}</td>
                       <td className="px-4 py-3 text-center text-slate-500 text-xs whitespace-nowrap">{log.log_date}</td>
                       <td className="px-4 py-3 text-center font-mono font-semibold text-slate-700">
                         {parseFloat(log.hours_spent).toFixed(1)}
@@ -3115,7 +3115,7 @@ function DailyTrackerTab({ currentUser }) {
                     const ac = approvalConfig(log.approval_status)
                     return (
                       <tr key={log.id} className={`transition-colors hover:brightness-95 ${ac.rowBg}`}>
-                        <td className="px-4 py-3 font-medium text-slate-800 max-w-[180px] truncate">{log.task_title}</td>
+                        <td className="px-4 py-3 font-medium text-slate-800 max-w-4xl truncate">{log.task_title}</td>
                         <td className="px-4 py-3 text-slate-500 text-xs">{log.project_category || EMPTY_DISPLAY}</td>
                         <td className="px-4 py-3 text-center font-mono font-semibold text-slate-700">
                           {parseFloat(log.hours_spent).toFixed(1)}
@@ -3135,7 +3135,7 @@ function DailyTrackerTab({ currentUser }) {
                             {ac.icon} {ac.label}
                           </span>
                           {log.approval_note && (
-                            <p className="text-[10px] text-slate-400 mt-0.5 max-w-[120px] truncate">{log.approval_note}</p>
+                            <p className="text-[10px] text-slate-400 mt-0.5 max-w-4xl truncate">{log.approval_note}</p>
                           )}
                         </td>
                         <td className="px-4 py-3 text-center">
@@ -3210,7 +3210,7 @@ function DailyTrackerTab({ currentUser }) {
                     return (
                       <tr key={log.id} className={`hover:brightness-95 transition-colors ${ac.rowBg}`}>
                         <td className="px-4 py-3 font-medium text-slate-700">{log.user_full_name}</td>
-                        <td className="px-4 py-3 text-slate-800 max-w-[180px] truncate">{log.task_title}</td>
+                        <td className="px-4 py-3 text-slate-800 max-w-4xl truncate">{log.task_title}</td>
                         <td className="px-4 py-3 text-slate-500 text-xs">{log.project_category || EMPTY_DISPLAY}</td>
                         <td className="px-4 py-3 text-center font-mono font-semibold text-slate-700">
                           {parseFloat(log.hours_spent).toFixed(1)}
@@ -3882,3 +3882,4 @@ export default function EmployeeSelfService() {
     </div>
   )
 }
+

@@ -420,3 +420,4 @@ export default function AdjustmentModal({ open, adjustment, onClose, onSaved }) 
     </div>
   )
 }
+

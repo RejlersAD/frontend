@@ -48,3 +48,4 @@ SharedRecordTargetSelector.propTypes = {
   projectId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
   value: PropTypes.object, onChange: PropTypes.func.isRequired, disabled: PropTypes.bool,
 }
+

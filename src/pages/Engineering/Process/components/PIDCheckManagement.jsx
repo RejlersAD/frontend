@@ -757,7 +757,7 @@ export default function PIDCheckManagement({ projectName, projectId, analysisCon
               {Object.entries(PART_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
             </select>
             <select value={sectionFilter} onChange={e => { setSectionFilter(e.target.value); setPage(0); }}
-              className="text-xs px-2 py-2 rounded-lg border border-slate-200 bg-white text-slate-600 outline-none cursor-pointer max-w-[220px]">
+              className="text-xs px-2 py-2 rounded-lg border border-slate-200 bg-white text-slate-600 outline-none cursor-pointer max-w-4xl">
               <option value="all">All Sections</option>
               {sections.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
@@ -1038,7 +1038,7 @@ export default function PIDCheckManagement({ projectName, projectId, analysisCon
                       </div>
                       {latest && (
                         <div className="ml-6 mt-1 flex items-center gap-2">
-                          <span className="text-[10px] text-slate-500 truncate max-w-[150px]" title={latest.file_name}>📄 {latest.file_name}</span>
+                          <span className="text-[10px] text-slate-500 truncate max-w-4xl" title={latest.file_name}>📄 {latest.file_name}</span>
                           <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: statusMeta.color, background: statusMeta.bg }}>
                             {statusMeta.label}
                           </span>
@@ -1067,3 +1067,4 @@ export default function PIDCheckManagement({ projectName, projectId, analysisCon
     </div>
   );
 }
+

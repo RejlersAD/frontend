@@ -2224,3 +2224,4 @@ const Profile = ({ embedded = false }) => {
 };
 
 export default Profile;
+

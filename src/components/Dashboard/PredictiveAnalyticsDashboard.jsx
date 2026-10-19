@@ -631,3 +631,4 @@ export default function PredictiveAnalyticsDashboardWrapper(props) {
     </PredictiveAnalyticsErrorBoundary>
   );
 }
+

@@ -781,3 +781,4 @@ const DocumentUploadSection = () => {
 };
 
 export default DocumentUploadSection;
+

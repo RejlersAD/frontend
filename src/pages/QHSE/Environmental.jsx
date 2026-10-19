@@ -689,3 +689,4 @@ export default withDashboardControls(Environmental, {
   autoRefreshInterval: 30000,
   storageKey: 'qhseEnvironmentalPageControls'
 });
+

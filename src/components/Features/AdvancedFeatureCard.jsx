@@ -243,3 +243,4 @@ const AdvancedFeatureCard = ({ feature, showMetrics = true, compact = false }) =
 }
 
 export default AdvancedFeatureCard
+

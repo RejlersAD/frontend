@@ -2973,7 +2973,7 @@ const DetailView = ({ doc, onBack, onBackToProjects, onReExtract, onForceFreshEx
              onMouseDown={(event) => {
                if (event.target === event.currentTarget) closePdfPreview()
              }}>
-          <div className="w-full h-full max-w-[1600px] bg-white rounded-xl shadow-2xl overflow-hidden flex flex-col">
+          <div className="w-full h-full max-w-4xl bg-white rounded-xl shadow-2xl overflow-hidden flex flex-col">
             <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <h3 className="text-sm font-semibold text-slate-900 truncate">
@@ -3542,3 +3542,4 @@ export default function IOListWorkflowPage() {
     </div>
   )
 }
+

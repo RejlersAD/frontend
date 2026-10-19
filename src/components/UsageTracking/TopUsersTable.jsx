@@ -119,3 +119,4 @@ const TopUsersTable = ({ users, timeRange }) => {
 };
 
 export default TopUsersTable;
+

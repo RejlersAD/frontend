@@ -249,3 +249,4 @@ PlanningScheduleCanvas.propTypes = {
   generationRequest: PropTypes.oneOf(['plan', 'source_logic']), onGenerationOpened: PropTypes.func,
   checksOpenRequest: PropTypes.number, checking: PropTypes.bool, onOpenCreatedSchedule: PropTypes.func, onCalculate: PropTypes.func, onValidate: PropTypes.func, onActivateVersion: PropTypes.func, onReviewLogic: PropTypes.func,
 }
+

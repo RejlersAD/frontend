@@ -110,3 +110,4 @@ SalesOpportunityRegistrationDialog.propTypes = {
   onClose: PropTypes.func.isRequired,
   onCreated: PropTypes.func.isRequired,
 };
+

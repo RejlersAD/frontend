@@ -124,3 +124,4 @@ export default function ComparisonDiffTable({ rows, detectedFields, loading }) {
     </div>
   )
 }
+

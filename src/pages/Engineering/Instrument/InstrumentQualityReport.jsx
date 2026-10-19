@@ -616,7 +616,7 @@ export default function InstrumentQualityReport({ result, tool, accent }) {
                           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">{_str(cat)}</span>
                         </td>
                         <td className="px-3 py-2 align-top text-slate-800">{_str(it.message)}</td>
-                        <td className="px-3 py-2 align-top text-slate-500 font-mono text-xs truncate max-w-[180px]" title={_str(it.value)}>{_str(it.value)}</td>
+                        <td className="px-3 py-2 align-top text-slate-500 font-mono text-xs truncate max-w-4xl" title={_str(it.value)}>{_str(it.value)}</td>
                         <td className="px-3 py-2 align-top text-slate-400">
                           {hasDetail && (isExp ? <ChevronUpIcon className="h-3.5 w-3.5" /> : <ChevronDownIcon className="h-3.5 w-3.5" />)}
                         </td>
@@ -690,3 +690,4 @@ function InsightTile({ label, value, detail, accent = '#7c3aed' }) {
     </div>
   )
 }
+

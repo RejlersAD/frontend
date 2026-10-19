@@ -249,3 +249,4 @@ export default function InlineChangeHistory({ payslipId, kind }) {
     </div>
   )
 }
+

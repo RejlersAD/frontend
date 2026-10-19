@@ -54,3 +54,4 @@ export function DefinitionsDialog({ selection, onClose, metrics = [] }) {
     </section>)}
   </dialog>;
 }
+

@@ -32,3 +32,4 @@ export default function PlanningDelayCaseEditor({ data, busy, readOnly, onComman
   </form>
 }
 PlanningDelayCaseEditor.propTypes = { data: PropTypes.object.isRequired, busy: PropTypes.bool, readOnly: PropTypes.bool, onCommand: PropTypes.func.isRequired, onDirty: PropTypes.func.isRequired }
+

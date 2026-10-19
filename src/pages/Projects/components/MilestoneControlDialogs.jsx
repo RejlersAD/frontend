@@ -94,3 +94,4 @@ export function MilestoneImport({ project, candidates = [], onClose, onSaved, on
     {candidates.length ? <div className="mc-table-wrap" role="region" aria-label="Schedule milestone import preview" tabIndex={0}><table className="mc-table"><thead><tr><th>Select</th><th>Schedule milestone</th><th>Target date</th><th>Status</th></tr></thead><tbody>{candidates.map(row => <tr key={row.id}><td><input type="checkbox" aria-label={`Import ${row.code} ${row.name}`} disabled={busy || !eligible(row)} checked={selected.has(row.id)} onChange={() => toggle(row.id)} /></td><td>{row.code} · {row.name}</td><td>{row.importTargetDate || row.targetDate || 'Missing target'}</td><td>{row.alreadyImported || imported.has(row.id) ? 'Already imported' : eligible(row) ? 'Available' : 'Target date required'}</td></tr>)}</tbody></table></div> : <p className="mc-empty">No schedule milestones are available to import. Add milestones in the planning workspace first.</p>}
   </MilestoneDialog>
 }
+

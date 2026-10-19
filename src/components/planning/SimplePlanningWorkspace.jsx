@@ -342,3 +342,4 @@ export default function SimplePlanningWorkspace({ enterpriseProject, comparison,
     <output className="sr-only" aria-live="polite">{plan?.state === 'baselined' ? 'Baseline published' : ''}</output>
   </div>
 }
+

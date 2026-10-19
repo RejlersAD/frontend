@@ -40,3 +40,4 @@ PlanningSourceScheduleImport.propTypes = {
   busy: PropTypes.bool, error: PropTypes.string, stale: PropTypes.bool,
   onClose: PropTypes.func.isRequired, onRetry: PropTypes.func.isRequired, onApply: PropTypes.func.isRequired,
 }
+

@@ -49,3 +49,4 @@ export default function InvoicePurchaseOrderMatch({ invoice, onSaved }) {
   </form>;
 }
 InvoicePurchaseOrderMatch.propTypes = { invoice: PropTypes.object.isRequired, onSaved: PropTypes.func.isRequired };
+

@@ -376,3 +376,4 @@ Row.propTypes = {
 }
 
 ProcessingBar.propTypes = { label: PropTypes.string.isRequired, progress: PropTypes.number, elapsed: PropTypes.number }
+

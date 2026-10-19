@@ -186,3 +186,4 @@ RecommendationPreviewPane.propTypes = {
   })),
   onIssueClick: PropTypes.func,
 };
+

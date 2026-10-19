@@ -226,8 +226,8 @@ const PurchaseRequisitionExcelImport = ({ isOpen, onClose, onImported, onAttachP
                           <tr key={`${row.sheet}-${row.row_number}-${row.pr_number}`}>
                             <td className="whitespace-nowrap px-3 py-2 text-gray-500">{row.sheet} / {row.row_number}</td>
                             <td className="whitespace-nowrap px-3 py-2 font-medium text-gray-800">{row.pr_number}</td>
-                            <td className="max-w-[180px] truncate px-3 py-2 text-gray-600" title={row.supplier_name}>{row.supplier_name || '—'}</td>
-                            <td className="max-w-[260px] truncate px-3 py-2 text-gray-600" title={row.product_service}>{row.product_service || '—'}</td>
+                            <td className="max-w-4xl truncate px-3 py-2 text-gray-600" title={row.supplier_name}>{row.supplier_name || '—'}</td>
+                            <td className="max-w-4xl truncate px-3 py-2 text-gray-600" title={row.product_service}>{row.product_service || '—'}</td>
                             <td className="whitespace-nowrap px-3 py-2 text-gray-600">{row.project || '—'}</td>
                             <td className="px-3 py-2">
                               <span className={`rounded-full px-2 py-1 font-semibold ${
@@ -241,7 +241,7 @@ const PurchaseRequisitionExcelImport = ({ isOpen, onClose, onImported, onAttachP
                               }`}>
                                 {(row.company_match_status || 'not checked').replace('_', ' ')}
                               </span>
-                              <p className="mt-1 max-w-[220px] text-[11px] text-gray-500">
+                              <p className="mt-1 max-w-4xl text-[11px] text-gray-500">
                                 Vendor: {row.vendor_match?.matched ? row.vendor_match.vendor_code : 'not matched'}; Projects: {(row.project_matches || []).filter((item) => item.matched).length}/{(row.project_matches || []).length}
                               </p>
                             </td>
@@ -250,7 +250,7 @@ const PurchaseRequisitionExcelImport = ({ isOpen, onClose, onImported, onAttachP
                                 {row.status === 'ready' ? 'Ready' : 'Duplicate'}
                               </span>
                               {row.warnings?.length > 0 && (
-                                <p className="mt-1 max-w-[260px] text-[11px] text-amber-700">{row.warnings.join(' ')}</p>
+                                <p className="mt-1 max-w-4xl text-[11px] text-amber-700">{row.warnings.join(' ')}</p>
                               )}
                             </td>
                           </tr>
@@ -308,3 +308,4 @@ PurchaseRequisitionExcelImport.propTypes = {
 };
 
 export default PurchaseRequisitionExcelImport;
+

@@ -168,3 +168,4 @@ ProjectPortfolio.propTypes = {
   projects: PropTypes.array, loading: PropTypes.bool, error: PropTypes.oneOfType([PropTypes.string, PropTypes.object]),
   onCreate: PropTypes.func, onOpen: PropTypes.func.isRequired, onRefresh: PropTypes.func, onImport: PropTypes.func, onSharedRecords: PropTypes.func,
 }
+

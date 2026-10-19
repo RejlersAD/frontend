@@ -12,3 +12,4 @@ export default function OrganizationSuggestions({ id }) {
     </datalist>
   </>
 }
+

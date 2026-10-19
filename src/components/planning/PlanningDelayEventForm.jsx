@@ -19,3 +19,4 @@ export default function PlanningDelayEventForm({ data, event, busy, onCommand, o
     {event && <label>Change reason<textarea aria-label="Delay event change reason" required value={draft.reason} onChange={e => change('reason', e.target.value)} /></label>}</fieldset><div className="poc-actions"><button type="submit" className="poc-primary" disabled={busy || !draft.title.trim() || !draft.description.trim() || !draft.activity_ids.length || draft.evidence.some(row => !row.reference.trim()) || Boolean(event && !draft.reason.trim())}>{event ? 'Save event revision' : 'Record event'}</button><button type="button" disabled={busy} onClick={onClose}>Cancel event</button></div></form>
 }
 PlanningDelayEventForm.propTypes = { data: PropTypes.object.isRequired, event: PropTypes.object, busy: PropTypes.bool, onCommand: PropTypes.func.isRequired, onClose: PropTypes.func.isRequired }
+

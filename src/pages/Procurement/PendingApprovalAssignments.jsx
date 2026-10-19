@@ -77,3 +77,4 @@ PendingApprovalAssignments.propTypes = {
   employees: PropTypes.arrayOf(PropTypes.object).isRequired, loading: PropTypes.bool, error: PropTypes.string,
   disabled: PropTypes.bool, onChange: PropTypes.func.isRequired, onRetry: PropTypes.func.isRequired,
 };
+

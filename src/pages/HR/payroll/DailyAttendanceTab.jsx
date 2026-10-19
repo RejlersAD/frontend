@@ -220,3 +220,4 @@ export default function DailyAttendanceTab({ rows, date, today, loading, error, 
     </section>
   )
 }
+

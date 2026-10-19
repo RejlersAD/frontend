@@ -155,3 +155,4 @@ export default function FinanceCommandCenter({ embedded = false, dataScope = 'fi
 }
 
 FinanceCommandCenter.propTypes = { embedded: PropTypes.bool, dataScope: PropTypes.oneOf(['finance', 'executive']), refreshKey: PropTypes.oneOfType([PropTypes.string, PropTypes.number]), printing: PropTypes.bool, onSnapshotChange: PropTypes.func };
+

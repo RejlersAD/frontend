@@ -75,7 +75,7 @@ const ProposalTable = ({ rows }) => {
   const columns = [...new Set(rows.flatMap(row => Object.keys(row || {})))].slice(0, 7)
   return (
     <div className="mt-[5mm] overflow-hidden border border-slate-400">
-      <table className="w-full table-fixed border-collapse font-[Arial] text-[10px] leading-[1.3] text-slate-800">
+      <table className="w-full table-fixed border-collapse font-[Arial] text-xs leading-[1.3] text-slate-800">
         <thead className="bg-[#e8eef7]">
           <tr>{columns.map(column => <th key={column} className="border-b border-r border-slate-400 p-[1.5mm] text-left font-bold uppercase">{column.replaceAll('_', ' ')}</th>)}</tr>
         </thead>
@@ -97,7 +97,7 @@ const DocumentHeader = ({ proposal }) => (
       <span className="font-bold">Technical Proposal</span><span>{proposal.proposal_number}</span>
       <span>{proposal.branding?.confidentiality || 'Confidential'}</span><span>Rev {proposal.revision} / {STATUS_LABELS[proposal.status]}</span>
     </div>
-    <div className="text-[19px] font-semibold tracking-[0.16em] text-[#273b5a]">◢REJLERS</div>
+    <div className="text-lg font-semibold tracking-[0.16em] text-[#273b5a]">◢REJLERS</div>
   </header>
 )
 
@@ -124,29 +124,29 @@ const ProposalPreview = ({ proposal }) => {
       <article className="proposal-page mx-auto flex min-h-[297mm] w-[210mm] max-w-full overflow-hidden bg-white shadow-lg print:m-0 print:min-h-[297mm] print:w-[210mm] print:shadow-none">
         <div className="flex w-[40%] flex-col bg-[#273b5a] p-[14mm] text-white">
           <div className="text-[21px] font-semibold tracking-[0.16em]">◢REJLERS</div>
-          <div className="mt-auto text-[10px] leading-[1.45]">
+          <div className="mt-auto text-xs leading-[1.45]">
             <div className="mb-[5mm] font-bold uppercase">Submitted by</div>
-            <div className="text-[12px] font-bold uppercase">Rejlers International Engineering Solutions AB</div>
+            <div className="text-sm font-bold uppercase">Rejlers International Engineering Solutions AB</div>
             <div className="mt-[6mm]">P.O. Box 39317, Abu Dhabi, United Arab Emirates</div>
             <div>Tel: +971 2 639 7449</div><div>www.rejlers.ae</div>
           </div>
         </div>
         <div className="flex w-[60%] flex-col p-[16mm]">
-        <div className="mt-[42mm] text-[10px] font-bold uppercase tracking-[0.18em] text-[#273b5a]">Technical Proposal</div>
-        <h1 className="mt-[7mm] text-[24px] font-bold leading-[1.2] text-[#273b5a]">{proposal.tender_title || proposal.title}</h1>
-        <p className="mt-[5mm] text-[14px] text-slate-600">Prepared for {proposal.client_name || 'Client'}</p>
-        <div className="mt-[16mm] grid grid-cols-2 gap-x-[7mm] gap-y-[4mm] border-y border-slate-300 py-[6mm] text-[10px] leading-[1.4]">
-          <div><div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Proposal number</div><div className="mt-1 font-semibold">{proposal.proposal_number}</div></div>
-          <div><div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Revision</div><div className="mt-1 font-semibold">{proposal.revision}</div></div>
-          <div><div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Tender / RFT reference</div><div className="mt-1 font-semibold">{proposal.opportunity_reference || '—'}</div></div>
-          <div><div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Submission date</div><div className="mt-1 font-semibold">{proposal.submission_date || '—'}</div></div>
-          <div><div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Client reference</div><div className="mt-1 font-semibold">{proposal.client_reference || '—'}</div></div>
-          <div><div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Offer validity</div><div className="mt-1 font-semibold">{proposal.validity_days || 120} days</div></div>
-          <div><div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Schedule version</div><div className="mt-1 font-semibold">v{schedule.version || '—'}</div></div>
-          <div><div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Classification</div><div className="mt-1 font-semibold">{proposal.branding?.confidentiality || 'CONFIDENTIAL'}</div></div>
+        <div className="mt-[42mm] text-xs font-bold uppercase tracking-[0.18em] text-[#273b5a]">Technical Proposal</div>
+        <h1 className="mt-[7mm] text-2xl font-bold leading-[1.2] text-[#273b5a]">{proposal.tender_title || proposal.title}</h1>
+        <p className="mt-[5mm] text-sm text-slate-600">Prepared for {proposal.client_name || 'Client'}</p>
+        <div className="mt-[16mm] grid grid-cols-2 gap-x-[7mm] gap-y-[4mm] border-y border-slate-300 py-[6mm] text-xs leading-[1.4]">
+          <div><div className="text-xs font-bold uppercase tracking-widest text-slate-400">Proposal number</div><div className="mt-1 font-semibold">{proposal.proposal_number}</div></div>
+          <div><div className="text-xs font-bold uppercase tracking-widest text-slate-400">Revision</div><div className="mt-1 font-semibold">{proposal.revision}</div></div>
+          <div><div className="text-xs font-bold uppercase tracking-widest text-slate-400">Tender / RFT reference</div><div className="mt-1 font-semibold">{proposal.opportunity_reference || '—'}</div></div>
+          <div><div className="text-xs font-bold uppercase tracking-widest text-slate-400">Submission date</div><div className="mt-1 font-semibold">{proposal.submission_date || '—'}</div></div>
+          <div><div className="text-xs font-bold uppercase tracking-widest text-slate-400">Client reference</div><div className="mt-1 font-semibold">{proposal.client_reference || '—'}</div></div>
+          <div><div className="text-xs font-bold uppercase tracking-widest text-slate-400">Offer validity</div><div className="mt-1 font-semibold">{proposal.validity_days || 120} days</div></div>
+          <div><div className="text-xs font-bold uppercase tracking-widest text-slate-400">Schedule version</div><div className="mt-1 font-semibold">v{schedule.version || '—'}</div></div>
+          <div><div className="text-xs font-bold uppercase tracking-widest text-slate-400">Classification</div><div className="mt-1 font-semibold">{proposal.branding?.confidentiality || 'CONFIDENTIAL'}</div></div>
         </div>
-        <div className="mt-auto text-right text-[10px] text-slate-500">
-          <div className="text-[20px] font-semibold tracking-[0.14em] text-[#273b5a]">◢REJLERS</div>
+        <div className="mt-auto text-right text-xs text-slate-500">
+          <div className="text-xl font-semibold tracking-[0.14em] text-[#273b5a]">◢REJLERS</div>
           <div className="mt-[2mm]">{proposal.proposal_number} · Rev {proposal.revision}</div>
         </div>
         </div>
@@ -463,7 +463,7 @@ const FinalProposalStudio = ({ projectId, project, initialProposalId = null, onN
           <h2 className="mt-1 text-xl font-bold text-slate-900">Enterprise Technical Proposal Studio</h2>
         </div>
         <div className="flex flex-wrap items-center justify-center gap-2 rounded-xl border border-violet-100 bg-violet-50/70 px-3 py-2">
-          <span className="mr-1 text-[10px] font-black uppercase tracking-widest text-violet-500">Publish and export</span>
+          <span className="mr-1 text-xs font-black uppercase tracking-widest text-violet-500">Publish and export</span>
           <button onClick={openPreview} disabled={previewLoading} className="rounded-lg bg-violet-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-50">{previewLoading ? 'Preparing preview…' : 'A4 preview'}</button>
           <button onClick={() => exportProposal('pdf')} disabled={Boolean(busy)} className="rounded-lg border border-violet-200 bg-white px-3.5 py-2 text-xs font-semibold text-violet-700 disabled:opacity-40">PDF</button>
           <button onClick={() => exportProposal('docx')} disabled={Boolean(busy)} className="rounded-lg border border-violet-200 bg-white px-3.5 py-2 text-xs font-semibold text-violet-700 disabled:opacity-40">Word</button>
@@ -483,9 +483,9 @@ const FinalProposalStudio = ({ projectId, project, initialProposalId = null, onN
           <div className="max-h-[680px] space-y-1 overflow-auto">
             {draft.sections.map((item, index) => (
               <React.Fragment key={item.key}>
-                {(index === 0 || draft.sections[index - 1]?.group !== item.group) && <div className="px-2 pb-1 pt-3 text-[10px] font-black uppercase tracking-widest text-slate-400">{item.group || 'Technical Proposal'}</div>}
+                {(index === 0 || draft.sections[index - 1]?.group !== item.group) && <div className="px-2 pb-1 pt-3 text-xs font-black uppercase tracking-widest text-slate-400">{item.group || 'Technical Proposal'}</div>}
                 <button onClick={() => setActiveSection(index)} className={`flex w-full items-start gap-2 rounded-lg p-2 text-left text-sm ${activeSection === index ? 'bg-violet-100 text-violet-800' : 'text-slate-600 hover:bg-slate-50'}`}>
-                  <span className="mt-0.5">{item.included ? '☑' : '☐'}</span><span><span className="mr-1 font-mono text-[10px] text-slate-400">{item.number}</span>{item.title}</span>
+                  <span className="mt-0.5">{item.included ? '☑' : '☐'}</span><span><span className="mr-1 font-mono text-xs text-slate-400">{item.number}</span>{item.title}</span>
                 </button>
               </React.Fragment>
             ))}
@@ -520,7 +520,7 @@ const FinalProposalStudio = ({ projectId, project, initialProposalId = null, onN
           <div className="my-5 border-t border-slate-200" />
           </>}
           <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0 flex-1"><div className="text-[10px] font-bold uppercase tracking-widest text-violet-500">{section?.group} · {section?.number} · {section?.section_type}</div><input disabled={!editable} value={section?.title || ''} onChange={event => updateSection({ title: event.target.value })} className="mt-1 w-full border-0 p-0 text-lg font-bold text-slate-900 outline-none disabled:bg-white" /></div>
+            <div className="min-w-0 flex-1"><div className="text-xs font-bold uppercase tracking-widest text-violet-500">{section?.group} · {section?.number} · {section?.section_type}</div><input disabled={!editable} value={section?.title || ''} onChange={event => updateSection({ title: event.target.value })} className="mt-1 w-full border-0 p-0 text-lg font-bold text-slate-900 outline-none disabled:bg-white" /></div>
             <label className="flex items-center gap-2 text-xs font-semibold text-slate-600"><input type="checkbox" disabled={!editable} checked={Boolean(section?.included)} onChange={event => updateSection({ included: event.target.checked })} /> Include</label>
           </div>
           <textarea disabled={!editable} value={section?.content || ''} onChange={event => updateSection({ content: event.target.value })} rows={14} className="mt-4 w-full resize-y rounded-xl border border-slate-300 p-4 text-sm leading-6 text-slate-700 disabled:bg-slate-50" />
@@ -542,7 +542,7 @@ const FinalProposalStudio = ({ projectId, project, initialProposalId = null, onN
 
         <aside className="space-y-4 xl:sticky xl:top-4 xl:self-start">
           <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-            <div className="flex items-center justify-between"><div className="text-xs font-bold uppercase tracking-wider text-slate-400">Live A4 page</div><span className="text-[10px] text-emerald-600">● Live</span></div>
+            <div className="flex items-center justify-between"><div className="text-xs font-bold uppercase tracking-wider text-slate-400">Live A4 page</div><span className="text-xs text-emerald-600">● Live</span></div>
             <button onClick={openPreview} className="mt-3 flex aspect-[210/297] w-full flex-col overflow-hidden border border-slate-400 bg-white p-[6%] text-left font-[Arial] shadow-inner transition hover:border-violet-400 hover:shadow-md">
               <div className="flex justify-between border-b border-slate-300 pb-2 text-[6px] leading-tight text-slate-700">
                 <div><b>Technical Proposal</b> &nbsp; {draft.proposal_number}<br />Confidential &nbsp; Rev {draft.revision}</div>
@@ -550,18 +550,18 @@ const FinalProposalStudio = ({ projectId, project, initialProposalId = null, onN
               </div>
               <div className="mt-[13%] border-b border-blue-600 pb-2">
                 <div className="text-[5px] font-bold uppercase tracking-widest text-slate-500">{section?.group}</div>
-                <div className="mt-1 text-[11px] font-bold leading-tight text-blue-700">{section?.number} {section?.title}</div>
+                <div className="mt-1 text-xs font-bold leading-tight text-blue-700">{section?.number} {section?.title}</div>
               </div>
               <div className="mt-3 max-h-[61%] overflow-hidden whitespace-pre-line text-[7px] leading-[1.55] text-slate-800">{section?.content}</div>
               <div className="mt-auto"><div className="flex justify-around bg-[#0870aa] py-1 text-[3.2px] font-bold text-white"><span>REJLERS</span><span>HOME OF THE LEARNING MINDS</span><span>RADAI</span></div><div className="pt-1 text-[3.7px] leading-tight text-[#4e83ad]">Rejlers International Engineering Solutions<br />P.O. Box 39317, Abu Dhabi, UAE · www.rejlers.ae</div></div>
             </button>
             <div className="mt-3 flex items-center justify-between gap-3">
-              <p className="text-[10px] leading-4 text-slate-500">Updates immediately while you edit.</p>
+              <p className="text-xs leading-4 text-slate-500">Updates immediately while you edit.</p>
               <button onClick={openPreview} className="shrink-0 text-xs font-bold text-violet-700 hover:text-violet-900">Open full preview →</button>
             </div>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex items-center justify-between"><div className="text-xs font-bold uppercase tracking-wider text-slate-400">Proposal Register</div><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${STATUS_STYLES[draft.status]}`}>{STATUS_LABELS[draft.status]}</span></div>
+            <div className="flex items-center justify-between"><div className="text-xs font-bold uppercase tracking-wider text-slate-400">Proposal Register</div><span className={`rounded-full px-2 py-1 text-xs font-bold ${STATUS_STYLES[draft.status]}`}>{STATUS_LABELS[draft.status]}</span></div>
             <dl className="mt-3 space-y-2 text-xs">
               <div className="flex justify-between gap-3"><dt className="text-slate-500">Controlled revision</dt><dd className="text-right font-semibold">{draft.proposal_number} · Rev {draft.revision}</dd></div>
               <div className="flex justify-between gap-3"><dt className="text-slate-500">Author</dt><dd className="text-right font-semibold">{draft.created_by_name || '—'}</dd></div>
@@ -571,7 +571,7 @@ const FinalProposalStudio = ({ projectId, project, initialProposalId = null, onN
               <div className="flex justify-between gap-3"><dt className="text-slate-500">Approved by</dt><dd className="text-right font-semibold">{draft.approved_by_name || 'Pending'}</dd></div>
             </dl>
             {(draft.review_comments || draft.approval_comments) && <div className="mt-3 space-y-2 border-t border-slate-200 pt-3 text-xs"><div className="font-bold text-slate-600">Latest workflow comments</div>{draft.review_comments && <p className="rounded-lg bg-blue-50 p-2 text-blue-800">Review: {draft.review_comments}</p>}{draft.approval_comments && <p className="rounded-lg bg-amber-50 p-2 text-amber-800">Approval: {draft.approval_comments}</p>}</div>}
-            {draft.issued_files?.length > 0 && <div className="mt-3 border-t border-slate-200 pt-3"><div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-emerald-700">Controlled issued files</div><div className="space-y-2">{draft.issued_files.map(file => <button key={file.id} onClick={() => downloadIssuedFile(file)} disabled={Boolean(busy)} className="flex w-full items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-left text-xs font-semibold text-emerald-800 disabled:opacity-40"><span>{file.export_format.toUpperCase()} · {file.filename}</span><span>Download</span></button>)}</div></div>}
+            {draft.issued_files?.length > 0 && <div className="mt-3 border-t border-slate-200 pt-3"><div className="mb-2 text-xs font-bold uppercase tracking-wider text-emerald-700">Controlled issued files</div><div className="space-y-2">{draft.issued_files.map(file => <button key={file.id} onClick={() => downloadIssuedFile(file)} disabled={Boolean(busy)} className="flex w-full items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-left text-xs font-semibold text-emerald-800 disabled:opacity-40"><span>{file.export_format.toUpperCase()} · {file.filename}</span><span>Download</span></button>)}</div></div>}
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="text-xs font-bold uppercase tracking-wider text-slate-400">Controlled source</div>
@@ -634,3 +634,4 @@ const FinalProposalStudio = ({ projectId, project, initialProposalId = null, onN
 
 FinalProposalStudio.propTypes = { projectId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]).isRequired, project: PropTypes.object, initialProposalId: PropTypes.string, onNotice: PropTypes.func }
 export default FinalProposalStudio
+

@@ -490,3 +490,4 @@ const EditSalarySlipModal = ({ slip, onClose, onUpdate }) => {
 };
 
 export default EditSalarySlipModal;
+

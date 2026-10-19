@@ -274,3 +274,4 @@ export function SchedulePerformancePanel({ project, schedulePerformance, schedul
     </ScheduleDialog>}
   </div>
 }
+

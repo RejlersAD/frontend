@@ -1299,3 +1299,4 @@ const DesignIQLists = () => {
 
 export default DesignIQLists;
 
+

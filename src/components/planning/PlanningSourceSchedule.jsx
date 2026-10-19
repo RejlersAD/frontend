@@ -97,3 +97,4 @@ export default function PlanningSourceSchedule({ projectId, projectName, masterR
   </section>
 }
 PlanningSourceSchedule.propTypes = { projectId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired, projectName: PropTypes.string, masterRevision: PropTypes.number, readOnly: PropTypes.bool, onEvidence: PropTypes.func.isRequired, onInputs: PropTypes.func.isRequired, onBack: PropTypes.func.isRequired, onApplied: PropTypes.func }
+

@@ -20,3 +20,4 @@ ProfileMetricCard.propTypes = {
   tone: PropTypes.string,
   children: PropTypes.node,
 }
+

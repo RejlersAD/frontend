@@ -744,3 +744,4 @@ const SecurityAlertsTab = ({ alerts: initialAlerts, onRefresh }) => {
 };
 
 export default SecurityAlertsTab;
+

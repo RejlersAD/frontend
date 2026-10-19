@@ -480,3 +480,4 @@ const AuditLogsTab = () => {
 };
 
 export default AuditLogsTab;
+

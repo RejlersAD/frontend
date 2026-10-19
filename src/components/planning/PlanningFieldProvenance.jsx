@@ -30,3 +30,4 @@ export default function PlanningFieldProvenance({ provenance }) {
   </div>
 }
 PlanningFieldProvenance.propTypes = { provenance: PropTypes.object }
+

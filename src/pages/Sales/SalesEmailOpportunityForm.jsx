@@ -655,3 +655,4 @@ SalesEmailOpportunityForm.defaultProps = {
   reviewPanel: null,
   requireSourceReload: false,
 };
+

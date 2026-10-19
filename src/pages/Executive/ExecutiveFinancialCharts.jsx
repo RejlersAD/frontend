@@ -272,3 +272,4 @@ export function CustomerReceivablesChart({ rows = [], currency = 'AED' }) {
   return <ReceivablesBars rows={rows} currency={currency} title="Receivables by client" description="Current outstanding invoice balances for the displayed clients; these are receivables, not business-unit revenue." testId="ef-customer-receivables-chart" />;
 }
 CustomerReceivablesChart.propTypes = { rows: receivablesRowsProp, currency: currencyProp };
+

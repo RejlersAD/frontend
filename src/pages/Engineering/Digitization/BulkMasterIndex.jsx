@@ -253,7 +253,7 @@ const LINK_CONFIG = {
   styles: {
     recordLink: { color: '#0f766e', textDecoration: 'underline dotted' },
     openPill:   'text-sky-600 hover:text-sky-800 text-[10px] font-semibold underline decoration-dotted',
-    pathPill:   'text-slate-500 text-[10px] font-mono truncate max-w-[260px]',
+    pathPill:   'text-slate-500 text-[10px] font-mono truncate max-w-4xl',
   },
 };
 
@@ -1667,3 +1667,4 @@ const ReviewGrid = ({
 };
 
 export default BulkMasterIndex;
+

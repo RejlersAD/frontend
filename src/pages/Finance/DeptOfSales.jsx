@@ -614,3 +614,4 @@ const DeptOfSales = () => {
 };
 
 export default DeptOfSales;
+

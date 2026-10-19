@@ -1440,7 +1440,7 @@ const LineList = () => {
                       title="Switch project"
                       className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition-all">
                       <FolderIcon className="h-4 w-4" />
-                      <span className="max-w-[180px] truncate">{activeProject.name || activeProject.code || 'Project'}</span>
+                      <span className="max-w-4xl truncate">{activeProject.name || activeProject.code || 'Project'}</span>
                       <span className="text-blue-400">·</span>
                       <span className="text-blue-500">Switch</span>
                     </button>
@@ -3254,3 +3254,4 @@ const LineList = () => {
 };
 
 export default LineList;
+

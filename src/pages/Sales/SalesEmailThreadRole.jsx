@@ -22,3 +22,4 @@ export default function SalesEmailThreadRole({ role, reason, selected, hideDraft
 
 SalesEmailThreadRole.propTypes = { role: PropTypes.any, reason: PropTypes.any, selected: PropTypes.bool, hideDraft: PropTypes.bool };
 SalesEmailThreadRole.defaultProps = { role: "unknown", reason: "", selected: false, hideDraft: false };
+

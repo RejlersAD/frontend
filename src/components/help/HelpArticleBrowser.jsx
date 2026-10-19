@@ -38,3 +38,4 @@ HelpArticleBrowser.propTypes = {
     })).isRequired,
   })).isRequired,
 }
+

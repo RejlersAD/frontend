@@ -307,3 +307,4 @@ PurchaseOrderPriceSpreadsheet.propTypes = {
 PurchaseOrderPriceSpreadsheet.defaultProps = { items: [], currency: 'AED' };
 
 export default PurchaseOrderPriceSpreadsheet;
+

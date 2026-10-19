@@ -48,7 +48,7 @@ const PeopleNav = ({ activeId }) => {
     <div className="bg-white/80 backdrop-blur rounded-2xl border border-slate-200/70 shadow-sm p-3 sm:p-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
         <div>
-          <div className="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">
+          <div className="text-xs uppercase tracking-wider text-slate-400 font-semibold">
             {PEOPLE_NAV_COPY.title}
           </div>
           <div className="text-sm text-slate-600">{PEOPLE_NAV_COPY.subtitle}</div>
@@ -88,3 +88,4 @@ const PeopleNav = ({ activeId }) => {
 }
 
 export default PeopleNav
+

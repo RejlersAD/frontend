@@ -61,3 +61,4 @@ export default function PlanningEmployeePicker({ projectId, label, value, onChan
   </div>
 }
 PlanningEmployeePicker.propTypes = { projectId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]).isRequired, label: PropTypes.string.isRequired, value: PropTypes.object, onChange: PropTypes.func.isRequired, disabled: PropTypes.bool, autoFocus: PropTypes.bool, legacyName: PropTypes.string }
+

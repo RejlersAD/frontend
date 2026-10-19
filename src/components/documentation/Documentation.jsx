@@ -330,3 +330,4 @@ const Documentation = ({ isModal = false, onClose }) => {
 }
 
 export default Documentation
+

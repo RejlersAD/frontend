@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useMemo } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import {
@@ -17,7 +17,7 @@ import {
   BoltIcon,
 } from '@heroicons/react/24/outline'
 
-/* ─── Brand palette ─────────────────────────────────────────────────────────── */
+/* --- Brand palette ----------------------------------------------------------- */
 const B = {
   navy:   '#2B3A55',
   navyDk: '#1c2e48',
@@ -28,7 +28,7 @@ const B = {
   orange: '#f97316',
 }
 
-/* ─── Keyframe CSS (injected once) ──────────────────────────────────────────── */
+/* --- Keyframe CSS (injected once) -------------------------------------------- */
 const CSS = `
 @keyframes solFadeUp  { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
 @keyframes solSlideIn { from{opacity:0;transform:translateX(-12px)} to{opacity:1;transform:translateX(0)} }
@@ -51,7 +51,7 @@ function InjectCSS() {
   return null
 }
 
-/* ─── Animated number counter ───────────────────────────────────────────────── */
+/* --- Animated number counter ------------------------------------------------- */
 function StatNum({ value }) {
   const [display, setDisplay] = useState('0')
   const ref  = useRef(null)
@@ -79,13 +79,13 @@ function StatNum({ value }) {
   return <span ref={ref}>{display || value}</span>
 }
 
-/* ─── Badge component ───────────────────────────────────────────────────────── */
+/* --- Badge component --------------------------------------------------------- */
 const BADGE_STYLES = {
-  AI:   { bg: 'rgba(97,122,173,.22)',  border: 'rgba(97,122,173,.55)', color: '#8fa8d0', text: '🤖 AI'       },
-  NEW:  { bg: 'rgba(42,167,132,.22)',  border: 'rgba(42,167,132,.55)', color: '#4fcfab', text: '✦ NEW'       },
-  FULL: { bg: 'rgba(245,158,11,.22)',  border: 'rgba(245,158,11,.55)', color: '#f9c33a', text: '⚡ FULL'      },
+  AI:   { bg: 'rgba(97,122,173,.22)',  border: 'rgba(97,122,173,.55)', color: '#8fa8d0', text: '?? AI'       },
+  NEW:  { bg: 'rgba(42,167,132,.22)',  border: 'rgba(42,167,132,.55)', color: '#4fcfab', text: '? NEW'       },
+  FULL: { bg: 'rgba(245,158,11,.22)',  border: 'rgba(245,158,11,.55)', color: '#f9c33a', text: '? FULL'      },
   New:  { bg: 'rgba(42,167,132,.15)',  border: 'rgba(42,167,132,.40)', color: '#3db89a', text: 'New'         },
-  Beta: { bg: 'rgba(167,139,250,.22)', border: 'rgba(167,139,250,.5)', color: '#b89ef9', text: '🧪 Beta'      },
+  Beta: { bg: 'rgba(167,139,250,.22)', border: 'rgba(167,139,250,.5)', color: '#b89ef9', text: '?? Beta'      },
 }
 function Bdg({ badge }) {
   const s = BADGE_STYLES[badge]
@@ -98,7 +98,7 @@ function Bdg({ badge }) {
   )
 }
 
-/* ─── Per-discipline colour palette ────────────────────────────────────────── */
+/* --- Per-discipline colour palette ------------------------------------------ */
 const CAT_COLORS = {
   process:      { from: '#617AAD', to: '#0093A3', glow: 'rgba(97,122,173,.25)'  },
   piping:       { from: '#f97316', to: '#f59e0b', glow: 'rgba(249,115,22,.25)'  },
@@ -114,16 +114,16 @@ const CAT_COLORS = {
 }
 const gc = cat => CAT_COLORS[cat] || CAT_COLORS._default
 
-/* ═══════════════════════════════════════════════════════════════════════════════
+/* -------------------------------------------------------------------------------
    MAIN COMPONENT
-═══════════════════════════════════════════════════════════════════════════════ */
+------------------------------------------------------------------------------- */
 const Solutions = () => {
   const { isAuthenticated } = useSelector(s => s.auth)
   const navigate = useNavigate()
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [expanded, setExpanded]           = useState(null)
 
-  /* post-login redirect — stores destination before sending to login page */
+  /* post-login redirect � stores destination before sending to login page */
   const handleGetStarted = path => {
     sessionStorage.setItem(REDIRECT_AFTER_LOGIN_KEY, path)
     navigate('/login')
@@ -136,18 +136,18 @@ const Solutions = () => {
     return selectedCategory === 'all' ? SOLUTIONS : SOLUTIONS.filter(s => s.category === selectedCategory)
   }, [selectedCategory])
 
-  /* AI spotlight — top 4 AI tools shown above card grid */
+  /* AI spotlight � top 4 AI tools shown above card grid */
   const aiSpotlight = useMemo(() => SOLUTIONS.filter(s => s.isAI).slice(0, 4), [])
 
   const showSpotlight = selectedCategory === 'all'
 
-  /* ─── render ─────────────────────────────────────────────────────────────── */
+  /* --- render --------------------------------------------------------------- */
   return (
     <div className="min-h-screen text-white"
       style={{ background: `linear-gradient(160deg,${B.navyDk} 0%,${B.navy} 55%,#243550 100%)` }}>
       <InjectCSS />
 
-      {/* ════════════════ HERO ════════════════ */}
+      {/* ---------------- HERO ---------------- */}
       <section className="relative overflow-hidden flex items-center"
         style={{ minHeight: 460, paddingTop: 88, paddingBottom: 64 }}>
 
@@ -194,7 +194,7 @@ const Solutions = () => {
 
               <p className="text-base max-w-xl mb-6"
                 style={{ color: 'rgba(255,255,255,.5)', lineHeight: 1.75 }}>
-                The complete AI-powered engineering platform for Oil & Gas — from P&ID quality
+                The complete AI-powered engineering platform for Oil & Gas � from P&ID quality
                 checks and electrical datasheets to invoice automation and QHSE compliance,
                 all in one place. Every feature you add here updates this page automatically.
               </p>
@@ -221,7 +221,7 @@ const Solutions = () => {
         </div>
       </section>
 
-      {/* ════════════════ STATS STRIP ════════════════ */}
+      {/* ---------------- STATS STRIP ---------------- */}
       <section className="px-6 pb-10">
         <div className="max-w-6xl mx-auto grid grid-cols-2 lg:grid-cols-4 gap-4">
           {SOLUTION_STATS.map((st, i) => (
@@ -246,7 +246,7 @@ const Solutions = () => {
         </div>
       </section>
 
-      {/* ════════════════ AI SPOTLIGHT ════════════════ */}
+      {/* ---------------- AI SPOTLIGHT ---------------- */}
       {showSpotlight && (
         <section className="px-6 pb-10">
           <div className="max-w-6xl mx-auto">
@@ -289,7 +289,7 @@ const Solutions = () => {
                     </div>
                     <p className="text-xs font-black text-white mb-0.5 leading-tight">{sol.title}</p>
                     <p className="text-xs mb-2" style={{ color: 'rgba(255,255,255,.42)', lineHeight: 1.4 }}>
-                      {sol.disciplineLabel ? `${sol.disciplineLabel} Engineering` : sol.shortDescription.slice(0, 55) + '…'}
+                      {sol.disciplineLabel ? `${sol.disciplineLabel} Engineering` : sol.shortDescription.slice(0, 55) + '�'}
                     </p>
                     <div className="flex items-center justify-between">
                       <Bdg badge={sol.badge} />
@@ -304,7 +304,7 @@ const Solutions = () => {
         </section>
       )}
 
-      {/* ════════════════ CATEGORY FILTER TABS ════════════════ */}
+      {/* ---------------- CATEGORY FILTER TABS ---------------- */}
       <section className="px-6 pb-8">
         <div className="max-w-6xl mx-auto space-y-3">
 
@@ -338,7 +338,7 @@ const Solutions = () => {
         </div>
       </section>
 
-      {/* ════════════════ CTA BANNER ════════════════ */}
+      {/* ---------------- CTA BANNER ---------------- */}
       <section className="relative px-6 py-20 overflow-hidden">
         <div className="absolute inset-0 pointer-events-none"
           style={{ background: `linear-gradient(135deg,${B.navyDk},${B.navy},${B.navyDk})` }} />
@@ -370,7 +370,7 @@ const Solutions = () => {
           <p className="text-sm mb-8 max-w-xl mx-auto"
             style={{ color: 'rgba(255,255,255,.42)', lineHeight: 1.75 }}>
             Join engineering teams using RADAI to accelerate projects, eliminate manual errors,
-            and deliver consistent, compliant results — across every discipline.
+            and deliver consistent, compliant results � across every discipline.
           </p>
           <div className="flex justify-center">
             <Link to={SOLUTIONS_CTA.secondary.link}
@@ -389,7 +389,7 @@ const Solutions = () => {
   )
 }
 
-/* internal helper — get categories by group without re-importing internals */
+/* internal helper � get categories by group without re-importing internals */
 function _getCatsByGroup(group) {
   return Object.fromEntries(
     Object.entries(SOLUTION_CATEGORIES).filter(([, v]) => v.group === group)
@@ -397,3 +397,4 @@ function _getCatsByGroup(group) {
 }
 
 export default Solutions
+

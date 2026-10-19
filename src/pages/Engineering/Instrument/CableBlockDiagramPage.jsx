@@ -718,3 +718,4 @@ function ResultsTable({ rows, stats, excelUrl }) {
     </section>
   )
 }
+

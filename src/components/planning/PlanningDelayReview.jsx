@@ -41,3 +41,4 @@ export default function PlanningDelayReview({ data, busy, dirty, readOnly, onCom
   </section>
 }
 PlanningDelayReview.propTypes = { data: PropTypes.object.isRequired, busy: PropTypes.bool, dirty: PropTypes.bool, readOnly: PropTypes.bool, onCommand: PropTypes.func.isRequired, onExport: PropTypes.func.isRequired }
+

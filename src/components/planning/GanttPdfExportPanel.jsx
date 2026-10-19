@@ -108,3 +108,4 @@ GanttPdfExportPanel.propTypes = {
   showLogic: PropTypes.bool,
   showBaseline: PropTypes.bool,
 }
+

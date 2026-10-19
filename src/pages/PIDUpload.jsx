@@ -1,4 +1,4 @@
-﻿/**
+/**
 
  * P&ID Upload with Project Management & Reference Documents
 
@@ -218,57 +218,57 @@ const PIDUpload = () => {
 
 
 
-  // ── SOFT-CODED: 8-pass analysis stage tracker (mirrors services.py pass count) ──
+  // -- SOFT-CODED: 8-pass analysis stage tracker (mirrors services.py pass count) --
 
   const PASS_STAGES = [
 
-    { pass: 1, label: 'OCR Extraction',       icon: '📄' },
+    { pass: 1, label: 'OCR Extraction',       icon: '??' },
 
-    { pass: 2, label: 'Reference Processing', icon: '📚' },
+    { pass: 2, label: 'Reference Processing', icon: '??' },
 
-    { pass: 3, label: 'Vision Analysis',      icon: '👁️' },
+    { pass: 3, label: 'Vision Analysis',      icon: '???' },
 
-    { pass: 4, label: 'Cross-Validation',     icon: '🔗' },
+    { pass: 4, label: 'Cross-Validation',     icon: '??' },
 
-    { pass: 5, label: 'Second Review',        icon: '🔍' },
+    { pass: 5, label: 'Second Review',        icon: '??' },
 
-    { pass: 6, label: 'Eng. Compliance',      icon: '⚙️' },
+    { pass: 6, label: 'Eng. Compliance',      icon: '??' },
 
-    { pass: 7, label: 'Line Size Check',      icon: '📐' },
+    { pass: 7, label: 'Line Size Check',      icon: '??' },
 
-    { pass: 8, label: 'Smart QC',             icon: '✅' },
+    { pass: 8, label: 'Smart QC',             icon: '?' },
 
   ];
 
 
 
-  // SOFT-CODED: Engineering facts displayed during the analysis wait – keeps the user engaged
+  // SOFT-CODED: Engineering facts displayed during the analysis wait � keeps the user engaged
 
   const OIL_GAS_FACTS = [
 
-    { icon: '⚙️', text: 'P&ID drawings are the single source of truth for process plant construction, operation, and maintenance documentation.' },
+    { icon: '??', text: 'P&ID drawings are the single source of truth for process plant construction, operation, and maintenance documentation.' },
 
-    { icon: '🛡️', text: 'PSV set pressure must never exceed equipment design pressure — a fundamental requirement per API 521/520.' },
+    { icon: '???', text: 'PSV set pressure must never exceed equipment design pressure � a fundamental requirement per API 521/520.' },
 
-    { icon: '🔬', text: 'NACE MR0175 specifies material requirements for H₂S sour service to prevent sulfide stress cracking (SSC) in oil & gas equipment.' },
+    { icon: '??', text: 'NACE MR0175 specifies material requirements for H2S sour service to prevent sulfide stress cracking (SSC) in oil & gas equipment.' },
 
-    { icon: '🌡️', text: 'LTCS (Low Temperature Carbon Steel) is mandatory below −29 °C to prevent brittle fracture — critical for LNG and LPG services.' },
+    { icon: '???', text: 'LTCS (Low Temperature Carbon Steel) is mandatory below -29 �C to prevent brittle fracture � critical for LNG and LPG services.' },
 
-    { icon: '📐', text: 'API 6D requires trunnion-mounted ball valves on NPS ≥ 6″ isolating duty to prevent excessive stem torque and seat deformation.' },
+    { icon: '??', text: 'API 6D requires trunnion-mounted ball valves on NPS = 6? isolating duty to prevent excessive stem torque and seat deformation.' },
 
-    { icon: '⚡', text: 'ISA-5.1 standardises instrument identification — a common language for engineers, operators, and inspectors worldwide.' },
+    { icon: '?', text: 'ISA-5.1 standardises instrument identification � a common language for engineers, operators, and inspectors worldwide.' },
 
-    { icon: '🔧', text: 'OS&Y (Outside Screw and Yoke) annotation is mandatory on gate valves NPS ≥ 2″ per API 600 for visible open/closed status.' },
+    { icon: '??', text: 'OS&Y (Outside Screw and Yoke) annotation is mandatory on gate valves NPS = 2? per API 600 for visible open/closed status.' },
 
-    { icon: '📊', text: 'A complete control loop on a P&ID must show: process element → transmitter → controller → final control element.' },
+    { icon: '??', text: 'A complete control loop on a P&ID must show: process element ? transmitter ? controller ? final control element.' },
 
-    { icon: '💧', text: 'Gravity-drain lines require slope annotation ≥ 1:100 and low-point drain valves to ensure full drainage during maintenance.' },
+    { icon: '??', text: 'Gravity-drain lines require slope annotation = 1:100 and low-point drain valves to ensure full drainage during maintenance.' },
 
-    { icon: '🏭', text: 'AIFlow\'s 8-pass AI engine checks 40+ engineering compliance domains per drawing — covering instruments, piping, valves, and safety.' },
+    { icon: '??', text: 'AIFlow\'s 8-pass AI engine checks 40+ engineering compliance domains per drawing � covering instruments, piping, valves, and safety.' },
 
-    { icon: '⚠️', text: 'Specification-break symbols (filled triangle) are mandatory at every pipe-class transition to avoid construction ambiguity.' },
+    { icon: '??', text: 'Specification-break symbols (filled triangle) are mandatory at every pipe-class transition to avoid construction ambiguity.' },
 
-    { icon: '🔴', text: 'Critical Stress Lines require anchor points (△), line guides, and expansion loops when operating above 120 °C.' },
+    { icon: '??', text: 'Critical Stress Lines require anchor points (?), line guides, and expansion loops when operating above 120 �C.' },
 
   ];
 
@@ -292,7 +292,7 @@ const PIDUpload = () => {
 
 
 
-  // Derived: which pass is currently active based on overall progress (soft-coded – tied to PASS_STAGES length)
+  // Derived: which pass is currently active based on overall progress (soft-coded � tied to PASS_STAGES length)
 
   const activePass = Math.min(PASS_STAGES.length, Math.max(1, Math.ceil((uploadProgress / 100) * PASS_STAGES.length)));
 
@@ -712,7 +712,7 @@ const PIDUpload = () => {
 
       setShowDesignIQModal(false);
 
-      setMessage({ type: 'success', text: `Line list imported from DesignIQ — ${lineListData.length} lines loaded` });
+      setMessage({ type: 'success', text: `Line list imported from DesignIQ � ${lineListData.length} lines loaded` });
 
       setTimeout(() => setMessage({ type: '', text: '' }), 4000);
 
@@ -746,11 +746,11 @@ const PIDUpload = () => {
 
       setImportedCSSJson(cssData);
 
-      setImportedCSSLabel(`DesignIQ: ${projectName} — Critical Stress (${cssData.length} lines)`);
+      setImportedCSSLabel(`DesignIQ: ${projectName} � Critical Stress (${cssData.length} lines)`);
 
       setShowCSSDesignIQModal(false);
 
-      setMessage({ type: 'success', text: `Critical stress line list imported — ${cssData.length} lines loaded` });
+      setMessage({ type: 'success', text: `Critical stress line list imported � ${cssData.length} lines loaded` });
 
       setTimeout(() => setMessage({ type: '', text: '' }), 4000);
 
@@ -1046,7 +1046,7 @@ const PIDUpload = () => {
 
     formDataToSend.append('auto_analyze', formData.auto_analyze ? 'true' : 'false');
 
-    // SOFT-CODED: Analysis mode — 'standard' or 'premium'
+    // SOFT-CODED: Analysis mode � 'standard' or 'premium'
 
     formDataToSend.append('analysis_mode', formData.analysis_mode || 'standard');
 
@@ -1334,11 +1334,11 @@ const PIDUpload = () => {
 
         if (backendError.includes('OpenAI') || backendError.includes('API key')) {
 
-          errorMessage = '⚠️ Configuration Error: OpenAI service is not configured on the server. Please contact the administrator.';
+          errorMessage = '?? Configuration Error: OpenAI service is not configured on the server. Please contact the administrator.';
 
         } else if (backendError.includes('quota') || backendError.includes('credits')) {
 
-          errorMessage = '⚠️ Service Limit: Analysis service has reached its usage limit. Please contact the administrator.';
+          errorMessage = '?? Service Limit: Analysis service has reached its usage limit. Please contact the administrator.';
 
         } else if (backendError.includes('rate limit')) {
 
@@ -1554,7 +1554,7 @@ const PIDUpload = () => {
 
               <div className="w-1 h-7 rounded-full" style={{ background:'linear-gradient(180deg,#3b82f6,#6366f1)' }} />
 
-              <span className="text-blue-600 text-xs font-bold tracking-[0.3em] uppercase">AIFlow · Engineering Suite</span>
+              <span className="text-blue-600 text-xs font-bold tracking-[0.3em] uppercase">AIFlow � Engineering Suite</span>
 
             </div>
 
@@ -1568,7 +1568,7 @@ const PIDUpload = () => {
 
             <p className="text-slate-500 max-w-xl text-sm sm:text-base">
 
-              8-pass AI quality engine — 40+ engineering compliance checks per drawing. Purpose-built for oil &amp; gas IFC-stage reviews.
+              8-pass AI quality engine � 40+ engineering compliance checks per drawing. Purpose-built for oil &amp; gas IFC-stage reviews.
 
             </p>
 
@@ -1576,15 +1576,15 @@ const PIDUpload = () => {
 
               {[
 
-                { icon:'⚙️', label:'ISA-5.1 Compliance',  cls:'bg-blue-50 border-blue-200 text-blue-700'    },
+                { icon:'??', label:'ISA-5.1 Compliance',  cls:'bg-blue-50 border-blue-200 text-blue-700'    },
 
-                { icon:'🛡️', label:'API / ASME Standards', cls:'bg-indigo-50 border-indigo-200 text-indigo-700'},
+                { icon:'???', label:'API / ASME Standards', cls:'bg-indigo-50 border-indigo-200 text-indigo-700'},
 
-                { icon:'🔬', label:'NACE MR0175',          cls:'bg-purple-50 border-purple-200 text-purple-700'},
+                { icon:'??', label:'NACE MR0175',          cls:'bg-purple-50 border-purple-200 text-purple-700'},
 
-                { icon:'🤖', label:'8-Pass AI Engine',     cls:'bg-amber-50 border-amber-200 text-amber-700'  },
+                { icon:'??', label:'8-Pass AI Engine',     cls:'bg-amber-50 border-amber-200 text-amber-700'  },
 
-                { icon:'📐', label:'40+ Check Domains',    cls:'bg-emerald-50 border-emerald-200 text-emerald-700'},
+                { icon:'??', label:'40+ Check Domains',    cls:'bg-emerald-50 border-emerald-200 text-emerald-700'},
 
               ].map(b => (
 
@@ -1606,7 +1606,7 @@ const PIDUpload = () => {
 
             <p className="text-slate-500 text-sm">
 
-              {projects.length > 0 ? `${projects.length} project${projects.length !== 1 ? 's' : ''} — select one to upload a drawing` : 'Create your first project to get started'}
+              {projects.length > 0 ? `${projects.length} project${projects.length !== 1 ? 's' : ''} � select one to upload a drawing` : 'Create your first project to get started'}
 
             </p>
 
@@ -1634,7 +1634,7 @@ const PIDUpload = () => {
 
               </div>
 
-              <p className="text-slate-400 text-sm">Loading projects…</p>
+              <p className="text-slate-400 text-sm">Loading projects�</p>
 
             </div>
 
@@ -1762,7 +1762,7 @@ const PIDUpload = () => {
 
                 <label className="block text-xs font-semibold text-slate-700 mb-1.5 uppercase tracking-wide">Description (Optional)</label>
 
-                <textarea value={newProjectDescription} onChange={e => setNewProjectDescription(e.target.value)} placeholder="Brief project description…" rows="3"
+                <textarea value={newProjectDescription} onChange={e => setNewProjectDescription(e.target.value)} placeholder="Brief project description�" rows="3"
 
                   className="w-full px-4 py-2.5 rounded-lg focus:ring-2 focus:ring-blue-400/40 text-slate-900 placeholder-slate-400 text-sm resize-none outline-none transition-all" style={T.input} />
 
@@ -1780,7 +1780,7 @@ const PIDUpload = () => {
 
                   style={{ background:'linear-gradient(135deg,#3b82f6,#6366f1)' }}>
 
-                  {creatingProject ? <><Loader className="w-4 h-4 animate-spin" />Creating…</> : <><CheckCircle className="w-4 h-4" />Create Project</>}
+                  {creatingProject ? <><Loader className="w-4 h-4 animate-spin" />Creating�</> : <><CheckCircle className="w-4 h-4" />Create Project</>}
 
                 </button>
 
@@ -1830,7 +1830,7 @@ const PIDUpload = () => {
 
                   style={{ background:'linear-gradient(135deg,#3b82f6,#6366f1)' }}>
 
-                  {updatingProject ? <><Loader className="w-4 h-4 animate-spin" />Updating…</> : 'Update Project'}
+                  {updatingProject ? <><Loader className="w-4 h-4 animate-spin" />Updating�</> : 'Update Project'}
 
                 </button>
 
@@ -1866,7 +1866,7 @@ const PIDUpload = () => {
 
                 className="flex-1 px-4 py-2.5 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-bold rounded-lg flex items-center justify-center gap-2 text-sm transition-colors">
 
-                {isDeleting ? <><Loader className="w-4 h-4 animate-spin" />Deleting…</> : <><Trash2 className="w-4 h-4" />Delete</>}
+                {isDeleting ? <><Loader className="w-4 h-4 animate-spin" />Deleting�</> : <><Trash2 className="w-4 h-4" />Delete</>}
 
               </button>
 
@@ -1888,17 +1888,17 @@ const PIDUpload = () => {
 
   const REF_ICONS = {
 
-    equipment_list:      { emoji:'🏗️', color:'orange' },
+    equipment_list:      { emoji:'???', color:'orange' },
 
-    line_list:           { emoji:'📋', color:'blue'   },
+    line_list:           { emoji:'??', color:'blue'   },
 
-    critical_stress_list:{ emoji:'⚠️',  color:'yellow' },
+    critical_stress_list:{ emoji:'??',  color:'yellow' },
 
-    alarm_trip_schedule: { emoji:'🔔', color:'red'    },
+    alarm_trip_schedule: { emoji:'??', color:'red'    },
 
-    instrument_datasheet:{ emoji:'📊', color:'indigo' },
+    instrument_datasheet:{ emoji:'??', color:'indigo' },
 
-    legends_symbols:     { emoji:'📐', color:'purple' },
+    legends_symbols:     { emoji:'??', color:'purple' },
 
   };
 
@@ -1944,7 +1944,7 @@ const PIDUpload = () => {
 
               <Layers className="w-4 h-4 text-blue-600" />
 
-              <span className="text-blue-700 font-semibold text-sm truncate max-w-[180px]">{selectedProject.project_name || selectedProject.name}</span>
+              <span className="text-blue-700 font-semibold text-sm truncate max-w-4xl">{selectedProject.project_name || selectedProject.name}</span>
 
             </div>
 
@@ -1970,7 +1970,7 @@ const PIDUpload = () => {
 
             <h1 className="text-2xl sm:text-3xl font-black text-slate-900">Design Verification Upload</h1>
 
-            <p className="text-slate-500 text-sm mt-1">Upload your P&amp;ID PDF — 8-pass AI engine performs 40+ engineering compliance checks</p>
+            <p className="text-slate-500 text-sm mt-1">Upload your P&amp;ID PDF � 8-pass AI engine performs 40+ engineering compliance checks</p>
 
           </div>
 
@@ -2002,7 +2002,7 @@ const PIDUpload = () => {
 
               {referenceDocuments.map(doc => {
 
-                const ri  = REF_ICONS[doc.key] || { emoji:'📄', color:'blue' };
+                const ri  = REF_ICONS[doc.key] || { emoji:'??', color:'blue' };
 
                 const pal = REF_PALETTE[ri.color] || REF_PALETTE.blue;
 
@@ -2024,7 +2024,7 @@ const PIDUpload = () => {
 
                     <div className="flex items-center gap-2 mb-2">
 
-                      <span className="text-base">{isDone ? '✅' : ri.emoji}</span>
+                      <span className="text-base">{isDone ? '?' : ri.emoji}</span>
 
                       <span className="text-xs font-semibold text-slate-700 leading-tight">{doc.label}</span>
 
@@ -2122,7 +2122,7 @@ const PIDUpload = () => {
 
                       <p className="text-sm font-semibold text-slate-700 mb-1">{dragActive ? 'Drop your P&ID here' : 'Drag & drop or click to upload'}</p>
 
-                      <p className="text-xs text-slate-400">PDF files only · Max 50 MB</p>
+                      <p className="text-xs text-slate-400">PDF files only � Max 50 MB</p>
 
                     </label>
 
@@ -2136,7 +2136,7 @@ const PIDUpload = () => {
 
                         <p className="text-sm font-semibold text-slate-900 truncate">{file.name}</p>
 
-                        <p className="text-xs text-slate-400">{(file.size / 1024 / 1024).toFixed(2)} MB · PDF</p>
+                        <p className="text-xs text-slate-400">{(file.size / 1024 / 1024).toFixed(2)} MB � PDF</p>
 
                       </div>
 
@@ -2158,7 +2158,7 @@ const PIDUpload = () => {
 
                   <button type="button" onClick={() => setUseStructuredNumber(!useStructuredNumber)} className="text-xs text-blue-600 hover:text-blue-500 font-medium transition-colors">
 
-                    {useStructuredNumber ? '← Freeform' : 'Structured Format →'}
+                    {useStructuredNumber ? '? Freeform' : 'Structured Format ?'}
 
                   </button>
 
@@ -2248,7 +2248,7 @@ const PIDUpload = () => {
 
 
 
-              {/* ── Analysis Mode Selector ─────────────────────────────────────── */}
+              {/* -- Analysis Mode Selector --------------------------------------- */}
 
               <div>
 
@@ -2306,11 +2306,11 @@ const PIDUpload = () => {
 
                     <ul className="space-y-1 mt-1">
 
-                      {['8-pass AI review of the uploaded drawing','OCR + Vision + Engineering checks','Fast & focused — no external files needed','Best for quick IFC checks'].map(t => (
+                      {['8-pass AI review of the uploaded drawing','OCR + Vision + Engineering checks','Fast & focused � no external files needed','Best for quick IFC checks'].map(t => (
 
                         <li key={t} className="flex items-start gap-1.5 text-xs text-slate-600">
 
-                          <span className="text-emerald-500 mt-0.5 flex-shrink-0">✓</span>{t}
+                          <span className="text-emerald-500 mt-0.5 flex-shrink-0">?</span>{t}
 
                         </li>
 
@@ -2376,7 +2376,7 @@ const PIDUpload = () => {
 
                         <li key={t} className="flex items-start gap-1.5 text-xs text-slate-600">
 
-                          <span className="text-violet-500 mt-0.5 flex-shrink-0">✦</span>{t}
+                          <span className="text-violet-500 mt-0.5 flex-shrink-0">?</span>{t}
 
                         </li>
 
@@ -2386,7 +2386,7 @@ const PIDUpload = () => {
 
                     {formData.analysis_mode !== 'premium' && (
 
-                      <p className="mt-2 text-xs text-violet-500 font-medium">Upload reference docs below to enable ↓</p>
+                      <p className="mt-2 text-xs text-violet-500 font-medium">Upload reference docs below to enable ?</p>
 
                     )}
 
@@ -2432,7 +2432,7 @@ const PIDUpload = () => {
 
                         <Activity className="w-4 h-4 text-blue-500 animate-pulse" />
 
-                        <span className="text-sm font-bold text-slate-800 truncate">{analysisStage || 'AI Analysis in Progress…'}</span>
+                        <span className="text-sm font-bold text-slate-800 truncate">{analysisStage || 'AI Analysis in Progress�'}</span>
 
                       </div>
 
@@ -2472,7 +2472,7 @@ const PIDUpload = () => {
 
                           <div className="text-base mb-0.5 leading-none">
 
-                            {done ? '✅' : active ? <span className="inline-block animate-spin">⚙️</span> : p.icon}
+                            {done ? '?' : active ? <span className="inline-block animate-spin">??</span> : p.icon}
 
                           </div>
 
@@ -2500,7 +2500,7 @@ const PIDUpload = () => {
 
                   </div>
 
-                  <p className="text-xs text-slate-400 text-center">Comprehensive review takes 3–8 minutes · Please keep this tab open</p>
+                  <p className="text-xs text-slate-400 text-center">Comprehensive review takes 3�8 minutes � Please keep this tab open</p>
 
                 </div>
 
@@ -2534,7 +2534,7 @@ const PIDUpload = () => {
 
                   {uploading
 
-                    ? <><Loader className="w-4 h-4 animate-spin" />{formData.auto_analyze ? 'Uploading & Analysing…' : 'Uploading…'}</>
+                    ? <><Loader className="w-4 h-4 animate-spin" />{formData.auto_analyze ? 'Uploading & Analysing�' : 'Uploading�'}</>
 
                     : <><Zap className="w-4 h-4" />{formData.auto_analyze
 
@@ -2564,7 +2564,7 @@ const PIDUpload = () => {
 
               <Shield className="w-4 h-4 text-blue-600" />
 
-              <h3 className="text-sm font-bold text-slate-900">8-Pass AI Engine — Verification Scope</h3>
+              <h3 className="text-sm font-bold text-slate-900">8-Pass AI Engine � Verification Scope</h3>
 
             </div>
 
@@ -2572,37 +2572,37 @@ const PIDUpload = () => {
 
               {[
 
-                '✅ ISA-5.1 instrument classification & control loops',
+                '? ISA-5.1 instrument classification & control loops',
 
-                '✅ PSV set pressure vs equipment design pressure',
+                '? PSV set pressure vs equipment design pressure',
 
-                '✅ Trim class & pipe class consistency at nozzles',
+                '? Trim class & pipe class consistency at nozzles',
 
-                '✅ API 6D / ASME B16.34 / API 600 valve standards',
+                '? API 6D / ASME B16.34 / API 600 valve standards',
 
-                '✅ NACE MR0175 sour service & PWHT requirements',
+                '? NACE MR0175 sour service & PWHT requirements',
 
-                '✅ LTCS compliance for cryogenic / LNG / LPG lines',
+                '? LTCS compliance for cryogenic / LNG / LPG lines',
 
-                '✅ Insulating gasket at dissimilar material joints',
+                '? Insulating gasket at dissimilar material joints',
 
-                '✅ RO spool requirements (10D/5D straight runs)',
+                '? RO spool requirements (10D/5D straight runs)',
 
-                '✅ Free-drain slope annotations (>= 1:100)',
+                '? Free-drain slope annotations (>= 1:100)',
 
-                '✅ CSS / STRESS CRITICAL line annotations',
+                '? CSS / STRESS CRITICAL line annotations',
 
-                '✅ Duplicate & near-duplicate line number detection',
+                '? Duplicate & near-duplicate line number detection',
 
-                '✅ Notes & HOLDS implementation cross-verification',
+                '? Notes & HOLDS implementation cross-verification',
 
-                '✅ Valve size vs pipe nominal bore consistency',
+                '? Valve size vs pipe nominal bore consistency',
 
-                '✅ Equipment TYPE designation validation',
+                '? Equipment TYPE designation validation',
 
-                '✅ Tie-in points & battery limit completeness',
+                '? Tie-in points & battery limit completeness',
 
-                '✅ AI line size & hydraulic anomaly detection',
+                '? AI line size & hydraulic anomaly detection',
 
               ].map((item, i) => (
 
@@ -2630,7 +2630,7 @@ const PIDUpload = () => {
 
           {loadingDesignIQProjects ? (
 
-            <div className="flex items-center justify-center py-10 gap-2"><Loader className="w-5 h-5 animate-spin text-blue-500" /><span className="text-slate-400 text-sm">Loading projects…</span></div>
+            <div className="flex items-center justify-center py-10 gap-2"><Loader className="w-5 h-5 animate-spin text-blue-500" /><span className="text-slate-400 text-sm">Loading projects�</span></div>
 
           ) : designIQProjects.length === 0 ? (
 
@@ -2696,7 +2696,7 @@ const PIDUpload = () => {
 
           {loadingDesignIQProjects ? (
 
-            <div className="flex items-center justify-center py-10 gap-2"><Loader className="w-5 h-5 animate-spin text-amber-500" /><span className="text-slate-400 text-sm">Loading projects…</span></div>
+            <div className="flex items-center justify-center py-10 gap-2"><Loader className="w-5 h-5 animate-spin text-amber-500" /><span className="text-slate-400 text-sm">Loading projects�</span></div>
 
           ) : designIQProjects.length === 0 ? (
 
@@ -2761,4 +2761,5 @@ const PIDUpload = () => {
 
 
 export default PIDUpload;
+
 

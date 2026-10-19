@@ -133,3 +133,4 @@ export function AgreementSetupDialog({ open, workspace, view, onClose }) {
     <div className="aw-setup-body"><AgreementWorkspace workspace={workspace} view={view} embedded /></div>
   </dialog>
 }
+

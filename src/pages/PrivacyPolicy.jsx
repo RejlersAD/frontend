@@ -603,3 +603,4 @@ All users must be of legal age to enter into a binding contract and have the aut
 }
 
 export default PrivacyPolicy
+

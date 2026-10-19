@@ -3810,3 +3810,4 @@ function EnhancedKPICard({ label, value, icon: Icon, bgColor, textColor, iconBg,
     </div>
   )
 }
+

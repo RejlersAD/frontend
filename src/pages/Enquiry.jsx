@@ -205,3 +205,4 @@ const SuccessStep = ({ icon: Icon, label, active = false }) => (
 )
 
 export default Enquiry
+

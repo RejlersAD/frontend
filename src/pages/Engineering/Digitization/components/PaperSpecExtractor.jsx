@@ -2157,3 +2157,4 @@ const ClassDetailPanel = ({ cls, asme }) => {
 
 export default PaperSpecExtractor;
 
+

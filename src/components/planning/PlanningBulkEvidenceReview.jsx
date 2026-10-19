@@ -65,3 +65,4 @@ export default function PlanningBulkEvidenceReview({ summary, review, operation,
 
 PlanningBulkEvidenceReview.propTypes = { summary: PropTypes.object, review: PropTypes.object.isRequired, operation: PropTypes.object.isRequired,
   disabledReason: PropTypes.string, onGroup: PropTypes.func.isRequired, group: PropTypes.string, onReload: PropTypes.func.isRequired }
+
