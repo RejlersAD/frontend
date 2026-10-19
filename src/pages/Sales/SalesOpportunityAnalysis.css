@@ -1,5 +1,5 @@
-/* Radai workspace: glassmorphism, gradient AI badges, animated score rings, collapsible insights, AI confidence, skeletons, dark/light, mobile */
-.soa-Radai {
+/* Copilot workspace: glassmorphism, gradient AI badges, animated score rings, collapsible insights, AI confidence, skeletons, dark/light, mobile */
+.soa-copilot {
   --cp-bg: radial-gradient(1200px 800px at 50% 0%, #f8faff 0%, #eef2ff 100%);
   --cp-ink: #0f2040;
   --cp-muted: #5b6b84;
@@ -14,7 +14,7 @@
   border-radius: 14px;
   padding: 12px 14px;
 }
-.soa-Radai.soa-dark {
+.soa-copilot.soa-dark {
   --cp-bg: radial-gradient(1200px 800px at 50% 0%, #0b1026 0%, #070a14 100%);
   --cp-ink: #e2e8f0;
   --cp-muted: #94a3b8;
@@ -165,7 +165,12 @@
   height: 70px;
   border-radius: 50%;
   flex: none;
-  background: linear-gradient(100deg, rgba(148, 163, 184, 0.25) 40%, rgba(148, 163, 184, 0.5) 50%, rgba(148, 163, 184, 0.25) 60%);
+  background: linear-gradient(
+    100deg,
+    rgba(148, 163, 184, 0.25) 40%,
+    rgba(148, 163, 184, 0.5) 50%,
+    rgba(148, 163, 184, 0.25) 60%
+  );
   background-size: 200% 100%;
   animation: cp-shimmer-bg 1.4s linear infinite;
 }
@@ -183,7 +188,12 @@
 .cp-sk-line {
   height: 12px;
   border-radius: 6px;
-  background: linear-gradient(100deg, rgba(148, 163, 184, 0.25) 40%, rgba(148, 163, 184, 0.5) 50%, rgba(148, 163, 184, 0.25) 60%);
+  background: linear-gradient(
+    100deg,
+    rgba(148, 163, 184, 0.25) 40%,
+    rgba(148, 163, 184, 0.5) 50%,
+    rgba(148, 163, 184, 0.25) 60%
+  );
   background-size: 200% 100%;
   animation: cp-shimmer-bg 1.4s linear infinite;
 }
@@ -805,8 +815,8 @@
   color: var(--cp-ink);
   cursor: pointer;
 }
-.soa-Radai button:focus-visible,
-.soa-Radai summary:focus-visible {
+.soa-copilot button:focus-visible,
+.soa-copilot summary:focus-visible {
   outline: 3px solid #8ab6ff;
   outline-offset: 2px;
 }
@@ -865,7 +875,7 @@
     width: 100px;
     height: 100px;
   }
-  .soa-Radai {
+  .soa-copilot {
     padding: 10px;
   }
 }
