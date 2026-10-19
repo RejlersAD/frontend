@@ -17,3 +17,4 @@ export default function DataTable({ caption, columns, rows, rowKey = 'id', empty
     </div>
   )
 }
+

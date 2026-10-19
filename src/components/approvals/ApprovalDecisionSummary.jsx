@@ -82,3 +82,4 @@ export default function ApprovalDecisionSummary({ item, details = {}, onClose, o
     </>}
   </aside>;
 }
+

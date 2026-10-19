@@ -252,3 +252,4 @@ export default function SalesClientWorkspace({ record, loading, error, onRetry, 
   </section>;
 }
 SalesClientWorkspace.propTypes = { record: PropTypes.object, loading: PropTypes.bool, error: PropTypes.string, onRetry: PropTypes.func.isRequired, onEdit: PropTypes.func.isRequired, onOpenFullRecord: PropTypes.func.isRequired, onRefresh: PropTypes.func.isRequired };
+

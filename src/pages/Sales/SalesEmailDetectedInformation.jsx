@@ -80,7 +80,8 @@ export default function SalesEmailDetectedInformation({ information, subject }) 
     ["customer_name", "Customer Name", !versionTwo || customer?.status === "detected" ? valueText(detected.customer_name) : ""],
     ["submission_date", "Submission Date", !versionTwo || sentDate?.status === "detected" ? valueText(detected.submission_date) : ""],
     ["due_date", "Due Date", valueText(detected.due_date)],
-    ["request_type_code", "Type of Request", ["EOI", "EIO", "RFT", "RFQ", "RFP", "ITT"].includes(requestCode) ? requestCode : ""],
+    ["request_type_code", "Type of Request", ["EOI", "RFT", "RFQ", "RFP", "ITT"]
+.includes(requestCode) ? requestCode : ""],
     ...(agreementReference ? [["agreement_reference", "WO agreement reference", agreementReference.value]] : []),
     ...(correspondenceReference ? [["correspondence_reference", "Correspondence reference", `${correspondenceReference.value} · Requires review`]] : []),
     ...(actionDeadline ? [["action_deadline", "Action deadline", actionDeadline.value]] : []),
@@ -119,3 +120,4 @@ SalesEmailDetectedInformation.propTypes = {
 SalesEmailDetectedInformation.defaultProps = { information: null, subject: "" };
 ClassificationQuotes.propTypes = { evidence: PropTypes.any, sources: PropTypes.any };
 SuggestedClassification.propTypes = { classification: PropTypes.any, sources: PropTypes.any };
+

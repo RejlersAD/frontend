@@ -160,3 +160,4 @@ export default function MilestoneControlTab({ project, milestoneControl, milesto
     {milestoneDialog?.type === 'history' && <MilestoneDialog title="Milestone activity history" onClose={closeDialog}><h3>{dialogRow?.name || 'Select a milestone'}</h3>{dialogRow?.activityHistory?.length ? <Table name="Recorded milestone history" headings={['Time', 'Action', 'User', 'Source']}>{dialogRow.activityHistory.map(event => <tr key={event.id}><td>{date(event.date)}</td><td>{event.title}</td><td>{event.actor || 'Not recorded'}</td><td>{event.entityType}</td></tr>)}</Table> : <p>{dialogRow?.activityHistory ? 'No changes are recorded for this linked schedule activity.' : 'Activity history is unavailable for this milestone.'}</p>}{dialogRow?.createdAt && <p>Project record created: {date(dialogRow.createdAt)}</p>}</MilestoneDialog>}
   </div>
 }
+

@@ -268,7 +268,7 @@ const UsageDashboard = () => {
                   <li key={i} className="py-2 flex items-center justify-between text-sm">
                     <div className="flex items-center gap-2 min-w-0">
                       <span className={`h-2 w-2 rounded-full flex-shrink-0 ${ok ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                      <span className="font-medium text-gray-800 truncate max-w-[180px]">
+                      <span className="font-medium text-gray-800 truncate max-w-4xl">
                         {ev.user_full_name || ev.user_email || 'Anonymous'}
                       </span>
                       <span className="text-gray-500 truncate">
@@ -439,3 +439,4 @@ const UsageDashboard = () => {
 };
 
 export default UsageDashboard;
+

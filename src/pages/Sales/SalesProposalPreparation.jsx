@@ -184,3 +184,4 @@ export default function SalesProposalPreparation({ quoteId, dealId, onPrepared }
   </section>
 }
 SalesProposalPreparation.propTypes = { quoteId: PropTypes.string.isRequired, dealId: PropTypes.string.isRequired, onPrepared: PropTypes.func.isRequired }
+

@@ -64,7 +64,7 @@ const LAYOUT_CONFIG = {
   wrapper: "w-full bg-gradient-to-br from-slate-50 via-white to-purple-50/40",
   // Match the main I/O workflow width. The previous max-w-7xl cap left large
   // empty bands on both sides inside RADAI's wide engineering workspace.
-  contentMaxW: "w-full max-w-[1700px] mx-auto px-3 sm:px-4",
+  contentMaxW: "w-full max-w-4xl mx-auto px-3 sm:px-4",
   heroPaddingY: "pt-4 pb-5 sm:pt-5 sm:pb-6",
   sectionGapY: "pt-2",
   cardGapY: "py-6",
@@ -1291,7 +1291,7 @@ export default function IOListPage() {
                       {pidPdfFile && (
                         <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white border border-fuchsia-200 text-[11px] text-gray-700">
                           <CheckBadgeIcon className="h-3.5 w-3.5 text-emerald-600" />
-                          <span className="font-mono truncate max-w-[200px]">
+                          <span className="font-mono truncate max-w-4xl">
                             {pidPdfFile.name}
                           </span>
                           <span className="text-gray-500">
@@ -1315,7 +1315,7 @@ export default function IOListPage() {
                       {legendPdfFile && (
                         <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white border border-fuchsia-200 text-[11px] text-gray-700">
                           <CheckBadgeIcon className="h-3.5 w-3.5 text-emerald-600" />
-                          <span className="font-mono truncate max-w-[200px]">
+                          <span className="font-mono truncate max-w-4xl">
                             {legendPdfFile.name}
                           </span>
                         </div>
@@ -1878,3 +1878,4 @@ export default function IOListPage() {
     </div>
   );
 }
+

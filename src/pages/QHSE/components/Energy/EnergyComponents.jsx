@@ -479,3 +479,4 @@ export const PeakDemandIndicator = ({ current, peak, threshold }) => {
     </div>
   );
 };
+

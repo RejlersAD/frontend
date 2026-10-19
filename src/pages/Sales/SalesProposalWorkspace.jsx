@@ -165,3 +165,4 @@ export default function SalesProposalWorkspace({ record, loading, error, onRetry
   return <aside className="spg-workspace" aria-label="Selected proposal" aria-busy={loading}>{loading || error || !record ? <div className="spg-panel-state">{loading ? <RefreshCw className="spg-spin" size={28} /> : error ? <AlertCircle size={28} /> : <FileText size={28} />}<h2>{loading ? 'Loading proposal…' : error ? 'Proposal unavailable' : 'Select a proposal'}</h2><p>{error || (loading ? 'Loading the selected proposal and its current details.' : 'Select a row to view its documents, approvals and submission.')}</p>{error && <button type="button" className="spg-button" onClick={onRetry}>Retry proposal</button>}</div> : <SelectedWorkspace key={record.id} record={record} {...props} />}</aside>;
 }
 SalesProposalWorkspace.propTypes = { record: PropTypes.object, loading: PropTypes.bool.isRequired, error: PropTypes.string, onRetry: PropTypes.func.isRequired };
+

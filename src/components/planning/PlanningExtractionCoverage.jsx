@@ -26,3 +26,4 @@ export default function PlanningExtractionCoverage({ coverage, aiCoverage, onAiS
   </section>
 }
 PlanningExtractionCoverage.propTypes = { coverage: PropTypes.object, aiCoverage: PropTypes.object, onAiSettings: PropTypes.func, onRetryAnalysis: PropTypes.func, busy: PropTypes.bool, previousResult: PropTypes.bool }
+

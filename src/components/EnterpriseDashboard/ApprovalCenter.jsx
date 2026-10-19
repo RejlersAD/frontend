@@ -132,7 +132,7 @@ const ApprovalCenter = ({ useRealData = false }) => {
                       <h3 className="text-sm font-bold text-slate-900 truncate">
                         {approval.title}
                       </h3>
-                      <span className={`flex-shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${priority.badge}`}>
+                      <span className={`flex-shrink-0 text-xs font-bold px-2 py-0.5 rounded-full ${priority.badge}`}>
                         {priority.label}
                       </span>
                     </div>
@@ -241,3 +241,4 @@ const PLACEHOLDER_APPROVALS = [
 ]
 
 export default ApprovalCenter
+

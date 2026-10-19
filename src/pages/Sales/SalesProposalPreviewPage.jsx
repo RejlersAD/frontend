@@ -193,3 +193,4 @@ export default function SalesProposalPreviewPage() {
   const { proposalId } = useParams();
   return <ProposalReview key={proposalId} proposalId={proposalId} />;
 }
+

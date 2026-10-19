@@ -326,3 +326,4 @@ PdfReviewDocument.propTypes = {
   onThreadSelect: PropTypes.func, onSelection: PropTypes.func, onDocumentLoad: PropTypes.func, onError: PropTypes.func,
 };
 SalesProposalPdfViewer.propTypes = { ...PdfReviewDocument.propTypes, documentKey: PropTypes.oneOfType([PropTypes.string, PropTypes.number]) };
+

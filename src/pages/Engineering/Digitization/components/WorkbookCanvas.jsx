@@ -4113,3 +4113,4 @@ const WorkbookCanvas = ({ job, variant = "default" }) => {
 };
 
 export default WorkbookCanvas;
+

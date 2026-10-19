@@ -148,3 +148,4 @@ export default function RiskChangeControlTab({ project, riskControl, riskDialog,
     {riskDialog?.type === 'quality' && <RiskDialog title="Control data quality" onClose={close}><p>{model.scopeLabel}. Data date: {date(model.dataDate)}.</p><Table name="Control data readiness" headings={['Check', 'Status', 'Details']}>{model.quality.map(item => <tr key={item.id || item.label}><td>{item.label}</td><td>{item.status}</td><td>{item.detail}</td></tr>)}</Table><p className="rc-note">Matrix score = probability × impact. Display bands: Low 1–4, Medium 5–9, High 10–15, Critical 16–25. Recorded priority is a separate management assessment.</p><p>Register confidence is not calculated. Review the underlying records and missing assessments.</p></RiskDialog>}
   </div>
 }
+

@@ -114,3 +114,4 @@ PlanningSourceLogic.propTypes = {
   masterRevision: PropTypes.number.isRequired, readOnly: PropTypes.bool,
   onClose: PropTypes.func.isRequired, onApplied: PropTypes.func.isRequired,
 }
+

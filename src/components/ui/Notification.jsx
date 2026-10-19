@@ -21,3 +21,4 @@ export default function Notification({ tone = 'info', children, className = '' }
     </div>
   )
 }
+

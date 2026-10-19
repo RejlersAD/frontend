@@ -76,3 +76,4 @@ export function PortfolioHealthBadge({ health = 'unavailable' }) {
   const Icon = ['critical', 'high', 'medium'].includes(known) ? ExclamationCircleIcon : InformationCircleIcon;
   return <span className={`pp-health-badge pp-health-badge--${known}`}><Icon aria-hidden="true" />{HEALTH_LABELS[known]}</span>;
 }
+

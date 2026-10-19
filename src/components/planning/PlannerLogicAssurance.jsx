@@ -21,7 +21,7 @@ export default function PlannerLogicAssurance({ configuration, assumptions, vali
 
 function Card({ icon: Icon, label, value, detail, tone }) {
   const colors = { indigo: 'bg-indigo-100 text-indigo-700', blue: 'bg-blue-100 text-blue-700', green: 'bg-emerald-100 text-emerald-700', amber: 'bg-amber-100 text-amber-800', red: 'bg-rose-100 text-rose-700' }
-  return <div className="rounded-xl border border-white bg-white/90 p-3 shadow-sm"><div className="flex items-center gap-2"><span className={`rounded-lg p-2 ${colors[tone] || colors.indigo}`}><Icon className="h-4 w-4"/></span><div><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</p><p className="text-lg font-black text-slate-900">{value}</p></div></div><p className="mt-2 text-xs text-slate-500">{detail}</p></div>
+  return <div className="rounded-xl border border-white bg-white/90 p-3 shadow-sm"><div className="flex items-center gap-2"><span className={`rounded-lg p-2 ${colors[tone] || colors.indigo}`}><Icon className="h-4 w-4"/></span><div><p className="text-xs font-bold uppercase tracking-wide text-slate-400">{label}</p><p className="text-lg font-black text-slate-900">{value}</p></div></div><p className="mt-2 text-xs text-slate-500">{detail}</p></div>
 }
 
 PlannerLogicAssurance.propTypes = {
@@ -37,3 +37,4 @@ Card.propTypes = {
   detail: PropTypes.string.isRequired,
   tone: PropTypes.string.isRequired,
 }
+

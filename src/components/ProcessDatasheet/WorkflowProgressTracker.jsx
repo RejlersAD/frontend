@@ -416,3 +416,4 @@ export const CompactWorkflowProgress = ({ steps, status }) => {
 };
 
 export default WorkflowProgressTracker;
+

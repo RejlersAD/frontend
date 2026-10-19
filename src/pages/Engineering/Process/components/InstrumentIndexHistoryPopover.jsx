@@ -211,3 +211,4 @@ export default function InstrumentIndexHistoryPopover({ activeInstrumentIndex, o
     </div>
   )
 }
+

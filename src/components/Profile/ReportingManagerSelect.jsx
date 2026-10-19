@@ -105,3 +105,4 @@ ReportingManagerSelect.propTypes = {
   loading: PropTypes.bool, error: PropTypes.string, inputClassName: PropTypes.string,
   compact: PropTypes.bool, disabled: PropTypes.bool,
 };
+

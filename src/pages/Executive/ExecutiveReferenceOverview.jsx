@@ -215,3 +215,4 @@ export default function ExecutiveReferenceOverview({ report, currency, refreshKe
     <DecisionBanner decisions={model.decisions} printing={printing} />
   </div>;
 }
+

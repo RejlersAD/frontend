@@ -682,3 +682,4 @@ ${i + 1}. ${o.title || 'Optimization'}
 };
 
 export default DesignIQProjectDetail;
+

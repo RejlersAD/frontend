@@ -37,7 +37,7 @@ const Layout = () => {
                 ref={sidebarRef}
                 collapsed={collapsed}
             />
-            <div className={cn("transition-[margin] duration-300", collapsed ? "md:ml-[70px]" : "md:ml-[240px]")}>
+            <div className={cn("transition-[margin] duration-300", collapsed ? "md:ml-16" : "md:ml-60")}>
                 <Header
                     collapsed={collapsed}
                     setCollapsed={setCollapsed}
@@ -51,3 +51,4 @@ const Layout = () => {
 };
 
 export default Layout;
+

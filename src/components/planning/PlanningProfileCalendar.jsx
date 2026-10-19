@@ -33,3 +33,4 @@ export default function PlanningProfileCalendar({ value, onChange }) {
   </section>
 }
 PlanningProfileCalendar.propTypes = { value: PropTypes.object, onChange: PropTypes.func.isRequired }
+

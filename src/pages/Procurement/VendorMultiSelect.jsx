@@ -68,3 +68,4 @@ export default function VendorMultiSelect({ label, options, value, onChange, inv
     </ul>}
   </div>;
 }
+

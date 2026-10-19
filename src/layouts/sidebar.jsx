@@ -11,8 +11,8 @@ export const Sidebar = forwardRef(({ collapsed }, ref) => {
         <aside
             ref={ref}
             className={cn(
-                "fixed z-[100] flex h-full w-[240px] flex-col overflow-x-hidden border-r border-slate-300 bg-gradient-to-b from-blue-50 via-white to-slate-100 shadow-xl [transition:_width_300ms_cubic-bezier(0.4,_0,_0.2,_1),_left_300ms_cubic-bezier(0.4,_0,_0.2,_1),_background-color_150ms_cubic-bezier(0.4,_0,_0.2,_1),_border_150ms_cubic-bezier(0.4,_0,_0.2,_1)] dark:border-slate-700 dark:bg-gradient-to-b dark:from-slate-900 dark:via-slate-800 dark:to-slate-900",
-                collapsed ? "md:w-[70px] md:items-center" : "md:w-[240px]",
+                "fixed z-50 flex h-full w-60 flex-col overflow-x-hidden border-r border-slate-300 bg-gradient-to-b from-blue-50 via-white to-slate-100 shadow-xl [transition:_width_300ms_cubic-bezier(0.4,_0,_0.2,_1),_left_300ms_cubic-bezier(0.4,_0,_0.2,_1),_background-color_150ms_cubic-bezier(0.4,_0,_0.2,_1),_border_150ms_cubic-bezier(0.4,_0,_0.2,_1)] dark:border-slate-700 dark:bg-gradient-to-b dark:from-slate-900 dark:via-slate-800 dark:to-slate-900",
+                collapsed ? "md:w-16 md:items-center" : "md:w-60",
                 collapsed ? "max-md:-left-full" : "max-md:left-0",
             )}
         >
@@ -29,7 +29,7 @@ export const Sidebar = forwardRef(({ collapsed }, ref) => {
                         className="hidden dark:block drop-shadow-md w-8 h-8 rounded-full"
                     />
                     {!collapsed && (
-                        <p className="text-lg font-bold text-[#0d0d37e4] transition-colors dark:text-slate-200 tracking-wide">
+                        <p className="text-lg font-bold text-slate-900 transition-colors dark:text-slate-200 tracking-wide">
                             Rejlers QHSE
                         </p>
                     )}
@@ -90,3 +90,4 @@ Sidebar.displayName = "Sidebar";
 Sidebar.propTypes = {
     collapsed: PropTypes.bool,
 };
+

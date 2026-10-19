@@ -261,3 +261,4 @@ export default function ExecutiveDashboard() {
     <DefinitionsDialog selection={selection} onClose={() => setSelection(null)} metrics={metrics} />
   </div>;
 }
+

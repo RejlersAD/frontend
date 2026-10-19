@@ -68,7 +68,7 @@ function TeamSnapshotCard({ teamSnapshot }) {
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-base shadow-md">👥</div>
             <div>
               <h2 className="text-base font-bold text-slate-800 leading-tight">Team Snapshot</h2>
-              <p className="text-[11px] text-slate-500 truncate max-w-[180px]">{teamSnapshot.department}</p>
+              <p className="text-[11px] text-slate-500 truncate max-w-4xl">{teamSnapshot.department}</p>
             </div>
           </div>
         </div>
@@ -441,7 +441,7 @@ export default function PersonalDashboard() {
   }
 
   return (
-    <div className="relative min-h-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6 max-w-[1600px] mx-auto">
+    <div className="relative min-h-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6 max-w-4xl mx-auto">
       <AIDashboardStyles />
 
       {/* AI aurora ambient background (fixed, non-interactive) */}
@@ -482,3 +482,4 @@ export default function PersonalDashboard() {
     </div>
   )
 }
+

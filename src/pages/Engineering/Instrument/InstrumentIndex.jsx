@@ -4045,3 +4045,4 @@ const InstrumentIndex = () => {
 };
 
 export default InstrumentIndex;
+

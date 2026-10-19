@@ -3207,3 +3207,4 @@ const DetailPanel = ({ row, config, onClose }) => {
 };
 
 export default SingleLineDiagram;
+

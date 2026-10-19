@@ -23,3 +23,4 @@ export default function EngagementList({ report }) {
     <div className="ad-panel-heading"><button disabled={current === 1} onClick={() => setPage(current - 1)}>Previous</button><span>Page {current} of {pages}</span><button disabled={current === pages} onClick={() => setPage(current + 1)}>Next</button></div>
   </section>;
 }
+

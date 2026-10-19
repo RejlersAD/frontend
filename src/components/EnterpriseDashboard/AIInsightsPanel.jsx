@@ -160,3 +160,4 @@ const INTELLIGENT_INSIGHTS = [
 ]
 
 export default AIInsightsPanel
+

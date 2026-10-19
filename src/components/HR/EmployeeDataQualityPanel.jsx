@@ -70,12 +70,12 @@ const EmployeeDataQualityPanel = ({ employee }) => {
 
       {(report?.issues || []).length > 0 && <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-bold text-slate-950">Field differences</h3></div>
-        <div className="divide-y divide-slate-100">{report.issues.map((issue, index) => <div key={`${issue.system}-${issue.field}-${index}`} className="grid gap-2 px-5 py-3 text-sm sm:grid-cols-[120px_150px_1fr_1fr]"><span className="font-bold uppercase text-slate-500">{issue.system}</span><span className="font-semibold text-slate-800">{issue.field.replaceAll('_', ' ')}</span><span><span className="text-[10px] font-bold uppercase text-slate-400">Canonical</span><br />{issue.canonical || '—'}</span><span><span className="text-[10px] font-bold uppercase text-slate-400">Current</span><br />{issue.actual || '—'}</span></div>)}</div>
+        <div className="divide-y divide-slate-100">{report.issues.map((issue, index) => <div key={`${issue.system}-${issue.field}-${index}`} className="grid gap-2 px-5 py-3 text-sm sm:grid-cols-[120px_150px_1fr_1fr]"><span className="font-bold uppercase text-slate-500">{issue.system}</span><span className="font-semibold text-slate-800">{issue.field.replaceAll('_', ' ')}</span><span><span className="text-xs font-bold uppercase text-slate-400">Canonical</span><br />{issue.canonical || '—'}</span><span><span className="text-xs font-bold uppercase text-slate-400">Current</span><br />{issue.actual || '—'}</span></div>)}</div>
       </section>}
 
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="mb-4 flex items-center gap-2 border-b border-slate-100 pb-3"><LinkIcon className="h-5 w-5 text-blue-700" /><h3 className="text-sm font-bold text-slate-950">Linked system identifiers</h3><span className="ml-auto rounded-full bg-slate-100 px-2 py-1 text-xs font-bold text-slate-600">{report?.aliases?.length || 0}</span></div>
-        {(report?.aliases || []).length ? <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{report.aliases.map((alias) => <article key={alias.id} className="rounded-lg border border-slate-200 p-3"><div className="flex items-center gap-2"><CircleStackIcon className="h-4 w-4 text-slate-400" /><span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{alias.source} · {alias.identifier_type.replaceAll('_', ' ')}</span></div><p className="mt-2 break-all text-sm font-semibold text-slate-900">{alias.value}</p></article>)}</div> : <p className="text-sm text-slate-500">No linked identifiers were found.</p>}
+        {(report?.aliases || []).length ? <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{report.aliases.map((alias) => <article key={alias.id} className="rounded-lg border border-slate-200 p-3"><div className="flex items-center gap-2"><CircleStackIcon className="h-4 w-4 text-slate-400" /><span className="text-xs font-bold uppercase tracking-wider text-slate-500">{alias.source} · {alias.identifier_type.replaceAll('_', ' ')}</span></div><p className="mt-2 break-all text-sm font-semibold text-slate-900">{alias.value}</p></article>)}</div> : <p className="text-sm text-slate-500">No linked identifiers were found.</p>}
         {(report?.conflicts || []).length > 0 && <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">Conflicting identifiers require manual HR review and were not changed automatically.</div>}
       </section>
     </div>
@@ -83,3 +83,4 @@ const EmployeeDataQualityPanel = ({ employee }) => {
 }
 
 export default EmployeeDataQualityPanel
+

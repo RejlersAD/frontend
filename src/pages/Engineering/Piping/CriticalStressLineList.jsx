@@ -426,3 +426,4 @@ const CriticalStressLineList = () => {
 };
 
 export default CriticalStressLineList;
+

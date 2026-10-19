@@ -114,3 +114,4 @@ ProcurementOverviewHeader.propTypes = {
   setSidebarOpen: PropTypes.func.isRequired,
   profilePhotoUrl: PropTypes.string,
 }
+

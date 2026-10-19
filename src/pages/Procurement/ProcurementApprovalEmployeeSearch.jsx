@@ -98,3 +98,4 @@ ProcurementApprovalEmployeeSearch.propTypes = {
   onSelect: PropTypes.func.isRequired,
   label: PropTypes.string,
 };
+

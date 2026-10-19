@@ -368,3 +368,4 @@ export const CarbonFootprintIndicator = ({ emissions, intensity }) => {
     </div>
   );
 };
+

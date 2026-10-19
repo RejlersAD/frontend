@@ -178,3 +178,4 @@ const FeatureCard = ({ feature }) => {
 }
 
 export default FeatureCard
+

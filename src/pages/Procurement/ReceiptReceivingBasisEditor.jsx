@@ -21,3 +21,4 @@ export default function ReceiptReceivingBasisEditor({ basis, lines, disabled, sa
 }
 
 ReceiptReceivingBasisEditor.propTypes = { basis: PropTypes.string.isRequired, lines: PropTypes.array.isRequired, disabled: PropTypes.bool, saving: PropTypes.bool, onChange: PropTypes.func.isRequired, onSave: PropTypes.func.isRequired };
+

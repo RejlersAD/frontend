@@ -120,3 +120,4 @@ export default function DocumentsTab({ project, documentControl: control, docume
     {preview && <DocumentPreviewDialog key={preview.id} document={preview} onClose={() => setPreview(null)} />}
   </div>
 }
+

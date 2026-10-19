@@ -1235,3 +1235,4 @@ const DeleteModal = ({ show, name, loading, onCancel, onConfirm }) => !show ? nu
 );
 
 export default PFDVerification;
+

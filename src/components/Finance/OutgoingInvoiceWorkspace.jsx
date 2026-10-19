@@ -201,3 +201,4 @@ export default function OutgoingInvoiceWorkspace({ onImport, reloadKey = 0 }) {
   </div>;
 }
 OutgoingInvoiceWorkspace.propTypes = { onImport: PropTypes.func.isRequired, reloadKey: PropTypes.number };
+

@@ -110,3 +110,4 @@ export default function PlanningScheduleChecks({ plan, tasks, locked, busy, onEd
   </section>
 }
 PlanningScheduleChecks.propTypes = { plan: PropTypes.object.isRequired, tasks: PropTypes.array.isRequired, locked: PropTypes.bool, busy: PropTypes.bool, onEdit: PropTypes.func.isRequired, onInputs: PropTypes.func.isRequired, onRefresh: PropTypes.func.isRequired, onVerifySources: PropTypes.func, onEvidence: PropTypes.func, onSources: PropTypes.func, onReviewLogic: PropTypes.func }
+

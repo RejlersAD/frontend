@@ -26,3 +26,4 @@ export default function PlatformAIStatus({ provider }) {
     {!status.loading && <button type="button" className="ml-2 underline underline-offset-2" onClick={status.refresh}>Refresh AI status</button>}
   </div>
 }
+

@@ -118,3 +118,4 @@ export default function SalesProposalRegister({ rows: quotes, loading, error, re
 }
 
 SalesProposalRegister.propTypes = { rows: PropTypes.array.isRequired, loading: PropTypes.bool.isRequired, error: PropTypes.string, record: PropTypes.object, recordLoading: PropTypes.bool.isRequired, recordError: PropTypes.string, selectedId: PropTypes.string, onRefresh: PropTypes.func.isRequired, onSelect: PropTypes.func.isRequired, onRetryRecord: PropTypes.func.isRequired, onOpenFullRecord: PropTypes.func.isRequired, onEdit: PropTypes.func.isRequired, onCreate: PropTypes.func.isRequired, onAction: PropTypes.func.isRequired, onPrepared: PropTypes.func.isRequired, actions: PropTypes.array.isRequired, locked: PropTypes.bool.isRequired };
+

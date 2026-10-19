@@ -127,3 +127,4 @@ PlanningEmployeeActivity.propTypes = {
   initialTaskId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
   onClose: PropTypes.func.isRequired,
 }
+

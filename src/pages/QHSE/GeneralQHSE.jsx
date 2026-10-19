@@ -221,7 +221,7 @@ const QHSEDashboard = () => {
           }
         ` : ''}
       `}</style>
-      <div className="p-4 sm:p-6 lg:p-8 max-w-[1920px] mx-auto">
+      <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
         {/* Header */}
         <MainHeader 
         title="QHSE Dashboard"
@@ -336,7 +336,7 @@ const QHSEDashboard = () => {
 // Wrapper components for sub-pages
 const SummaryViewWrapper = () => {
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-[1920px] mx-auto">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
       <SummaryView />
     </div>
   );
@@ -344,7 +344,7 @@ const SummaryViewWrapper = () => {
 
 const DetailedViewWrapper = () => {
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-[1920px] mx-auto">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
       <DetailedView />
     </div>
   );
@@ -352,10 +352,11 @@ const DetailedViewWrapper = () => {
 
 const ProjectsWrapper = () => {
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-[1920px] mx-auto">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
       <Projects />
     </div>
   );
 };
 
 export default GeneralQHSE;
+

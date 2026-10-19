@@ -87,3 +87,4 @@ SalesBidDecisionJustification.propTypes = {
   busy: PropTypes.bool.isRequired,
   onChange: PropTypes.func.isRequired,
 };
+

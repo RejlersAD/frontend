@@ -31,3 +31,4 @@ export default function ActiveLegendBadge({ section, legend, loading }) {
     </Link>
   )
 }
+

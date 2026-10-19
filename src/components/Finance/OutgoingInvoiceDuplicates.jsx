@@ -197,3 +197,4 @@ export default function OutgoingInvoiceDuplicates({ initialInvoiceId = '', onClo
   </dialog>;
 }
 OutgoingInvoiceDuplicates.propTypes = { initialInvoiceId: PropTypes.string, onClose: PropTypes.func.isRequired, onResolved: PropTypes.func.isRequired };
+

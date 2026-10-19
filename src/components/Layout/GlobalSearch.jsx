@@ -250,7 +250,7 @@ const GlobalSearch = ({ user, rbacData }) => {
             {...inputProps}
             className="h-10 w-full rounded-lg bg-transparent pl-9 pr-20 text-sm text-slate-800 outline-none placeholder:text-slate-400 dark:text-slate-100 dark:placeholder:text-slate-500"
           />
-          <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-500">
+          <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-xs font-semibold text-slate-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-500">
             Ctrl K
           </span>
         </div>
@@ -283,10 +283,10 @@ const GlobalSearch = ({ user, rbacData }) => {
           </div>
 
           <div className="flex items-center justify-between px-4 pb-2 pt-3">
-            <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+            <span className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
               {query ? 'Search results' : HEADER_SEARCH_CONFIG.quickAccessLabel}
             </span>
-            <span className="hidden text-[10px] text-slate-400 md:block">↑↓ Navigate · Enter Open · Esc Close</span>
+            <span className="hidden text-xs text-slate-400 md:block">↑↓ Navigate · Enter Open · Esc Close</span>
           </div>
 
           <div id="global-search-results" role="listbox" className="max-h-[min(420px,65vh)] overflow-y-auto px-2 pb-2">
@@ -313,7 +313,7 @@ const GlobalSearch = ({ user, rbacData }) => {
                     <span className="block truncate text-sm font-semibold">{item.label}</span>
                     <span className="block truncate text-xs text-slate-500 dark:text-slate-400">{item.description}</span>
                   </span>
-                  <span className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-400">{item.category}</span>
+                  <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-400">{item.category}</span>
                 </button>
               )
             })}
@@ -333,3 +333,4 @@ const GlobalSearch = ({ user, rbacData }) => {
 }
 
 export default GlobalSearch
+

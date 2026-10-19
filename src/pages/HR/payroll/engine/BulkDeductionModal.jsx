@@ -343,3 +343,4 @@ export default function BulkDeductionModal({ run, payslips = [], onClose, onAppl
     </div>
   )
 }
+

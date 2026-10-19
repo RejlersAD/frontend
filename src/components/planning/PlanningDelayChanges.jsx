@@ -44,3 +44,4 @@ export default function PlanningDelayChanges({ title, rows, onChange, activities
   </section>
 }
 PlanningDelayChanges.propTypes = { title: PropTypes.string.isRequired, rows: PropTypes.array.isRequired, onChange: PropTypes.func.isRequired, activities: PropTypes.array.isRequired, events: PropTypes.array.isRequired, caseData: PropTypes.object.isRequired, impactChanges: PropTypes.array, disabled: PropTypes.bool }
+

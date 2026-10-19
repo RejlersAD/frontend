@@ -1048,7 +1048,7 @@ const Sidebar = ({
         <div className={`sidebar-header flex h-14 flex-none items-center border-b px-4 ${isCollapsed ? "justify-center" : "justify-between"}`}>
           <div className="flex min-w-0 items-center gap-3">
             <span className="sidebar-brand-mark flex h-8 w-8 flex-none items-center justify-center rounded-lg text-xs font-bold" aria-hidden="true">AI</span>
-            {!isCollapsed && <div><span className="sidebar-brand-title block text-sm font-semibold tracking-wide">RADAI</span><span className="sidebar-brand-caption block text-[10px] leading-4">Your workspace</span></div>}
+            {!isCollapsed && <div><span className="sidebar-brand-title block text-sm font-semibold tracking-wide">RADAI</span><span className="sidebar-brand-caption block text-xs leading-4">Your workspace</span></div>}
           </div>
           <button type="button" data-sidebar-close aria-label="Close sidebar" onClick={() => setIsOpen(false)} className="sidebar-close flex h-10 w-10 items-center justify-center rounded-md lg:hidden"><XMarkIcon className="h-5 w-5" aria-hidden="true" /></button>
         </div>
@@ -1111,3 +1111,4 @@ const Sidebar = ({
 };
 
 export default Sidebar;
+

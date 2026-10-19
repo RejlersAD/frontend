@@ -173,3 +173,4 @@ ScheduleActivityInspector.propTypes = {
   sourceOnly: PropTypes.bool, locked: PropTypes.bool, logicLocked: PropTypes.bool, busy: PropTypes.bool,
   onClose: PropTypes.func.isRequired, onEdit: PropTypes.func.isRequired, onEmployee: PropTypes.func.isRequired, onEvidence: PropTypes.func.isRequired,
 }
+

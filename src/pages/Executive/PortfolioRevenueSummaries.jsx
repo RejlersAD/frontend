@@ -69,3 +69,4 @@ export function InvoicePosition({ recordedInvoices, onNavigate }) {
     </>}
   </SummaryPanel>;
 }
+

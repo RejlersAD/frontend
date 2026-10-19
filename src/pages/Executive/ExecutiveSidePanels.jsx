@@ -199,3 +199,4 @@ export function DepartmentPulse({ report, onExplain, onDepartment }) {
     </table></div>
   </section>;
 }
+

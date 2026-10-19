@@ -86,3 +86,4 @@ export default function WorkHubNotices({ source, onRetry, onOpenNotice, onViewAl
     </div>
   </section>;
 }
+

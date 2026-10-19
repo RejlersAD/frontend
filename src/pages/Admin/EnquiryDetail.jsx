@@ -247,3 +247,4 @@ const Summary = ({ icon: Icon, label, value, alert }) => <div className="rounded
 const Field = ({ label, children }) => <label className="mb-3 block text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}{children}</label>
 const Contact = ({ icon: Icon, value, href }) => { const content = <span className="min-w-0 truncate">{value}</span>; return <div className="mb-3 flex items-center gap-2 text-xs text-slate-700"><Icon className="h-4 w-4 shrink-0 text-slate-400"/>{href ? <a href={href} className="min-w-0 truncate text-blue-700 hover:underline">{value}</a> : content}</div> }
 const Badge = ({ value, priority = false }) => <span className={`rounded-sm px-2.5 py-1 text-[10px] font-bold uppercase ${priority ? value === 'urgent' ? 'bg-red-50 text-red-700' : value === 'high' ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-600' : STATUS_TONE[value] || 'bg-slate-100 text-slate-600'}`}>{titleCase(value)}</span>
+

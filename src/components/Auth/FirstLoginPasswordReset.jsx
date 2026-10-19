@@ -338,3 +338,4 @@ const FirstLoginPasswordReset = ({ user, onSuccess }) => {
 };
 
 export default FirstLoginPasswordReset;
+

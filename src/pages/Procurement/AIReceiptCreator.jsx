@@ -346,3 +346,4 @@ export default function AIReceiptCreator({ isOpen, onClose, onReceiptCreated, in
     </div></>, document.body)}</>;
 }
 AIReceiptCreator.propTypes = { isOpen: PropTypes.bool, onClose: PropTypes.func.isRequired, onReceiptCreated: PropTypes.func.isRequired, initialOrder: PropTypes.object, reconciliation: PropTypes.bool };
+

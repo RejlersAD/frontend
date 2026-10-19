@@ -162,3 +162,4 @@ export default function DatabaseCleaning({ active }) {
     </dialog>
   </section>;
 }
+

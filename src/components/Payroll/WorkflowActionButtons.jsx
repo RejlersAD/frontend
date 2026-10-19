@@ -240,3 +240,4 @@ function WorkflowActionButtons({ workflow, onAction, disabled = false }) {
 }
 
 export default WorkflowActionButtons
+

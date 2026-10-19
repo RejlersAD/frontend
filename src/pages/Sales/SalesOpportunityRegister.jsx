@@ -1231,3 +1231,4 @@ SalesOpportunityRegister.propTypes = {
   actions: PropTypes.array.isRequired,
   locked: PropTypes.bool.isRequired,
 };
+

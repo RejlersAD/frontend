@@ -133,3 +133,4 @@ ProcurementImportSigners.propTypes = {
   loading: PropTypes.bool.isRequired, defaultApprover: PropTypes.object,
   expectedReview: PropTypes.object.isRequired, error: PropTypes.string.isRequired, clearError: PropTypes.func.isRequired,
 };
+

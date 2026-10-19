@@ -884,3 +884,4 @@ const NonTeffSmartFeatures = ({ open, onClose, items, columns, excerpt, onApplyF
 };
 
 export default NonTeffSmartFeatures;
+

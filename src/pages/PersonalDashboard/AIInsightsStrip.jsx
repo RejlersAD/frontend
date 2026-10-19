@@ -32,7 +32,7 @@ const TYPE_GRADIENT = {
 
 function SkeletonCard() {
   return (
-    <div className="min-w-[280px] max-w-[320px] rounded-2xl border bg-white border-slate-200 p-5 animate-pulse flex-shrink-0 shadow-sm">
+    <div className="min-w-[280px] max-w-4xl rounded-2xl border bg-white border-slate-200 p-5 animate-pulse flex-shrink-0 shadow-sm">
       <div className="flex justify-between mb-3">
         <div className="w-10 h-10 rounded-xl bg-slate-100" />
         <div className="h-5 w-20 bg-slate-100 rounded-full" />
@@ -99,7 +99,7 @@ export default function AIInsightsStrip({ insights, loading }) {
           return (
             <div
               key={ins.id}
-              className={`group relative overflow-hidden min-w-[280px] max-w-[320px] flex-shrink-0 snap-start rounded-2xl border ${style.border} bg-white p-5 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300`}
+              className={`group relative overflow-hidden min-w-[280px] max-w-4xl flex-shrink-0 snap-start rounded-2xl border ${style.border} bg-white p-5 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300`}
             >
               <div className={`pointer-events-none absolute -top-8 -right-8 h-24 w-24 rounded-full bg-gradient-to-br ${gradient} blur-2xl opacity-70`} />
               <div className="relative">
@@ -124,3 +124,4 @@ export default function AIInsightsStrip({ insights, loading }) {
     </div>
   )
 }
+

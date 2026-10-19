@@ -387,7 +387,7 @@ const VALVE_UPLOAD_CATEGORIES = [
 // SOFT-CODED: responsive canvas sizing for better readability on large screens.
 const VALVE_LAYOUT = {
   pagePadding: 'px-4 sm:px-6 lg:px-8 py-6 lg:py-8',
-  canvasWidth: 'w-full max-w-[1800px] 2xl:max-w-[1920px]',
+  canvasWidth: 'w-full max-w-4xl 2xl:max-w-4xl',
 };
 
 // ─── Browse panel ─────────────────────────────────────────────────────────────
@@ -683,7 +683,7 @@ const BrowsePanel = ({ config: apiConfig, browseConfig, standard, onRequestStand
               >
                 {uploading ? 'Uploading...' : uploadDryRun ? 'Validate Workbook' : 'Update Database'}
               </button>
-              {uploadFile && <span className="text-xs text-slate-500 truncate max-w-[280px]">{uploadFile.name}</span>}
+              {uploadFile && <span className="text-xs text-slate-500 truncate max-w-4xl">{uploadFile.name}</span>}
             </div>
             {uploadResult && (
               <div className={`mt-3 rounded-lg border p-3 text-sm ${uploadResult.ok ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'}`}>
@@ -1148,3 +1148,4 @@ const ValveStandardsPage = () => {
 };
 
 export default ValveStandardsPage;
+

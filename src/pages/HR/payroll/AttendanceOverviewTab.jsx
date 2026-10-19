@@ -258,3 +258,4 @@ export default function AttendanceOverviewTab({ date, today, onDateChange, onOpe
     <p className="att-overview-scope">Filters apply to attendance records, department figures and trend. Leave and corrections retain their stated scope. Excel includes all permitted records for the selected date.</p>
   </section>
 }
+

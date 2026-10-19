@@ -813,7 +813,7 @@ const AnalysisLoader = ({ elapsedSec, fileName }) => {
           <CircleDot className="w-4 h-4 text-indigo-500" style={{ animation: 'pulse2 1.4s ease-in-out infinite' }} />
           <span className="text-sm font-bold text-slate-800">Analysing P&amp;ID…</span>
           {fileName && (
-            <span className="text-xs text-slate-400 truncate max-w-[180px]">{fileName}</span>
+            <span className="text-xs text-slate-400 truncate max-w-4xl">{fileName}</span>
           )}
         </div>
         {/* Elapsed timer */}
@@ -6901,7 +6901,7 @@ const PIDVerification = () => {
                     </div>
                     <div className="min-w-0">
                       <p className="text-[10px] text-slate-400 uppercase tracking-widest font-semibold">Active File</p>
-                      <p className="text-sm font-bold text-slate-800 truncate max-w-[220px]" title={results.file_name}>{results.file_name}</p>
+                      <p className="text-sm font-bold text-slate-800 truncate max-w-4xl" title={results.file_name}>{results.file_name}</p>
                       {results.updated_at && (
                         <p className="text-[10px] text-slate-400 font-medium mt-0.5">
                           Last analyzed {new Date(results.updated_at).toLocaleString()}
@@ -8227,7 +8227,7 @@ const PIDVerification = () => {
                                           style={{ background: sevBg }}>{n.finding.severity}</span>
                                       </td>
                                       <td className="px-3 py-1.5 text-slate-600 capitalize whitespace-nowrap">{(n.finding.category || '—').replace(/_/g, ' ')}</td>
-                                      <td className="px-3 py-1.5 text-slate-700 max-w-[280px] truncate">{n.finding.issue_observed || n.finding.issue || n.finding.rule_id || '—'}</td>
+                                      <td className="px-3 py-1.5 text-slate-700 max-w-4xl truncate">{n.finding.issue_observed || n.finding.issue || n.finding.rule_id || '—'}</td>
                                       <td className="px-3 py-1.5 font-mono text-slate-500 whitespace-nowrap">{n.finding.rule_id || '—'}</td>
                                       <td className="px-3 py-1.5 text-slate-500">{n.left?.toFixed(1)}</td>
                                       <td className="px-3 py-1.5 text-slate-500">{n.top?.toFixed(1)}</td>
@@ -8554,7 +8554,7 @@ const PIDVerification = () => {
                                     <td className="px-4 py-3 font-mono text-xs text-slate-400">{f.rule_id}</td>
                                     <td className="px-4 py-3 text-slate-800 text-xs max-w-xs">{f.issue_observed}</td>
                                     <td className="px-4 py-3 text-slate-600 text-xs max-w-xs">{f.action_required}</td>
-                                    <td className="px-4 py-3 font-mono text-xs text-slate-400 max-w-[140px]">
+                                    <td className="px-4 py-3 font-mono text-xs text-slate-400 max-w-4xl">
                                       <span className="block truncate" title={f.evidence}>{f.evidence}</span>
                                       {isDupRule && dupTagKey && (
                                         <button
@@ -12845,7 +12845,7 @@ const PIDVerification = () => {
                                                       {m.tag}
                                                     </span>
                                                   </td>
-                                                  <td className="px-3 py-2 text-slate-600 whitespace-nowrap max-w-[120px] truncate" title={m.typeLabel}>{m.typeLabel}</td>
+                                                  <td className="px-3 py-2 text-slate-600 whitespace-nowrap max-w-4xl truncate" title={m.typeLabel}>{m.typeLabel}</td>
                                                   <td className="px-3 py-2 whitespace-nowrap">
                                                     <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full"
                                                       style={{ background: cat.light, color: cat.color }}>
@@ -15152,8 +15152,8 @@ const PIDVerification = () => {
                                                 ? <span className="text-[9px] font-bold text-emerald-600 flex items-center gap-1"><CheckCircle className="w-3 h-3" /> {node.tier}</span>
                                                 : <span className="text-[9px] text-slate-400">–</span>}
                                             </td>
-                                            <td className="px-3 py-1.5 text-slate-700 max-w-[180px] truncate">{f.issue_observed}</td>
-                                            <td className="px-3 py-1.5 font-mono text-slate-400 text-[9px] max-w-[140px] truncate">{f.evidence || '—'}</td>
+                                            <td className="px-3 py-1.5 text-slate-700 max-w-4xl truncate">{f.issue_observed}</td>
+                                            <td className="px-3 py-1.5 font-mono text-slate-400 text-[9px] max-w-4xl truncate">{f.evidence || '—'}</td>
                                           </tr>
                                         );
                                       })}
@@ -16409,7 +16409,7 @@ const PIDVerification = () => {
                                               border:     `1px solid ${isSel ? cc : `${cc}35`}`,
                                               boxShadow:  isSel ? `0 0 8px ${cc}50` : 'none',
                                             }}>
-                                            <span className="font-mono truncate max-w-[90px]">{m.tag}</span>
+                                            <span className="font-mono truncate max-w-4xl">{m.tag}</span>
                                             {m.linked.length > 0 && (
                                               <span className="text-[8px] font-black min-w-[14px] h-4 rounded-full flex items-center justify-center px-1"
                                                 style={{ background: isSel ? 'rgba(255,255,255,0.3)' : cc, color:'white' }}>
@@ -17441,7 +17441,7 @@ const PIDVerification = () => {
                             {drawingSummary.map((row, i) => (
                               <tr key={row.id} className={`border-t border-slate-100 ${i % 2 === 0 ? '' : 'bg-slate-50/40'}`}>
                                 <td className="px-4 py-2 text-slate-400 font-mono text-[9px]">{i + 1}</td>
-                                <td className="px-4 py-2 font-mono text-[10px] text-slate-700 max-w-[180px] truncate">{row.id}</td>
+                                <td className="px-4 py-2 font-mono text-[10px] text-slate-700 max-w-4xl truncate">{row.id}</td>
                                 <td className="px-4 py-2 text-right font-bold text-slate-800">{row.count}</td>
                                 <td className="px-4 py-2 text-center">
                                   {row.topSev ? (
@@ -18231,3 +18231,4 @@ const PIDVerification = () => {
 };
 
 export default PIDVerification;
+

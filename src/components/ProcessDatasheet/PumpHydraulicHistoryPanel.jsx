@@ -282,7 +282,7 @@ const PumpHydraulicHistoryPanel = ({ open, onClose, onAfterLoad }) => {
                   </span>
                 </div>
                 {p.meta?.client_name && (
-                  <div className="text-[11px] text-slate-500 mt-1 truncate pl-6">
+                  <div className="text-xs text-slate-500 mt-1 truncate pl-6">
                     {p.meta.client_name}
                   </div>
                 )}
@@ -321,7 +321,7 @@ const PumpHydraulicHistoryPanel = ({ open, onClose, onAfterLoad }) => {
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium border rounded-full ${badge.color}`}>
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium border rounded-full ${badge.color}`}>
                               <Badge className="w-3 h-3" /> {badge.label}
                             </span>
                             <span className="text-xs text-slate-500">{formatTime(s.savedAt)}</span>
@@ -329,7 +329,7 @@ const PumpHydraulicHistoryPanel = ({ open, onClose, onAfterLoad }) => {
                           <div className="mt-1.5 text-sm font-semibold text-slate-900 truncate">
                             {s.label || s.meta?.pump_tag_no || s.projectKey}
                           </div>
-                          <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] text-slate-600">
+                          <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs text-slate-600">
                             {HISTORY_META_FIELDS.map(({ key, label }) => {
                               const v = s.meta?.[key];
                               if (!v) return null;
@@ -342,7 +342,7 @@ const PumpHydraulicHistoryPanel = ({ open, onClose, onAfterLoad }) => {
                             })}
                           </div>
                           {s.context?.total ? (
-                            <div className="mt-1 text-[11px] text-amber-700">
+                            <div className="mt-1 text-xs text-amber-700">
                               {s.context.total} pump(s){s.context.drawing_ref ? ` from ${s.context.drawing_ref}` : ''}
                             </div>
                           ) : null}
@@ -416,3 +416,4 @@ const PumpHydraulicHistoryPanel = ({ open, onClose, onAfterLoad }) => {
 };
 
 export default PumpHydraulicHistoryPanel;
+

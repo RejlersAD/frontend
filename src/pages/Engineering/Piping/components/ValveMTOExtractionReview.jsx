@@ -114,3 +114,4 @@ ValveMTOExtractionReview.propTypes = {
   onOpenLegends: PropTypes.func.isRequired,
   onOpenValidation: PropTypes.func.isRequired,
 };
+

@@ -129,7 +129,7 @@ const PurchaseRequisitionDocumentPreview = ({ requisition, live = false, documen
             <img
               src={PROCUREMENT_DOCUMENT_BRANDING.logo.path}
               alt={PROCUREMENT_DOCUMENT_BRANDING.logo.alt}
-              className="h-5 w-auto max-w-[120px] object-contain"
+              className="h-5 w-auto max-w-4xl object-contain"
             />
           </div>
         </div>
@@ -258,3 +258,4 @@ PurchaseRequisitionDocumentPreview.propTypes = {
 };
 
 export default PurchaseRequisitionDocumentPreview;
+

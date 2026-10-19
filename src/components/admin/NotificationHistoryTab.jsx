@@ -129,3 +129,4 @@ export default function NotificationHistoryTab({ hours = 24, refreshToken }) {
     </dialog>
   </section>;
 }
+

@@ -107,3 +107,4 @@ export default function SharedRecordsWorkspace({ onBack }) {
   </section>
 }
 SharedRecordsWorkspace.propTypes = { onBack: PropTypes.func.isRequired }
+

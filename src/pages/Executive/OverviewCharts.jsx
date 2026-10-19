@@ -159,3 +159,4 @@ export function PortfolioDonut({ buckets = [], total = null }) {
   </svg></div>;
 }
 PortfolioDonut.propTypes = { buckets: PropTypes.arrayOf(PropTypes.shape({ id: PropTypes.string, label: PropTypes.string, count: valueType, color: PropTypes.string })), total: valueType };
+

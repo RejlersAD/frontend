@@ -75,3 +75,4 @@ export function PaymentStatusSummary({ summary, loading = false }) {
   })}</tbody><tfoot><tr><th scope="row">Total</th>{amountCell(summary.totals?.invoice_amount_aed, summary.coverage?.invoice_amount_aed)}<td data-field="invoice_count">{countLabel(summary.invoice_count)}</td></tr></tfoot></table><p>Recorded AED amounts; missing or invalid cells excluded.{hasAdjustment && <> Rounding: {outgoingReviewMoney(adjustment, 'AED')}.</>}</p></div>;
 }
 PaymentStatusSummary.propTypes = { summary: PropTypes.object, loading: PropTypes.bool };
+

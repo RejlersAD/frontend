@@ -910,3 +910,4 @@ export default withDashboardControls(QualityManagementWithRefresh, {
   autoRefreshInterval: 30000, // 30 seconds
   storageKey: 'qhseQualityManagementPageControls',
 });
+

@@ -121,3 +121,4 @@ const EnterpriseReadinessPanel = ({ projectId, projectName, canManage, onNotice 
 }
 
 export default EnterpriseReadinessPanel
+

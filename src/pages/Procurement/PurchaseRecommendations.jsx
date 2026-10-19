@@ -174,3 +174,4 @@ export default function PurchaseRecommendations({ requisitions = [], loading = f
     </dialog>
   </section>
 }
+

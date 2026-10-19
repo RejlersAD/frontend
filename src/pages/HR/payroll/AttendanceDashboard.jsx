@@ -1596,3 +1596,4 @@ export default function AttendanceDashboard() {
     </div>
   )
 }
+

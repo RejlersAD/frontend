@@ -138,7 +138,7 @@ const FlatRowRenderer = ({ row, state, setVal }) => {
           {row.computed && <Sparkles className="w-3 h-3 text-amber-500" title="Computed" />}
         </label>
         <FieldInput field={row} value={state[row.key]} onChange={(v) => setVal(row.key, v)} />
-        {row.hint && <span className="text-[10px] text-slate-400">{row.hint}</span>}
+        {row.hint && <span className="text-xs text-slate-400">{row.hint}</span>}
       </div>
     );
   }
@@ -302,3 +302,4 @@ export default function PumpHydraulicSheetRenderer({ tab }) {
     </div>
   );
 }
+

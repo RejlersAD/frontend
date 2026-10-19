@@ -51,3 +51,4 @@ export function RiskUnavailable({ section, title = 'Not available' }) {
 export function RiskSourceNote({ section }) {
   return section?.description ? <p className="rc-source-note">{section.description}</p> : null;
 }
+

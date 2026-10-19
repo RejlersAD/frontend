@@ -147,3 +147,4 @@ const MiniSparkline = ({ data, color }) => {
 }
 
 export default KPICard
+

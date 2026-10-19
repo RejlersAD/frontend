@@ -230,3 +230,4 @@ function SettingsDialog({ children, onClose }) {
   }, [onClose])
   return <dialog ref={dialog} className="apc-settings-dialog" aria-labelledby="apc-settings-title"><button type="button" className="apc-icon-button apc-dialog-close" onClick={onClose} aria-label="Close approval settings"><XMarkIcon aria-hidden="true" /></button>{children}</dialog>
 }
+

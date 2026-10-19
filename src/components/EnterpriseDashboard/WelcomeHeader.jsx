@@ -114,7 +114,7 @@ const WelcomeHeader = ({ user, unreadNotifications = 0, onSearch, showSearch = t
                 absolute -top-1 -right-1 
                 min-w-[18px] h-[18px] 
                 bg-red-500 text-white 
-                text-[10px] font-bold 
+                text-xs font-bold 
                 rounded-full 
                 flex items-center justify-center
                 px-1
@@ -161,3 +161,4 @@ const WelcomeHeader = ({ user, unreadNotifications = 0, onSearch, showSearch = t
 }
 
 export default WelcomeHeader
+

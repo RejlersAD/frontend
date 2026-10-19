@@ -316,3 +316,4 @@ const FeaturesBrowser = ({ userModules = [], isAdmin = false }) => {
 }
 
 export default FeaturesBrowser
+

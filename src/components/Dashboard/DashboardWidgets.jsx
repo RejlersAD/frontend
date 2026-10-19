@@ -229,3 +229,4 @@ export default {
   AIInsightCard,
   SkeletonCard
 }
+

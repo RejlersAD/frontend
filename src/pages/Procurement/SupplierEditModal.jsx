@@ -194,3 +194,4 @@ SupplierEditModal.propTypes = {
 };
 
 export default SupplierEditModal;
+

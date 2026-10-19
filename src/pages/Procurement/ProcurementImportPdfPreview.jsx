@@ -72,3 +72,4 @@ ProcurementImportPdfPreview.propTypes = {
   selectedKind: PropTypes.string,
   onSelect: PropTypes.func.isRequired,
 };
+

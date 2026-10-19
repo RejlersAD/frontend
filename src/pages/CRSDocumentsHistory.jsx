@@ -318,7 +318,7 @@ const CRSDocumentsHistory = () => {
                               <div className="flex items-center gap-2">
                                 <span>📄</span>
                                 <div>
-                                  <div className="font-medium text-sm truncate max-w-[200px]">
+                                  <div className="font-medium text-sm truncate max-w-4xl">
                                     {file.filename}
                                   </div>
                                   <div className="text-xs text-gray-500">
@@ -355,7 +355,7 @@ const CRSDocumentsHistory = () => {
                               <div className="flex items-center gap-2">
                                 <span>{getFormatIcon(file.format)}</span>
                                 <div>
-                                  <div className="font-medium text-sm truncate max-w-[200px]">
+                                  <div className="font-medium text-sm truncate max-w-4xl">
                                     {file.filename}
                                   </div>
                                   <div className="text-xs text-gray-500">
@@ -445,7 +445,7 @@ const CRSDocumentsHistory = () => {
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="flex items-center">
                                   <span className="mr-2">📄</span>
-                                  <span className="text-sm font-medium text-gray-900 truncate max-w-[300px]">
+                                  <span className="text-sm font-medium text-gray-900 truncate max-w-4xl">
                                     {file.filename}
                                   </span>
                                 </div>
@@ -515,7 +515,7 @@ const CRSDocumentsHistory = () => {
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="flex items-center">
                                   <span className="mr-2">{getFormatIcon(file.format)}</span>
-                                  <span className="text-sm font-medium text-gray-900 truncate max-w-[300px]">
+                                  <span className="text-sm font-medium text-gray-900 truncate max-w-4xl">
                                     {file.filename}
                                   </span>
                                 </div>
@@ -632,3 +632,4 @@ const CRSDocumentsHistory = () => {
 };
 
 export default CRSDocumentsHistory;
+

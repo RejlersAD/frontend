@@ -87,3 +87,4 @@ export default function PlanningRiskRegister({ projectId, versionId, readOnly = 
   </section>
 }
 PlanningRiskRegister.propTypes = { projectId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired, versionId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]), readOnly: PropTypes.bool, onChanged: PropTypes.func }
+

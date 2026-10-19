@@ -174,7 +174,7 @@ const S3DDataExtractionHub = ({ jobId, onUploadAnother, onHistory }) => {
 
   return (
     <div className="min-h-[calc(100dvh-68px)] bg-[#f4f6f9] text-slate-900" style={{ fontFamily: "var(--font-sans, 'Segoe UI', system-ui, sans-serif)" }}>
-      <div className="mx-auto max-w-[1600px] px-6 py-6">
+      <div className="mx-auto max-w-4xl px-6 py-6">
                {/* Title + actions */}
         <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -350,3 +350,4 @@ const S3DDataExtractionHub = ({ jobId, onUploadAnother, onHistory }) => {
 };
 
 export default S3DDataExtractionHub;
+

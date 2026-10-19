@@ -13,3 +13,4 @@ export default function PlanningDelayPaths({ paths, title }) {
   </details>
 }
 PlanningDelayPaths.propTypes = { paths: PropTypes.object.isRequired, title: PropTypes.string.isRequired }
+

@@ -6,7 +6,7 @@ const tone = severity => ({
   pass: 'border-emerald-200 bg-emerald-50 text-emerald-800',
 }[severity] || 'border-slate-200 bg-slate-50 text-slate-700')
 
-const Metric = ({ label, value, detail }) => <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{label}</p><p className="mt-1 text-xl font-black text-slate-900">{value}</p>{detail && <p className="mt-1 text-xs text-slate-500">{detail}</p>}</div>
+const Metric = ({ label, value, detail }) => <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-xs font-bold uppercase tracking-wide text-slate-400">{label}</p><p className="mt-1 text-xl font-black text-slate-900">{value}</p>{detail && <p className="mt-1 text-xs text-slate-500">{detail}</p>}</div>
 
 const Findings = ({ rows = [] }) => <div className="space-y-2">{rows.map((row, index) => <div key={`${row.code}-${index}`} className={`rounded-lg border px-3 py-2 text-sm ${tone(row.severity)}`}><b className="capitalize">{row.code.replaceAll('_', ' ')}</b><span className="ml-2">{row.message}</span></div>)}</div>
 
@@ -56,3 +56,4 @@ export default function TrustworthySchedulingPanel({ assurance, versionStatus, b
 Metric.propTypes = { label: PropTypes.string.isRequired, value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired, detail: PropTypes.string }
 Findings.propTypes = { rows: PropTypes.arrayOf(PropTypes.object) }
 TrustworthySchedulingPanel.propTypes = { assurance: PropTypes.object, versionStatus: PropTypes.string, busy: PropTypes.bool, canControl: PropTypes.bool, onRun: PropTypes.func.isRequired, onApprove: PropTypes.func.isRequired }
+

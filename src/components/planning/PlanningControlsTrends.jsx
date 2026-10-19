@@ -51,3 +51,4 @@ export default function PlanningControlsTrends({ data }) {
   </section>
 }
 PlanningControlsTrends.propTypes = { data: PropTypes.object.isRequired }
+

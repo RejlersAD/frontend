@@ -36,3 +36,4 @@ export default function PortfolioProjectConnections({ data, page, onPage, printi
     {total > limit && !printing && <div className="prv-pagination"><span>Source page {page + 1} of {pages} · Review filter applies to loaded rows</span><nav aria-label="Project connection pages"><button type="button" aria-label="Previous project connection page" disabled={page === 0} onClick={() => onPage(page - 1)}><ChevronLeftIcon /></button><button type="button" aria-label="Next project connection page" disabled={page + 1 >= pages} onClick={() => onPage(page + 1)}><ChevronRightIcon /></button></nav></div>}
   </section>;
 }
+

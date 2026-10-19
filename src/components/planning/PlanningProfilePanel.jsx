@@ -148,3 +148,4 @@ export default function PlanningProfilePanel({ projectId, readOnly = false, onCl
   </section></PlanningContextDrawer>
 }
 PlanningProfilePanel.propTypes = { projectId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]).isRequired, readOnly: PropTypes.bool, onClose: PropTypes.func.isRequired, onChanged: PropTypes.func }
+

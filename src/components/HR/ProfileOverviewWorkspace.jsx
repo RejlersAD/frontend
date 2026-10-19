@@ -106,3 +106,4 @@ export default function ProfileOverviewWorkspace({ profile, organizationEmployee
   </div>;
 }
 ProfileOverviewWorkspace.propTypes = { profile: PropTypes.object, organizationEmployees: PropTypes.array, todayData: PropTypes.object, monthlyTs: PropTypes.object, leaveRecord: PropTypes.object, leaveRequests: PropTypes.array, slips: PropTypes.array, documents: PropTypes.array, leaveAvailable: PropTypes.bool, onNavigate: PropTypes.func.isRequired, onDownloadPayslip: PropTypes.func.isRequired, downloading: PropTypes.bool, downloadError: PropTypes.string };
+

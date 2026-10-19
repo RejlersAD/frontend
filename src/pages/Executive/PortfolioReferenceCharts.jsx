@@ -183,3 +183,4 @@ export function PortfolioKpiSparkline({ values = [], label = 'Recorded trend', c
     {segments(observations, 'value').map((segment, index) => <g key={index}>{segment.length > 1 ? <polyline points={segment.map(point => `${x(point.index)},${y(point.value)}`).join(' ')} fill="none" stroke={color} strokeWidth="1.5" vectorEffect="non-scaling-stroke" /> : <circle cx={x(segment[0].index)} cy={y(segment[0].value)} r="1.8" fill={color} />}</g>)}
   </svg>;
 }
+

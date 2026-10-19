@@ -158,7 +158,7 @@ const PendingActivationAlert = ({ users = [], onActivate, actionLoading = {} }) 
                 <div className="text-sm font-semibold text-slate-900 truncate">{getName(u)}</div>
                 <div className="text-xs text-slate-500 truncate">{getEmail(u) || '—'}</div>
               </div>
-              <span className={`hidden sm:inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md border ${palette.pill}`}>
+              <span className={`hidden sm:inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-md border ${palette.pill}`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${palette.dot}`} />
                 {palette.label}
               </span>
@@ -192,7 +192,7 @@ const PendingActivationAlert = ({ users = [], onActivate, actionLoading = {} }) 
 
       {/* Footer */}
       <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-amber-50/50 border-t border-amber-100">
-        <div className="text-[11px] text-amber-800">
+        <div className="text-xs text-amber-800">
           {hiddenCount > 0 && (
             <button
               type="button"
@@ -227,3 +227,4 @@ const PendingActivationAlert = ({ users = [], onActivate, actionLoading = {} }) 
 }
 
 export default PendingActivationAlert
+

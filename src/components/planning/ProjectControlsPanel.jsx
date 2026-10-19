@@ -193,7 +193,7 @@ const ProjectControlsPanel = ({ versionId, canEdit, canBudget, resources = [], a
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-        {kpis.map(item => { const Icon = item.icon; return <div key={item.label} className="bg-white border rounded-xl p-3 shadow-sm"><div className="flex justify-between text-[11px] uppercase tracking-wide text-slate-400 font-semibold"><span>{item.label}</span><Icon className={`w-4 h-4 ${item.tone}`} /></div><div className={`text-xl font-bold mt-1 ${item.tone}`}>{item.value}</div><div className="text-xs text-slate-400 mt-1">{item.sub}</div></div> })}
+        {kpis.map(item => { const Icon = item.icon; return <div key={item.label} className="bg-white border rounded-xl p-3 shadow-sm"><div className="flex justify-between text-xs uppercase tracking-wide text-slate-400 font-semibold"><span>{item.label}</span><Icon className={`w-4 h-4 ${item.tone}`} /></div><div className={`text-xl font-bold mt-1 ${item.tone}`}>{item.value}</div><div className="text-xs text-slate-400 mt-1">{item.sub}</div></div> })}
       </div>
 
       {number(controls.bac) === 0 && <div className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700"><AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />Cost EVM is waiting for budgeted-cost resource assignments. Schedule progress and hour metrics remain available.</div>}
@@ -232,3 +232,4 @@ const ProjectControlsPanel = ({ versionId, canEdit, canBudget, resources = [], a
 }
 
 export default ProjectControlsPanel
+

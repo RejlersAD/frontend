@@ -18,3 +18,4 @@ export default function ScheduleNotice({ message, onClose }) {
 }
 
 ScheduleNotice.propTypes = { message: PropTypes.string.isRequired, onClose: PropTypes.func.isRequired }
+

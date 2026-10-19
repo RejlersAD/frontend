@@ -121,3 +121,4 @@ export default function UserPermissionEditor({ user, modules, groups, onClose })
   </dialog>;
 }
 UserPermissionEditor.propTypes = { user: PropTypes.object.isRequired, modules: PropTypes.array.isRequired, groups: PropTypes.array.isRequired, onClose: PropTypes.func.isRequired };
+

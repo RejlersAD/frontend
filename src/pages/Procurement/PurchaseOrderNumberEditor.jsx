@@ -142,3 +142,4 @@ PurchaseOrderNumberCorrection.propTypes = {
   onSaved: PropTypes.func.isRequired,
   onClose: PropTypes.func.isRequired,
 };
+

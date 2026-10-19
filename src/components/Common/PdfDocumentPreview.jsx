@@ -168,3 +168,4 @@ export default function PdfDocumentPreview({ url, title, actions, className = ''
 
 PdfPages.propTypes = { url: PropTypes.string.isRequired, title: PropTypes.string.isRequired, actions: PropTypes.node, refreshing: PropTypes.bool, onReady: PropTypes.func, onError: PropTypes.func };
 PdfDocumentPreview.propTypes = { ...PdfPages.propTypes, className: PropTypes.string, documentKey: PropTypes.oneOfType([PropTypes.string, PropTypes.number]), continuous: PropTypes.bool };
+

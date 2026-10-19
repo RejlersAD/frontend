@@ -1237,3 +1237,4 @@ const ProfileNew = () => {
 };
 
 export default ProfileNew;
+

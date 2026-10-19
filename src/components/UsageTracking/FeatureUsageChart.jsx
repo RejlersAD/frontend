@@ -90,3 +90,4 @@ const FeatureUsageChart = ({ features, timeRange }) => {
 };
 
 export default FeatureUsageChart;
+

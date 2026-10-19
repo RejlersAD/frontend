@@ -571,7 +571,7 @@ const NotificationBell = () => {
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="sales-popup-title">
           <section className="w-full max-w-2xl rounded-xl border border-blue-200 bg-white p-5 shadow-2xl">
             <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Sales Notification</p>
-            <p className="mt-2 inline-flex rounded-full bg-blue-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-blue-800">{salesPopupBadgeLabel(salesPopupNotification)}</p>
+            <p className="mt-2 inline-flex rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-blue-800">{salesPopupBadgeLabel(salesPopupNotification)}</p>
             <h2 id="sales-popup-title" className="mt-1 text-lg font-bold text-slate-900">{salesPopupNotification.title || 'Action required'}</h2>
             <pre className="mt-3 max-h-[45vh] overflow-auto whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800">{salesPopupNotification.message}</pre>
             {salesPopupError && <p className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{salesPopupError}</p>}
@@ -591,3 +591,4 @@ const NotificationBell = () => {
 }
 
 export default NotificationBell
+

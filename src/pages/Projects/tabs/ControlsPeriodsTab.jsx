@@ -331,3 +331,4 @@ function Summary({ label, value, detail, tone = 'blue' }) {
   }
   return <div className={`rounded-xl border p-4 ${tones[tone] || tones.blue}`}><p className="text-xs font-semibold uppercase tracking-wide opacity-75">{label}</p><p className="mt-2 truncate text-lg font-semibold" title={String(value)}>{value}</p><p className="mt-1 text-xs opacity-75">{detail}</p></div>
 }
+

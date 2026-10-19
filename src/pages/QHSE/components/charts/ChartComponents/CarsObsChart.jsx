@@ -14,7 +14,7 @@ const CarsObsTooltip = ({ active, payload, label }) => {
     };
 
     return (
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-3 min-w-[180px] max-w-[250px]">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-3 min-w-[180px] max-w-4xl">
         <div className="font-medium mb-2 text-red-700 dark:text-red-300 text-xs border-b border-gray-200 dark:border-gray-600 pb-1.5">
           {truncateProjectName(label)}
         </div>

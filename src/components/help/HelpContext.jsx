@@ -45,3 +45,4 @@ export function useHelpContext() {
   if (!value) throw new Error('useHelpContext must be used within HelpContextProvider')
   return value
 }
+

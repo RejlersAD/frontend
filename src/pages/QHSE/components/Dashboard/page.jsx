@@ -155,3 +155,4 @@ const ChartsGrid = ({ monthlyData, yearlyData, timelineData }) => (
 )
 
 export default DashboardPage
+

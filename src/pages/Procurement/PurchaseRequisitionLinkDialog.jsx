@@ -85,3 +85,4 @@ PurchaseRequisitionLinkDialog.propTypes = {
   onClose: PropTypes.func.isRequired,
   onLinked: PropTypes.func.isRequired,
 };
+

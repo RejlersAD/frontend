@@ -364,7 +364,7 @@ const LiveTabFrame = ({
                   key={`${k.label}-${i}`}
                   className="rounded-lg bg-white/10 backdrop-blur-sm px-3 py-2 ring-1 ring-white/20"
                 >
-                  <div className="text-[10px] uppercase tracking-wide text-white/70">
+                  <div className="text-xs uppercase tracking-wide text-white/70">
                     {k.label}
                   </div>
                   <div className="mt-0.5 flex items-center gap-1.5">
@@ -399,3 +399,4 @@ const LiveTabFrame = ({
 };
 
 export default LiveTabFrame;
+

@@ -125,8 +125,8 @@ const ProcurementApprovalReminder = () => {
         </span>
         <div className="min-w-0 flex-1 pr-6">
           <div className="flex items-center justify-between gap-2">
-            <p className={`text-[10px] font-black uppercase tracking-[0.16em] ${theme.eyebrow}`}>Approval waiting for you</p>
-            {visibleItems.length > 1 && <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold tabular-nums ${theme.counter}`}>{currentIndex + 1} of {visibleItems.length}</span>}
+            <p className={`text-xs font-black uppercase tracking-[0.16em] ${theme.eyebrow}`}>Approval waiting for you</p>
+            {visibleItems.length > 1 && <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold tabular-nums ${theme.counter}`}>{currentIndex + 1} of {visibleItems.length}</span>}
           </div>
           <h2 className="mt-1 truncate text-sm font-extrabold text-slate-950" title={current.label}>Please approve {current.label}</h2>
           <p className="mt-1 text-xs text-slate-500">
@@ -143,3 +143,4 @@ const ProcurementApprovalReminder = () => {
 }
 
 export default ProcurementApprovalReminder
+

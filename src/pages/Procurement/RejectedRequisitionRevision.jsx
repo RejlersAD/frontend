@@ -83,3 +83,4 @@ RejectedRequisitionRevision.propTypes = {
   onReopened: PropTypes.func.isRequired,
   onReloaded: PropTypes.func.isRequired,
 };
+

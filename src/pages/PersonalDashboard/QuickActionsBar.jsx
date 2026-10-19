@@ -43,3 +43,4 @@ export default function QuickActionsBar({ actions, personaLabel }) {
     </div>
   )
 }
+

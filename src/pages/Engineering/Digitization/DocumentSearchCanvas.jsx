@@ -1270,3 +1270,4 @@ const navBtn = {
 };
 
 export default DocumentSearchCanvas;
+

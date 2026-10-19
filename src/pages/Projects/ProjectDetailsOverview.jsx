@@ -157,3 +157,4 @@ export default function ProjectDetailsOverview({ performance, onSelectView, onEd
 }
 
 ProjectDetailsOverview.propTypes = { performance: PropTypes.object.isRequired, onSelectView: PropTypes.func.isRequired, onEdit: PropTypes.func.isRequired, onOpenDialog: PropTypes.func.isRequired, onOpenDocument: PropTypes.func }
+

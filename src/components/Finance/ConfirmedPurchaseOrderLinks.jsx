@@ -11,3 +11,4 @@ export default function ConfirmedPurchaseOrderLinks({ invoice, fallback = '—' 
   </span>)}</span>;
 }
 ConfirmedPurchaseOrderLinks.propTypes = { invoice: PropTypes.object, fallback: PropTypes.string };
+

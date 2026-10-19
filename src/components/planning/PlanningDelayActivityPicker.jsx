@@ -11,3 +11,4 @@ export default function PlanningDelayActivityPicker({ activities, value, onChang
   </fieldset>
 }
 PlanningDelayActivityPicker.propTypes = { activities: PropTypes.array.isRequired, value: PropTypes.any, onChange: PropTypes.func.isRequired, disabled: PropTypes.bool, title: PropTypes.string, multiple: PropTypes.bool }
+

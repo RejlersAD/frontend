@@ -491,7 +491,7 @@ const SpecCustomizationPage = ({ initialFile = null } = {}) => {
                       <tbody>
                         {projectJobs.map((job) => (
                           <tr key={job.id} className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                            <td className="py-3 pr-4 font-medium text-gray-900 dark:text-white max-w-[220px] truncate" title={job.document_name}>
+                            <td className="py-3 pr-4 font-medium text-gray-900 dark:text-white max-w-4xl truncate" title={job.document_name}>
                               {job.document_name || `Job #${job.id}`}
                             </td>
                             <td className="py-3 pr-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
@@ -737,7 +737,7 @@ const ProjectSwitcher = ({
         title="Switch project"
       >
         <FolderIcon className="w-4 h-4 text-blue-600" />
-        <span className="max-w-[200px] truncate">
+        <span className="max-w-4xl truncate">
           {loading ? 'Loading…' : (activeProject?.name || 'No project selected')}
         </span>
         <ChevronDownIcon className={`w-3.5 h-3.5 text-gray-500 transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -1146,3 +1146,4 @@ const ModalField = ({ label, value, onChange }) => (
 );
 
 export default SpecCustomizationPage;
+

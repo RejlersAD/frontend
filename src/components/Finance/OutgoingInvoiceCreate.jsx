@@ -53,3 +53,4 @@ export default function OutgoingInvoiceCreate({ open, onClose, onCreated }) {
   </dialog>;
 }
 OutgoingInvoiceCreate.propTypes = { open: PropTypes.bool.isRequired, onClose: PropTypes.func.isRequired, onCreated: PropTypes.func.isRequired };
+

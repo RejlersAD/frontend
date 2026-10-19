@@ -288,3 +288,4 @@ const PWAInstallPrompt = () => {
 }
 
 export default PWAInstallPrompt
+

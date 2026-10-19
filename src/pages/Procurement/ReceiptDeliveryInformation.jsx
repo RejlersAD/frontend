@@ -33,3 +33,4 @@ ReceiptDeliveryInformation.propTypes = {
   deliveryStatus: PropTypes.string, onChange: PropTypes.func.isRequired, onStatusChange: PropTypes.func.isRequired,
   onTypeChange: PropTypes.func.isRequired, typeLocked: PropTypes.bool, disabled: PropTypes.bool,
 };
+

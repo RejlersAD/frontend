@@ -91,7 +91,7 @@ function InheritedModulesPopover({ user, modulesIndex = new Map() }) {
 
           {/* Roles that feed this access */}
           {roles.length > 0 ? (
-            <p className="text-[11px] text-gray-500 mb-3">
+            <p className="text-xs text-gray-500 mb-3">
               {MODULES_POPOVER_COPY.SOURCE_LABEL}{' '}
               {roles.map((r, i) => (
                 <span key={r.id || r.code} className="font-semibold text-gray-700">
@@ -132,7 +132,7 @@ function InheritedModulesPopover({ user, modulesIndex = new Map() }) {
           <div className="mt-3 pt-3 border-t border-gray-100">
             <a
               href={ACCESS_NOTICE.ROLES_LINK_PATH}
-              className="text-[11px] text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
+              className="text-xs text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
             >
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -148,3 +148,4 @@ function InheritedModulesPopover({ user, modulesIndex = new Map() }) {
 }
 
 export default InheritedModulesPopover;
+

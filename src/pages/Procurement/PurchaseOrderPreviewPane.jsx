@@ -188,3 +188,4 @@ PurchaseOrderPreviewPane.propTypes = {
   issues: PropTypes.arrayOf(PropTypes.shape({ field: PropTypes.string, message: PropTypes.string.isRequired, step: PropTypes.oneOfType([PropTypes.number, PropTypes.string]) })),
   onIssueClick: PropTypes.func,
 };
+

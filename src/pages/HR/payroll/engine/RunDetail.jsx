@@ -655,3 +655,4 @@ function ResultBadge({ tone, children }) {
   const tones = { red: 'bg-rose-50 text-rose-700', amber: 'bg-amber-50 text-amber-700', green: 'bg-emerald-50 text-emerald-700' }
   return <div className={`rounded-lg px-3 py-2 text-xs font-medium ${tones[tone] || tones.green}`}>{children}</div>
 }
+

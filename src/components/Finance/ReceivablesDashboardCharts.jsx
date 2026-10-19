@@ -279,3 +279,4 @@ export function PaymentHistoryChart({ rows = [], currency = 'AED', partial = fal
   </div>;
 }
 PaymentHistoryChart.propTypes = { rows: PropTypes.arrayOf(PropTypes.shape({ month: PropTypes.string.isRequired, paid: PropTypes.number, unpaid: PropTypes.number })), currency: PropTypes.string, partial: PropTypes.bool };
+

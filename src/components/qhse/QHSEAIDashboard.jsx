@@ -421,3 +421,4 @@ const getRiskColor = (level) => {
 };
 
 export default QHSEAIDashboard;
+

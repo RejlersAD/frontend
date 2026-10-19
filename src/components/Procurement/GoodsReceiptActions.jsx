@@ -20,3 +20,4 @@ export default function GoodsReceiptActions({ receipt, onOpen, onDelete, showOpe
   </div>;
 }
 GoodsReceiptActions.propTypes = { receipt: PropTypes.object.isRequired, onOpen: PropTypes.func.isRequired, onDelete: PropTypes.func.isRequired, showOpen: PropTypes.bool };
+

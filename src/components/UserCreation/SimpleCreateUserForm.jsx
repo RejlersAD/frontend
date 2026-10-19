@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import rbacService from '../../services/rbac.service';
 import { fetchOrganizations, fetchDepartments, fetchJobTitles, fetchRoles } from '../../store/slices/rbacSlice';
@@ -12,8 +12,8 @@ import {
 } from '../../config/rbacAccess.config';
 
 /**
- * Simple Create User Form — basic profile + role assignment.
- * The role list is sourced live from Admin › Roles & Access Management
+ * Simple Create User Form � basic profile + role assignment.
+ * The role list is sourced live from Admin � Roles & Access Management
  * (/admin/roles). Module access is derived automatically from the assigned roles.
  */
 
@@ -41,7 +41,7 @@ const FORM_CONFIG = {
     {
       id: 'roles',
       title: 'Role Assignment',
-      description: 'Pick one or more roles — access to modules follows from roles',
+      description: 'Pick one or more roles � access to modules follows from roles',
       icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z',
       collapsible: true,
       collapsed: false
@@ -81,7 +81,7 @@ const SimpleCreateUserForm = ({ onSuccess, onCancel }) => {
   const [isCheckingEmail, setIsCheckingEmail] = useState(false);
   const [expandedSections, setExpandedSections] = useState({});
 
-  // Dynamic role list — excludes internal `custom_*` per-user roles.
+  // Dynamic role list � excludes internal `custom_*` per-user roles.
   const assignableRoles = useMemo(
     () => (roles || []).filter(r => r?.code && !r.code.startsWith(CUSTOM_ROLE_PREFIX)),
     [roles]
@@ -238,11 +238,11 @@ const SimpleCreateUserForm = ({ onSuccess, onCancel }) => {
         if (backendErrors.email && backendErrors.email.includes('already exists')) {
           setErrors(prev => ({
             ...prev,
-            general: '❌ Cannot create user: This email address is already registered in the system. Please use a different email.'
+            general: '? Cannot create user: This email address is already registered in the system. Please use a different email.'
           }));
         }
       } else if (error.response?.status === 400) {
-        setErrors({ general: '❌ Invalid data provided. Please check all fields and try again.' });
+        setErrors({ general: '? Invalid data provided. Please check all fields and try again.' });
       } else {
         setErrors({ general: FORM_CONFIG.messages.error });
       }
@@ -491,11 +491,11 @@ const SimpleCreateUserForm = ({ onSuccess, onCancel }) => {
           {renderSection('roles', (
             <div className="space-y-4">
               <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
-                <span className="text-xl">🛡️</span>
+                <span className="text-xl">???</span>
                 <div className="flex-1 text-sm text-blue-900">
                   <p className="font-semibold">Access follows from roles.</p>
                   <p className="text-blue-800 mt-0.5">
-                    Roles listed below come from <span className="font-semibold">Admin › Roles & Access Management</span>.
+                    Roles listed below come from <span className="font-semibold">Admin � Roles & Access Management</span>.
                     Assigned roles grant module access automatically. Users left unassigned get the system Default role.
                   </p>
                 </div>
@@ -525,7 +525,7 @@ const SimpleCreateUserForm = ({ onSuccess, onCancel }) => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto border-2 border-gray-200 rounded-xl p-3 bg-white">
                 {assignableRoles.length === 0 ? (
                   <div className="col-span-2 text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
-                    <div className="text-3xl mb-2">🔒</div>
+                    <div className="text-3xl mb-2">??</div>
                     <div className="text-sm font-medium">No assignable roles found.</div>
                     <div className="text-xs mt-1">Define roles at /admin/roles first.</div>
                   </div>
@@ -556,13 +556,13 @@ const SimpleCreateUserForm = ({ onSuccess, onCancel }) => {
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold ${color.bg} ${color.text}`}>
                               <span className={`w-1.5 h-1.5 rounded-full ${color.dot}`} />
-                              L{role.level ?? '-'} · {levelLabel}
+                              L{role.level ?? '-'} � {levelLabel}
                             </span>
                             <span className="text-sm font-semibold text-gray-900 truncate">{role.name}</span>
-                            {isSuper && <span className="text-xs">👑</span>}
+                            {isSuper && <span className="text-xs">??</span>}
                             {isSensitive && (
                               <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
-                                ⚠️ Sensitive
+                                ?? Sensitive
                               </span>
                             )}
                           </div>
@@ -664,3 +664,4 @@ const SimpleCreateUserForm = ({ onSuccess, onCancel }) => {
 };
 
 export default SimpleCreateUserForm;
+

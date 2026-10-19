@@ -106,3 +106,4 @@ export default function GanttLogicDialog({ task, tasks, sourceOnly, busy, saveEr
 }
 GanttLogicDialog.propTypes = { task: PropTypes.object.isRequired, tasks: PropTypes.array.isRequired, sourceOnly: PropTypes.bool,
   busy: PropTypes.bool, saveError: PropTypes.string, onSave: PropTypes.func.isRequired, onClose: PropTypes.func.isRequired }
+

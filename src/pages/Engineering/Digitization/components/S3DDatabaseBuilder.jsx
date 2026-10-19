@@ -1,4 +1,4 @@
-ï»¿import React, { useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 import { FileText, Trash2, Check, FileCheck, Plus, History, HelpCircle, ChevronDown, ChevronRight, Database, Info, AlertCircle, AlertTriangle, RotateCw, Upload, X, FileInput, ArrowUpCircle } from 'lucide-react';
 import { CloudArrowUpIcon } from '@heroicons/react/24/outline';
@@ -55,7 +55,7 @@ export default function S3DDatabaseBuilder({ onExtract, onHistory, onSelectionCh
           </div>{failed && expanded && !dismissed && <div className="s3db-upload-error" role="alert"><AlertCircle size={24} /><div><strong>{confirmed ? 'Extraction could not be completed' : 'Upload could not be confirmed'}</strong><p>{failureText}</p><details ref={details}><summary>Server response</summary><p>{requestError}</p></details></div><button type="button" className="s3db-link" onClick={() => { details.current.open = !details.current.open; }}>View details</button><button type="button" className="s3db-icon-button" aria-label="Dismiss upload message" onClick={() => setDismissed(true)}><X size={18} /></button></div>}</> : <p className="s3db-empty">No files added. Browse or drop a document to get started.</p>}
         </div>
         {!file && requestError && <p className="s3db-error" role="alert">{requestError}</p>}{progressContent}
-        <div className="s3db-extract"><p>{confirmed ? '1 file confirmed' : '0 files confirmed'}{failed && <> Â· <span>1 requires retry</span></>}</p><div><small>{failed ? 'Confirm an upload to enable extraction.' : 'Upload and extraction start together.'}</small><button type="button" className="s3db-primary" disabled={!file || busy || (failed && !confirmed)} onClick={extract}><Database size={18} />{busy ? 'Extractingâ€¦' : 'Extract database'}</button></div></div>
+        <div className="s3db-extract"><p>{confirmed ? '1 file confirmed' : '0 files confirmed'}{failed && <> · <span>1 requires retry</span></>}</p><div><small>{failed ? 'Confirm an upload to enable extraction.' : 'Upload and extraction start together.'}</small><button type="button" className="s3db-primary" disabled={!file || busy || (failed && !confirmed)} onClick={extract}><Database size={18} />{busy ? 'Extracting…' : 'Extract database'}</button></div></div>
       </section>
       <section className="s3db-card s3db-preview"><div className="s3db-card-heading"><h2>Workbook preview <span className="s3db-caption">Available after extraction</span></h2></div><div className="s3db-preview-table"><div><span>Sheet</span><span>Rows</span><span>Source status</span></div><p><FileText size={19} />Your extracted SPEC and CAT sheets will appear here.</p></div></section>
       <section className="s3db-card s3db-activity"><h2>Activity</h2><ol><li><i /><div><strong>{file ? 'File selected' : 'Ready for documents'}</strong><p>{file ? file.name : 'Add a source document to begin.'}</p></div></li>{(busy || failed || confirmed) && <li className={failed ? 'is-error' : ''}><i /><div><strong>{failed ? (confirmed ? 'Extraction error' : 'Upload error') : uploading ? 'Uploading document' : 'Extracting data'}</strong><p>{failed ? failureText : 'Processing your engineering document.'}</p></div></li>}</ol></section>
@@ -67,4 +67,5 @@ export default function S3DDatabaseBuilder({ onExtract, onHistory, onSelectionCh
   </section><div className="s3db-bottom-status" role="status"><i />{failed ? 'Upload pending confirmation' : busy ? 'Extraction in progress' : file ? 'Document ready for upload' : 'Ready to upload documents'}</div></div>;
 }
 S3DDatabaseBuilder.propTypes = { onExtract: PropTypes.func.isRequired, onHistory: PropTypes.func.isRequired, onSelectionChange: PropTypes.func.isRequired, busy: PropTypes.bool, progressContent: PropTypes.node, requestError: PropTypes.string, uploading: PropTypes.bool, jobStatus: PropTypes.string };
+
 

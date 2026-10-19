@@ -91,7 +91,7 @@ const ReceiptPrintContent = ({ receipt, printDate }) => {
       <header className="flex items-start justify-between gap-6 border-b-2 border-gray-900 pb-3">
         <div>
           <img src="/assets/procurement/rejlers-pr-po-logo.png" alt={BRANDING_CONFIG.logo.primary.alt} className="h-10 w-auto object-contain" />
-          <p className="mt-2 max-w-[360px] text-[8px] leading-3 text-gray-600">
+          <p className="mt-2 max-w-4xl text-[8px] leading-3 text-gray-600">
             {BRANDING_CONFIG.brand.companyFull}<br />
             {BRANDING_CONFIG.contact.address.full}<br />
             Tel: {BRANDING_CONFIG.contact.phone.display}
@@ -563,3 +563,4 @@ const ReceiptManagement = () => {
   </>;
 };
 export default ReceiptManagement;
+

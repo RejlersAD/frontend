@@ -745,3 +745,4 @@ const MOVEquipmentPage = () => {
 };
 
 export default MOVEquipmentPage;
+

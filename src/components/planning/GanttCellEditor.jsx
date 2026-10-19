@@ -51,3 +51,4 @@ export default function GanttCellEditor({ field, title, initialValue, milestone,
 GanttCellEditor.propTypes = { field: PropTypes.string.isRequired, title: PropTypes.string.isRequired,
   initialValue: PropTypes.oneOfType([PropTypes.number, PropTypes.string]), milestone: PropTypes.bool,
   onSave: PropTypes.func.isRequired, onClose: PropTypes.func.isRequired }
+

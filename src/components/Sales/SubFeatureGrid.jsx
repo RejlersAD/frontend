@@ -115,3 +115,4 @@ const SubFeatureGrid = ({ subFeatures, onFeatureClick, columns = 3 }) => {
 };
 
 export default SubFeatureGrid;
+

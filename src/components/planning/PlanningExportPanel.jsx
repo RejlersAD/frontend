@@ -48,3 +48,4 @@ export default function PlanningExportPanel({ versionId }) {
   </section>
 }
 PlanningExportPanel.propTypes = { versionId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]) }
+

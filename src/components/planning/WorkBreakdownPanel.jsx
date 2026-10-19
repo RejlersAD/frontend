@@ -320,3 +320,4 @@ export default function WorkBreakdownPanel({ projectId, intelligenceRunId, previ
   </section>
 }
 WorkBreakdownPanel.propTypes = { projectId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired, intelligenceRunId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]), previewConfirmedAt: PropTypes.string, planningMode: PropTypes.oneOf(['document', 'manual']), canEdit: PropTypes.bool, baselinePublished: PropTypes.bool, onBack: PropTypes.func.isRequired, onContinue: PropTypes.func.isRequired, onLoaded: PropTypes.func, onDirtyChanged: PropTypes.func, onSavingChanged: PropTypes.func }
+

@@ -45,3 +45,4 @@ ScheduleRowDialog.propTypes = {
   tasks: PropTypes.array.isRequired, busy: PropTypes.bool, saveError: PropTypes.string,
   onSave: PropTypes.func.isRequired, onClose: PropTypes.func.isRequired,
 }
+

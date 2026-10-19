@@ -77,3 +77,4 @@ export default function SortableWidget({ id, editing, onHide, children, label })
     </div>
   )
 }
+

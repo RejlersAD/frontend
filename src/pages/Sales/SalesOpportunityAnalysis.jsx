@@ -526,3 +526,4 @@ export default function SalesOpportunityAnalysis({ record }) {
   );
 }
 SalesOpportunityAnalysis.propTypes = { record: PropTypes.object.isRequired };
+

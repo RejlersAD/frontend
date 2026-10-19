@@ -81,3 +81,4 @@ export function probabilityMetric(opportunity) {
     reason: opportunity.probability_evidence ? 'See the recorded probability evidence in the source opportunity.' : 'Scored evidence, client-history weights and technical evaluation weights are not connected.',
     route: opportunity.route, target: null, trend: null };
 }
+

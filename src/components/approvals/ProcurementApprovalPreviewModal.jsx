@@ -260,7 +260,7 @@ const ProcurementApprovalPreviewModal = ({ isOpen, type, recordId, onClose, onDe
               <div className="mb-3">
                 <label htmlFor="approval-preview-rejection" className="mb-1.5 block text-xs font-semibold text-slate-700">Rejection reason</label>
                 <textarea id="approval-preview-rejection" value={decision.reason} onChange={(event) => setDecision((current) => ({ ...current, reason: event.target.value, error: '' }))} rows={3} maxLength={1000} disabled={decision.loading} placeholder="Explain why this request is being rejected..." className="w-full resize-none rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-[#0f6cbd] focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100" />
-                <p className="mt-1 text-[11px] text-slate-500">Minimum 10 characters · {decision.reason.length}/1000</p>
+                <p className="mt-1 text-xs text-slate-500">Minimum 10 characters · {decision.reason.length}/1000</p>
               </div>
             )}
 
@@ -296,3 +296,4 @@ ProcurementApprovalPreviewModal.propTypes = {
 }
 
 export default ProcurementApprovalPreviewModal
+

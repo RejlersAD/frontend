@@ -117,7 +117,7 @@ const GoogleAnalyticsRealtime = ({
       <div className="p-4 space-y-3">
         {/* Network/auth error */}
         {err && (
-          <div className="flex items-start gap-2 text-[11px] text-red-600 bg-red-50 border border-red-100 rounded-lg p-2">
+          <div className="flex items-start gap-2 text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg p-2">
             <ExclamationTriangleIcon className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
             <span className="break-words">{err}</span>
           </div>
@@ -125,7 +125,7 @@ const GoogleAnalyticsRealtime = ({
 
         {/* Not configured */}
         {!err && !configured && (
-          <div className="text-[11px] text-gray-600 bg-amber-50 border border-amber-100 rounded-lg p-3 space-y-1">
+          <div className="text-xs text-gray-600 bg-amber-50 border border-amber-100 rounded-lg p-3 space-y-1">
             <div className="font-semibold text-amber-700 flex items-center gap-1">
               <ExclamationTriangleIcon className="w-3.5 h-3.5" />
               Setup needed
@@ -133,7 +133,7 @@ const GoogleAnalyticsRealtime = ({
             <div className="text-gray-600">
               {backendErr || 'Connect a GA4 service account to display live traffic here.'}
             </div>
-            <div className="text-[10px] text-gray-500 mt-1">
+            <div className="text-xs text-gray-500 mt-1">
               Set <code className="px-1 bg-gray-100 rounded">GA4_CREDENTIALS_JSON</code>
               {' '}and <code className="px-1 bg-gray-100 rounded">GA4_PROPERTY_ID</code> on the backend.
             </div>
@@ -146,7 +146,7 @@ const GoogleAnalyticsRealtime = ({
             {/* Active-users KPI */}
             <div className="rounded-xl bg-gradient-to-br from-orange-50 to-amber-50 border border-orange-100 px-4 py-3 flex items-center gap-3">
               <div className="flex-1">
-                <div className="text-[10px] font-semibold text-orange-700 uppercase tracking-wide">
+                <div className="text-xs font-semibold text-orange-700 uppercase tracking-wide">
                   Active users (last 30 min)
                 </div>
                 <div className="text-2xl font-bold text-orange-900 leading-tight">
@@ -172,16 +172,16 @@ const GoogleAnalyticsRealtime = ({
                   <div key={key} className="border border-gray-100 rounded-xl p-2.5">
                     <div className="flex items-center gap-1.5 mb-1.5">
                       <Icon className={`w-3.5 h-3.5 ${meta.accent}`} />
-                      <span className="text-[10px] font-bold text-gray-700 uppercase tracking-wide">
+                      <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">
                         {meta.label}
                       </span>
                     </div>
                     {rows.length === 0 ? (
-                      <div className="text-[10px] text-gray-400 italic py-1">No data</div>
+                      <div className="text-xs text-gray-400 italic py-1">No data</div>
                     ) : (
                       <ul className="space-y-1">
                         {rows.map((r, i) => (
-                          <li key={i} className="flex items-center justify-between gap-2 text-[10px]">
+                          <li key={i} className="flex items-center justify-between gap-2 text-xs">
                             <span className="truncate text-gray-700" title={r.label}>
                               {r.label || '(direct)'}
                             </span>
@@ -201,7 +201,7 @@ const GoogleAnalyticsRealtime = ({
 
         {/* Configured but API call failed */}
         {!err && configured && backendErr && (
-          <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-2">
+          <div className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-2">
             {backendErr}
           </div>
         )}
@@ -211,3 +211,4 @@ const GoogleAnalyticsRealtime = ({
 }
 
 export default GoogleAnalyticsRealtime
+

@@ -59,7 +59,7 @@ export default function HRAssistantPanel() {
               <p className="font-semibold text-slate-900">{item.question}</p>
               <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">{item.answer}</p>
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                <span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${item.grounded ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{item.grounded ? 'Policy grounded' : 'No policy evidence'}</span>
+                <span className={`rounded-full px-2 py-1 text-xs font-bold uppercase ${item.grounded ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{item.grounded ? 'Policy grounded' : 'No policy evidence'}</span>
                 {(item.citations || []).map((citation, index) => citation.source_url ? <a key={`${citation.policy_id}-${index}`} href={citation.source_url} target="_blank" rel="noreferrer" className="text-xs font-medium text-blue-600 hover:underline">[{index + 1}] {citation.title} v{citation.version}</a> : <span key={`${citation.policy_id}-${index}`} className="text-xs text-slate-500">[{index + 1}] {citation.title} v{citation.version}</span>)}
               </div>
             </article>
@@ -79,3 +79,4 @@ export default function HRAssistantPanel() {
     </div>
   )
 }
+

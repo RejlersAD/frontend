@@ -135,3 +135,4 @@ export default function GoodsReceiptWorkspace({ onRecord, onOpen, onDelete, onPr
   </div>;
 }
 GoodsReceiptWorkspace.propTypes = { onRecord: PropTypes.func.isRequired, onOpen: PropTypes.func.isRequired, onDelete: PropTypes.func.isRequired, onPrint: PropTypes.func.isRequired, reloadKey: PropTypes.number };
+

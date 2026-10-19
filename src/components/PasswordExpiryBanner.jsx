@@ -120,3 +120,4 @@ const PasswordExpiryBanner = () => {
 };
 
 export default PasswordExpiryBanner;
+

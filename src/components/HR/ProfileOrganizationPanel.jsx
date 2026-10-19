@@ -44,3 +44,4 @@ export default function ProfileOrganizationPanel({ profile, employees }) {
 }
 
 ProfileOrganizationPanel.propTypes = { profile: PropTypes.object, employees: PropTypes.array }
+

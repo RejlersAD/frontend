@@ -155,7 +155,7 @@ const FinanceHub = () => {
             </div>
 
             {/* Workflow summary badges */}
-            <div className="flex flex-wrap md:flex-col gap-2 shrink-0 md:max-w-[200px]">
+            <div className="flex flex-wrap md:flex-col gap-2 shrink-0 md:max-w-4xl">
               {[
                 { label: 'Invoice Workflow', sub: 'Draft → Approved → Paid', icon: FileText },
                 { label: 'UAE VAT 5%', sub: 'Auto-calculated server-side', icon: DollarSign },
@@ -255,3 +255,4 @@ const FinanceHub = () => {
 };
 
 export default FinanceHub;
+

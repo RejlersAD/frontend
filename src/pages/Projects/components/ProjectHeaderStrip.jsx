@@ -73,3 +73,4 @@ export default function ProjectHeaderStrip({ project }) {
     </div>
   )
 }
+

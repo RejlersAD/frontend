@@ -609,7 +609,7 @@ const PurchaseOrderDetail = () => {
             {!signatureEvidence.mismatch && order.approval_signature && !signatureEvidence.verified && <p className="text-amber-800">Signer not verified</p>}
             <p>Timestamp: {formatTimestamp(order.approved_at || order.approval_log?.find((entry) => String(entry.status).toLowerCase() === 'approved')?.approved_at || order.approval_log?.find((entry) => String(entry.status).toLowerCase() === 'approved')?.date || order.approved_date)}</p>
             {approvalSignatureSource && (
-              <img src={approvalSignatureSource} alt="Approval signature" className="mt-1 max-h-9 max-w-[150px] object-contain object-left" />
+              <img src={approvalSignatureSource} alt="Approval signature" className="mt-1 max-h-9 max-w-4xl object-contain object-left" />
             )}
           </div>
         </section>
@@ -625,7 +625,7 @@ const PurchaseOrderDetail = () => {
 
     <div className="po-screen-view min-h-screen bg-slate-50">
       <div className="py-4 sm:py-6">
-        <div className="mx-auto max-w-[1680px] px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
           <header className="mb-5 rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm sm:px-5">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
               <div className="flex min-w-0 items-start gap-3">
@@ -953,3 +953,4 @@ const PurchaseOrderDetail = () => {
 };
 
 export default PurchaseOrderDetail;
+

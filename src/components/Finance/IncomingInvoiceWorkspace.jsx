@@ -140,3 +140,4 @@ export default function IncomingInvoiceWorkspace({ onImport, reloadKey = 0 }) {
 }
 
 IncomingInvoiceWorkspace.propTypes = { onImport: PropTypes.func.isRequired, reloadKey: PropTypes.number };
+

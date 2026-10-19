@@ -317,3 +317,4 @@ export default function OnboardingDashboard({ navigation, startButton, onOpenRec
     </div>
   )
 }
+

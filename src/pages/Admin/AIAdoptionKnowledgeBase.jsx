@@ -22,3 +22,4 @@ export default function AIAdoptionKnowledgeBase({ tab, onNavigate }) {
     </dialog></>;
 }
 AIAdoptionKnowledgeBase.propTypes = { tab: PropTypes.string.isRequired, onNavigate: PropTypes.func.isRequired };
+

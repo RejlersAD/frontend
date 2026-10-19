@@ -20,7 +20,7 @@ const ManhoursTooltip = ({ active, payload, label }) => {
     };
 
     return (
-      <div className="bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 p-4 min-w-[240px] max-w-[300px]">
+      <div className="bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 p-4 min-w-[240px] max-w-4xl">
         <div className="font-semibold mb-3 text-blue-700 dark:text-blue-300 text-sm border-b border-gray-200 dark:border-gray-600 pb-2">
           {projectName}
         </div>
@@ -412,3 +412,4 @@ export const ManhoursChart = ({ data = [] }) => {
     </div>
   );
 };
+

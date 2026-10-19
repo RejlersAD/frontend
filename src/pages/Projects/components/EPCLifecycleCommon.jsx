@@ -61,3 +61,4 @@ export function EPCModal({ title, children, footer, busy = false, onClose }) {
   }, [])
   return <dialog ref={ref} className="epc-dialog" aria-labelledby={id} onCancel={event => { event.preventDefault(); if (!busy) onClose() }} onClick={event => { if (event.target === event.currentTarget && !busy) onClose() }}><header><h2 id={id}>{title}</h2><button type="button" className="pp-button pp-icon-button" disabled={busy} onClick={onClose} aria-label="Close dialog"><X size={18} aria-hidden="true" /></button></header><div className="epc-dialog-body">{children}</div>{footer && <footer>{footer}</footer>}</dialog>
 }
+

@@ -60,3 +60,4 @@ const ProposalWorkspacePage = () => {
 }
 
 export default ProposalWorkspacePage
+

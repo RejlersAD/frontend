@@ -125,12 +125,12 @@ export default function MySignaturePanel() {
             <div className="flex min-h-52 flex-col rounded-2xl border border-slate-200 bg-[linear-gradient(45deg,#f8fafc_25%,transparent_25%),linear-gradient(-45deg,#f8fafc_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#f8fafc_75%),linear-gradient(-45deg,transparent_75%,#f8fafc_75%)] bg-[length:20px_20px] bg-[position:0_0,0_10px,10px_-10px,-10px_0px] p-5">
               <div className="mb-3 flex items-center justify-between">
                 <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Saved preview</span>
-                {signature && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-1 text-[11px] font-semibold text-emerald-700"><HeroIcons.CheckBadgeIcon className="h-3.5 w-3.5" /> Ready</span>}
+                {signature && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700"><HeroIcons.CheckBadgeIcon className="h-3.5 w-3.5" /> Ready</span>}
               </div>
               <div className="flex flex-1 items-center justify-center rounded-xl border border-slate-200 bg-white/90 p-5">
                 {loading ? <HeroIcons.ArrowPathIcon className="h-7 w-7 animate-spin text-blue-600" /> : signature ? <img src={signature} alt="Your saved signature" className="max-h-28 max-w-full object-contain" /> : <div className="text-center text-slate-400"><HeroIcons.PencilIcon className="mx-auto h-8 w-8" /><p className="mt-2 text-sm">No signature saved</p></div>}
               </div>
-              {updatedAt && <p className="mt-2 text-right text-[11px] text-slate-400">Updated {new Date(updatedAt).toLocaleString()}</p>}
+              {updatedAt && <p className="mt-2 text-right text-xs text-slate-400">Updated {new Date(updatedAt).toLocaleString()}</p>}
             </div>
           </div>
 
@@ -143,3 +143,4 @@ export default function MySignaturePanel() {
     </div>
   )
 }
+

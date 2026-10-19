@@ -32,3 +32,4 @@ export default function PlanningControlsPolicy({ data, busy, readOnly, onCommand
   </section>
 }
 PlanningControlsPolicy.propTypes = { data: PropTypes.object.isRequired, busy: PropTypes.bool, readOnly: PropTypes.bool, onCommand: PropTypes.func.isRequired }
+

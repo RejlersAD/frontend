@@ -47,3 +47,4 @@ export default function PlanningControlsEntry({ data, busy, readOnly, onCommand,
   </form>
 }
 PlanningControlsEntry.propTypes = { data: PropTypes.object.isRequired, busy: PropTypes.bool, readOnly: PropTypes.bool, onCommand: PropTypes.func.isRequired, onDirty: PropTypes.func.isRequired }
+

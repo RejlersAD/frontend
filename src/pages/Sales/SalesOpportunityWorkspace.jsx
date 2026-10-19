@@ -288,3 +288,4 @@ export default function SalesOpportunityWorkspace({ record, active = true, explo
 }
 
 SalesOpportunityWorkspace.propTypes = { record: PropTypes.object.isRequired, active: PropTypes.bool, explorer: PropTypes.bool, initialFolder: PropTypes.string, onOpenExplorer: PropTypes.func };
+

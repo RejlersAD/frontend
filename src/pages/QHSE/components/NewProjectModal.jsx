@@ -662,3 +662,4 @@ const NewProjectModal = ({ open, onClose, onProjectCreated, editMode = false, pr
 };
 
 export default NewProjectModal;
+

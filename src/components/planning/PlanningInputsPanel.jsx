@@ -344,3 +344,4 @@ export default function PlanningInputsPanel({ project, enterpriseProject, contra
     {reviewOpen && createPortal(<InputReviewDialog titleId={inputIds.reviewTitle} facts={review.facts} conflicts={review.conflicts} busy={reviewBusy} loading={reviewLoading} error={reviewError} notice={reviewNotice} stale={stale} previewAvailable={Boolean(review.run?.intelligence)} onRetry={loadReview} onPreview={() => { setReviewOpen(false); onOpenIntelligencePreview() }} onClose={() => setReviewOpen(false)} onReview={(id, status) => reviewAction(() => planningService.reviewIntelligenceFact(id, status))} onResolve={(id, factId) => reviewAction(() => planningService.resolveIntelligenceConflict(id, { action: 'select_fact', selected_fact_id: factId }))} />, document.body)}
   </div>
 }
+

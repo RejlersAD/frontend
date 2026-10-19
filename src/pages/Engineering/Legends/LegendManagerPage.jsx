@@ -361,3 +361,4 @@ const LegendManagerPage = () => {
 };
 
 export default LegendManagerPage;
+

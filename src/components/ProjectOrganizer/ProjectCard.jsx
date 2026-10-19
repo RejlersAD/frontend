@@ -159,3 +159,4 @@ const ProjectCard = ({ project, theme, onOpen, onEdit, onDelete, openLabel = 'Op
 };
 
 export default ProjectCard;
+

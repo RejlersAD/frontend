@@ -820,3 +820,4 @@ export default withDashboardControls(Energy, {
   autoRefreshInterval: 30000,
   storageKey: 'qhseEnergyPageControls'
 });
+

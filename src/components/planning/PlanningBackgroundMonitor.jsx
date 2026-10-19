@@ -45,3 +45,4 @@ export default function PlanningBackgroundMonitor({ enterpriseProjectId, onState
       {checkingStatus ? 'Checking analysis status…' : 'Retry analysis status'}
     </button></div>
 }
+

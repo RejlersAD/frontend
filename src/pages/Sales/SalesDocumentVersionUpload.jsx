@@ -100,3 +100,4 @@ export default function SalesDocumentVersionUpload({ recordId, folderKey, file, 
   </>;
 }
 SalesDocumentVersionUpload.propTypes = { recordId: PropTypes.string.isRequired, folderKey: PropTypes.string.isRequired, file: PropTypes.object.isRequired, detail: PropTypes.object.isRequired, onSaved: PropTypes.func.isRequired };
+

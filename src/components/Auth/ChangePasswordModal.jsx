@@ -407,3 +407,4 @@ const ChangePasswordModal = ({ isOpen, onClose, onSuccess, isRequired = false })
 };
 
 export default ChangePasswordModal;
+

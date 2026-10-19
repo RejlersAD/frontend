@@ -168,3 +168,4 @@ export function CommercialQuality({ commercial, currency, onExplain }) {
     </div>
   </section>;
 }
+

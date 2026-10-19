@@ -1116,3 +1116,4 @@ SalesOpportunityDocuments.propTypes = {
   onRetry: PropTypes.func.isRequired,
   onDocumentUpdated: PropTypes.func.isRequired,
 };
+

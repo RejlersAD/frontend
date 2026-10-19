@@ -848,3 +848,4 @@ MailboxOpportunityForm.propTypes = {
   onSourceReloaded: PropTypes.func.isRequired,
   onClientAccessDenied: PropTypes.func.isRequired,
 };
+

@@ -125,3 +125,4 @@ export function CapacityChart({ rows: allRows = [], period = '' }) {
   if (!rows.some(row => series.some(item => revenueNumber(row[item.key]) !== null))) return null;
   return <div className="prv-capacity-chart" aria-label="Recorded demand and adjusted capacity in manhours"><ul className="prv-chart-legend">{series.map(item => <li key={item.key}><i style={{ background: item.color }} />{item.label}</li>)}</ul>{rows.slice(0, 12).map(row => <div className="prv-capacity-period" key={row.period}><span>{revenueMonth(row.period)}</span><div>{series.map(item => <span className="prv-capacity-track" key={item.key} title={`${item.label}: ${revenueDecimal(row[item.key])} manhours`}>{revenueNumber(row[item.key]) !== null && <i style={{ width: `${Math.max(0, revenueNumber(row[item.key])) / maximum * 100}%`, background: item.color }} />}</span>)}</div><strong>{revenueCompact(row.gap_manhours)}</strong></div>)}</div>;
 }
+

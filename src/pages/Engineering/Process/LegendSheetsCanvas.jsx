@@ -1216,3 +1216,4 @@ function RulesCard({ sectionId }) {
     </div>
   )
 }
+

@@ -123,3 +123,4 @@ export default function WorkHubCalendar({ source, month, onMonthChange, onRetry,
     {ready && <div className="wh-calendar-footer"><span>{visible.length} of {matching.length} listed events</span></div>}
   </section>;
 }
+

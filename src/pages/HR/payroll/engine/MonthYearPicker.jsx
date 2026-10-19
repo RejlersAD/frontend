@@ -28,3 +28,4 @@ export default function MonthYearPicker({ year, month, onChange, className = '' 
     </div>
   )
 }
+

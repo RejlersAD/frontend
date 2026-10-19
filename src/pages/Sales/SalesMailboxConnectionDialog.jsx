@@ -298,3 +298,4 @@ SalesMailboxConnectionDialog.propTypes = {
   open: PropTypes.bool.isRequired,
   onClose: PropTypes.func.isRequired,
 };
+

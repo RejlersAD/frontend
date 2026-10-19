@@ -134,3 +134,4 @@ TrustworthyGenerationPanel.propTypes = {
   projectId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
   scheduleBasisStatus: PropTypes.string,
 }
+

@@ -89,7 +89,7 @@ const ServiceHero = ({ badgeIcon: BadgeIcon, badgeText, title, tagline, descript
         {REJLERS_GROUP_FACTS.map((fact) => (
           <div key={fact.label}>
             <div className="text-lg sm:text-xl font-black" style={{ color: B.teal }}>{fact.value}</div>
-            <div className="text-[10px] font-bold uppercase tracking-widest mt-0.5" style={{ color: 'rgba(255,255,255,.45)' }}>
+            <div className="text-xs font-bold uppercase tracking-widest mt-0.5" style={{ color: 'rgba(255,255,255,.45)' }}>
               {fact.label}
             </div>
           </div>
@@ -101,3 +101,4 @@ const ServiceHero = ({ badgeIcon: BadgeIcon, badgeText, title, tagline, descript
 }
 
 export default ServiceHero
+

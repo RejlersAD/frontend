@@ -111,3 +111,4 @@ export default function PlanningOperationalControls({ projectId, baselineId, rea
   </section>
 }
 PlanningOperationalControls.propTypes = { projectId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired, baselineId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]), readOnly: PropTypes.bool }
+

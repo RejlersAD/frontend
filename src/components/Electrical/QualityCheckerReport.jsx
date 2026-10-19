@@ -586,3 +586,4 @@ const QualityCheckerReport = ({ datasheetId, onClose }) => {
 };
 
 export default QualityCheckerReport;
+

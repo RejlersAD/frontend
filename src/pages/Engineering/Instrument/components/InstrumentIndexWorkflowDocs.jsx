@@ -677,3 +677,4 @@ const InstrumentIndexWorkflowDocs = () => {
 };
 
 export default InstrumentIndexWorkflowDocs;
+

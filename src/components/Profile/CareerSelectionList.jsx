@@ -50,3 +50,4 @@ export default function CareerSelectionList({ label, options, selected, onAdd, o
   </div>
 }
 CareerSelectionList.propTypes = { label: PropTypes.string.isRequired, options: PropTypes.array.isRequired, selected: PropTypes.array.isRequired, onAdd: PropTypes.func.isRequired, onRemove: PropTypes.func.isRequired, onProficiency: PropTypes.func }
+

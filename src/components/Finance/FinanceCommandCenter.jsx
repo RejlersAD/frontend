@@ -84,19 +84,10 @@ export default function FinanceCommandCenter({ embedded = false, dataScope = 'fi
     return () => { element?.close(); if (previous instanceof HTMLElement && previous.isConnected) previous.focus(); };
   }, [dialog]);
   useEffect(() => {
-    setSyncing(false); setSyncFeedback(null); setWorkbookSync(null);
-    return () => {
-      syncRun.current += 1;
-      syncInFlight.current = false;
-      clearTimeout(syncPollTimer.current);
-      clearTimeout(syncDeadlineTimer.current);
-    };
-  }, [dataScope]);
-  useEffect(() => {
     if (printing) return undefined;
     let lastRefresh = 0;
     const refreshWhenVisible = () => {
-      if (syncInFlight.current || document.visibilityState !== 'visible' || Date.now() - lastRefresh < 1000) return;
+      if (document.visibilityState !== 'visible' || Date.now() - lastRefresh < 1000) return;
       lastRefresh = Date.now();
       setRefresh(value => value + 1);
     };
@@ -110,6 +101,7 @@ export default function FinanceCommandCenter({ embedded = false, dataScope = 'fi
     };
   }, [printing]);
   const change = (key, value) => setFilters(current => ({ ...current, [key]: value }));
+
   const currency = data?.currency || filters.currency || options.currencies[0] || '';
   const asOf = filters.as_of || data?.as_of_date || receivablesToday();
   const readable = receivableReadable(data?.sources?.receivables);
@@ -256,3 +248,4 @@ export default function FinanceCommandCenter({ embedded = false, dataScope = 'fi
 }
 
 FinanceCommandCenter.propTypes = { embedded: PropTypes.bool, dataScope: PropTypes.oneOf(['finance', 'executive']), refreshKey: PropTypes.oneOfType([PropTypes.string, PropTypes.number]), printing: PropTypes.bool, onSnapshotChange: PropTypes.func };
+

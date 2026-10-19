@@ -458,3 +458,4 @@ const MultiRoleModal = ({ user, availableRoles, onClose, onSave, loading = false
 };
 
 export default MultiRoleModal;
+
