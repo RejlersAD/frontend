@@ -32,7 +32,7 @@ const scopeTypes = [
 ];
 const currencies = ["AED", "USD", "EUR", "GBP", "SAR", "QAR"];
 const manualOpportunityTypes = new Set([
-  "eio",
+  "eoi",
   "budgetary",
   "technical",
   "commercial",

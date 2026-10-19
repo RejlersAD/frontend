@@ -77,7 +77,25 @@ export default function FinanceCommandCenter({ embedded = false, dataScope = 'fi
     element?.showModal();
     return () => { element?.close(); if (previous instanceof HTMLElement && previous.isConnected) previous.focus(); };
   }, [dialog]);
+  useEffect(() => {
+    if (printing) return undefined;
+    let lastRefresh = 0;
+    const refreshWhenVisible = () => {
+      if (document.visibilityState !== 'visible' || Date.now() - lastRefresh < 1000) return;
+      lastRefresh = Date.now();
+      setRefresh(value => value + 1);
+    };
+    const id = setInterval(refreshWhenVisible, 300000);
+    window.addEventListener('focus', refreshWhenVisible);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('focus', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, [printing]);
   const change = (key, value) => setFilters(current => ({ ...current, [key]: value }));
+
   const currency = data?.currency || filters.currency || options.currencies[0] || '';
   const asOf = filters.as_of || data?.as_of_date || receivablesToday();
   const readable = receivableReadable(data?.sources?.receivables);

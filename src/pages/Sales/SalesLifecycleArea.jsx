@@ -76,7 +76,8 @@ const AREAS = {
     ],
     editFields: [
       ["deal_name", "Opportunity name"],
-      ["opportunity_type", "Opportunity type", "select", ["", "eio", "budgetary", "technical", "commercial", "techno_commercial", "other", "tender", "rfq", "eoi", "direct_enquiry"]],
+      ["opportunity_type", "Opportunity type", "select", ["", "eoi", "budgetary", "technical", "commercial", "techno_commercial", "other", "tender", "rfq", "direct_enquiry"]
+],
       ["open_date", "Open date", "date"],
       ["submission_due_date", "Due date", "date"],
       ["client_reference", "Client reference"],
