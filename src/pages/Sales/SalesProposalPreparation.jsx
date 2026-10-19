@@ -1,3 +1,4 @@
+import { decisionText } from '../../utils/salesDecisionTerminology.js';
 import { useCallback, useEffect, useRef, useState } from 'react'
 import PropTypes from 'prop-types'
 import { Link } from 'react-router-dom'
@@ -6,7 +7,7 @@ import * as service from '../../services/proposalPreparation.service'
 import './SalesProposalPreparation.css'
 
 const fields = { scope: 'Scope', deliverables: 'Deliverables', assumptions: 'Assumptions', exclusions: 'Exclusions', disciplines: 'Disciplines', estimated_hours: 'Estimated hours', risks: 'Risks' }
-const label = value => String(value || '').replaceAll('_', ' ')
+const label = value => decisionText(String(value || '').replaceAll('_', ' '))
 const sourceName = source => `${source.proposal_number || source.title || source.id} · Technical revision ${source.revision ?? 'not recorded'} · ${label(source.status)}`
 const workspaceName = source => source.name || source.title || String(source.id)
 const unknown = value => value === null || value === undefined || value === ''
@@ -42,7 +43,7 @@ function CandidateSelector({ kind, ownerId, value, onChange, disabled, refresh }
     <label>{title}<select value={value?.id || ''} disabled={disabled || loading || !!error} onChange={event => onChange(shown.find(row => String(row.id) === event.target.value) || null)}><option value="">Choose {isWorkspace ? 'a workspace' : 'an exact revision'}</option>{shown.map(row => <option key={row.id} value={row.id}>{name(row)}</option>)}</select></label>
     {loading && <p role="status">Loading choices…</p>}
     {error && <p role="alert" className="spp-error">{error}<button type="button" disabled={disabled} onClick={() => setRetry(value => value + 1)}>Retry choices</button></p>}
-    {!loading && !error && !rows.length && <p>No matching {isWorkspace ? 'eligible workspaces' : 'technical revisions'}. {isWorkspace ? 'Create a bid workspace or change the search.' : 'Create a technical revision in the connected Planning workspace, then refresh.'}</p>}
+    {!loading && !error && !rows.length && <p>No matching {isWorkspace ? 'eligible workspaces' : 'technical revisions'}. {isWorkspace ? 'Create a Go workspace or change the search.' : 'Create a technical revision in the connected Planning workspace, then refresh.'}</p>}
     {data && (page > 1 || data.count > data.page_size) && <div className="spp-actions"><button type="button" disabled={disabled || loading || page <= 1} onClick={() => setPage(value => value - 1)}>Previous choices</button><span>Page {page}</span><button type="button" disabled={disabled || loading || page * data.page_size >= data.count} onClick={() => setPage(value => value + 1)}>Next choices</button></div>}
   </div>
 }
@@ -134,7 +135,7 @@ export default function SalesProposalPreparation({ quoteId, dealId, onPrepared }
     pending.current = null; setUncertain(false); setStale(false)
     if (kind === 'connect') {
       setConnectionReason(''); setWorkspace(null); setData(current => ({ ...current, bid_preparation: result.bid_preparation, connection: result.bid_preparation.connection }))
-      await load(); if (alive.current) { setRefresh(value => value + 1); setNotice(result.replayed ? 'The bid workspace connection was already saved.' : 'Bid workspace connected. Prepare sources in Planning, then choose an exact technical revision here.') }
+      await load(); if (alive.current) { setRefresh(value => value + 1); setNotice(result.replayed ? 'The Go workspace connection was already saved.' : 'Go workspace connected. Prepare sources in Planning, then choose an exact technical revision here.') }
     } else {
       setData(result.preparation); setPreview(null); setSelected([]); setReason('')
       setNotice(result.replayed ? 'This preparation revision was already saved. No duplicate was created.' : 'Preparation revision saved. The selected proposal fields are updated.')
@@ -148,23 +149,23 @@ export default function SalesProposalPreparation({ quoteId, dealId, onPrepared }
   const canPrepare = data?.capabilities?.can_prepare === true
   const evidence = preview?.evidence || {}
   return <section className="spp-preparation" aria-label="Proposal preparation" aria-busy={loading || busy}>
-    <div className="spp-heading"><div><h3>Bid &amp; proposal preparation</h3><p>Review connected source evidence before updating this proposal.</p></div><button type="button" className="spg-button" disabled={busy || loading || previewLoading} onClick={refreshSources}><RefreshCw size={15} />Refresh preparation</button></div>
+    <div className="spp-heading"><div><h3>Go &amp; proposal preparation</h3><p>Review connected source evidence before updating this proposal.</p></div><button type="button" className="spg-button" disabled={busy || loading || previewLoading} onClick={refreshSources}><RefreshCw size={15} />Refresh preparation</button></div>
     {error && <p className="spp-error" role="alert"><AlertCircle size={17} />{error}</p>}
     {notice && <p className="spp-notice" role="status">{notice}</p>}
     {stale && <p className="spp-warning">The proposal or source changed. Refresh preparation to review the current values. Your choices and reason will be retained.</p>}
     {uncertain && <div className="spp-warning"><p>The previous result is uncertain. Your original request is retained while this review remains open.</p><button type="button" className="spg-button" disabled={busy} onClick={() => execute(pending.current.kind)}>Retry same request</button><p>Refresh preparation to inspect saved history before starting a new request.</p></div>}
     {loading && <p role="status">Loading preparation…</p>}
     {!loading && data && <>
-      <div className="spp-bid"><strong>{bid?.opportunity?.code || 'Opportunity'} · {bid?.opportunity?.name}</strong><p>Bid decision: <strong>{label(bid?.opportunity?.bid_decision) || 'Not recorded'}</strong> · Stage: {label(bid?.opportunity?.stage) || 'Not recorded'}</p>{dealId && <Link to={`/sales/opportunities?record=${encodeURIComponent(dealId)}&workspace=1&folder=tender`}>Open RFP and opportunity documents<ExternalLink size={14} /></Link>}</div>
-      {!connection ? <form aria-label="Connect bid workspace" onSubmit={event => { event.preventDefault(); execute('connect') }}>
+      <div className="spp-bid"><strong>{bid?.opportunity?.code || 'Opportunity'} · {bid?.opportunity?.name}</strong><p>Go decision: <strong>{label(bid?.opportunity?.bid_decision) || 'Not recorded'}</strong> · Stage: {label(bid?.opportunity?.stage) || 'Not recorded'}</p>{dealId && <Link to={`/sales/opportunities?record=${encodeURIComponent(dealId)}&workspace=1&folder=tender`}>Open RFP and opportunity documents<ExternalLink size={14} /></Link>}</div>
+      {!connection ? <form aria-label="Connect Go workspace" onSubmit={event => { event.preventDefault(); execute('connect') }}>
         <h4>Connect a Planning workspace</h4><p>Create a workspace from the opportunity facts or explicitly attach an eligible existing workspace.</p>
         <fieldset disabled={locked}><label>Connection mode<select value={mode} onChange={event => setMode(event.target.value)}><option value="create">Create from opportunity</option><option value="attach">Attach existing workspace</option></select></label>
           {mode === 'attach' && <CandidateSelector kind="workspace" ownerId={dealId} value={workspace} onChange={setWorkspace} disabled={locked} refresh={refresh} />}
-          {mode === 'create' && bid?.requires_duration && <><label>Draft planning duration (months)<input type="number" min="0.0001" step="0.0001" required value={duration} onChange={event => setDuration(event.target.value)} /></label><p>This is a planning assumption for the bid workspace, not an approved schedule.</p></>}
+          {mode === 'create' && bid?.requires_duration && <><label>Draft planning duration (months)<input type="number" min="0.0001" step="0.0001" required value={duration} onChange={event => setDuration(event.target.value)} /></label><p>This is a planning assumption for the Go workspace, not an approved schedule.</p></>}
           <label>Connection reason<textarea maxLength={1000} rows={3} required value={connectionReason} onChange={event => setConnectionReason(event.target.value)} /></label>
         </fieldset>
         {!canConnect && <p className="spp-warning">{bid?.capabilities?.reason || 'You cannot connect a workspace for this opportunity.'}</p>}
-        <button type="submit" className="spg-button spg-primary" disabled={locked || stale || !canConnect || !connectionReason.trim() || (mode === 'attach' && !workspace) || (mode === 'create' && bid?.requires_duration && !(Number(duration) > 0))}>{busy ? 'Connecting…' : mode === 'create' ? 'Create bid workspace' : 'Attach bid workspace'}</button>
+        <button type="submit" className="spg-button spg-primary" disabled={locked || stale || !canConnect || !connectionReason.trim() || (mode === 'attach' && !workspace) || (mode === 'create' && bid?.requires_duration && !(Number(duration) > 0))}>{busy ? 'Connecting…' : mode === 'create' ? 'Create Go workspace' : 'Attach Go workspace'}</button>
       </form> : <>
         <div className="spp-connected"><h4>{project?.name || 'Connected Planning workspace'}</h4><div className="spp-links">{project?.id && <><Link to={`/planning-workspace/${encodeURIComponent(project.id)}`}>Open schedule, resources &amp; risks<ExternalLink size={14} /></Link><Link to={`/proposal-workspace/${encodeURIComponent(project.id)}?salesProposal=${encodeURIComponent(quoteId)}`}>Open technical proposal studio<ExternalLink size={14} /></Link></>}</div><p>Source access and technical workflow permissions apply in Planning.</p></div>
         {!canPrepare && <p className="spp-warning">{data.capabilities?.reason || 'Preparation is read-only for this proposal.'}</p>}

@@ -1,3 +1,4 @@
+import { decisionText } from '../../utils/salesDecisionTerminology.js';
 export const ANALYSIS_SECTIONS = [
   ["brief", "What is this opportunity?"],
   ["client_need", "What does the client want?"],
@@ -107,7 +108,7 @@ export function analysisMarkdown(record, data) {
       );
     for (const item of items)
       lines.push(
-        `- ${item.text}${item.date ? ` (${item.date})` : ""}`,
+        `- ${decisionText(item.text)}${item.date ? ` (${item.date})` : ""}`,
         `  Source: ${item.name}, ${item.location}`,
         `  Evidence: ${item.excerpt}`,
       );

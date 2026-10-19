@@ -173,7 +173,7 @@ const SALES_AREA_GUIDE = {
   columns: ['Area', 'What it is', 'How it works'],
   rows: [
     ['Overview', 'Sales and proposals decision dashboard.', 'Combines weighted pipeline, proposals due, expected wins, governed exceptions, upcoming deadlines, proposal status, and handover signals from the authoritative lifecycle records.'],
-    ['Opportunity', 'Qualification and pursuit-decision workspace.', 'Captures the lead, client, framework, scope, disciplines, value, hours, owner, actions, dates, risk assessment, and governed bid/no-bid decision before proposal effort begins.'],
+    ['Opportunity', 'Qualification and pursuit-decision workspace.', 'Captures the lead, client, framework, scope, disciplines, value, hours, owner, actions, dates, risk assessment, and governed Go/No-Go decision before proposal effort begins.'],
     ['Proposal', 'Controlled technical and commercial offer.', 'Inherits the qualified opportunity, develops scope and estimates, obtains segregated approval, preserves versions and evidence, and locks the submitted revision against editing.'],
     ['Client', 'Shared commercial identity and relationship record.', 'Maintains verified legal identity, contacts, ownership, sectors, activity, risks, frameworks, opportunities, proposals, projects, and permission for new commercial work.'],
     ['Framework', 'Agreement governing recurring client services.', 'Controls validity, eligible scope, rate versions, call-off procedure, terms, ceiling, committed and invoiced values, amendments, expiry warnings, and approval.'],

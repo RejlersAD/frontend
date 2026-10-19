@@ -1,3 +1,4 @@
+import { decisionText } from '../../utils/salesDecisionTerminology.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 import { useSelector } from 'react-redux';
@@ -93,7 +94,7 @@ export default function SalesBidDecisionDialog({ record, busy, error, onClose, o
         text: [instantText, intelSummary ? `RADAI Opportunity Intelligence:\n${intelSummary}` : ''].filter(Boolean).join('\n\n').slice(0, AI_LIMIT),
       });
       if (run !== runId.current) return;
-      const backendText = typeof result?.text === 'string' ? result.text.trim() : '';
+      const backendText = typeof result?.text === 'string' ? decisionText(result.text).trim() : '';
       const context = result?.source_context;
       if (String(context?.opportunity_id) !== String(record.id)
           || context?.decision !== BACKEND_DECISION[activeDecision]
@@ -128,8 +129,8 @@ export default function SalesBidDecisionDialog({ record, busy, error, onClose, o
     if (!safeText) {
       safeText =
         next === GO
-          ? 'Based on the available opportunity information, it is recommended to proceed with bid submission.'
-          : 'Following evaluation, a no-bid decision is recommended and logged for pipeline monitoring.';
+          ? 'Based on the available opportunity information, it is recommended to proceed with Go submission.'
+          : 'Following evaluation, a No-Go decision is recommended and logged for pipeline monitoring.';
     }
     setDecision(next);
     setEditing(false);
@@ -176,7 +177,7 @@ export default function SalesBidDecisionDialog({ record, busy, error, onClose, o
       <section role="dialog" aria-modal="true" aria-labelledby="sbd-title" className="sbd-dialog">
         <header className="sbd-head">
           <div>
-            <h2 id="sbd-title">Record Bid / No-Bid Decision</h2>
+            <h2 id="sbd-title">Record Go / No-Go Decision</h2>
             <p>Single-click executive decision with AI justification and governance trail.</p>
           </div>
           <button type="button" onClick={onClose} aria-label="Close" className="sbd-x">
@@ -201,7 +202,7 @@ export default function SalesBidDecisionDialog({ record, busy, error, onClose, o
           </section>
           <section aria-label="Decision" className="sbd-card">
             <h3>Decision *</h3>
-            <div role="radiogroup" aria-label="Bid decision" className="sbd-decisions">
+            <div role="radiogroup" aria-label="Go decision" className="sbd-decisions">
               <button
                 type="button"
                 role="radio"
@@ -210,7 +211,7 @@ export default function SalesBidDecisionDialog({ record, busy, error, onClose, o
                 className={decision === GO ? 'sbd-go sbd-on' : 'sbd-go'}
               >
                 <span aria-hidden="true" className="sbd-radio-dot" />
-                <span><strong>Go</strong><small>Pursue bid submission</small></span>
+                <span><strong>Go</strong><small>Pursue Go submission</small></span>
               </button>
               <button
                 type="button"
@@ -276,25 +277,25 @@ export default function SalesBidDecisionDialog({ record, busy, error, onClose, o
                 {!!intel.needs.length && (
                   <div>
                     <h4>Client needs</h4>
-                    <ul>{intel.needs.slice(0, 3).map((item, i) => <li key={i}>{item.text}{item.source ? ` — ${item.source}` : ''}</li>)}</ul>
+                    <ul>{intel.needs.slice(0, 3).map((item, i) => <li key={i}>{decisionText(item.text)}{item.source ? ` — ${item.source}` : ''}</li>)}</ul>
                   </div>
                 )}
                 {!!intel.submissions.length && (
                   <div>
                     <h4>Submission requirements</h4>
-                    <ul>{intel.submissions.slice(0, 3).map((item, i) => <li key={i}>{item.text}{item.source ? ` — ${item.source}` : ''}</li>)}</ul>
+                    <ul>{intel.submissions.slice(0, 3).map((item, i) => <li key={i}>{decisionText(item.text)}{item.source ? ` — ${item.source}` : ''}</li>)}</ul>
                   </div>
                 )}
                 {!!intel.risks.length && (
                   <div>
                     <h4>Risks</h4>
-                    <ul>{intel.risks.slice(0, 3).map((item, i) => <li key={i}>{item.text}{item.source ? ` — ${item.source}` : ''}</li>)}</ul>
+                    <ul>{intel.risks.slice(0, 3).map((item, i) => <li key={i}>{decisionText(item.text)}{item.source ? ` — ${item.source}` : ''}</li>)}</ul>
                   </div>
                 )}
                 {!!intel.deadlines.length && (
                   <div>
                     <h4>Deadlines</h4>
-                    <ul>{intel.deadlines.slice(0, 3).map((item, i) => <li key={i}>{item.text}{item.source ? ` — ${item.source}` : ''}</li>)}</ul>
+                    <ul>{intel.deadlines.slice(0, 3).map((item, i) => <li key={i}>{decisionText(item.text)}{item.source ? ` — ${item.source}` : ''}</li>)}</ul>
                   </div>
                 )}
               </div>

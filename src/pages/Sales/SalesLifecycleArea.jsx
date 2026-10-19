@@ -1,3 +1,4 @@
+import { decisionText } from '../../utils/salesDecisionTerminology.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import {
@@ -100,7 +101,7 @@ const AREAS = {
       row.client_name,
       dateLabel(row.open_date),
       dateLabel(row.submission_due_date),
-      row.stage === "lead" ? "Open" : row.stage_display || row.stage,
+      row.stage === "lead" ? "Open" : decisionText(row.stage_display || row.stage),
       row.owner_name || "Unassigned",
       opportunityMoney(row.estimated_value, row.currency),
       row.next_action || dateLabel(row.next_action_date),
@@ -111,7 +112,7 @@ const AREAS = {
     icon: DocumentTextIcon,
     purpose:
       "Develop, approve, submit, and control the technical and commercial offer sent to the client.",
-    owner: "Proposal Manager or Bid Manager",
+    owner: "Proposal Manager or Go Manager",
     controls: [
       "Only approved versions can be submitted",
       "Submitted versions are immutable",
@@ -554,7 +555,7 @@ const lifecycleActions = (area, record) => {
     if (record.stage === "lead")
       actions.push({ id: "qualify", label: "Submit qualification" });
     if (record.stage === "qualified")
-      actions.push({ id: "bid_decision", label: "Record bid/no-bid" });
+      actions.push({ id: "bid_decision", label: "Record Go / No-Go" });
     if (record.stage === "proposal")
       actions.push({ id: "ceo_decision", label: "Record CEO go/no-go" });
     if (record.stage === "proposal")
@@ -1527,7 +1528,7 @@ export default function SalesLifecycleArea() {
     if (actionId === "bid_decision")
       return showAction(
         {
-          title: "Record Bid / No-Bid Decision",
+          title: "Record Go / No-Go Decision",
           submitLabel: "Record decision",
           redesignedBidDecision: true,
           fields: [],

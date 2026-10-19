@@ -85,7 +85,7 @@ export function RadaiActions(record = {}, data = null) {
     actions.push({ id: 'retry', title: 'Retry incomplete sources', detail: 'Analysis could not verify documents. Retry to rebuild the brief.', view: 'Sources', priority: 'now' });
   }
   if (score.dueDays !== null && score.dueDays <= 7 && score.dueDays >= 0) {
-    actions.push({ id: 'deadline', title: `Submission due in ${score.dueDays} day${score.dueDays === 1 ? '' : 's'}`, detail: 'Review Timeline milestones, then lock the bid/no-bid date.', view: 'Timeline', priority: 'now' });
+    actions.push({ id: 'deadline', title: `Submission due in ${score.dueDays} day${score.dueDays === 1 ? '' : 's'}`, detail: 'Review Timeline milestones, then lock the Go/No-Go date.', view: 'Timeline', priority: 'now' });
   }
   if (score.risks > 0) {
     actions.push({ id: 'risks', title: `Review ${score.risks} flagged risk${score.risks === 1 ? '' : 's'}`, detail: 'Risks shape the Go/No-Go justification. Clear or mitigate them first.', view: 'Risks', priority: score.risks > 2 ? 'now' : 'soon' });
@@ -97,7 +97,7 @@ export function RadaiActions(record = {}, data = null) {
     actions.push({ id: 'next', title: 'Work the suggested next steps', detail: 'Radai extracted pending actions from the documents. Assign and date them.', view: 'Actions', priority: 'soon' });
   }
   if (score.band === 'strong' || score.band === 'moderate') {
-    actions.push({ id: 'decide', title: 'Record the bid decision', detail: `Qualification score ${score.score}/100 (${score.band}). The decision dialog drafts an intelligence-grounded justification.`, view: null, priority: 'later', decision: true });
+    actions.push({ id: 'decide', title: 'Record the Go decision', detail: `Qualification score ${score.score}/100 (${score.band}). The decision dialog drafts an intelligence-grounded justification.`, view: null, priority: 'later', decision: true });
   } else {
     actions.push({ id: 'qualify', title: 'Strengthen qualification first', detail: `Qualification score ${score.score}/100 (${score.band}). Close evidence gaps before committing pursuit cost.`, view: 'Brief', priority: 'later' });
   }

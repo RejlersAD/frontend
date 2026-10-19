@@ -69,7 +69,7 @@ export function CommercialHealth({ opportunity }) {
   const attention = opportunity.health === 'attention';
   const label = attention ? 'Attention' : opportunity.health === 'no_recorded_flags' ? 'No flags' : 'Not assessed';
   const Icon = attention ? ExclamationCircleIcon : InformationCircleIcon;
-  return <span className={`cp-health ${attention ? 'cp-health--attention' : ''}`} title={opportunity.flags?.map(flag => flag.title).join('; ') || 'Absence of recorded flags does not establish bid readiness.'}><Icon aria-hidden="true" />{label}</span>;
+  return <span className={`cp-health ${attention ? 'cp-health--attention' : ''}`} title={opportunity.flags?.map(flag => flag.title).join('; ') || 'Absence of recorded flags does not establish Go readiness.'}><Icon aria-hidden="true" />{label}</span>;
 }
 
 export function probabilityMetric(opportunity) {

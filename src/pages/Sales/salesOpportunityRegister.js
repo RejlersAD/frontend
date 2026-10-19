@@ -18,7 +18,7 @@ export const STATUS_LABELS = {
   awarded: "Awarded",
   converted: "Converted to project",
   lost: "Lost",
-  no_bid: "No bid",
+  no_bid: "No-Go",
   cancelled: "Cancelled",
 };
 export const BID_LABELS = {
@@ -172,7 +172,7 @@ export const attentionItems = (rows, today = businessDate(new Date())) => {
         row,
         kind: "decision",
         tone: "warning",
-        title: "Bid review follow-up overdue",
+        title: "Go review follow-up overdue",
         priority: 2,
       });
     else if (!row.owner)

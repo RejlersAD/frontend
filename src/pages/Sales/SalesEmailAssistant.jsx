@@ -1,3 +1,4 @@
+import { decisionText } from '../../utils/salesDecisionTerminology.js';
 import { useEffect, useId, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import { CalendarCheck, Check, Copy, FileText, Loader2, PenLine, Send, Sparkles } from "lucide-react";
@@ -221,7 +222,7 @@ export default function SalesEmailAssistant({ source, disabled = false, informat
           onChange={(event) => update({ draft: event.target.value, copyStatus: "" })} aria-describedby={`${id}-draft-hint`} />
         <p id={`${id}-draft-hint`} className="sales-email-assistant-hint">Review and edit before use. Nothing has been sent or saved to Outlook.</p>
         {currentState.copyStatus && <p role="status" className="sales-email-assistant-hint">{currentState.copyStatus}</p>}
-      </> : <><h4>RADAI answer</h4><p className="sales-email-assistant-answer">{result.answer}</p></>}
+      </> : <><h4>RADAI answer</h4><p className="sales-email-assistant-answer">{decisionText(result.answer)}</p></>}
       {result.citations.length > 0 ? <details className="sales-email-assistant-citations">
         <summary>Source evidence ({result.citations.length})</summary>
         <ol>{result.citations.map((citation, index) => <li key={`${citation.sourceId}-${index}`}>
