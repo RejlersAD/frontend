@@ -48,13 +48,13 @@ test('explicit mappings preserve authored fields and commercial values, refresh 
 
 test('create workspace requires an explicit unknown duration assumption and attach uses scoped paginated choices', async ({ page }) => {
   const state = await openPreparation(page, { connection: null, requiresDuration: true, workspacePageSize: 1 })
-  const create = panel(page).getByRole('button', { name: 'Create bid workspace', exact: true })
+  const create = panel(page).getByRole('button', { name: 'Create Go workspace', exact: true })
   await panel(page).getByRole('textbox', { name: 'Connection reason', exact: true }).fill('Prepare the approved bid.')
   await expect(create).toBeDisabled()
   await expect(panel(page).getByRole('spinbutton', { name: 'Draft planning duration (months)' })).toHaveValue('')
   await panel(page).getByRole('spinbutton', { name: 'Draft planning duration (months)' }).fill('4.5001')
   await create.click()
-  await expect(panel(page)).toContainText('Bid workspace connected.')
+  await expect(panel(page)).toContainText('Go workspace connected.')
   expect(state.mutations[0].body).toMatchObject({ mode: 'create', duration_months: '4.5001', expected_token: 'bid-1' })
   clean(state)
 })
@@ -71,8 +71,8 @@ test('attach requires an explicit candidate and preserves it while searching', a
   await panel(page).getByRole('searchbox', { name: 'Search planning workspace', exact: true }).fill('Opportunity')
   await expect(chooser).toHaveValue('22')
   await panel(page).getByRole('textbox', { name: 'Connection reason', exact: true }).fill('Existing workspace belongs to this bid.')
-  await panel(page).getByRole('button', { name: 'Attach bid workspace', exact: true }).click()
-  await expect(panel(page)).toContainText('Bid workspace connected.')
+  await panel(page).getByRole('button', { name: 'Attach Go workspace', exact: true }).click()
+  await expect(panel(page)).toContainText('Go workspace connected.')
   expect(state.mutations[0].body).toMatchObject({ mode: 'attach', planning_project_id: '22' })
   expect(state.mutations[0].body).not.toHaveProperty('duration_months')
   clean(state)
@@ -115,12 +115,12 @@ test('validation and denied writes preserve inputs; read-only state allows previ
 for (const kind of ['prepare', 'connect']) test(`uncertain ${kind} retry reuses the exact command and has one effect`, async ({ page }) => {
   const state = await openPreparation(page, kind === 'prepare' ? { prepareStatuses: ['committed-network-error'] } : { connection: null, connectionStatuses: ['committed-network-error'] })
   if (kind === 'prepare') { await draft(page); await apply(page).click() }
-  else { await panel(page).getByRole('textbox', { name: 'Connection reason', exact: true }).fill('Prepare this bid workspace.'); await panel(page).getByRole('button', { name: 'Create bid workspace', exact: true }).click() }
+  else { await panel(page).getByRole('textbox', { name: 'Connection reason', exact: true }).fill('Prepare this Go workspace.'); await panel(page).getByRole('button', { name: 'Create Go workspace', exact: true }).click() }
   await expect(panel(page).getByRole('button', { name: 'Retry same request', exact: true })).toBeVisible()
   if (kind === 'prepare') await expect(reason(page)).toBeDisabled()
   else await expect(panel(page).getByRole('textbox', { name: 'Connection reason', exact: true })).toBeDisabled()
   await panel(page).getByRole('button', { name: 'Retry same request', exact: true }).click()
-  await expect(panel(page)).toContainText(kind === 'prepare' ? 'No duplicate was created.' : 'The bid workspace connection was already saved.')
+  await expect(panel(page)).toContainText(kind === 'prepare' ? 'No duplicate was created.' : 'The Go workspace connection was already saved.')
   expect(state.mutations).toHaveLength(2)
   expect(state.mutations[0].body).toEqual(state.mutations[1].body)
   expect(state.saved.size).toBe(1)

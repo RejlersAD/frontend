@@ -1,3 +1,4 @@
+import { decisionText } from '../../utils/salesDecisionTerminology.js';
 import { useEffect, useMemo, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import {
@@ -133,7 +134,7 @@ export default function SalesOpportunityAnalysis({ record }) {
                       {severityOf(item.text)} risk
                     </span>
                   )}
-                  <p className="cp-finding-text">{item.text}</p>
+                  <p className="cp-finding-text">{decisionText(item.text)}</p>
                   {deadline && item.date && (
                     <span className="cp-chip">
                       <CalendarDays size={12} aria-hidden="true" />
@@ -585,7 +586,7 @@ export default function SalesOpportunityAnalysis({ record }) {
                       {source.claims?.length ? (
                         source.claims.map((claim, index) => (
                           <div className="soa-source-claim" key={index}>
-                            <p>{claim.text}</p>
+                            <p>{decisionText(claim.text)}</p>
                             <blockquote>{claim.excerpt}</blockquote>
                             <small>{claim.location}</small>
                           </div>

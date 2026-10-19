@@ -50,27 +50,27 @@ export function CommercialBidCalendar({ commercial, currency, onExplain, printin
   const visible = expanded || printing ? selected : selected.slice(0, 3);
   const total = REPORTED.has(status) ? selectedCount(calendar.total_rows_by_currency, currency) : null;
   const emptyKnown = REPORTED.has(status) && (total === 0 || calendar.total_rows === 0);
-  const info = sourceInfo('commercial_bid_calendar_coverage', 'Bid calendar',
-    calendar.description || 'Current proposal-stage opportunities with a recorded submission target that has passed or falls within the next 30 days. A target date does not establish whether submission is complete. Readiness and bid-specific ownership are not recorded.', status);
+  const info = sourceInfo('commercial_bid_calendar_coverage', 'Go calendar',
+    calendar.description || 'Current proposal-stage opportunities with a recorded submission target that has passed or falls within the next 30 days. A target date does not establish whether submission is complete. Readiness and Go-specific ownership are not recorded.', status);
   const showCap = REPORTED.has(status) && calendar.truncated;
 
   return <section className="cp-panel cp-bid-panel" aria-labelledby="cp-bid-title" data-testid="commercial-bid-calendar">
-    <div className="cp-panel-heading"><h2 id="cp-bid-title">Bid calendar</h2><ExplainButton metric={info} onExplain={onExplain} /></div>
+    <div className="cp-panel-heading"><h2 id="cp-bid-title">Go calendar</h2><ExplainButton metric={info} onExplain={onExplain} /></div>
     <p className="cp-calendar-scope">{currency ? `Dates in ${currency}` : 'No currency data'} · past targets and next 30 days</p>
-    <div className="cp-side-table-wrap" role="region" aria-label="Bid submission targets" tabIndex={0}>
+    <div className="cp-side-table-wrap" role="region" aria-label="Go submission targets" tabIndex={0}>
       <table className="cp-side-table cp-bid-table"><thead><tr>
         <th scope="col">Date</th><th scope="col">Opportunity</th><th scope="col">Value</th><th scope="col">Readiness</th><th scope="col">Opportunity owner</th><th scope="col">Status</th><th scope="col">Action</th>
       </tr></thead><tbody>{visible.map(row => <tr key={row.id} data-testid={`commercial-bid-${row.id}`}>
         <td title={row.due_date ? formatDate(row.due_date) : 'Submission target not recorded'}>{row.due_date ? formatDate(row.due_date).replace(/ \d{4}$/, '') : '—'}</td>
         <th scope="row" title={`${row.code || ''} · ${row.name}`}><span>{row.name}</span><small>{row.client_name || row.code || '—'}</small></th>
         <td><CommercialMetricValue metric={pipelineAmount(row.estimated_value, currencyOf(row))} /></td>
-        <td title="Bid readiness is not recorded">—</td><td title={row.owner || 'Opportunity owner not recorded'}>{row.owner || 'Unassigned'}</td>
+        <td title="Go readiness is not recorded">—</td><td title={row.owner || 'Opportunity owner not recorded'}>{row.owner || 'Unassigned'}</td>
         <td><Status status={row.status === 'past_target_date' ? 'medium' : row.status === 'due_today' ? 'medium' : row.status === 'upcoming' ? 'available' : 'unavailable'}>
           {row.status === 'past_target_date' ? 'Target date passed' : row.status === 'due_today' ? 'Due today' : row.status === 'upcoming' ? 'Upcoming' : 'Not assessed'}
-        </Status></td><td><RouteLink route={row.route} aria-label={`Open bid opportunity ${row.name}`}>Open</RouteLink></td>
+        </Status></td><td><RouteLink route={row.route} aria-label={`Open Go opportunity ${row.name}`}>Open</RouteLink></td>
       </tr>)}</tbody></table>
     </div>
-    {!visible.length && <EmptyState title={sourceTitle(status, emptyKnown ? 'No submission targets in this scope' : total > 0 ? 'Target rows not included in this preview' : 'Bid calendar not available')}
+    {!visible.length && <EmptyState title={sourceTitle(status, emptyKnown ? 'No submission targets in this scope' : total > 0 ? 'Target rows not included in this preview' : 'Go calendar not available')}
       detail={emptyKnown ? 'No current proposal targets match this currency and date window.' : total > 0
         ? 'The response limit can omit targets in this currency. Open the opportunity register for all records.'
         : 'Recorded proposal submission dates are required.'} />}
@@ -124,14 +124,14 @@ export function CommercialClientConcentration({ commercial, currency, onExplain,
 export function CommercialResourceDemand({ commercial, onExplain }) {
   const demand = commercial?.resource_demand || {};
   const status = sourceState(commercial, demand);
-  const info = { ...sourceInfo('commercial_resource_demand', 'Bid resource demand',
-    demand.description || 'Approved bid staffing, dated discipline demand and available capacity are not connected. CRM estimated hours are not an approved resource plan.', status),
-    source: 'Approved bid resource plan required' };
+  const info = { ...sourceInfo('commercial_resource_demand', 'Go resource demand',
+    demand.description || 'Approved Go staffing, dated discipline demand and available capacity are not connected. CRM estimated hours are not an approved resource plan.', status),
+    source: 'Approved Go resource plan required' };
   return <section className="cp-panel cp-resource-panel" aria-labelledby="cp-resource-title" data-testid="commercial-resource-demand">
-    <div className="cp-panel-heading"><h2 id="cp-resource-title">Bid resource demand</h2><ExplainButton metric={info} onExplain={onExplain} /></div>
-    <table className="cp-side-table cp-resource-table" aria-label="Bid resource planning coverage"><thead><tr>
-      <th scope="col">Discipline</th><th scope="col">Bid demand</th><th scope="col">Capacity gap</th>
-    </tr></thead><tbody><tr><td colSpan={3}><EmptyState title={sourceTitle(status, 'Bid resource plan not connected')}
+    <div className="cp-panel-heading"><h2 id="cp-resource-title">Go resource demand</h2><ExplainButton metric={info} onExplain={onExplain} /></div>
+    <table className="cp-side-table cp-resource-table" aria-label="Go resource planning coverage"><thead><tr>
+      <th scope="col">Discipline</th><th scope="col">Go demand</th><th scope="col">Capacity gap</th>
+    </tr></thead><tbody><tr><td colSpan={3}><EmptyState title={sourceTitle(status, 'Go resource plan not connected')}
       detail="Approved staffing, demand dates and available capacity are required." /></td></tr></tbody></table>
     <div className="cp-panel-footer"><span className="cp-panel-note">Demand and capacity not assessed</span></div>
   </section>;
@@ -146,7 +146,7 @@ export function CommercialQuality({ commercial, currency, onExplain }) {
     return ['restricted', 'error'].includes(status) ? { ...metric, status, value: null } : metric;
   });
   const info = { ...sourceInfo('commercial_quality_coverage', 'Commercial quality',
-    quality.description || 'Recorded CRM hygiene checks across all accessible open opportunities and currencies. Missing submission dates apply to proposal-stage records. These counts do not establish legal review, bid readiness or overall commercial approval.', status), metrics };
+    quality.description || 'Recorded CRM hygiene checks across all accessible open opportunities and currencies. Missing submission dates apply to proposal-stage records. These counts do not establish legal review, Go readiness or overall commercial approval.', status), metrics };
 
   return <section className="cp-panel cp-quality-panel" aria-labelledby="cp-quality-title" data-testid="commercial-quality">
     <div className="cp-panel-heading"><h2 id="cp-quality-title">Commercial quality</h2><ExplainButton metric={info} onExplain={onExplain} /></div>

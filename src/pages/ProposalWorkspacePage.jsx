@@ -47,7 +47,7 @@ const ProposalWorkspacePage = () => {
           <div className="flex items-center gap-3">
             <button onClick={() => navigate(backPath)} className="rounded-xl border border-slate-200 p-2 text-slate-600 hover:bg-slate-50" title={salesProposalId ? 'Back to Sales proposal' : 'Back to planning packages'} aria-label={salesProposalId ? 'Back to Sales proposal' : 'Back to planning packages'}><ArrowLeft className="h-5 w-5" /></button>
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-700 text-white"><FileText className="h-6 w-6" /></div>
-            <div><h1 className="text-xl font-bold text-slate-900">Enterprise Technical Proposal Studio</h1><p className="text-sm text-slate-500">{project?.name || 'Planning project'} · controlled bid workspace</p></div>
+            <div><h1 className="text-xl font-bold text-slate-900">Enterprise Technical Proposal Studio</h1><p className="text-sm text-slate-500">{project?.name || 'Planning project'} · controlled Go workspace</p></div>
           </div>
           <div className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700">Full Workspace</div>
         </div>

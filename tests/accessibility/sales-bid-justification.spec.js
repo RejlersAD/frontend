@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { prepareRegister, opportunity } from '../fixtures/sales-opportunity-register-api';
 
-const dialog = page => page.getByRole('dialog', { name: 'Record Bid / No-Bid Decision', exact: true });
+const dialog = page => page.getByRole('dialog', { name: 'Record Go / No-Go Decision', exact: true });
 const reason = page => dialog(page).getByRole('textbox', { name: 'Edit justification', exact: true });
 const choose = (page, name) => dialog(page).getByRole('radio', { name }).click();
 const save = page => dialog(page).getByRole('button', { name: 'Save Decision', exact: true });
@@ -12,7 +12,7 @@ const selected = page => page.getByRole('complementary', { name: 'Opportunity de
 async function openDecision(page, index = 0) {
   await row(page, index).click();
   await page.getByRole('button', { name: 'Close record', exact: true }).click();
-  await selected(page).getByRole('button', { name: 'Record bid/no-bid', exact: true }).click();
+  await selected(page).getByRole('button', { name: 'Record Go / No-Go', exact: true }).click();
   await expect(dialog(page)).toBeVisible();
 }
 
@@ -50,7 +50,7 @@ async function prepare(page, configuration = {}) {
 test('choosing Go drafts without saving and explicit save records reviewed wording', async ({ page }) => {
   const { fixture, state } = await prepare(page);
   await expect(save(page)).toBeDisabled();
-  await choose(page, 'Go Pursue bid submission');
+  await choose(page, 'Go Pursue Go submission');
   await expect(dialog(page).locator('.sbd-source')).toHaveText('Backend AI');
   expect(fixture.aiRequests).toHaveLength(1);
   expect(fixture.aiRequests[0].payload.decision).toBe('bid');
@@ -80,7 +80,7 @@ for (const status of [403, 409, 503]) test(`AI ${status} retains an editable rec
 
 test('wrong-source AI cannot replace the current decision draft', async ({ page }) => {
   const { fixture } = await prepare(page, { responsePatch: { text: 'FOREIGN RESPONSE MUST NOT APPEAR', source_context: { opportunity_id: 'foreign', decision: 'bid', mode: 'rewrite' } } });
-  await choose(page, 'Go Pursue bid submission');
+  await choose(page, 'Go Pursue Go submission');
   await expect(dialog(page)).toContainText('Backend AI unavailable');
   await expect(dialog(page)).not.toContainText('FOREIGN RESPONSE');
   expect(fixture.decisions).toHaveLength(0);
@@ -90,7 +90,7 @@ test('a changed decision ignores late output and cannot save while generation is
   let release;
   const hold = new Promise(resolve => { release = resolve; });
   const { fixture } = await prepare(page, { hold, text: 'OLD GO RESPONSE MUST NOT APPEAR' });
-  await choose(page, 'Go Pursue bid submission');
+  await choose(page, 'Go Pursue Go submission');
   await expect.poll(() => fixture.aiRequests.length).toBe(1);
   await expect(save(page)).toBeDisabled();
   fixture.hold = null;
@@ -102,14 +102,14 @@ test('a changed decision ignores late output and cannot save while generation is
   await expect(dialog(page)).not.toContainText('OLD GO RESPONSE');
   await save(page).click();
   await expect(dialog(page)).toHaveCount(0);
-  expect(fixture.decisions[0].payload).toEqual({ decision: 'no_bid', reason: fixture.text });
+  expect(fixture.decisions[0].payload).toEqual({ decision: 'no_bid', reason: 'No-Go wording for the newly selected decision, subject to final review.' });
 });
 
 test('closing a pending draft fences output from another opportunity', async ({ page }) => {
   let release;
   const hold = new Promise(resolve => { release = resolve; });
   const { fixture } = await prepare(page, { hold, text: 'OLD OPPORTUNITY RESPONSE MUST NOT APPEAR' });
-  await choose(page, 'Go Pursue bid submission');
+  await choose(page, 'Go Pursue Go submission');
   await expect.poll(() => fixture.aiRequests.length).toBe(1);
   await dialog(page).getByRole('button', { name: 'Cancel', exact: true }).click();
   await openDecision(page, 1);
@@ -121,7 +121,7 @@ test('closing a pending draft fences output from another opportunity', async ({ 
 
 test('redesigned bid dialog is accessible at desktop and mobile widths', async ({ page }) => {
   await prepare(page, { realShell: true });
-  await choose(page, 'Go Pursue bid submission');
+  await choose(page, 'Go Pursue Go submission');
   await expect(save(page)).toBeEnabled();
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 900 });

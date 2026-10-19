@@ -158,7 +158,7 @@ export function copilotActions(record = {}, data = null) {
     actions.push({
       id: "deadline",
       title: `Submission due in ${score.dueDays} day${score.dueDays === 1 ? "" : "s"}`,
-      detail: "Review Timeline milestones, then lock the bid/no-bid date.",
+      detail: "Review Timeline milestones, then lock the Go/No-Go date.",
       view: "Timeline",
       priority: "now",
     });
@@ -195,7 +195,7 @@ export function copilotActions(record = {}, data = null) {
   if (score.band === "strong" || score.band === "moderate") {
     actions.push({
       id: "decide",
-      title: "Record the bid decision",
+      title: "Record the Go decision",
       detail: `Qualification score ${score.score}/100 (${score.band}). The decision dialog drafts an intelligence-grounded justification.`,
       view: null,
       priority: "later",

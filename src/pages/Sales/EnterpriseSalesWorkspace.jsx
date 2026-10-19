@@ -1,3 +1,4 @@
+import { decisionText } from '../../utils/salesDecisionTerminology.js';
 import { useCallback, useEffect, useMemo, useState } from "react";
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
@@ -23,7 +24,7 @@ import { opportunityTotal } from "./salesOpportunityRegistration";
 
 const PIPELINE = [
   ["qualified", "Qualified", "from-sky-200 to-sky-300 text-slate-900"],
-  ["bid", "Bid decision", "from-sky-300 to-blue-400 text-slate-900"],
+  ["bid", "Go decision", "from-sky-300 to-blue-400 text-slate-900"],
   ["proposal", "Proposal", "from-blue-400 to-blue-500 text-white"],
   ["submitted", "Submitted", "from-blue-500 to-blue-700 text-white"],
   ["negotiation", "Negotiation", "from-blue-700 to-blue-900 text-white"],
@@ -177,7 +178,7 @@ export default function EnterpriseSalesWorkspace() {
       if (row.stage === "qualified" && row.bid_decision === "pending")
         result.push({
           ...base,
-          issue: "Bid/no-bid decision overdue",
+          issue: "Go/No-Go decision overdue",
           severity: due !== null && due < 0 ? "High" : "Medium",
           action: "Decide",
         });
@@ -612,7 +613,7 @@ export default function EnterpriseSalesWorkspace() {
                             <ClockIcon className="h-4 w-4 text-blue-600" />
                             {row.stage === "proposal"
                               ? "In preparation"
-                              : row.stage === "lead" ? "Open" : row.stage_display}
+                              : row.stage === "lead" ? "Open" : decisionText(row.stage_display)}
                           </span>
                         </td>
                       </tr>

@@ -1,3 +1,4 @@
+import { decisionText } from '../../utils/salesDecisionTerminology.js';
 import { forwardRef, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
@@ -89,7 +90,7 @@ function NotificationActions({ notification, busy, onMarkAsRead, onDelete }) {
       }}
     >
       <button ref={triggerRef} type="button" className="notification-drawer__icon-button"
-        aria-label={`Actions for ${notification.title}`} aria-expanded={open}
+        aria-label={`Actions for ${decisionText(notification.title)}`} aria-expanded={open}
         aria-controls={actionsId} disabled={busy} onClick={() => setOpen((value) => !value)}
       >
         {busy ? <ArrowPathIcon aria-hidden="true" className="notification-drawer__spin" /> : <EllipsisHorizontalIcon aria-hidden="true" />}
@@ -272,13 +273,13 @@ const NotificationDropdown = forwardRef(({
                         const busy = bulkBusy || busyIds.some((id) => String(id) === String(notification.id))
                         const decisionBusy = busy || decisionLoadingId === notification.id
                         return (
-                          <li key={notification.id} aria-label={notification.title} data-notification-id={notification.id}
+                          <li key={notification.id} aria-label={decisionText(notification.title)} data-notification-id={notification.id}
                             className={`notification-drawer__item${notification.is_read ? '' : ' notification-drawer__item--unread'}`} aria-busy={busy}
                           >
                             <div className={`notification-drawer__category notification-drawer__category--${tone}`}><Icon aria-hidden="true" /></div>
                             <div className="notification-drawer__content">
-                              <h4>{notification.title}</h4>
-                              <p className="notification-drawer__message">{notification.message}</p>
+                              <h4>{decisionText(notification.title)}</h4>
+                              <p className="notification-drawer__message">{decisionText(notification.message)}</p>
                               <p className="notification-drawer__metadata">
                                 <span>{label}</span><span aria-hidden="true">·</span>
                                 <time dateTime={notification.created_at}>{formatDistanceToNow(notification.created_at)}</time>

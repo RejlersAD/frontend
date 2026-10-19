@@ -1,3 +1,4 @@
+import { decisionText } from '../../utils/salesDecisionTerminology.js';
 import { radaiPrompt, radaiConfirm } from '../../services/radaiDialog'
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
@@ -572,8 +573,8 @@ const NotificationBell = () => {
           <section className="w-full max-w-2xl rounded-xl border border-blue-200 bg-white p-5 shadow-2xl">
             <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Sales Notification</p>
             <p className="mt-2 inline-flex rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-blue-800">{salesPopupBadgeLabel(salesPopupNotification)}</p>
-            <h2 id="sales-popup-title" className="mt-1 text-lg font-bold text-slate-900">{salesPopupNotification.title || 'Action required'}</h2>
-            <pre className="mt-3 max-h-[45vh] overflow-auto whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800">{salesPopupNotification.message}</pre>
+            <h2 id="sales-popup-title" className="mt-1 text-lg font-bold text-slate-900">{decisionText(salesPopupNotification.title) || 'Action required'}</h2>
+            <pre className="mt-3 max-h-[45vh] overflow-auto whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800">{decisionText(salesPopupNotification.message)}</pre>
             {salesPopupError && <p className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{salesPopupError}</p>}
             <p className="mt-3 text-xs text-slate-500">This popup stays visible until you act on it.</p>
             <div className="mt-4 flex flex-wrap justify-end gap-2">

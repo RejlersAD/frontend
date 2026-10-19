@@ -242,7 +242,7 @@ export default function SalesLetterEditor({
                 disabled={saving}
               />
               <Field
-                label="Bid Focal Contact"
+                label="Go Focal Contact"
                 value={head.focal_contact}
                 onChange={(v) => setField("focal_contact", v)}
                 disabled={saving}

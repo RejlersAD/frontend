@@ -1,3 +1,4 @@
+import { decisionText } from '../../utils/salesDecisionTerminology.js';
 /**
  * salesBidDecision.js — helpers for the redesigned Record Bid / No-Bid Decision.
  * Traceability: Sales Opportunity lifecycle action `record-bid`.
@@ -104,7 +105,7 @@ export const stageLabel = (value) => {
     AWARDED: 'Awarded',
     CONVERTED: 'Converted to project',
     LOST: 'Lost',
-    NO_BID: 'No bid',
+    NO_BID: 'No-Go',
     CANCELLED: 'Cancelled',
   };
   const key = String(value || '').toUpperCase();
@@ -224,7 +225,7 @@ export function generateBidJustification(record = {}, decision, variant = 0, int
       ? `The estimated value of ${value} represents significant commercial potential with a win probability of ${winLabel}.`
       : `The estimated value of ${value} with a win probability of ${winLabel} supports investment in proposal development.`;
     const strategic = signals.strategicClient
-      ? 'As a strategically important client relationship, a quality bid strengthens long-term positioning and repeat business.'
+      ? 'As a strategically important client relationship, a Go decision strengthens long-term positioning and repeat business.'
       : `The ${oppType} requirement at ${stage} stage fits our service-line strategy and client-relationship goals.`;
     const intelRiskGo = intelRisk
       ? intelRisk.replace('RADAI-flagged risks include', 'Known risks to manage during pursuit include')
@@ -235,15 +236,15 @@ export function generateBidJustification(record = {}, decision, variant = 0, int
     const pipeline = signals.isEOI
       ? 'As an EOI, participation also builds future pipeline potential beyond this immediate pursuit.'
       : '';
-    const closer = 'Based on available information, it is recommended to proceed with bid submission.';
-    return joinSentences([openers[variant % openers.length], strategic, intelNeed, commercial, intelDelivery, delivery, intelRiskGo, pipeline, closer]);
+    const closer = 'Based on available information, it is recommended to proceed with Go submission.';
+    return decisionText(joinSentences([openers[variant % openers.length], strategic, intelNeed, commercial, intelDelivery, delivery, intelRiskGo, pipeline, closer]));
   }
   const openers = [
     `Following evaluation, ${title} with ${client} does not currently provide sufficient strategic or commercial justification to proceed.`,
     `A No-Go is recommended for ${title} with ${client} after assessment of value, risk, and resourcing.`,
   ];
   const reasons = [];
-  if (signals.lowWinProb) reasons.push(`the win probability of ${winLabel} indicates a low likelihood of return on bid investment`);
+  if (signals.lowWinProb) reasons.push(`the win probability of ${winLabel} indicates a low likelihood of return on Go investment`);
   if (!signals.hasValue) reasons.push('the commercial value is unconfirmed');
   else if (!signals.highValue) reasons.push(`the estimated value of ${value} is limited relative to anticipated pursuit cost`);
   if (signals.closeDeadline) reasons.push('deadline pressure');
@@ -252,8 +253,8 @@ export function generateBidJustification(record = {}, decision, variant = 0, int
     ? `Key considerations include ${reasons.slice(0, 3).join('; ')}.`
     : `The ${oppType} requirement at ${stage} stage offers limited strategic fit against current priorities.`;
   const resource = 'Given identified constraints, redeploying proposal capacity protects margin and focus.';
-  const closer = 'A no-bid decision is therefore recommended and logged for pipeline monitoring.';
-  return joinSentences([openers[variant % openers.length], intelNeed, intelDelivery, reasonText, resource, closer]);
+  const closer = 'A No-Go decision is therefore recommended and logged for pipeline monitoring.';
+  return decisionText(joinSentences([openers[variant % openers.length], intelNeed, intelDelivery, reasonText, resource, closer]));
 }
 
 export function wordCount(value) {

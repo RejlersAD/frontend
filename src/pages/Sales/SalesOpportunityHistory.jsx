@@ -1,8 +1,9 @@
+import { decisionText } from '../../utils/salesDecisionTerminology.js';
 import PropTypes from "prop-types";
 
 const text = (value) => typeof value === "string" ? value.trim() : "";
 const object = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : {};
-const words = (value) => text(value).replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+const words = (value) => decisionText(text(value).replaceAll("_", " ")).replace(/\b\w/g, (letter) => letter.toUpperCase());
 const scalar = (value) => typeof value === "boolean" ? value ? "Yes" : "No"
   : typeof value === "number" && Number.isFinite(value) ? String(value) : text(value);
 const knownLabel = (labels, value) => Object.hasOwn(labels, text(value)) ? labels[text(value)] : "";
@@ -11,7 +12,7 @@ const eventLabels = {
   opportunity_created: "Opportunity created",
   opportunity_created_from_email: "Opportunity created from incoming email",
   qualification_submitted: "Qualification submitted",
-  bid_decision: "Bid decision recorded",
+  bid_decision: "Go decision recorded",
   proposal_revision_created: "Proposal revision created",
   proposal_revision_approved: "Proposal revision approved",
   proposal_revision_issued: "Proposal revision issued to client",

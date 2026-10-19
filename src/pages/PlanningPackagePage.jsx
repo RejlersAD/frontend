@@ -4511,7 +4511,7 @@ const PlanningPackagePage = ({ embedded = false, documentWorkflow = false, enter
         <div className="rounded-2xl border border-blue-200 bg-gradient-to-br from-white to-blue-50 px-8 py-16 text-center shadow-sm">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-700 text-3xl text-white">📑</div>
           <h2 className="mt-5 text-2xl font-bold text-slate-900">Enterprise Technical Proposal Studio</h2>
-          <p className="mx-auto mt-2 max-w-2xl text-slate-600">Open the dedicated bid workspace for the complete proposal outline, compliance matrix, resources, method statement, schedule exhibits, corporate evidence, live A4 preview and controlled exports.</p>
+          <p className="mx-auto mt-2 max-w-2xl text-slate-600">Open the dedicated Go workspace for the complete proposal outline, compliance matrix, resources, method statement, schedule exhibits, corporate evidence, live A4 preview and controlled exports.</p>
           <button type="button" onClick={() => navigate(`/proposal-workspace/${selectedProjectId}`)} className="mt-7 rounded-xl bg-blue-700 px-6 py-3 font-bold text-white shadow hover:bg-blue-800">Open Enterprise Proposal Studio →</button>
         </div>
       );

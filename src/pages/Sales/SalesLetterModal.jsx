@@ -26,7 +26,7 @@ const LETTER_TYPE_ICONS = {
 };
 
 const LETTER_TYPE_DESCRIPTIONS = {
-  eoi: "Confirm interest in participating. Use after a Bid or Conditional Bid decision.",
+  eoi: "Confirm interest in participating. Use after a Go or Conditional Go decision.",
   regret_expertise:
     "Decline due to opportunity falling outside core expertise/specialization.",
   regret_manpower:
@@ -415,7 +415,7 @@ export default function SalesLetterModal({
       {availableTypes.length === 0 && (
         <div className="sl-no-options">
           <AlertCircle size={24} />
-          <p>No letter types available for the current bid decision.</p>
+          <p>No letter types available for the current Go decision.</p>
           <p className="sl-hint">
             Complete the Go/No-Go decision to unlock letter preparation.
           </p>

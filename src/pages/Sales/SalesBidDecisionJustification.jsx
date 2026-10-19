@@ -1,3 +1,4 @@
+import { decisionText } from '../../utils/salesDecisionTerminology.js';
 import { useEffect, useId, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 import { Loader2, Sparkles } from 'lucide-react';
@@ -47,8 +48,8 @@ export default function SalesBidDecisionJustification({ opportunityId, currentRe
         throw new Error('The AI suggestion could not be verified. Your text is kept. Try again.');
       }
       request.current = null;
-      setSuggestion({ previous: value, text: result.text, type: typeof source.opportunity_type_label === 'string' ? source.opportunity_type_label : 'Not provided' });
-      onChange(result.text);
+      setSuggestion({ previous: value, text: decisionText(result.text), type: typeof source.opportunity_type_label === 'string' ? source.opportunity_type_label : 'Not provided' });
+      onChange(decisionText(result.text));
     } catch (failure) {
       if (request.current !== command || command.controller.signal.aborted) return;
       const detail = failure?.response?.data?.detail;

@@ -1,3 +1,4 @@
+import { decisionText } from '../../utils/salesDecisionTerminology.js';
 import PropTypes from "prop-types";
 import { SalesEmailSourceEvidence } from "./SalesEmailAnalysis";
 
@@ -84,7 +85,7 @@ function ReviewEvidence({ value, sources }) {
     <>
       {text(value.reason) && (
         <p className="mt-1 whitespace-pre-wrap leading-5 [overflow-wrap:anywhere]">
-          {value.reason}
+          {decisionText(value.reason)}
         </p>
       )}
       <SalesEmailSourceEvidence
