@@ -2,7 +2,6 @@ import {
   businessDate,
   opportunityMoney,
 } from "./salesOpportunityRegistration.js";
-
 export const ACTIVE_STAGES = [
   "lead",
   "qualified",
@@ -47,15 +46,17 @@ export const bidLabel = (value) =>
   Object.hasOwn(BID_LABELS, value) ? BID_LABELS[value] : "No decision";
 export const typeLabel = (value) => {
   const labels = {
-    EOI: "EOI",
+    eoi: "EOI",
+    eio: "EIO",
     budgetary: "Budgetary",
     technical: "Technical",
     commercial: "Commercial",
     techno_commercial: "Techno Commerical",
     other: "Others",
   };
-  return Object.hasOwn(labels, value)
-    ? labels[value]
+  const key = String(value || "").toLowerCase();
+  return Object.hasOwn(labels, key)
+    ? labels[key]
     : humanize(value) || "Not provided";
 };
 export const services = (record) =>
