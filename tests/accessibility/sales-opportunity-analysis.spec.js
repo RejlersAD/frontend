@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { prepareRegister, opportunity } from '../fixtures/sales-opportunity-register-api';
 
-const pane = page => page.getByRole('region', { name: 'Opportunity analysis Copilot', exact: true });
+const pane = page => page.getByRole('region', { name: 'Opportunity analysis Radai', exact: true });
 const citation = { text: 'The client requires a technical inspection proposal.', excerpt: 'Technical inspection proposal is required.',
   name: 'Invitation.eml', location: 'Email body, part 1', source_id: 1, date: '', kind: 'brief' };
 const ready = id => ({ opportunity_id: id, id: `analysis-${id}`, status: 'partial', stale: false,
@@ -13,7 +13,7 @@ const ready = id => ({ opportunity_id: id, id: `analysis-${id}`, status: 'partia
     item_counts: { risk: 1, action: 1 }, relationships: [{ kind: 'shared_reference', reference: 'RFQ-2026-100', sources: [{ name: 'Invitation.eml' }, { name: 'Scope.pdf' }] }], deadline_dates: ['2026-12-01'],
   } });
 
-async function setup(page, { status = 'partial', denied = false, noMatch = false, realShell = false, copilot = false } = {}) {
+async function setup(page, { status = 'partial', denied = false, noMatch = false, realShell = false, Radai = false } = {}) {
   const state = await prepareRegister(page, { realShell, records: [opportunity(0), opportunity(1)] });
   const requests = [];
   await page.route('**/api/v1/sales/deals/*/analysis/**', async route => {
@@ -31,7 +31,7 @@ async function setup(page, { status = 'partial', denied = false, noMatch = false
   await page.locator('.sor-table-scroll').getByRole('button', { name: 'Q-102101', exact: true }).click();
   await page.getByRole('button', { name: 'Close record', exact: true }).click();
   await page.getByRole('tab', { name: 'Analysis', exact: true }).click();
-  if (!denied && !copilot) await pane(page).getByRole('button', { name: 'Brief', exact: true }).click();
+  if (!denied && !Radai) await pane(page).getByRole('button', { name: 'Brief', exact: true }).click();
   return { state, requests };
 }
 
@@ -67,7 +67,7 @@ test('source coverage exposes partial extraction and supports evidence inspectio
 test('background processing is honest and hides unverified brief output', async ({ page }) => {
   await setup(page, { status: 'queued' });
   await expect(pane(page)).toContainText('42 of 600 text sections analyzed');
-  await expect(pane(page)).toContainText('Copilot is reading your documents');
+  await expect(pane(page)).toContainText('Radai is reading your documents');
   await expect(pane(page).getByRole('button', { name: 'Download brief' })).toBeDisabled();
 });
 
@@ -93,7 +93,7 @@ test('new source changes automatically queue refresh and hide the prior brief', 
       result: {}, counts: { total: 502, chunks_total: 0, chunks_done: 0 } } });
   });
   await expect.poll(() => posts, { timeout: 25000 }).toBeGreaterThan(0);
-  await expect(pane(page)).toContainText('Copilot is reading your documents');
+  await expect(pane(page)).toContainText('Radai is reading your documents');
   await expect(pane(page)).not.toContainText(citation.text);
 });
 
@@ -125,8 +125,8 @@ test('keyboard tab navigation and responsive Analysis remain accessible', async 
   await pane(page).screenshot({ path: 'artifacts/opportunity-analysis/analysis-desktop.png' });
 });
 
-test('Copilot keeps advisory scores separate from source-backed brief navigation', async ({ page }) => {
-  await setup(page, { copilot: true });
+test('Radai keeps advisory scores separate from source-backed brief navigation', async ({ page }) => {
+  await setup(page, { Radai: true });
   await expect(pane(page).getByRole('heading', { name: 'Qualification score', exact: true })).toBeVisible();
   await pane(page).getByRole('button', { name: 'Brief', exact: true }).click();
   await expect(pane(page).getByRole('region', { name: 'What is this opportunity?', exact: true })).toBeVisible();

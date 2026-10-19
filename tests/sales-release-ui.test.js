@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { formatMoney, summaryOf, decisionSignals } from '../src/pages/Sales/salesBidDecision.js';
-import { copilotScore } from '../src/pages/Sales/salesOpportunityCopilot.js';
+import { RadaiScore } from '../src/pages/Sales/salesOpportunityRadai.js';
 
 test('missing commercial facts remain unknown and genuine zero remains known', () => {
   for (const value of [null, undefined, '', false]) {
@@ -15,5 +15,5 @@ test('missing commercial facts remain unknown and genuine zero remains known', (
 });
 
 test('missing and omitted commercial values give the same advisory score', () => {
-  assert.deepEqual(copilotScore({ estimated_value: null, win_probability: null }), copilotScore({}));
+  assert.deepEqual(RadaiScore({ estimated_value: null, win_probability: null }), RadaiScore({}));
 });

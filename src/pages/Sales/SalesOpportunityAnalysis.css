@@ -1,5 +1,5 @@
-/* Copilot workspace: glassmorphism, gradient AI badges, animated score rings, collapsible insights, AI confidence, skeletons, dark/light, mobile */
-.soa-copilot {
+/* Radai workspace: glassmorphism, gradient AI badges, animated score rings, collapsible insights, AI confidence, skeletons, dark/light, mobile */
+.soa-Radai {
   --cp-bg: radial-gradient(1200px 800px at 50% 0%, #f8faff 0%, #eef2ff 100%);
   --cp-ink: #0f2040;
   --cp-muted: #5b6b84;
@@ -14,7 +14,7 @@
   border-radius: 14px;
   padding: 12px 14px;
 }
-.soa-copilot.soa-dark {
+.soa-Radai.soa-dark {
   --cp-bg: radial-gradient(1200px 800px at 50% 0%, #0b1026 0%, #070a14 100%);
   --cp-ink: #e2e8f0;
   --cp-muted: #94a3b8;
@@ -805,8 +805,8 @@
   color: var(--cp-ink);
   cursor: pointer;
 }
-.soa-copilot button:focus-visible,
-.soa-copilot summary:focus-visible {
+.soa-Radai button:focus-visible,
+.soa-Radai summary:focus-visible {
   outline: 3px solid #8ab6ff;
   outline-offset: 2px;
 }
@@ -865,7 +865,7 @@
     width: 100px;
     height: 100px;
   }
-  .soa-copilot {
+  .soa-Radai {
     padding: 10px;
   }
 }
