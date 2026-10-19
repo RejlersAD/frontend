@@ -50,8 +50,15 @@ export const SMART_BACK_CONFIG = {
     instrument_index: { route: '/engineering/instrument/index',        label: 'Instrument Index' },
     line_list:        { route: '/engineering/process/line-list',       label: 'Line List' },
     equipment_list:   { route: '/engineering/process/equipment-list',  label: 'Equipment List' },
+    valve:            { route: '/engineering/piping/pms',              label: 'Valve MTO' },
   },
-  fallback: { route: '/engineering/process/pid-checker-v2', label: 'P&ID Checker V2' },
+  // Defensive-only default for backTarget/backLabel below — not actually
+  // reachable in the UI any more: showBackButton hides the button entirely
+  // when there's no returnTo/from/section context (e.g. arriving at Legend
+  // Manager directly), rather than falling back to a hardcoded tool (was
+  // 'P&ID Checker V2', the legacy default, which made no sense once
+  // multiple tools shared this canvas).
+  fallback: { route: '/engineering/legends', label: 'Legend Manager' },
 }
 
 function prettyJson(obj) {
@@ -76,15 +83,20 @@ export default function LegendSheetsCanvas({ projectId = null, projectName = '',
   // Priority:
   //   1. Explicit `returnTo` query param (caller-driven, validated internal)
   //   2. `section` query param → owning tool via SECTION_HOME_MAP below
-  //   3. Fallback: P&ID Checker V2 (legacy default)
+  //   3. No usable context at all (arrived at Legend Manager directly) —
+  //      the button is hidden entirely rather than falling back to a
+  //      hardcoded default tool (previously always "P&ID Checker V2",
+  //      which made no sense once multiple tools shared this canvas).
   const returnToParam = params.get('returnTo')
   const returnFromLabel = params.get('from') || ''
   const sectionParam = params.get('section') || ''
   const sectionHome = SMART_BACK_CONFIG.sectionHomes[sectionParam] || null
   const isSafeInternal = (p) =>
     typeof p === 'string' && p.startsWith('/') && !p.startsWith('//')
+  const hasSafeReturnTo = isSafeInternal(returnToParam)
+  const showBackButton = hasSafeReturnTo || Boolean(returnFromLabel) || Boolean(sectionHome)
 
-  const backTarget = isSafeInternal(returnToParam)
+  const backTarget = hasSafeReturnTo
     ? returnToParam
     : (sectionHome?.route || SMART_BACK_CONFIG.fallback.route)
   const backLabel = returnFromLabel
@@ -621,18 +633,20 @@ export default function LegendSheetsCanvas({ projectId = null, projectName = '',
         display: 'flex', alignItems: 'center', gap: 12,
         padding: '12px 20px', background: '#fff', borderBottom: `1px solid ${THEME_BORDER}`,
       }}>
-        <button
-          type="button"
-          onClick={() => navigate(backTarget)}
-          title={backLabel}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            padding: '6px 10px', borderRadius: 8, border: `1px solid ${THEME_BORDER}`,
-            background: '#fff', color: THEME_TEXT, cursor: 'pointer', fontSize: 12,
-          }}
-        >
-          <ArrowLeft size={14} /> {backLabel}
-        </button>
+        {showBackButton && (
+          <button
+            type="button"
+            onClick={() => navigate(backTarget)}
+            title={backLabel}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '6px 10px', borderRadius: 8, border: `1px solid ${THEME_BORDER}`,
+              background: '#fff', color: THEME_TEXT, cursor: 'pointer', fontSize: 12,
+            }}
+          >
+            <ArrowLeft size={14} /> {backLabel}
+          </button>
+        )}
 
         <div style={{
           width: 36, height: 36, borderRadius: 10, background: THEME_GRADIENT,
