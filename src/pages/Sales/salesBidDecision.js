@@ -12,6 +12,7 @@ export const BACKEND_DECISION = { [GO]: 'bid', [NO_GO]: 'no_bid' };
 
 const text = (value) => (typeof value === 'string' ? value.trim() : '');
 const num = (value) => {
+  if (value === null || value === undefined || value === '' || typeof value === 'boolean') return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };

@@ -90,10 +90,16 @@ export default function SalesBidDecisionDialog({ record, busy, error, onClose, o
         : '';
       const result = await salesService.draftBidDecisionJustification(record.id, {
         decision: BACKEND_DECISION[activeDecision],
-        text: [instantText, intelSummary ? `RADAI Opportunity Intelligence:\n${intelSummary}` : ''].filter(Boolean).join('\n\n'),
+        text: [instantText, intelSummary ? `RADAI Opportunity Intelligence:\n${intelSummary}` : ''].filter(Boolean).join('\n\n').slice(0, AI_LIMIT),
       });
       if (run !== runId.current) return;
       const backendText = typeof result?.text === 'string' ? result.text.trim() : '';
+      const context = result?.source_context;
+      if (String(context?.opportunity_id) !== String(record.id)
+          || context?.decision !== BACKEND_DECISION[activeDecision]
+          || context?.mode !== 'rewrite') {
+        throw new Error('The AI response did not match this decision.');
+      }
       if (backendText && backendText.length > 20 && backendText.length <= AI_LIMIT) {
         setJustification(backendText);
         setAiSource('ai');
@@ -154,6 +160,7 @@ export default function SalesBidDecisionDialog({ record, busy, error, onClose, o
   }, [draftReady, onReadyChange]);
   const submit = (event) => {
     event.preventDefault();
+    if (!canSave) return;
     if (!decision) {
       setLocalError('Select Go or No-Go to generate the executive justification.');
       return;
@@ -222,8 +229,8 @@ export default function SalesBidDecisionDialog({ record, busy, error, onClose, o
             <div className="sbd-grid">
               <section aria-label="Generated justification" className="sbd-card sbd-justify">
                 <div className="sbd-justify-head">
-                  <h3><SparklesIcon aria-hidden="true" /> AI Generated Decision Justification</h3>
-                  <span className="sbd-source">{refining ? 'Generating…' : aiSource === 'ai' ? 'Backend AI' : 'Instant draft'}</span>
+                  <h3><SparklesIcon aria-hidden="true" /> Decision justification</h3>
+                  <span className="sbd-source">{refining ? 'Generating…' : aiSource === 'ai' ? 'Backend AI' : 'Record-based draft'}</span>
                 </div>
                 <p className="sbd-intel-line" role="status">
                   {intelStatus === 'loading' && 'Loading RADAI Opportunity Intelligence…'}
@@ -299,7 +306,7 @@ export default function SalesBidDecisionDialog({ record, busy, error, onClose, o
             <dl>
               <div><dt>Decision Owner</dt><dd>{owner}</dd></div>
               <div><dt>Decision Date</dt><dd>{displayDateTime(today)}</dd></div>
-              <div><dt>Decision Source</dt><dd>{editing ? 'AI Assisted + Manual Edit' : 'AI Assisted'}</dd></div>
+              <div><dt>Decision Source</dt><dd>{aiSource === 'ai' ? 'AI Assisted' : 'Record-based draft'}{editing ? ' + Manual Edit' : ''}</dd></div>
             </dl>
           </section>
           <footer className="sbd-foot">

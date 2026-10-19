@@ -138,13 +138,13 @@
   background: currentColor;
 }
 .cp-conf-high {
-  color: #059669;
+  color: #047857;
 }
 .cp-conf-medium {
-  color: #d97706;
+  color: #92400e;
 }
 .cp-conf-low {
-  color: #dc2626;
+  color: #b91c1c;
 }
 .cp-conf-none {
   color: var(--cp-muted);

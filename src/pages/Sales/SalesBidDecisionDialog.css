@@ -13,7 +13,7 @@
 .sbd-card dl { margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 14px; }
 .sbd-card dl div { min-width: 0; }
 .sbd-span { grid-column: span 2; }
-.sbd-card dt { font-size: 11px; color: #6b7a90; text-transform: uppercase; letter-spacing: 0.05em; }
+.sbd-card dt { font-size: 11px; color: #526278; text-transform: uppercase; letter-spacing: 0.05em; }
 .sbd-card dd { margin: 3px 0 0; font-size: 13px; font-weight: 600; color: #152a45; overflow-wrap: anywhere; }
 .sbd-decisions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .sbd-go, .sbd-nogo { display: flex; gap: 10px; align-items: center; border: 2px solid #dbe4f0; border-radius: 10px; padding: 12px; cursor: pointer; background: #fff; font: inherit; text-align: left; color: inherit; width: 100%; }

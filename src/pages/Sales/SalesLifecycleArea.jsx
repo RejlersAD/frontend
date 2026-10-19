@@ -949,6 +949,10 @@ export default function SalesLifecycleArea() {
   const [workspaceCounts, setWorkspaceCounts] = useState({});
   const [registrationOpen, setRegistrationOpen] = useState(false);
   const [actionDialog, setActionDialog] = useState(null);
+  const handleBidReadiness = useCallback((ready) => {
+    setActionDialog((current) => current?.redesignedBidDecision && current.ready !== ready
+      ? { ...current, ready } : current);
+  }, []);
   const [actionValues, setActionValues] = useState({});
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState("");
@@ -2189,13 +2193,12 @@ export default function SalesLifecycleArea() {
       />
       {actionDialog && actionDialog.redesignedBidDecision ? (
         <SalesBidDecisionDialog
+          key={record?.id}
           record={record}
           busy={actionBusy}
           error={actionError}
           onClose={() => { if (!actionBusy) setActionDialog(null); }}
-          onReadyChange={(ready) => {
-            setActionDialog((current) => (current?.redesignedBidDecision ? { ...current, ready } : current));
-          }}
+          onReadyChange={handleBidReadiness}
           onSubmit={async (values) => {
             if (actionBusy) return;
             setActionBusy(true);

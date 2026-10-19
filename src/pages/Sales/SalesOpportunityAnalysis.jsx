@@ -526,6 +526,16 @@ export default function SalesOpportunityAnalysis({ record }) {
               {sectionBlock("brief", "What is this opportunity?", Sparkles)}
               {sectionBlock("client_need", "What does the client want?", ListChecks)}
               {sectionBlock("next_step", "What should we do next?", ArrowRight)}
+              {result.relationships?.length > 0 && (
+                <section className="cp-insight glass" aria-label="Document relationships">
+                  <h3>Document relationships</h3>
+                  <ul>{result.relationships.map((relation, index) => (
+                    <li key={index}>{relation.reference || relation.kind}
+                      {relation.sources?.length ? ` — ${relation.sources.map((source) => source.name).filter(Boolean).join(', ')}` : ''}
+                    </li>
+                  ))}</ul>
+                </section>
+              )}
             </div>
           )}
           {hasResult && view === "Submissions" && (
