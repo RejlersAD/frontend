@@ -28,6 +28,7 @@ import {
   Clock3,
   FileText,
   AlertTriangle,
+  Sparkles,
 } from "lucide-react";
 import apiClient from "../../../services/api.service";
 import * as XLSX from "xlsx";
@@ -41,6 +42,7 @@ import EquipmentListWorkflowDocs from "./components/EquipmentListWorkflowDocs";
 // Shared Project Organizer — soft-coded workspace (same pattern as Line List / HMB)
 import { PROJECT_ORGANIZER_CONFIG } from "../../../config/projectOrganizer.config";
 import projectOrganizerService from "../../../services/projectOrganizerService";
+import { radaiAlert, radaiConfirm } from "../../../services/radaiDialog";
 import {
   getCurrentEquipmentRegister,
   getEquipmentRegisterChanges,
@@ -64,8 +66,7 @@ import {
 // ---------------------------------------------------------------------------
 const COLUMNS = [
   { key: "sl_no", label: "SL No.", width: 6 },
-  { key: "revision", label: "Rev.", width: 7 },
-  { key: "tag", label: "Equipment Tag No.", width: 16 },
+  { key: "tag", label: "Tag", width: 16 },
   { key: "description", label: "Description", width: 28 },
   { key: "design_flowrate", label: "Design Flowrate / Duty", width: 22 },
   { key: "oper_pressure", label: "Oper. Pressure (PSIG)", width: 18 },
@@ -86,25 +87,25 @@ const COLUMNS = [
 ];
 
 const REFERENCE_COLUMNS = [
+  { key: "sl_no", label: "SL No.", value: (row) => row.sl_no },
   { key: "tag", label: "Tag", value: (row) => row.tag },
   { key: "description", label: "Description", value: (row) => row.description },
-  {
-    key: "equipment_type",
-    label: "Type",
-    value: (row) => row.equipment_type || row.type,
-  },
-  {
-    key: "design_pressure_max",
-    label: "Design P (bar)",
-    value: (row) => row.design_pressure_max || row.design_pressure,
-  },
-  {
-    key: "oper_pressure",
-    label: "Oper. P (bar)",
-    value: (row) => row.oper_pressure,
-  },
+  { key: "design_flowrate", label: "Design Flowrate / Duty", value: (row) => row.design_flowrate },
+  { key: "oper_pressure", label: "Oper. Pressure (PSIG)", value: (row) => row.oper_pressure },
+  { key: "oper_temperature", label: "Oper. Temp. (°F)", value: (row) => row.oper_temperature },
+  { key: "design_pressure_min", label: "Des. Pressure (MIN)", value: (row) => row.design_pressure_min },
+  { key: "design_pressure_max", label: "Des. Pressure (MAX)", value: (row) => row.design_pressure_max },
+  { key: "design_temp_min", label: "Des. Temp. Min (°F)", value: (row) => row.design_temp_min },
+  { key: "design_temp_max", label: "Des. Temp. Max (°F)", value: (row) => row.design_temp_max },
   { key: "moc", label: "MOC", value: (row) => row.moc },
-  { key: "pid_no", label: "P&ID reference", value: (row) => row.pid_no },
+  { key: "insulation", label: "Insulation", value: (row) => row.insulation },
+  { key: "dimension_length", label: "Length / Height (mm)", value: (row) => row.dimension_length },
+  { key: "dimension_diameter", label: "Diameter / Width (mm)", value: (row) => row.dimension_diameter },
+  { key: "motor_rating", label: "Motor Rating (kW)", value: (row) => row.motor_rating },
+  { key: "pid_no", label: "P&ID No.", value: (row) => row.pid_no },
+  { key: "quality_required", label: "Quantity Required", value: (row) => row.quality_required },
+  { key: "phase", label: "Phase", value: (row) => row.phase },
+  { key: "remarks", label: "Remarks", value: (row) => row.remarks },
   {
     key: "confidence",
     label: "Confidence",
@@ -119,12 +120,25 @@ const REFERENCE_COLUMNS = [
 ];
 
 const DEFAULT_REFERENCE_COLUMNS = new Set([
+  "sl_no",
   "tag",
   "description",
-  "equipment_type",
-  "design_pressure_max",
+  "design_flowrate",
   "oper_pressure",
+  "oper_temperature",
+  "design_pressure_min",
+  "design_pressure_max",
+  "design_temp_min",
+  "design_temp_max",
   "moc",
+  "insulation",
+  "dimension_length",
+  "dimension_diameter",
+  "motor_rating",
+  "pid_no",
+  "quality_required",
+  "phase",
+  "remarks",
   "status",
 ]);
 
@@ -824,6 +838,7 @@ const EquipmentList = () => {
   const [projects, setProjects] = useState([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [showCreateProject, setShowCreateProject] = useState(false);
+  const [editingProject, setEditingProject] = useState(null);
   const [projectBusy, setProjectBusy] = useState(false);
   const [projectError, setProjectError] = useState("");
 
@@ -874,6 +889,145 @@ const EquipmentList = () => {
   const [editDraft, setEditDraft] = useState({});
   const [isSavingEquipment, setIsSavingEquipment] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // ── Phase 2: BYOK AI Deep Extraction (additive — soft-coded model list
+  // comes from GET /pid/equipment/deep-extract/models/; keys stay server-side
+  // in the managed BYOK registry) ─────────────────────────────────────────
+  const [showDeepExtract, setShowDeepExtract] = useState(false);
+  const [deepModels, setDeepModels] = useState([]);
+  const [deepModel, setDeepModel] = useState("");
+  const [deepKey, setDeepKey] = useState(""); // BYOK key — request-scoped, never persisted
+  const [deepMergeMode, setDeepMergeMode] = useState("fill"); // 'fill' | 'correct'
+  const [deepExtractBusy, setDeepExtractBusy] = useState(false);
+  const [deepExtractMsg, setDeepExtractMsg] = useState("");
+  // The exact File object used by the phase-1 extraction.  "Boost with AI"
+  // always re-reads THIS file so both passes work on the same drawing.
+  const [extractedFile, setExtractedFile] = useState(null);
+
+  const fetchDeepModels = useCallback(async () => {
+    try {
+      const { data } = await apiClient.get("/pid/equipment/deep-extract/models/", {
+        suppressErrorToast: true,
+      });
+      const models = data?.models || [];
+      setDeepModels(models);
+      const firstReady =
+        models.find((m) => m.id === data?.default_model) ||
+        models.find((m) => m.ready);
+      setDeepModel((prev) => prev || firstReady?.id || data?.default_model || "");
+    } catch {
+      setDeepModels([]);
+    }
+  }, []);
+
+  const handleDeepExtract = async () => {
+    // Prefer the pinned phase-1 File; when the session no longer holds it
+    // (reload / saved register), the backend recovers the SAME drawing from
+    // the project S3 archive using the upload_id.
+    const sourceFile = extractedFile || files?.[0];
+    const uploadId = results?.upload_id;
+    if (!sourceFile && !uploadId) {
+      setDeepExtractMsg(
+        "No extraction is linked to this register yet — run Upload P&ID extraction first.",
+      );
+      return;
+    }
+    if (!deepModel) {
+      setDeepExtractMsg("Select an AI model first.");
+      return;
+    }
+    const selectedModel = deepModels.find((m) => m.id === deepModel);
+    if (!deepKey.trim() && selectedModel && !selectedModel.ready) {
+      setDeepExtractMsg(
+        `No saved key for ${selectedModel.provider}. Paste your BYOK API key below.`,
+      );
+      return;
+    }
+    setDeepExtractBusy(true);
+    setDeepExtractMsg("AI is reading every page of the drawing…");
+    try {
+      const formData = new FormData();
+      if (sourceFile) formData.append("file", sourceFile);
+      formData.append("model", deepModel);
+      formData.append(
+        "source_filename",
+        sourceFile?.name ||
+          registerRecord?.revision?.source_files?.[0] ||
+          "",
+      );
+      if (activeProject) {
+        formData.append("project_code", activeProject.code || "");
+        formData.append("project_name", activeProject.name || "");
+      }
+      // Send the rows the user currently sees — the backend merges against
+      // THESE, never against a possibly-expired cache, so a boost can never
+      // wipe the register.
+      formData.append(
+        "current_items",
+        JSON.stringify(results?.equipment || []),
+      );
+      if (deepKey.trim()) formData.append("byok_key", deepKey.trim());
+      formData.append("merge_mode", deepMergeMode);
+      if (uploadId) formData.append("upload_id", uploadId);
+      if (results?.drawing_ref)
+        formData.append("drawing_ref", results.drawing_ref);
+      const { data } = await apiClient.post(
+        "/pid/equipment/deep-extract/",
+        formData,
+        { timeout: 600000 },
+      );
+      if (data?.equipment) {
+        // Safety net: a boost may only GROW or enrich the register, never
+        // shrink it.  If the response has fewer rows than the user sees,
+        // keep the current data untouched.
+        const currentRows = results?.equipment || [];
+        if (data.equipment.length < currentRows.length) {
+          setDeepExtractMsg(
+            "Boost returned fewer rows than your current register — your existing data was kept unchanged. Please retry.",
+          );
+          return;
+        }
+        setResults((prev) => ({
+          ...(prev || {}),
+          equipment: data.equipment,
+          total: data.total,
+          upload_id: data.upload_id || prev?.upload_id,
+          drawing_ref: prev?.drawing_ref,
+        }));
+        setSelectedRows(new Set());
+        // Persist the boosted register so the AI-added rows become real,
+        // editable draft records (not read-only ghosts from the cache).
+        setDeepExtractMsg("Saving boosted records into the draft register…");
+        const saved = await persistExtractionDraft(
+          {
+            equipment: data.equipment,
+            total: data.total,
+            drawing_ref: results?.drawing_ref || "",
+          },
+          data.upload_id || results?.upload_id,
+        );
+        const modelNote =
+          data.model !== data.model_requested
+            ? ` (auto-fell back to ${data.model})`
+            : "";
+        setDeepExtractMsg(
+          `Done — ${data.added} new record(s) added, ${data.enriched} existing record(s) enriched via ${data.provider} / ${data.model}${modelNote}.` +
+            (saved ? "" : " Draft save failed — use Edit to retry."),
+        );
+        setDeepKey("");
+        setShowDeepExtract(false);
+      } else {
+        setDeepExtractMsg("AI returned no additional records.");
+      }
+    } catch (err) {
+      setDeepExtractMsg(
+        err?.response?.data?.error ||
+          "AI deep extraction failed. Check the configured BYOK key for the selected provider.",
+      );
+    } finally {
+      setDeepExtractBusy(false);
+    }
+  };
 
   const fileRef = useRef(null);
   const leaveDialogRef = useRef(null);
@@ -1030,6 +1184,49 @@ const EquipmentList = () => {
       setActiveProject(p);
     } catch (e) {
       setProjectError(e?.response?.data?.error || "Failed to create project");
+    } finally {
+      setProjectBusy(false);
+    }
+  };
+
+  const handleUpdateProject = async (payload) => {
+    if (!editingProject?.project_id) return;
+    setProjectBusy(true);
+    setProjectError("");
+    try {
+      const updated = await projectOrganizerService.updateProject(
+        editingProject.project_id,
+        payload,
+      );
+      setProjects((prev) =>
+        prev.map((p) => (p.project_id === updated.project_id ? updated : p)),
+      );
+      setEditingProject(null);
+    } catch (e) {
+      setProjectError(e?.response?.data?.error || "Failed to update project");
+    } finally {
+      setProjectBusy(false);
+    }
+  };
+
+  const handleDeleteProject = async (project) => {
+    if (
+      !(await radaiConfirm(
+        `Delete project "${project.name}"?\nIts equipment registers, revisions and activity log are deleted with it. This cannot be undone.`,
+      ))
+    )
+      return;
+    setProjectBusy(true);
+    setProjectError("");
+    try {
+      await projectOrganizerService.deleteProject(project.project_id);
+      setProjects((prev) =>
+        prev.filter((p) => p.project_id !== project.project_id),
+      );
+    } catch (e) {
+      await radaiAlert(
+        e?.response?.data?.error || "Could not delete project.",
+      );
     } finally {
       setProjectBusy(false);
     }
@@ -1332,6 +1529,15 @@ const EquipmentList = () => {
                   document_excerpt: r.document_excerpt || "",
                 });
                 setSelectedRows(new Set());
+                // Smart flow: nothing found → the drawing is likely scanned or
+                // revision-clouded; open the AI pass automatically.
+                if (!r.equipment?.length) {
+                  setShowDeepExtract(true);
+                  fetchDeepModels();
+                  setDeepExtractMsg(
+                    "No records were found by the standard pass. AI vision is recommended for this drawing — pick a model and run.",
+                  );
+                }
                 setProgress(100);
                 setStatusMessage("Saving draft register…");
                 const saved = await persistExtractionDraft(r, uploadId);
@@ -1423,6 +1629,8 @@ const EquipmentList = () => {
     }
 
     const isBatch = uploadFiles.length > 1;
+    // Pin the phase-1 source file so "Boost with AI" re-reads the same drawing.
+    setExtractedFile(uploadFiles[0] || null);
     const uploadUrl = isBatch
       ? `${API_BASE}/pid/equipment/analyze-batch/`
       : `${API_BASE}/pid/equipment/analyze/`;
@@ -1502,6 +1710,14 @@ const EquipmentList = () => {
             document_excerpt: data.document_excerpt || "",
           });
           setSelectedRows(new Set());
+          // Smart flow: nothing found → open the AI pass automatically.
+          if (!data.equipment?.length) {
+            setShowDeepExtract(true);
+            fetchDeepModels();
+            setDeepExtractMsg(
+              "No records were found by the standard pass. AI vision is recommended for this drawing — pick a model and run.",
+            );
+          }
           if (data.debug_info) setDebugInfo(data.debug_info);
           setProgress(100);
           setStatusMessage("Saving draft register…");
@@ -1996,6 +2212,8 @@ const EquipmentList = () => {
                   project={p}
                   theme={EQ_PROJECTS.theme}
                   onOpen={() => setActiveProject(p)}
+                  onEdit={() => setEditingProject(p)}
+                  onDelete={() => handleDeleteProject(p)}
                 />
               ))}
             </div>
@@ -2007,6 +2225,16 @@ const EquipmentList = () => {
               busy={projectBusy}
               onClose={() => setShowCreateProject(false)}
               onSubmit={handleCreateProject}
+            />
+          )}
+          {editingProject && (
+            <ProjectFormModal
+              theme={EQ_PROJECTS.theme}
+              initial={editingProject}
+              busy={projectBusy}
+              formError={projectError}
+              onClose={() => setEditingProject(null)}
+              onSubmit={handleUpdateProject}
             />
           )}
         </div>
@@ -2078,6 +2306,30 @@ const EquipmentList = () => {
   ].sort();
   const activeReferenceColumns = REFERENCE_COLUMNS.filter((column) =>
     visibleReferenceColumns.has(column.key),
+  );
+
+  // ── Smart extraction guidance ─────────────────────────────────────────
+  // The deterministic pass (OCR + rules) is the primary path.  When its
+  // output looks incomplete for the drawing, the app proactively suggests
+  // the AI vision pass instead of leaving the user to discover it.
+  // NOTE: plain derived value, NOT a hook — this component has early
+  // returns (project gate), so hooks here would break the Rules of Hooks.
+  const aiBoostSuggested = (() => {
+    if (!results) return false;
+    const rows = results.equipment || [];
+    if (rows.length === 0) return true; // nothing found — AI vision is the fix
+    if (rows.length < 3) return true;   // suspiciously few for a full P&ID
+    const noDesc = rows.filter((r) => !r.description).length;
+    return noDesc / rows.length > 0.5;  // mostly hollow rows
+  })();
+
+  // "Boost with AI" activates ONLY after the phase-1 extraction has produced
+  // a result set — never during upload/processing, never before it.
+  const boostReady = Boolean(
+    !isProcessing &&
+      !deepExtractBusy &&
+      results &&
+      (results.upload_id || (results.equipment || []).length > 0),
   );
   const filteredReferenceRows = referenceRows
     .filter((row) => {
@@ -2908,6 +3160,44 @@ const EquipmentList = () => {
                     )}
                   </div>
                 )}
+                {activeWorkspaceTab === "Equipment" && aiBoostSuggested && (
+                  <div
+                    className="mx-4 mt-3 px-4 py-3 rounded-lg flex items-center justify-between gap-3 flex-wrap"
+                    style={{
+                      background: "#f5f3ff",
+                      border: "1px solid #ddd6fe",
+                    }}
+                    role="status"
+                  >
+                    <div className="text-sm" style={{ color: "#4c1d95" }}>
+                      <Sparkles
+                        size={14}
+                        style={{ verticalAlign: "-2px", marginRight: 6 }}
+                      />
+                      <strong>Smart suggestion:</strong>{" "}
+                      {(results?.equipment?.length || 0) === 0
+                        ? "The standard pass found no equipment records."
+                        : `The standard pass found only ${results.equipment.length} record(s)${(results.equipment || []).some((r) => !r.description) ? " with missing details" : ""}.`}{" "}
+                      This drawing is likely scanned or revision-clouded — an AI
+                      vision pass can recover the remaining records and merge
+                      them into this register.
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowDeepExtract(true);
+                        fetchDeepModels();
+                      }}
+                      className="px-3 py-2 rounded-lg text-sm font-semibold text-white"
+                      style={{
+                        background: "linear-gradient(135deg,#7c3aed,#4f46e5)",
+                        border: "none",
+                      }}
+                    >
+                      Boost with AI
+                    </button>
+                  </div>
+                )}
                 <div className="flex items-center justify-between px-4 py-3">
                   <div className="flex items-center gap-3">
                     <h2 className="text-xl font-bold m-0">
@@ -2930,6 +3220,308 @@ const EquipmentList = () => {
                     )}
                   </div>
                   <div className="flex gap-2">
+                    {activeWorkspaceTab === "Equipment" && (
+                      <div className="relative" data-equipment-menu>
+                        <button
+                          type="button"
+                          aria-haspopup="dialog"
+                          aria-expanded={showDeepExtract}
+                          title={
+                            boostReady
+                              ? "Optional AI vision pass — merges recovered records into this register (uses the same file you extracted)"
+                              : "Available after the Upload P&ID extraction completes"
+                          }
+                          onClick={() => {
+                            if (!boostReady) return;
+                            setShowDeepExtract((v) => !v);
+                            if (!showDeepExtract) fetchDeepModels();
+                          }}
+                          className="px-3 py-2 rounded-lg border flex items-center gap-2 text-sm font-semibold text-white"
+                          style={{
+                            background: !boostReady
+                              ? "#b9c4d4"
+                              : deepExtractBusy
+                                ? "#7c8aa5"
+                                : "linear-gradient(135deg,#7c3aed,#4f46e5)",
+                            border: "none",
+                            cursor: boostReady ? "pointer" : "not-allowed",
+                            opacity: boostReady ? 1 : 0.65,
+                          }}
+                          disabled={!boostReady || deepExtractBusy}
+                        >
+                          <Sparkles size={16} />
+                          {deepExtractBusy ? "AI boosting…" : "Boost with AI"}
+                        </button>
+                        {showDeepExtract && (
+                          <div
+                            role="dialog"
+                            aria-label="Boost with AI"
+                            aria-modal="true"
+                            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+                            style={{ background: "rgba(15,23,42,0.45)" }}
+                            onClick={() =>
+                              !deepExtractBusy && setShowDeepExtract(false)
+                            }
+                          >
+                            <div
+                              className="w-full max-w-md rounded-xl overflow-hidden"
+                              style={{
+                                background: "#fff",
+                                boxShadow: "0 24px 60px rgba(76,29,149,.25)",
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                            <div
+                              className="px-4 py-3 flex items-center gap-2"
+                              style={{
+                                background:
+                                  "linear-gradient(135deg,#7c3aed,#4f46e5)",
+                              }}
+                            >
+                              <Sparkles size={16} color="#fff" />
+                              <div className="text-sm font-bold text-white">
+                                Boost with AI
+                              </div>
+                              <div
+                                className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                                style={{
+                                  background: "rgba(255,255,255,.18)",
+                                  color: "#ede9fe",
+                                }}
+                              >
+                                PHASE 2 · OPTIONAL
+                              </div>
+                              <button
+                                type="button"
+                                aria-label="Close"
+                                disabled={deepExtractBusy}
+                                onClick={() => setShowDeepExtract(false)}
+                                className="ml-2 text-white text-lg leading-none disabled:opacity-40"
+                                style={{
+                                  background: "none",
+                                  border: "none",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                ✕
+                              </button>
+                            </div>
+                            <div className="p-4">
+                              <p
+                                className="text-xs m-0 mb-3"
+                                style={{ color: "#667892" }}
+                              >
+                                A vision model re-reads the SAME P&ID you just
+                                extracted and merges anything the standard pass
+                                missed into this register. Existing values are
+                                never overwritten.
+                              </p>
+
+                              <label
+                                className="text-xs font-semibold"
+                                style={{ color: "#43546d" }}
+                              >
+                                AI model
+                              </label>
+                              <select
+                                value={deepModel}
+                                onChange={(e) => setDeepModel(e.target.value)}
+                                className="w-full mt-1 px-2 py-2 rounded-md border text-sm bg-white"
+                              >
+                                {deepModels.length === 0 && (
+                                  <option value="">Loading models…</option>
+                                )}
+                                {["anthropic", "openai", "gemini"].map(
+                                  (prov) => {
+                                    const group = deepModels.filter(
+                                      (m) => m.provider === prov,
+                                    );
+                                    if (!group.length) return null;
+                                    const provName =
+                                      {
+                                        openai: "OpenAI",
+                                        gemini: "Google Gemini",
+                                        anthropic: "Anthropic Claude",
+                                      }[prov] || prov;
+                                    return (
+                                      <optgroup key={prov} label={provName}>
+                                        {group.map((m) => (
+                                          <option key={m.id} value={m.id}>
+                                            {m.label}
+                                            {m.ready ? " ✓" : ""}
+                                          </option>
+                                        ))}
+                                      </optgroup>
+                                    );
+                                  },
+                                )}
+                              </select>
+
+                              {(() => {
+                                const sel = deepModels.find(
+                                  (m) => m.id === deepModel,
+                                );
+                                if (!sel) return null;
+                                return (
+                                  <div
+                                    className="flex items-center gap-1.5 mt-1.5 mb-1 text-[11px] font-semibold"
+                                    style={{
+                                      color:
+                                        sel.ready || deepKey.trim()
+                                          ? "#16723b"
+                                          : "#b45309",
+                                    }}
+                                  >
+                                    <span
+                                      className="inline-block rounded-full"
+                                      style={{
+                                        width: 7,
+                                        height: 7,
+                                        background:
+                                          sel.ready || deepKey.trim()
+                                            ? "#22c55e"
+                                            : "#f59e0b",
+                                      }}
+                                    />
+                                    {sel.ready
+                                      ? "Saved key detected for this provider"
+                                      : deepKey.trim()
+                                        ? "Using your BYOK key for this run"
+                                        : "No saved key — paste your BYOK key below"}
+                                  </div>
+                                );
+                              })()}
+
+                              <label
+                                className="text-xs font-semibold"
+                                style={{ color: "#43546d" }}
+                              >
+                                How should AI treat existing values?
+                              </label>
+                              <div className="flex flex-col gap-1.5 mt-1 mb-3">
+                                {[
+                                  {
+                                    value: "fill",
+                                    title: "Fill missing fields only (safe)",
+                                    hint: "Keeps everything from the standard pass; AI only adds new records and empty cells.",
+                                  },
+                                  {
+                                    value: "correct",
+                                    title: "Correct wrong values too",
+                                    hint: "Use when the standard pass extracted inaccurate data — AI may overwrite existing cells.",
+                                  },
+                                ].map((opt) => (
+                                  <label
+                                    key={opt.value}
+                                    className="flex items-start gap-2 px-2 py-2 rounded-md text-xs cursor-pointer"
+                                    style={{
+                                      border: `1px solid ${deepMergeMode === opt.value ? "#7c3aed" : "#e2e8f0"}`,
+                                      background:
+                                        deepMergeMode === opt.value
+                                          ? "#f5f3ff"
+                                          : "#fff",
+                                    }}
+                                  >
+                                    <input
+                                      type="radio"
+                                      name="deepMergeMode"
+                                      value={opt.value}
+                                      checked={deepMergeMode === opt.value}
+                                      onChange={() =>
+                                        setDeepMergeMode(opt.value)
+                                      }
+                                      className="mt-0.5"
+                                    />
+                                    <span>
+                                      <span
+                                        className="font-semibold block"
+                                        style={{ color: "#2f3b52" }}
+                                      >
+                                        {opt.title}
+                                      </span>
+                                      <span style={{ color: "#667892" }}>
+                                        {opt.hint}
+                                      </span>
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+
+                              <label
+                                className="text-xs font-semibold"
+                                style={{ color: "#43546d" }}
+                              >
+                                BYOK API key{" "}
+                                <span
+                                  style={{ fontWeight: 400, color: "#98a4b8" }}
+                                >
+                                  (only if no saved key)
+                                </span>
+                              </label>
+                              <input
+                                type="password"
+                                value={deepKey}
+                                onChange={(e) => setDeepKey(e.target.value)}
+                                placeholder="sk-... / AIza... / sk-ant-..."
+                                autoComplete="off"
+                                className="w-full mt-1 px-2 py-2 rounded-md border text-sm bg-white"
+                              />
+                              <p
+                                className="text-[11px] m-0 mb-3"
+                                style={{ color: "#98a4b8" }}
+                              >
+                                Used for this request only — never stored in
+                                the browser or database.
+                              </p>
+
+                              <button
+                                type="button"
+                                onClick={handleDeepExtract}
+                                disabled={deepExtractBusy || !deepModel}
+                                className="w-full px-3 py-2.5 rounded-md text-sm font-bold text-white disabled:opacity-60"
+                                style={{
+                                  background:
+                                    "linear-gradient(135deg,#7c3aed,#4f46e5)",
+                                  border: "none",
+                                }}
+                              >
+                                {deepExtractBusy
+                                  ? "⏳ Reading the drawing — this can take a few minutes…"
+                                  : "🚀 Boost this register"}
+                              </button>
+
+                              {deepExtractMsg && (
+                                <div
+                                  className="text-xs mt-3 px-3 py-2 rounded-md"
+                                  style={{
+                                    background: deepExtractBusy
+                                      ? "#eef2ff"
+                                      : deepExtractMsg.startsWith("Done")
+                                        ? "#ecfdf5"
+                                        : "#fff7ed",
+                                    color: deepExtractBusy
+                                      ? "#4338ca"
+                                      : deepExtractMsg.startsWith("Done")
+                                        ? "#16723b"
+                                        : "#9a3412",
+                                    border: `1px solid ${
+                                      deepExtractBusy
+                                        ? "#c7d2fe"
+                                        : deepExtractMsg.startsWith("Done")
+                                          ? "#bbf7d0"
+                                          : "#fed7aa"
+                                    }`,
+                                  }}
+                                >
+                                  {deepExtractMsg}
+                                </div>
+                              )}
+                            </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     {activeWorkspaceTab === "Equipment" && (
                       <div className="relative" data-equipment-menu>
                         <button
