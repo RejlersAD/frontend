@@ -466,18 +466,7 @@ export default function SalesOpportunityDetailPanel({
                       Open full record
                     </button>
                   )}
-                  {onDelete && (
-                    <button
-                      type="button"
-                      className="sor-detail-danger"
-                      onClick={(event) => {
-                        event.currentTarget.closest("details").open = false;
-                        onDelete();
-                      }}
-                    >
-                      Delete opportunity
-                    </button>
-                  )}
+                
                   {secondaryActions.map((action) => (
                     <button
                       key={action.id}

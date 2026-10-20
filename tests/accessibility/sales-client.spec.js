@@ -220,7 +220,7 @@ test('client creation retains failed input and saves through the existing comman
   const payload = state.mutations.filter(item => item.action === 'create').at(-1).body;
   expect(payload.company_name).toBe('Synthetic client registration');
   expect(payload.industry_type).toBe('oil_gas');
-  expect(payload.verification_status).toBe('unverified');
+  expect(payload).not.toHaveProperty('verification_status');
   expect(state.mutations.filter(item => item.action === 'create')).toHaveLength(2);
 });
 
