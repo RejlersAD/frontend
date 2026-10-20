@@ -1,12 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import * as XLSX from 'xlsx';
 import { API_BASE_URL } from '../../../config/api.config';
+import { listLegends } from '../../../services/pidCheckerV2API';
 import {
   Upload as UploadIcon, FileText, Table, CheckCircle, AlertTriangle,
   Loader, X, Download, Zap, Search, Eye, EyeOff, Info,
   FolderPlus, Package, ArrowLeft, ChevronDown,
   ChevronLeft, ChevronRight, Plus, Settings2, ChevronUp, RefreshCw,
   MoreVertical, Pencil, Trash2, Calendar, BarChart3, ArrowRight,
+  ExternalLink, Sparkles, Folder,
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -72,6 +76,242 @@ const MODELS_BY_PROVIDER = {
   claude: ['claude-sonnet-5', 'claude-opus-5', 'claude-sonnet-4-5-20250929'],
   openai: ['gpt-4o'],
 };
+
+// Friendly dropdown labels — display only; the raw model id above is
+// still what's actually sent to the backend (see the Model <select>'s
+// value/onChange, unchanged).
+const MODEL_LABELS = {
+  'claude-sonnet-5': 'Claude Sonnet 5 (Recommended)',
+  'claude-opus-5': 'Claude Opus 5 (Most accurate)',
+  'claude-sonnet-4-5-20250929': 'Claude Sonnet 4.5 (Legacy)',
+  'gpt-4o': 'GPT-4o',
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Step-by-step unlock flow — same STAGE_FLOW pattern as ValveMTO.jsx
+// (src/pages/Engineering/Piping/ValveMTO.jsx): each stage carries its own
+// isUnlocked(state)/isComplete(state) gate, read against a plain
+// stageState object built from component state (sldStage1Complete etc.
+// below), never cross-referencing other stage entries directly.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Legend Manager page — same section/returnTo/from query-param contract
+// ValveMTO's own VM_LEGEND_MANAGER_ROUTE uses, so LegendManagerPage.jsx's
+// existing "Return to <from>" banner works unchanged for SLD Checker too.
+// 'electrical' is the real, already-registered Legend Manager section id
+// (apps/pid_checker_v2 discipline 1.4) — confirmed by reading
+// src/services/pidCheckerV2API.js's own LEGEND_SECTIONS/LEGEND_DISCIPLINES.
+const SLD_LEGEND_MANAGER_ROUTE = '/engineering/legends?section=electrical&returnTo=/engineering/electrical/sld&from=SLD%20Checker';
+// MyEnquiries.jsx no longer reads returnTo/from (its own return banner
+// was removed), so this stays a plain route.
+const SLD_ICT_ROUTE = '/my-enquiries';
+// One-shot flag, set right before navigating to Legend Manager and
+// consumed by the mount effect below — a plain boolean survives
+// sessionStorage fine (unlike a File object, which is why pidFile etc.
+// below use module memory, not sessionStorage, to survive the same
+// round-trip).
+const SLD_LEGEND_NAV_FLAG = 'sld_legend_nav_flag';
+// DEVIATION (flagged, necessary): the requested fix was to stash the
+// project on SLD_SESSION_CACHE (the plain module-scope object above)
+// before navigating to ICT. That works for Legend Manager because
+// navigate(SLD_LEGEND_MANAGER_ROUTE) is a SAME-TAB route change — the JS
+// module (and SLD_SESSION_CACHE with it) never unloads. The ICT link is
+// different: it opens via window.open(..., '_blank') in a NEW browser
+// tab, which is a wholly separate JS realm — SLD_SESSION_CACHE there
+// starts back at its module defaults; the original tab's object is
+// simply unreachable. sessionStorage IS copied into a same-origin tab
+// opened with window.open (the one thing that does survive that
+// boundary), so the project id is round-tripped through it instead —
+// same mechanism SLD_LEGEND_NAV_FLAG above already relies on.
+const SLD_ICT_RETURN_PROJECT_KEY = 'sld_ict_return_project_id';
+
+// Module-scope in-memory cache — same pattern as ValveMTO's
+// VM_SESSION_CACHE. Navigating to Legend Manager is a real route change
+// to a DIFFERENT <Route>, which unmounts this whole component;
+// sessionStorage can't hold a File object, but a plain object declared
+// here at module scope survives the unmount untouched (the JS module
+// itself stays loaded for the whole SPA session). useState reads it as
+// each field's initial value below, and a write-through effect keeps it
+// in sync on every change.
+const SLD_SESSION_CACHE = {
+  enabled: true,
+  projectId: null,
+  selectedProject: null,
+  pidFile: null,
+  equipmentFile: null,
+  loadListFile: null,
+  provider: 'claude',
+  model: '',
+  apiKey: '',
+  keyTestResult: null,
+  scanMode: 'thorough',
+  legendsActivatedFromManager: false,
+};
+
+// sldStage1Complete/sldStage2Complete/sldStage3Complete are computed in
+// the component body (from live state) and passed in as a plain object —
+// SLD_STAGE_FLOW itself never reads component state directly, exactly
+// mirroring ValveMTO's VM_STAGE_FLOW.
+const SLD_STAGE_FLOW = [
+  {
+    id: 'upload',
+    num: 1,
+    title: 'Upload Files',
+    optional: false,
+    isUnlocked: () => true,
+    isComplete: (s) => Boolean(s.stage1Complete),
+    instruction: {
+      heading: 'Upload files',
+      bullets: [
+        'Upload at least 2 files to start:',
+        'P&ID Drawing + Equipment List',
+        'P&ID Drawing + Load List',
+        'Equipment List + Load List',
+        'All 3 files for full comparison',
+        'P&ID Drawing requires AI Vision API key (Stage 2).',
+        'Equipment List + Load List only — no API key needed (free!).',
+      ],
+    },
+  },
+  {
+    id: 'engine',
+    num: 2,
+    title: '⚡ RADAI AI Engine',
+    subtitle: 'Only required when a P&ID is uploaded',
+    optional: false,
+    isUnlocked: (s) => Boolean(s.stage1Complete),
+    isComplete: (s) => Boolean(s.stage2Complete),
+    instruction: {
+      heading: 'RADAI AI Engine',
+      bullets: [
+        'RADAI AI Engine reads your SLD drawing to extract electrical tags.',
+        'Provide your personal API key — it is never stored on the server.',
+        "Don't have a key? Raise a ticket with ICT via My Enquiries.",
+      ],
+    },
+  },
+  {
+    id: 'legend',
+    num: 3,
+    title: 'Electrical Legend',
+    optional: false,
+    isUnlocked: (s) => Boolean(s.stage1Complete) && Boolean(s.stage2Complete),
+    isComplete: (s) => Boolean(s.stage3Complete),
+    instruction: {
+      heading: 'Activate your electrical legend',
+      bullets: [
+        "Click 'Activate Legends' to open Legend Manager.",
+        'Go to Electrical section (1.4).',
+        'Activate at least one legend and save changes.',
+        "Click 'Return to SLD Checker' banner to come back.",
+        'Analyse button enables only after completing these steps.',
+      ],
+      note: 'Required — activate an electrical legend in Legend Manager and return here. Analyse button stays disabled until this step is completed.',
+    },
+  },
+];
+
+// Submit-gate checklist copy — same role as ValveMTO's VM_SUBMIT_GATE_STAGES.
+const SLD_SUBMIT_GATE_STAGES = [
+  { id: 'upload', label: 'Files uploaded (at least 2)' },
+  { id: 'engine', label: 'RADAI AI Engine configured' },
+  { id: 'legend', label: 'Electrical legend activated' },
+];
+
+// Soft-coded per-stage "User Instruction" panel — identical styling to
+// ValveMTO's own VmStageInstruction. `actions`: optional array of
+// {label, route} (navigates within the SPA), {label, route, newTab: true}
+// (opens route in a new browser tab via window.open — same-tab navigate()
+// would otherwise replace the current SLD page, losing in-progress
+// uploads/stage state), or {label, onClick} (runs a callback instead).
+function SldStageInstruction({ stage, instruction, actions }) {
+  const navigate = useNavigate();
+  const { heading, bullets = [], note } = instruction || stage?.instruction || {};
+  if (!heading) return null;
+  const runAction = (a) => {
+    if (a.onClick) { a.onClick(); return; }
+    if (a.newTab) { window.open(a.route, '_blank', 'noopener,noreferrer'); return; }
+    navigate(a.route);
+  };
+  return (
+    <div className="mb-4 rounded-lg border border-sky-200 bg-sky-50/60 p-3.5">
+      <p className="text-[11px] font-bold uppercase tracking-wider text-sky-700 mb-1.5">
+        📘 User Instruction — {heading}
+      </p>
+      <ul className="list-disc list-inside space-y-0.5 text-xs text-slate-600">
+        {bullets.map((b, i) => <li key={i}>{b}</li>)}
+      </ul>
+      {!!actions?.length && (
+        <div className="flex flex-wrap gap-2 mt-2.5">
+          {actions.map((a) => (
+            a.variant === 'link' ? (
+              <button
+                key={a.label}
+                type="button"
+                onClick={() => runAction(a)}
+                className="text-[11px] font-semibold text-indigo-600 hover:underline"
+              >
+                {a.label}
+              </button>
+            ) : (
+              <button
+                key={a.label}
+                type="button"
+                onClick={() => runAction(a)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-sky-700 bg-white hover:bg-sky-50 border border-sky-300 rounded-md transition-colors"
+              >
+                {a.label} <ExternalLink className="w-3.5 h-3.5" />
+              </button>
+            )
+          ))}
+        </div>
+      )}
+      {note && <p className="mt-1.5 text-[11px] italic text-slate-400">{note}</p>}
+    </div>
+  );
+}
+
+// Soft-coded locked placeholder — identical styling to ValveMTO's own
+// VmStageGate — shown in place of a stage's content until its
+// isUnlocked(state) gate passes.
+function SldStageGate({ stage }) {
+  return (
+    <div className="border border-dashed border-slate-200 rounded-lg p-3.5 mb-4 bg-slate-50/60 flex items-center gap-3 opacity-80">
+      <span className="flex items-center justify-center h-6 w-6 rounded-full bg-slate-100 text-slate-400 text-xs font-bold border border-slate-200 shrink-0">
+        🔒
+      </span>
+      <div>
+        <p className="text-sm font-semibold text-slate-400">
+          {stage.num}. {stage.title}
+          {stage.optional && <span className="ml-1 text-[10px] font-normal text-slate-400">(optional)</span>}
+        </p>
+        <p className="text-xs text-slate-400 mt-0.5">Complete the previous step to unlock this stage.</p>
+      </div>
+    </div>
+  );
+}
+
+// Per-stage numbered badge — same visual language as ValveMTO's own
+// VmStageHeading (coloured when unlocked, grey when locked), plus a green
+// check once the stage is complete.
+function SldStageHeading({ stage, unlocked, complete, colourClass }) {
+  return (
+    <div className="mb-3">
+      <h2 className={`text-lg font-bold flex items-center gap-2 ${unlocked ? 'text-slate-900' : 'text-slate-400'}`}>
+        <span className={`h-6 w-6 rounded-full text-xs font-bold flex items-center justify-center ${unlocked ? colourClass : 'bg-slate-100 text-slate-400'}`}>
+          {stage.num}
+        </span>
+        {stage.title}
+        {stage.optional && <span className="text-xs font-normal text-slate-400">(optional)</span>}
+        {complete && <CheckCircle className="h-4 w-4 text-emerald-500" />}
+        {!unlocked && <span className="text-xs">🔒</span>}
+      </h2>
+      {stage.subtitle && unlocked && (
+        <p className="text-xs text-slate-500 mt-0.5 ml-8">{stage.subtitle}</p>
+      )}
+    </div>
+  );
+}
 
 // How often the progress screen polls GET /status/<job_id>/ while a job
 // is 'processing'.
@@ -382,7 +622,7 @@ const TAB_ORDER = ['pid_vs_equipment', 'pid_vs_loadlist', 'equipment_vs_loadlist
 // ─────────────────────────────────────────────────────────────────────────────
 // Small reusable pieces
 // ─────────────────────────────────────────────────────────────────────────────
-const UploadBox = ({ label, icon: Icon, accept, required, file, onSelect, onRemove }) => {
+const UploadBox = ({ label, icon: Icon, accept, file, onSelect, onRemove }) => {
   const inputRef = useRef(null);
   const [dragOver, setDragOver] = useState(false);
   return (
@@ -395,14 +635,6 @@ const UploadBox = ({ label, icon: Icon, accept, required, file, onSelect, onRemo
     >
       <div className="flex items-center justify-center gap-2 mb-2">
         <span className="text-sm font-bold" style={{ color: C.textPrimary }}>{label}</span>
-        <span
-          className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wider"
-          style={required
-            ? { background: C.errorBg, color: '#991b1b', border: `1px solid ${C.errorBorder}` }
-            : { background: C.greyBg, color: C.grey, border: `1px solid ${C.greyBorder}` }}
-        >
-          {required ? 'Required' : 'Optional'}
-        </span>
       </div>
 
       {file ? (
@@ -619,10 +851,18 @@ const DocumentTableCanvas = ({ grid, statusFilter }) => {
 // Main page
 // ─────────────────────────────────────────────────────────────────────────────
 const SingleLineDiagram = () => {
+  const navigate = useNavigate();
+
   // ── Project selection — same state-driven view switch as
   // PIDVerificationV2.jsx (not a separate route): selectedProject === null
-  // shows the project-selection screen; same component/URL either way. ──
-  const [selectedProject, setSelectedProject] = useState(null);
+  // shows the project-selection screen; same component/URL either way.
+  // Restored from SLD_SESSION_CACHE (not plain useState(null)) so a
+  // Legend Manager round-trip doesn't dump the user back on the project
+  // list — unlike ValveMTO's activeProject, this component has no
+  // localStorage-backed hydration hook, so there's no async "starts null,
+  // re-hydrates one tick later" race to guard against here; the cache
+  // read below is synchronous and correct from the very first render. ──
+  const [selectedProject, setSelectedProject] = useState(SLD_SESSION_CACHE.enabled ? SLD_SESSION_CACHE.selectedProject : null);
   const [projects, setProjects] = useState([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -672,6 +912,25 @@ const SingleLineDiagram = () => {
     }
   };
   useEffect(() => { fetchProjects(); }, []);
+
+  // ICT return detection — consumes SLD_ICT_RETURN_PROJECT_KEY (set right
+  // before window.open()'ing the ICT link — see the "Raise a ticket/
+  // Request (ICT)" actions further down). Restoring selectedProject can't
+  // happen synchronously on mount the way Legend Manager's same-tab
+  // round-trip does (SLD_SESSION_CACHE doesn't carry into a new tab — see
+  // SLD_ICT_RETURN_PROJECT_KEY's own comment) — it has to wait for THIS
+  // tab's own fetchProjects() to resolve so there's a projects list to
+  // look the saved id up against. Guarded on selectedProject already
+  // being null so it never clobbers a genuine in-progress selection (e.g.
+  // the original tab, where selectedProject never actually left state).
+  useEffect(() => {
+    if (selectedProject || projects.length === 0) return;
+    const savedId = sessionStorage.getItem(SLD_ICT_RETURN_PROJECT_KEY);
+    if (!savedId) return;
+    sessionStorage.removeItem(SLD_ICT_RETURN_PROJECT_KEY);
+    const match = projects.find((p) => p.project_id === savedId);
+    if (match) handleSelectProject(match);
+  }, [projects]);
 
   const openRenameModal = (p) => { setProjectMenuOpenId(null); setRenameTarget(p); setRenameValue(p.project_name); };
   const openDeleteModal = (p) => { setProjectMenuOpenId(null); setDeleteTarget(p); };
@@ -757,9 +1016,25 @@ const SingleLineDiagram = () => {
     // Reset all file/results/key-test state to empty — same reasoning as
     // PIDVerificationV2.jsx's own handleSelectProject: switching projects
     // must never leave a previous project's in-progress analysis visible.
+    // handleSelectProject is ONLY ever invoked by a genuine, deliberate
+    // user action (clicking a project card, or auto-select after create)
+    // — never by a remount/hydration effect — so every call here IS a
+    // real project switch; the whole upload-stage flow resets every time.
     setPidFile(null); setEquipmentFile(null); setLoadListFile(null);
     setResults(null); setError(''); setPidFileNameUsed('');
-    setKeyTestResult(null);
+    setApiKey(''); setKeyTestResult(null);
+    setProvider('claude'); setModel(MODELS_BY_PROVIDER.claude[0]);
+    setLegendsActivatedFromManager(false);
+    if (SLD_SESSION_CACHE.enabled) {
+      Object.assign(SLD_SESSION_CACHE, {
+        projectId: p.project_id,
+        selectedProject: p,
+        pidFile: null, equipmentFile: null, loadListFile: null,
+        provider: 'claude', model: MODELS_BY_PROVIDER.claude[0],
+        apiKey: '', keyTestResult: null, scanMode: 'thorough',
+        legendsActivatedFromManager: false,
+      });
+    }
     setSelectedJobId(null);
     fetchHistory(p.project_id);
 
@@ -796,6 +1071,19 @@ const SingleLineDiagram = () => {
     setSelectedProject(null);
     setPidFile(null); setEquipmentFile(null); setLoadListFile(null);
     setResults(null); setError(''); setPidFileNameUsed('');
+    setApiKey(''); setKeyTestResult(null);
+    setProvider('claude'); setModel(MODELS_BY_PROVIDER.claude[0]);
+    setLegendsActivatedFromManager(false);
+    if (SLD_SESSION_CACHE.enabled) {
+      Object.assign(SLD_SESSION_CACHE, {
+        projectId: null,
+        selectedProject: null,
+        pidFile: null, equipmentFile: null, loadListFile: null,
+        provider: 'claude', model: MODELS_BY_PROVIDER.claude[0],
+        apiKey: '', keyTestResult: null, scanMode: 'thorough',
+        legendsActivatedFromManager: false,
+      });
+    }
     setHistory([]); setSelectedJobId(null);
   };
 
@@ -823,12 +1111,35 @@ const SingleLineDiagram = () => {
   };
 
   // ── AI Vision API key ──────────────────────────────────────────────────
-  const [provider, setProvider] = useState('claude');
-  const [apiKey, setApiKey] = useState('');
+  // Every field below that's also tracked in SLD_SESSION_CACHE reads that
+  // cache as its initial value — same reasoning as ValveMTO's own state
+  // block: on a fresh session the cache is still at its defaults, but on
+  // a remount within the same tab (returning from Legend Manager) it
+  // carries the real in-memory values straight through.
+  const [provider, setProvider] = useState(SLD_SESSION_CACHE.enabled ? SLD_SESSION_CACHE.provider : 'claude');
+  const [apiKey, setApiKey] = useState(SLD_SESSION_CACHE.enabled ? SLD_SESSION_CACHE.apiKey : '');
   const [showKey, setShowKey] = useState(false);
-  const [model, setModel] = useState(MODELS_BY_PROVIDER.claude[0]);
+  const [model, setModel] = useState(() => {
+    if (SLD_SESSION_CACHE.enabled && SLD_SESSION_CACHE.model) return SLD_SESSION_CACHE.model;
+    const initialProvider = SLD_SESSION_CACHE.enabled ? SLD_SESSION_CACHE.provider : 'claude';
+    return MODELS_BY_PROVIDER[initialProvider][0];
+  });
   const [testingKey, setTestingKey] = useState(false);
-  const [keyTestResult, setKeyTestResult] = useState(null); // { valid, error }
+  const [keyTestResult, setKeyTestResult] = useState(SLD_SESSION_CACHE.enabled ? SLD_SESSION_CACHE.keyTestResult : null); // { valid, error }
+  // Scan mode is fixed to 'thorough' — the Quick/Thorough toggle was
+  // removed from the UI; the state is kept (rather than a bare constant)
+  // so the existing write-through-to-cache effect and handleAnalyse's
+  // fd.append('scan_mode', scanMode) below need no further changes.
+  const [scanMode] = useState('thorough');
+  // Step-by-step unlock flow (Stage 3 — Electrical Legend). Restored from
+  // the cache the same way as everything else above; only ever actually
+  // SET to true by the Legend Manager return-detection effect below,
+  // never just because a legend happens to already be active (same
+  // "must actually visit Legend Manager" guarantee ValveMTO's own
+  // legendsActivatedFromManager enforces).
+  const [legendsActivatedFromManager, setLegendsActivatedFromManager] = useState(
+    SLD_SESSION_CACHE.enabled ? SLD_SESSION_CACHE.legendsActivatedFromManager : false
+  );
 
   const onProviderChange = (next) => {
     setProvider(next);
@@ -854,9 +1165,12 @@ const SingleLineDiagram = () => {
   };
 
   // ── File uploads ──────────────────────────────────────────────────────
-  const [pidFile, setPidFile] = useState(null);
-  const [equipmentFile, setEquipmentFile] = useState(null);
-  const [loadListFile, setLoadListFile] = useState(null);
+  // pidFile is a real File object — safe to restore from SLD_SESSION_CACHE
+  // (plain module memory, no serialization limit) the same way ValveMTO's
+  // own pidDocument is, unlike sessionStorage which can't hold one.
+  const [pidFile, setPidFile] = useState(SLD_SESSION_CACHE.enabled ? SLD_SESSION_CACHE.pidFile : null);
+  const [equipmentFile, setEquipmentFile] = useState(SLD_SESSION_CACHE.enabled ? SLD_SESSION_CACHE.equipmentFile : null);
+  const [loadListFile, setLoadListFile] = useState(SLD_SESSION_CACHE.enabled ? SLD_SESSION_CACHE.loadListFile : null);
 
   // Any combination works except Equipment-only or Load-List-only (see
   // backend's own validation, mirrored here so the button disables BEFORE
@@ -864,8 +1178,110 @@ const SingleLineDiagram = () => {
   const hasPid = Boolean(pidFile);
   const hasEquip = Boolean(equipmentFile);
   const hasLoad = Boolean(loadListFile);
-  const canAnalyse = hasPid || (hasEquip && hasLoad);
   const excelOnlyOneSided = (hasEquip && !hasLoad && !hasPid) || (hasLoad && !hasEquip && !hasPid);
+
+  // ── Stage-flow state — fed into SLD_STAGE_FLOW's isUnlocked/isComplete,
+  // same shape/role as ValveMTO's own stageFlowState. ───────────────────
+  // BUG FIX (stricter requirement, deliberate): the original canAnalyse
+  // (hasPid || (hasEquip && hasLoad)) allowed a P&ID alone — the new
+  // stage-flow gate requires AT LEAST 2 FILES always, so canAnalyse was
+  // removed rather than kept as an unused, now-looser parallel check.
+  const sldStage1Complete = Boolean(
+    (pidFile && (equipmentFile || loadListFile)) || (equipmentFile && loadListFile)
+  );
+  // Stage 2 can only be complete once Stage 1 itself is complete — BUG FIX:
+  // previously this ignored sldStage1Complete entirely, so with zero files
+  // uploaded (!pidFile is true) it read as auto-complete and showed a green
+  // tick before Stage 1 had even been satisfied. Now: Stage 1 incomplete →
+  // always false; no P&ID → auto-complete (no AI Vision call needed);
+  // P&ID present → requires a tested-valid key.
+  const sldStage2Complete = !sldStage1Complete ? false : !pidFile ? true : keyTestResult?.valid === true;
+  // Stage 3 complete = legendsActivatedFromManager alone — it only ever
+  // becomes true via an actual Legend-Manager round-trip with active
+  // legends found (see the mount effect below), never merely because a
+  // legend happens to already exist.
+  const sldStage3Complete = Boolean(legendsActivatedFromManager);
+  const sldStageState = {
+    stage1Complete: sldStage1Complete,
+    stage2Complete: sldStage2Complete,
+    stage3Complete: sldStage3Complete,
+  };
+
+  // ── Submit gate (soft-coded; mirrors ValveMTO's own vmStageVerified) ──
+  const sldStageVerified = {
+    upload: sldStage1Complete,
+    engine: sldStage2Complete,
+    legend: sldStage3Complete,
+  };
+  const sldAllStagesVerified = Object.values(sldStageVerified).every(Boolean);
+
+  // Cascade reset — removing a Stage 1 file (pidFile/equipmentFile/
+  // loadListFile) can make sldStage1Complete go from true back to false;
+  // when that happens, any already-tested Stage 2 key result and any
+  // already-activated Stage 3 legend are stale with respect to the NEW
+  // (incomplete) file set, so both are cleared here rather than left
+  // showing a green tick for a stage whose prerequisite no longer holds.
+  // Runs on every pidFile/equipmentFile/loadListFile change, not just on
+  // removal, but only ever actually resets anything when sldStage1Complete
+  // is currently false, so adding/swapping files while still complete is
+  // a no-op.
+  useEffect(() => {
+    if (!sldStage1Complete) {
+      setKeyTestResult(null);
+      setLegendsActivatedFromManager(false);
+    }
+  }, [pidFile, equipmentFile, loadListFile]);
+
+  // Write-through: mirror the live upload-form state into SLD_SESSION_CACHE
+  // on every change, so it's always current by the time the user clicks
+  // "Activate Legends" (or navigates away for any other reason) — no
+  // separate save-on-navigate call needed.
+  useEffect(() => {
+    if (!SLD_SESSION_CACHE.enabled) return;
+    Object.assign(SLD_SESSION_CACHE, {
+      projectId: selectedProject?.project_id || null,
+      selectedProject,
+      pidFile,
+      equipmentFile,
+      loadListFile,
+      provider,
+      model,
+      apiKey,
+      keyTestResult,
+      scanMode,
+      legendsActivatedFromManager,
+    });
+  }, [
+    selectedProject, pidFile, equipmentFile, loadListFile,
+    provider, model, apiKey, keyTestResult, scanMode, legendsActivatedFromManager,
+  ]);
+
+  // Legend Manager return detection — consumes SLD_LEGEND_NAV_FLAG (set
+  // right before navigating to Legend Manager — see the "Activate
+  // Legends" action further down) and, only when it was actually set,
+  // re-checks whether an electrical legend is genuinely active before
+  // marking Stage 3 complete. BUG FIX (same lesson learned building this
+  // exact flow for ValveMTO): blindly trusting the nav flag alone — i.e.
+  // setting legendsActivatedFromManager(true) just because the flag was
+  // present, without checking real legend state — would let a legend
+  // left active from a PREVIOUS visit silently satisfy Stage 3 with no
+  // actual activation during THIS round-trip. Verifying via listLegends
+  // here closes that gap.
+  useEffect(() => {
+    const flag = sessionStorage.getItem(SLD_LEGEND_NAV_FLAG);
+    if (flag !== '1') return;
+    sessionStorage.removeItem(SLD_LEGEND_NAV_FLAG);
+    (async () => {
+      try {
+        const rows = await listLegends('electrical');
+        const active = Array.isArray(rows) ? rows.filter((l) => l.is_active) : [];
+        setLegendsActivatedFromManager(active.length > 0);
+      } catch {
+        // non-fatal — legend status just can't be confirmed right now;
+        // leave legendsActivatedFromManager as whatever it already was.
+      }
+    })();
+  }, []);
 
   // ── Analysis state ────────────────────────────────────────────────────
   const [analysing, setAnalysing] = useState(false);
@@ -1075,10 +1491,16 @@ const SingleLineDiagram = () => {
   };
 
   const handleAnalyse = async () => {
-    if (!canAnalyse) {
-      setError(excelOnlyOneSided
-        ? (hasEquip ? 'Please also upload Load List to compare' : 'Please also upload Equipment List to compare')
-        : 'Upload at least P&ID or both Excel files');
+    if (!sldAllStagesVerified) {
+      setError(
+        !sldStage1Complete
+          ? (excelOnlyOneSided
+            ? (hasEquip ? 'Please also upload Load List to compare' : 'Please also upload Equipment List to compare')
+            : 'Upload at least 2 files to start (P&ID + one Excel file, or both Excel files).')
+          : !sldStage2Complete
+            ? 'Enter and test your AI Vision API key (Stage 2) before analysing.'
+            : 'Activate an electrical legend in Legend Manager (Stage 3) before analysing.'
+      );
       return;
     }
     setError(''); setAnalysing(true); setResults(null);
@@ -1093,6 +1515,11 @@ const SingleLineDiagram = () => {
     fd.append('api_key', apiKey.trim());
     fd.append('provider', provider);
     fd.append('model', model);
+    // scanMode is fixed to 'thorough' (toggle removed from the UI) —
+    // always sent, same as every other analysis parameter below. Harmless
+    // if the backend ignores it (frontend-only addition, no backend
+    // wiring confirmed/touched here).
+    fd.append('scan_mode', scanMode);
     if (selectedProject) fd.append('project_id', selectedProject.project_id);
 
     try {
@@ -1347,6 +1774,33 @@ const SingleLineDiagram = () => {
     }
   };
 
+  // Client-side Excel export for Combined Results — the combined view has
+  // no single job_id (ExportExcelView's backend endpoint requires one,
+  // since it reads ElectricalComparisonResult rows via job__project), so
+  // there's nothing for downloadExcel() above to call there. This exports
+  // the SAME rows the table itself is currently rendering (filteredResults
+  // — already merged across every SLD upload in the project, and already
+  // filtered by the active tab/search/status/type), entirely in-browser
+  // via SheetJS. Column set mirrors the backend export's own
+  // (excel_export.py's _TAB_COLUMNS: Tag, Equipment Type, Description,
+  // Status, Remarks).
+  const downloadExcelClientSide = () => {
+    if (!filteredResults.length) return;
+    const rows = filteredResults.map((r) => ({
+      Tag: r.tag_number || '',
+      'Equipment Type': r.equipment_type || '',
+      Description: r.description || '',
+      Status: r.status || '',
+      Remarks: r.remarks || '',
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Electrical Comparison');
+    const prefix = activeConfig?.exportPrefix || 'combined_results';
+    const projectPart = selectedProject?.project_id || 'project';
+    XLSX.writeFile(wb, `${prefix}_combined_${projectPart}.xlsx`);
+  };
+
   // "View on Drawing" canvas viewer — replaces the old "Download
   // Annotated PDF" button. Fetches each P&ID/SLD page as a PNG plus the
   // comparison-result tag boxes (image-pixel coordinates) from the
@@ -1523,114 +1977,98 @@ const SingleLineDiagram = () => {
     });
 
   return (
-    <div className="min-h-screen" style={{ background: C.bg, fontFamily: FONT_STACK }}>
-      {/* ───────────────────────── TOP HEADER ───────────────────────── */}
-      <div style={{ background: C.header }}>
-        <div className="max-w-[95vw] mx-auto px-6 py-4 flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: C.primary }}>
-              <Zap className="w-5 h-5 text-white" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-lg font-bold text-white leading-tight truncate">Electrical Equipment Comparison</h1>
-              <p className="text-xs leading-tight truncate" style={{ color: '#94a3b8' }}>
-                {selectedProject
-                  ? `${selectedProject.project_name}${selectedProject.description ? ' — ' + selectedProject.description : ''}`
-                  : 'Manage your electrical comparison projects'}
-              </p>
-              {!selectedProject && (
-                <div className="flex items-center gap-2 mt-2 flex-wrap">
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md" style={{ background: 'rgba(255,255,255,0.06)' }}>
-                    <FolderPlus className="w-3 h-3" style={{ color: '#94a3b8' }} />
-                    <span className="text-[11px] font-semibold" style={{ color: '#cbd5e1' }}>
+    <div className="min-h-screen" style={{ background: 'linear-gradient(135deg, #f8faff 0%, #eef2ff 45%, #f0f9ff 75%, #fffbeb 100%)', fontFamily: FONT_STACK }}>
+      <div className="w-full px-2 sm:px-4 lg:px-6 py-6 space-y-4 relative">
+        <div className="pointer-events-none absolute -top-10 -left-10 w-72 h-72 rounded-full blur-3xl" style={{ background: 'rgba(59,130,246,0.12)' }} aria-hidden="true" />
+        <div className="pointer-events-none absolute top-20 right-0 w-80 h-80 rounded-full blur-3xl" style={{ background: 'rgba(99,102,241,0.12)' }} aria-hidden="true" />
+
+        {/* ───────────────────────── TOP HEADER ───────────────────────── */}
+        <section className="relative rounded-2xl border border-slate-200 bg-white/85 backdrop-blur shadow-lg">
+          {/* Decorative blur layer clipped to the card's rounded corners —
+              kept in its own overflow-hidden wrapper (rather than on the
+              section itself) so the Actions dropdown below, which is
+              absolutely positioned and can extend past the card's edge,
+              is never clipped along with it. */}
+          <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl" aria-hidden="true">
+            <div className="absolute -left-20 -top-24 w-72 h-72 rounded-full bg-blue-200/35 blur-3xl" />
+            <div className="absolute -right-24 -bottom-20 w-80 h-80 rounded-full bg-indigo-200/30 blur-3xl" />
+          </div>
+          <div className="relative px-6 py-6 flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-4 min-w-0">
+              <div className="w-14 h-14 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 text-white flex items-center justify-center flex-shrink-0 shadow-md">
+                <Zap className="w-7 h-7" />
+              </div>
+              <div className="min-w-0">
+                <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full border border-blue-200 bg-white/70 text-xs font-semibold text-blue-700 mb-1">
+                  <Sparkles className="w-3 h-3" /> Engineering · Electrical
+                </div>
+                <h1 className="text-2xl font-bold truncate">
+                  <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 bg-clip-text text-transparent">
+                    Electrical Equipment Comparison
+                  </span>
+                </h1>
+                <p className="text-sm text-slate-600 max-w-3xl mt-1 truncate">
+                  {selectedProject
+                    ? `${selectedProject.project_name}${selectedProject.description ? ' — ' + selectedProject.description : ''}`
+                    : 'Manage your electrical comparison projects'}
+                </p>
+                {!selectedProject && (
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-slate-200 bg-slate-50 text-[11px] font-semibold text-slate-600">
+                      <FolderPlus className="w-3 h-3" />
                       {projects.length} {projects.length === 1 ? 'Project' : 'Projects'}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md" style={{ background: 'rgba(255,255,255,0.06)' }}>
-                    <Calendar className="w-3 h-3" style={{ color: '#94a3b8' }} />
-                    <span className="text-[11px] font-semibold" style={{ color: '#cbd5e1' }}>
+                    </div>
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-slate-200 bg-slate-50 text-[11px] font-semibold text-slate-600">
+                      <Calendar className="w-3 h-3" />
                       Last Analysis: {overallLastAnalysisAt ? overallLastAnalysisAt.toLocaleDateString() : 'None yet'}
-                    </span>
+                    </div>
                   </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 flex-wrap">
+              {results?.job_id && (
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50">
+                  <span className="text-[11px] font-mono text-slate-500">
+                    {results.job_id.slice(0, 8)}…
+                  </span>
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide ${results.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}
+                  >
+                    {results.status || 'pending'}
+                  </span>
+                </div>
+              )}
+
+              {selectedProject && (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setActionsOpen((o) => !o)}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 shadow-sm"
+                  >
+                    Actions <ChevronDown className="w-3.5 h-3.5" />
+                  </button>
+                  {actionsOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setActionsOpen(false)} />
+                      <div className="absolute right-0 top-full mt-2 w-56 rounded-lg border border-slate-200 bg-white shadow-xl z-50 overflow-hidden">
+                        <button
+                          type="button"
+                          onClick={startNewAnalysis}
+                          className="w-full text-left px-4 py-2.5 text-sm font-medium flex items-center gap-2 text-indigo-600 hover:bg-slate-50"
+                        >
+                          <Plus className="w-4 h-4" /> New Analysis
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
           </div>
-
-          <div className="flex items-center gap-3 flex-wrap">
-            {results?.job_id && (
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.06)' }}>
-                <span className="text-[11px] font-mono" style={{ color: '#94a3b8' }}>
-                  {results.job_id.slice(0, 8)}…
-                </span>
-                <span
-                  className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide"
-                  style={{ background: results.status === 'completed' ? C.successBg : C.warningBg, color: results.status === 'completed' ? '#166534' : '#92400e' }}
-                >
-                  {results.status || 'pending'}
-                </span>
-              </div>
-            )}
-
-            {selectedProject && (
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setActionsOpen((o) => !o)}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-white"
-                  style={{ background: C.primary }}
-                >
-                  Actions <ChevronDown className="w-3.5 h-3.5" />
-                </button>
-                {actionsOpen && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setActionsOpen(false)} />
-                    <div className="absolute right-0 top-full mt-2 w-56 rounded-lg border shadow-xl z-50 overflow-hidden" style={{ background: '#fff', borderColor: C.border }}>
-                      <button
-                        type="button"
-                        disabled={!results || !activeTab || isCombinedView}
-                        title={isCombinedView ? 'Export is not available for the combined project view — open an individual analysis to export.' : undefined}
-                        onClick={() => { setActionsOpen(false); if (activeTab) downloadExcel(activeTab); }}
-                        className="w-full text-left px-4 py-2.5 text-sm font-medium flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50"
-                        style={{ color: C.textPrimary }}
-                      >
-                        <Download className="w-4 h-4" /> Export Excel
-                      </button>
-                      <button
-                        type="button"
-                        disabled={!results}
-                        onClick={() => { setActionsOpen(false); downloadExcel('all'); }}
-                        className="w-full text-left px-4 py-2.5 text-sm font-medium flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50"
-                        style={{ color: C.textPrimary }}
-                      >
-                        {downloadingTab === 'all' ? <Loader className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                        Export All (4 sheets)
-                      </button>
-                      <button
-                        type="button"
-                        disabled
-                        title="PDF export is not available on the backend yet"
-                        className="w-full text-left px-4 py-2.5 text-sm font-medium flex items-center gap-2 opacity-40 cursor-not-allowed"
-                        style={{ color: C.textPrimary }}
-                      >
-                        <FileText className="w-4 h-4" /> Export PDF <span className="text-[10px] ml-auto">(coming soon)</span>
-                      </button>
-                      <div className="border-t" style={{ borderColor: C.border }} />
-                      <button
-                        type="button"
-                        onClick={startNewAnalysis}
-                        className="w-full text-left px-4 py-2.5 text-sm font-medium flex items-center gap-2 hover:bg-slate-50"
-                        style={{ color: C.primary }}
-                      >
-                        <Plus className="w-4 h-4" /> New Analysis
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
+        </section>
       </div>
 
       <div className="max-w-[95vw] mx-auto px-6 py-6">
@@ -1647,10 +2085,7 @@ const SingleLineDiagram = () => {
               <button
                 type="button"
                 onClick={() => setShowCreateModal(true)}
-                className="flex items-center gap-2 text-white px-4 py-2.5 rounded-lg font-semibold transition-colors"
-                style={{ background: PS.primary }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = PS.primaryHover; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = PS.primary; }}
+                className="text-sm font-semibold px-4 py-2 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-lg hover:from-indigo-700 hover:to-blue-700 flex items-center gap-1.5 shadow-sm flex-shrink-0"
               >
                 <Plus className="w-4 h-4" />
                 New Project
@@ -1675,10 +2110,7 @@ const SingleLineDiagram = () => {
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(true)}
-                  className="inline-flex items-center gap-2 text-white px-5 py-3 rounded-lg font-semibold transition-colors"
-                  style={{ background: PS.primary }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = PS.primaryHover; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = PS.primary; }}
+                  className="inline-flex items-center gap-2 text-sm font-semibold px-5 py-3 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-lg hover:from-indigo-700 hover:to-blue-700 shadow-sm"
                 >
                   <Plus className="w-4 h-4" />
                   Create Project
@@ -1789,10 +2221,7 @@ const SingleLineDiagram = () => {
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); handleSelectProject(p); }}
-                          className="w-full flex items-center justify-center gap-1.5 text-white text-sm font-semibold py-2.5 rounded-lg transition-colors"
-                          style={{ background: PS.primary }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = PS.primaryHover; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = PS.primary; }}
+                          className="w-full flex items-center justify-center gap-1.5 text-white text-sm font-semibold py-2.5 rounded-lg bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700"
                         >
                           Open Project <ArrowRight className="w-3.5 h-3.5" />
                         </button>
@@ -1805,16 +2234,22 @@ const SingleLineDiagram = () => {
           </div>
         ) : (
           <>
-            {/* ── Back button ── */}
-            <button
-              type="button"
-              onClick={handleBackToProjects}
-              className="flex items-center gap-1.5 text-sm font-semibold mb-5 px-3 py-2 rounded-lg border transition-colors"
-              style={{ color: C.textSecondary, borderColor: C.border }}
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Projects
-            </button>
+            {/* ── Back button + active project name ── */}
+            <div className="flex items-center gap-3 mb-5">
+              <button
+                type="button"
+                onClick={handleBackToProjects}
+                className="flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-slate-900 border border-slate-300 rounded-lg px-3 py-2 bg-white hover:bg-slate-50 flex-shrink-0"
+              >
+                <ArrowLeft className="w-4 h-4" /> Back to Projects
+              </button>
+              <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center flex-shrink-0">
+                <Folder className="w-5 h-5 text-indigo-600" />
+              </div>
+              <h2 className="text-lg font-bold text-slate-900 truncate">
+                {selectedProject?.project_name || 'Unassigned'}
+              </h2>
+            </div>
 
             {error && !results && (
               <div className="mb-5 rounded-lg border p-4 flex items-start gap-3" style={{ background: C.errorBg, borderColor: C.errorBorder }}>
@@ -1853,112 +2288,13 @@ const SingleLineDiagram = () => {
                 </button>
 
                 <div className="px-5 pb-5 space-y-5 border-t" style={{ borderColor: C.border }}>
-                  {/* AI Vision API Key */}
+                  {/* ── Stage 1 · Upload Files — always unlocked ── */}
                   <div className="pt-5">
-                    <h3 className="text-sm font-bold mb-1" style={{ color: C.textPrimary }}>AI Vision API Key</h3>
-                    <p className="text-xs mb-2" style={{ color: C.textSecondary }}>
-                      Uses admin-configured key by default. Add your own Claude or OpenAI key to use it instead.
-                      Only needed if you are uploading a P&ID drawing — comparing two Excel files alone doesn&apos;t use AI Vision at all.
-                    </p>
-
-                    {/* ── Collapsible "How it works" info box ── */}
-                    <button
-                      type="button"
-                      onClick={() => setHowItWorksOpen((o) => !o)}
-                      className="flex items-center gap-1.5 text-xs font-semibold mb-3"
-                      style={{ color: C.primary }}
-                    >
-                      <Info className="w-3.5 h-3.5" />
-                      ℹ️ How it works
-                      {howItWorksOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                    </button>
-                    {howItWorksOpen && (
-                      <div className="rounded-lg p-4 mb-4 text-xs space-y-3" style={{ background: C.primarySoft, border: `1px solid #bfdbfe` }}>
-                        <div>
-                          <p className="font-bold mb-1.5" style={{ color: C.textPrimary }}>When do you need AI Vision?</p>
-                          <p className="mb-1" style={{ color: C.textPrimary }}>
-                            ⚡ P&ID Drawing uploaded → AI Vision reads the drawing to extract tags <span className="font-semibold">(requires API key)</span>
-                          </p>
-                          <p style={{ color: C.textPrimary }}>
-                            📊 Equipment List + Load List only → No AI Vision needed, completely <span className="font-semibold">FREE</span>
-                          </p>
-                        </div>
-                        <div>
-                          <p className="font-bold mb-1.5" style={{ color: C.textPrimary }}>For best results upload all 3 files:</p>
-                          <p style={{ color: C.textPrimary }}>✅ P&ID Drawing — extracts all equipment tags</p>
-                          <p style={{ color: C.textPrimary }}>✅ Equipment List — validates panels/switchboards</p>
-                          <p style={{ color: C.textPrimary }}>✅ Load List — validates motors/pumps</p>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-semibold mb-1" style={{ color: C.textSecondary }}>Provider</label>
-                        <select
-                          value={provider}
-                          onChange={(e) => onProviderChange(e.target.value)}
-                          className="w-full border rounded-lg px-3 py-2 text-sm"
-                          style={{ borderColor: C.greyBorder }}
-                        >
-                          <option value="claude">Claude</option>
-                          <option value="openai">OpenAI</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold mb-1" style={{ color: C.textSecondary }}>Model</label>
-                        <select
-                          value={model}
-                          onChange={(e) => setModel(e.target.value)}
-                          className="w-full border rounded-lg px-3 py-2 text-sm"
-                          style={{ borderColor: C.greyBorder }}
-                        >
-                          {MODELS_BY_PROVIDER[provider].map((m) => <option key={m} value={m}>{m}</option>)}
-                        </select>
-                      </div>
-                    </div>
-                    <div className="mt-4">
-                      <label className="block text-xs font-semibold mb-1" style={{ color: C.textSecondary }}>API Key</label>
-                      <div className="flex gap-2">
-                        <div className="relative flex-1">
-                          <input
-                            type={showKey ? 'text' : 'password'}
-                            value={apiKey}
-                            onChange={(e) => { setApiKey(e.target.value); setKeyTestResult(null); }}
-                            placeholder={provider === 'claude' ? 'sk-ant-...' : 'sk-...'}
-                            className="w-full border rounded-lg px-3 py-2 pr-9 text-sm font-mono"
-                            style={{ borderColor: C.greyBorder }}
-                          />
-                          <button type="button" onClick={() => setShowKey(s => !s)}
-                            className="absolute right-2 top-1/2 -translate-y-1/2" style={{ color: C.textSecondary }}>
-                            {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                          </button>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={handleTestConnection}
-                          disabled={testingKey}
-                          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50 transition-colors"
-                          style={{ background: C.header, color: '#fff' }}
-                        >
-                          {testingKey ? <Loader className="w-4 h-4 animate-spin" /> : null}
-                          Test Connection
-                        </button>
-                      </div>
-                      {keyTestResult && (
-                        <p className="mt-2 text-xs font-semibold" style={{ color: keyTestResult.valid ? C.success : C.error }}>
-                          {keyTestResult.valid ? '✅ Connected' : `❌ ${keyTestResult.error || 'Invalid API key'}`}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* File Upload */}
-                  <div>
-                    <h3 className="text-sm font-bold mb-1" style={{ color: C.textPrimary }}>Upload Files</h3>
+                    <SldStageHeading stage={SLD_STAGE_FLOW[0]} unlocked complete={sldStageVerified.upload} colourClass="bg-blue-100 text-blue-700" />
+                    <SldStageInstruction stage={SLD_STAGE_FLOW[0]} />
                     <p className="text-xs mb-4 flex items-center gap-1.5" style={{ color: C.textSecondary }}>
                       <Info className="w-3.5 h-3.5 flex-shrink-0" />
-                      Upload at least P&ID or both Excel files
+                      Upload at least 2 files to start
                     </p>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <UploadBox
@@ -2013,16 +2349,250 @@ const SingleLineDiagram = () => {
                         <p className="text-sm" style={{ color: '#991b1b' }}>{error}</p>
                       </div>
                     )}
+                  </div>
 
+                  {/* ── Stage 2 · RADAI AI Engine (gated) — only functionally
+                      required when a P&ID was uploaded; auto-completes
+                      otherwise (see sldStage2Complete above). ── */}
+                  {!SLD_STAGE_FLOW[1].isUnlocked(sldStageState) ? (
+                    <SldStageGate stage={SLD_STAGE_FLOW[1]} />
+                  ) : (
+                    <div>
+                      <SldStageHeading stage={SLD_STAGE_FLOW[1]} unlocked complete={sldStageVerified.engine} colourClass="bg-cyan-100 text-cyan-700" />
+                      {!pidFile ? (
+                        <div className="rounded-lg p-4 flex items-center gap-3" style={{ background: C.successBg, border: `1px solid ${C.successBorder}` }}>
+                          <CheckCircle className="w-5 h-5 flex-shrink-0" style={{ color: C.success }} />
+                          <p className="text-sm font-semibold" style={{ color: '#166534' }}>
+                            ✅ No P&ID uploaded — AI Engine not required. Stage complete.
+                          </p>
+                        </div>
+                      ) : (
+                        <>
+                          <SldStageInstruction stage={SLD_STAGE_FLOW[1]} actions={[{
+                            label: 'Raise a ticket with ICT',
+                            onClick: () => {
+                              // See SLD_ICT_RETURN_PROJECT_KEY's own comment above —
+                              // ICT opens in a new tab, so the project has to be
+                              // handed over via sessionStorage, not SLD_SESSION_CACHE.
+                              if (selectedProject?.project_id) {
+                                sessionStorage.setItem(SLD_ICT_RETURN_PROJECT_KEY, selectedProject.project_id);
+                              }
+                              window.open(SLD_ICT_ROUTE, '_blank', 'noopener,noreferrer');
+                            },
+                          }]} />
+
+                          {/* ── Collapsible "How it works" info box ── */}
+                          <button
+                            type="button"
+                            onClick={() => setHowItWorksOpen((o) => !o)}
+                            className="flex items-center gap-1.5 text-xs font-semibold mb-3"
+                            style={{ color: C.primary }}
+                          >
+                            <Info className="w-3.5 h-3.5" />
+                            ℹ️ How it works
+                            {howItWorksOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                          </button>
+                          {howItWorksOpen && (
+                            <div className="rounded-lg p-4 mb-4 text-xs space-y-3" style={{ background: C.primarySoft, border: `1px solid #bfdbfe` }}>
+                              <div>
+                                <p className="font-bold mb-1.5" style={{ color: C.textPrimary }}>When do you need AI Vision?</p>
+                                <p className="mb-1" style={{ color: C.textPrimary }}>
+                                  ⚡ P&ID Drawing uploaded → AI Vision reads the drawing to extract tags <span className="font-semibold">(requires API key)</span>
+                                </p>
+                                <p style={{ color: C.textPrimary }}>
+                                  📊 Equipment List + Load List only → No AI Vision needed, completely <span className="font-semibold">FREE</span>
+                                </p>
+                              </div>
+                              <div>
+                                <p className="font-bold mb-1.5" style={{ color: C.textPrimary }}>For best results upload all 3 files:</p>
+                                <p style={{ color: C.textPrimary }}>✅ P&ID Drawing — extracts all equipment tags</p>
+                                <p style={{ color: C.textPrimary }}>✅ Equipment List — validates panels/switchboards</p>
+                                <p style={{ color: C.textPrimary }}>✅ Load List — validates motors/pumps</p>
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-xs font-semibold mb-1" style={{ color: C.textSecondary }}>Provider</label>
+                              <select
+                                value={provider}
+                                onChange={(e) => onProviderChange(e.target.value)}
+                                className="w-full border rounded-lg px-3 py-2 text-sm"
+                                style={{ borderColor: C.greyBorder }}
+                              >
+                                <option value="claude">Claude</option>
+                                <option value="openai">OpenAI</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-semibold mb-1" style={{ color: C.textSecondary }}>Model</label>
+                              <select
+                                value={model}
+                                onChange={(e) => setModel(e.target.value)}
+                                className="w-full border rounded-lg px-3 py-2 text-sm"
+                                style={{ borderColor: C.greyBorder }}
+                              >
+                                {MODELS_BY_PROVIDER[provider].map((m) => <option key={m} value={m}>{MODEL_LABELS[m] || m}</option>)}
+                              </select>
+                            </div>
+                          </div>
+                          <div className="mt-4">
+                            <label className="block text-xs font-semibold mb-1" style={{ color: C.textSecondary }}>API Key</label>
+                            <div className="flex gap-2">
+                              <div className="relative flex-1">
+                                <input
+                                  type={showKey ? 'text' : 'password'}
+                                  value={apiKey}
+                                  onChange={(e) => {
+                                    const next = e.target.value;
+                                    setApiKey(next);
+                                    setKeyTestResult(null);
+                                    // Cascade reset — an already-activated Stage 3
+                                    // legend was gated on the key that just got
+                                    // cleared; it's stale the moment the key is
+                                    // emptied out, same reasoning as the file-removal
+                                    // cascade effect above.
+                                    if (!next.trim()) setLegendsActivatedFromManager(false);
+                                  }}
+                                  placeholder={provider === 'claude' ? 'sk-ant-...' : 'sk-...'}
+                                  className="w-full border rounded-lg px-3 py-2 pr-9 text-sm font-mono"
+                                  style={{ borderColor: C.greyBorder }}
+                                />
+                                <button type="button" onClick={() => setShowKey(s => !s)}
+                                  className="absolute right-2 top-1/2 -translate-y-1/2" style={{ color: C.textSecondary }}>
+                                  {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                </button>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={handleTestConnection}
+                                disabled={testingKey}
+                                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50 transition-colors"
+                                style={{ background: C.header, color: '#fff' }}
+                              >
+                                {testingKey ? <Loader className="w-4 h-4 animate-spin" /> : null}
+                                Test Connection
+                              </button>
+                            </div>
+                            {(() => {
+                              // Notification states, built from THIS file's
+                              // real testingKey/apiKey/keyTestResult shape
+                              // (an object { valid, error }, not ValveMTO's
+                              // own single string-status field) — same 4
+                              // states requested, adapted to the state
+                              // already in this file rather than
+                              // introducing a parallel representation.
+                              let display;
+                              if (testingKey) display = { icon: '🔄', text: 'Testing...', cls: 'text-slate-500' };
+                              else if (keyTestResult?.valid === true) display = { icon: '✅', text: 'Connected', cls: 'text-emerald-700' };
+                              else if (keyTestResult && keyTestResult.valid === false) display = { icon: '❌', text: keyTestResult.error || 'Invalid API key', cls: 'text-red-700' };
+                              else if (!apiKey.trim()) display = { icon: '⚠️', text: 'Please enter API key', cls: 'text-amber-600' };
+                              else display = { icon: '○', text: 'Not tested yet', cls: 'text-slate-400' };
+                              return (
+                                <p role="status" className={`mt-2 text-xs font-semibold flex items-center gap-1.5 ${display.cls}`}>
+                                  <span className={testingKey ? 'inline-block animate-spin' : 'inline-block'}>{display.icon}</span>
+                                  {display.text}
+                                </p>
+                              );
+                            })()}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── Stage 3 · Electrical Legend (gated, required) ── */}
+                  {!SLD_STAGE_FLOW[2].isUnlocked(sldStageState) ? (
+                    <SldStageGate stage={SLD_STAGE_FLOW[2]} />
+                  ) : (
+                    <div>
+                      <SldStageHeading stage={SLD_STAGE_FLOW[2]} unlocked complete={sldStageVerified.legend} colourClass="bg-indigo-100 text-indigo-700" />
+
+                      {/* Legend Sheets banner — title/subtitle + active-
+                          indicator dot row only, same teal/blue gradient
+                          as IOListWorkflowPage's own Legend section. The
+                          "Activate Legends" button itself now lives below
+                          the USER INSTRUCTION box (same Stage-card layout
+                          ValveMTO's own Stage 3 uses), not in this banner. */}
+                      <div className="rounded-2xl border border-slate-200 bg-white/85 backdrop-blur-sm shadow-[0_8px_24px_rgba(15,23,42,0.08)] overflow-hidden mb-4">
+                        <div className="bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 px-5 py-4 rounded-t-2xl flex items-center gap-3 text-white">
+                          <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center">
+                            <FileText className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h3 className="text-sm font-bold">Electrical Legend Sheets</h3>
+                            <p className="text-xs text-white/80">Tag-format rules applied when extracting SLD tags</p>
+                          </div>
+                        </div>
+                        {legendsActivatedFromManager && (
+                          <div className="px-5 py-3 flex items-center gap-2 text-sm">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                            <span className="font-medium text-slate-900">Custom Legend Active</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <SldStageInstruction
+                        stage={SLD_STAGE_FLOW[2]}
+                        actions={[
+                          {
+                            label: 'Activate Legends',
+                            onClick: () => {
+                              // Set BEFORE navigating — a plain boolean
+                              // survives sessionStorage across the
+                              // unmount/remount this route change causes;
+                              // consumed by the mount effect above.
+                              sessionStorage.setItem(SLD_LEGEND_NAV_FLAG, '1');
+                              navigate(SLD_LEGEND_MANAGER_ROUTE);
+                            },
+                          },
+                          {
+                            label: 'Raise a Request (ICT)',
+                            onClick: () => {
+                              // See SLD_ICT_RETURN_PROJECT_KEY's own comment above —
+                              // ICT opens in a new tab, so the project has to be
+                              // handed over via sessionStorage, not SLD_SESSION_CACHE.
+                              if (selectedProject?.project_id) {
+                                sessionStorage.setItem(SLD_ICT_RETURN_PROJECT_KEY, selectedProject.project_id);
+                              }
+                              window.open(SLD_ICT_ROUTE, '_blank', 'noopener,noreferrer');
+                            },
+                          },
+                        ]}
+                      />
+                    </div>
+                  )}
+
+                  {/* ── Submit gate checklist — same role as ValveMTO's own
+                      VM_SUBMIT_GATE checklist ── */}
+                  {!sldAllStagesVerified && (
+                    <div className="rounded-xl border border-slate-200 bg-white/80 px-4 py-3 shadow-sm">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+                        Verify each step to enable analysis:
+                      </p>
+                      <ul className="flex flex-wrap gap-x-4 gap-y-1.5">
+                        {SLD_SUBMIT_GATE_STAGES.map(s => (
+                          <li key={s.id} className={`inline-flex items-center gap-1.5 text-[11px] font-medium ${sldStageVerified[s.id] ? 'text-emerald-600' : 'text-slate-400'}`}>
+                            {sldStageVerified[s.id]
+                              ? <CheckCircle className="h-3.5 w-3.5" />
+                              : <span className="inline-block h-3.5 w-3.5 rounded-full border border-slate-300" />}
+                            {s.label}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* File Upload — action row */}
+                  <div>
                     <div className="mt-5">
                       <button
                         type="button"
                         onClick={handleAnalyse}
-                        disabled={!canAnalyse || analysing}
-                        className="w-full flex items-center justify-center gap-2 text-white py-3 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        style={{ background: C.primary }}
-                        onMouseEnter={(e) => { if (!analysing && canAnalyse) e.currentTarget.style.background = C.primaryHover; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = C.primary; }}
+                        disabled={!sldAllStagesVerified || analysing}
+                        title={!sldAllStagesVerified ? 'Verify each step above before analysing.' : ''}
+                        className="w-full flex items-center justify-center gap-2 py-3 text-sm font-semibold text-white rounded-lg bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {analysing ? (
                           <>
@@ -2508,9 +3078,9 @@ const SingleLineDiagram = () => {
                       )}
 
                       <button
-                        onClick={() => downloadExcel(activeTab)}
-                        disabled={downloadingTab === activeTab || isCombinedView}
-                        title={isCombinedView ? 'Export is not available for the combined project view — open an individual analysis to export.' : undefined}
+                        onClick={() => (isCombinedView ? downloadExcelClientSide() : downloadExcel(activeTab))}
+                        disabled={downloadingTab === activeTab || (isCombinedView && filteredResults.length === 0)}
+                        title={isCombinedView ? 'Exports the currently visible tab\'s combined rows (generated in your browser).' : undefined}
                         className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors disabled:opacity-50 text-sm font-semibold text-white ml-auto"
                         style={{ background: C.success }}
                       >
