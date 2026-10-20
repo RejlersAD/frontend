@@ -1243,7 +1243,8 @@ export default function SalesLifecycleArea() {
               salesService.createClient({
                 ...values,
                 status: "active",
-                verification_status: "unverified",
+                // verification_status is a governed decision field. The server
+                // defaults a new client to "unverified", so it is never sent.
                 new_proposals_permitted: true,
               }),
           },
