@@ -1450,6 +1450,13 @@ const CriticalLineList = () => {
 
     const POLL_MAX_ATTEMPTS = 600;           // 50 minutes total (> 45-min Celery cap)
 
+    // Soft-coded network resilience: if the backend container restarts
+    // (OOM/deploy), the task is requeued server-side (acks_late) — tolerate
+    // transient connection failures instead of failing the upload at once.
+    const POLL_MAX_NETWORK_FAILURES = 24;    // 24 × 5s ≈ 2 min of outage tolerance
+
+    let networkFailures = 0;
+
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
     const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
@@ -1476,7 +1483,17 @@ const CriticalLineList = () => {
 
 
 
-        if (!response.ok) throw new Error('Failed to check status');
+        if (!response.ok) {
+
+          // 5xx/502 during a backend restart is transient — count and retry
+
+          const err = new Error(`Status check failed (HTTP ${response.status})`);
+
+          err.terminal = response.status === 400 || response.status === 401 || response.status === 403;
+
+          throw err;
+
+        }
 
 
 
@@ -1548,7 +1565,11 @@ const CriticalLineList = () => {
 
         if (status.state === 'FAILURE') {
 
-          throw new Error(status.error || 'Task failed');
+          const err = new Error(status.error || 'Task failed');
+
+          err.terminal = true;
+
+          throw err;
 
         }
 
@@ -1562,15 +1583,49 @@ const CriticalLineList = () => {
 
         console.error('Polling error:', error);
 
-        setUploadResult({
+        // Terminal task failure — report immediately
 
-          success: false,
+        if (error.terminal) {
 
-          message: error.message || 'Failed to check processing status'
+          setUploadResult({
 
-        });
+            success: false,
 
-        return;
+            message: error.message || 'Processing failed'
+
+          });
+
+          return;
+
+        }
+
+        // Transient network/server hiccup — keep polling through it
+
+        networkFailures += 1;
+
+        if (networkFailures > POLL_MAX_NETWORK_FAILURES) {
+
+          setUploadResult({
+
+            success: false,
+
+            message: 'Lost connection to the processing server. Your job may still complete in the background — please check the project history in a few minutes.'
+
+          });
+
+          return;
+
+        }
+
+        setProcessingProgress(prev => ({
+
+          ...prev,
+
+          step: `🔄 Connection interrupted — retrying (${networkFailures}/${POLL_MAX_NETWORK_FAILURES})…`
+
+        }));
+
+        await sleep(POLL_INTERVAL_MS);
 
       }
 
@@ -1804,9 +1859,20 @@ const CriticalLineList = () => {
 
       const timeoutId = setTimeout(() => controller.abort(), 1200000); // 20 minutes
 
+      // Soft-coded upload resilience: a container restart or proxy hiccup
+      // surfaces as TypeError("Failed to fetch") - retry a few times before
+      // giving up (a fresh FormData body is safe to resend per attempt).
+      const UPLOAD_MAX_ATTEMPTS = 3;
+      const UPLOAD_RETRY_DELAY_MS = 8000;
+      let response = null;
+      let lastError = null;
+      for (let attempt = 1; attempt <= UPLOAD_MAX_ATTEMPTS; attempt++) {
+        try {
 
 
-      const response = await fetch(`${API_BASE_URL}/designiq/critical-lists/upload_pid/`, {
+
+
+      response = await fetch(`${API_BASE_URL}/designiq/critical-lists/upload_pid/`, {
 
         method: 'POST',
 
@@ -1822,6 +1888,21 @@ const CriticalLineList = () => {
 
       });
 
+
+
+                lastError = null;
+          break;
+        } catch (err) {
+          lastError = err;
+          if (err.name === 'AbortError') break; // 20-min timeout - do not retry
+          console.warn(`Upload attempt ${attempt}/${UPLOAD_MAX_ATTEMPTS} failed:`, err.message);
+          if (attempt < UPLOAD_MAX_ATTEMPTS) {
+            setProcessingProgress({ step: `Connection issue - retrying upload (${attempt}/${UPLOAD_MAX_ATTEMPTS})...`, percent: 8 });
+            await new Promise(r => setTimeout(r, UPLOAD_RETRY_DELAY_MS));
+          }
+        }
+      }
+      if (lastError) throw lastError;
 
 
       clearTimeout(timeoutId);
