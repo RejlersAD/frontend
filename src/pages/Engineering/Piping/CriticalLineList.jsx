@@ -124,22 +124,48 @@ const CLL_DOC_POLICY = {
   },
 };
 
-// Optional Process Line List output columns (backend: PROCESS_LINE_LIST_CONFIG,
-// keys carry the 'pll_' prefix). Rendered in the results table and the Excel
-// export only when the processed rows actually contain PLL data.
-const CLL_PLL_COLUMNS = [
-  { key: 'pll_service',           label: 'PLL Service' },
-  { key: 'pll_operating_pressure', label: 'PLL Op. Pressure' },
-  { key: 'pll_operating_temp',    label: 'PLL Op. Temp' },
-  { key: 'pll_design_pressure',   label: 'PLL Design Pressure' },
-  { key: 'pll_design_temp',       label: 'PLL Design Temp' },
-  { key: 'pll_flow_rate',         label: 'PLL Flow Rate' },
-  { key: 'pll_test_medium',       label: 'PLL Test Medium' },
-  { key: 'pll_tracing',           label: 'PLL Tracing' },
-  { key: 'pll_insulation',        label: 'PLL Insulation' },
-  { key: 'pll_remarks',           label: 'PLL Remarks' },
-  { key: 'pll_match',             label: 'PLL Match' },
+// CRITICAL LINE LIST — FINAL OUTPUT FORMAT (soft-coded, mirrors backend
+// CRITICAL_LINE_LIST_EXPORT_FORMAT in apps/designiq/tasks.py).
+// Same column layout as the project Process Line List template
+// (Process_Line_List.xlsx) plus ONE extra column "Critical Stress Line".
+// `sources` are tried in order against each row (pll_* values first, then
+// core/base fallbacks). Used for the results table and the Excel export
+// ONLY when the processed rows carry PLL data — otherwise the legacy
+// 37-column layout is shown untouched.
+const CLL_EXPORT_FORMAT = [
+  { label: 'LINE NUMBER',                sources: ['original_detection', 'line_number'] },
+  { label: 'LINE',                       sources: ['pll_line_short', 'original_detection', 'line_number'] },
+  { label: 'FLUID',                      sources: ['pll_fluid', 'fluid_code'] },
+  { label: 'FROM',                       sources: ['pll_from', 'from_line', 'from_equipment', 'from'] },
+  { label: 'TO',                         sources: ['pll_to', 'to_line', 'to_equipment', 'to'] },
+  { label: 'LINE SIZE (IN)',             sources: ['pll_line_size', 'size'] },
+  { label: 'MATERIAL CLASS',             sources: ['pll_material_class', 'pipr_class'] },
+  { label: 'STRESS ANALYSIS',            sources: ['pll_stress_analysis'] },
+  { label: 'OPERATING PRESS.(kg/cm2g)',  sources: ['pll_operating_pressure', 'normal_pressure'] },
+  { label: 'OPERATING TEMP. (deg C)',    sources: ['pll_operating_temp', 'normal_temp'] },
+  { label: 'DESIGN PRESS.(kg/cm2g)',     sources: ['pll_design_pressure', 'design_pressure'] },
+  { label: 'DESIGN TEMP(deg C)',         sources: ['pll_design_temp', 'max_design_temp'] },
+  { label: 'PHASE',                      sources: ['pll_phase'] },
+  { label: 'TEST PRESS. (kg/cm2g)',      sources: ['pll_test_pressure', 'test_pressure'] },
+  { label: 'TEST MEDIA',                 sources: ['pll_test_medium', 'test_medium'] },
+  { label: 'INSUL CODE',                 sources: ['pll_insulation', 'insulation'] },
+  { label: 'THK.(MM)',                   sources: ['pll_thk', 'schedule_wall_thk'] },
+  { label: 'PAINT CODE',                 sources: ['pll_paint_code'] },
+  { label: 'CRITICALITY RATING',         sources: ['pll_criticality_rating', 'criticality_code'] },
+  { label: 'P&ID NUMBER',                sources: ['pll_pid_number', 'pid_no'] },
+  { label: 'NDE CLASS NOTE',             sources: ['pll_nde_class'] },
+  { label: 'REV',                        sources: ['pll_rev', 'pid_rev'] },
+  { label: 'CRITICAL STRESS LINE',       sources: ['criticality_stress'] },
 ];
+
+// First non-empty value among the given source keys
+const cllPickFirst = (row, sources) => {
+  for (const k of sources) {
+    const v = row ? row[k] : undefined;
+    if (v !== undefined && v !== null && v !== '') return v;
+  }
+  return '';
+};
 
 // True when the processed lines carry Process Line List data
 const cllHasPllData = (lines) =>
@@ -6766,23 +6792,39 @@ const CriticalLineList = () => {
 
                       'RT', 'MT/PT', 'Hardness', 'Visual', 'NACE-MR-0175', 'Piping Rated Pressure',
 
-                      'Test Pressure', 'Test Medium', 'P&ID No.', 'P&ID Rev', 'Date', 'Criticality Code', 'Criticality Stress',
-
-                      // Process Line List columns (soft-coded; appended only when PLL data present)
-
-                      ...(cllHasPllData(data) ? CLL_PLL_COLUMNS.map(c => c.label) : [])
+                      'Test Pressure', 'Test Medium', 'P&ID No.', 'P&ID Rev', 'Date', 'Criticality Code', 'Criticality Stress'
 
                     ];
 
                     
 
-                    const wsData = [headers];
+                    // FINAL OUTPUT FORMAT (soft-coded): when a Process Line List
+
+                    // was uploaded, export mirrors the PLL template layout plus
+
+                    // the extra "Critical Stress Line" column.
+
+                    const pllMode = cllHasPllData(data);
+
+                    const exportHeaders = pllMode ? CLL_EXPORT_FORMAT.map(c => c.label) : headers;
+
+                    
+
+                    const wsData = [exportHeaders];
 
                     
 
                     // Add all 37 columns for each row
 
                     data.forEach(row => {
+
+                      if (pllMode) {
+
+                        wsData.push(CLL_EXPORT_FORMAT.map(c => cllPickFirst(row, c.sources)));
+
+                        return;
+
+                      }
 
                       wsData.push([
 
@@ -6857,11 +6899,7 @@ const CriticalLineList = () => {
 
                         row.criticality_code || '',
 
-                        row.criticality_stress || '',
-
-                        // Process Line List columns (optional)
-
-                        ...(cllHasPllData(data) ? CLL_PLL_COLUMNS.map(c => row[c.key] || '') : [])
+                        row.criticality_stress || ''
 
                       ]);
 
@@ -6889,13 +6927,11 @@ const CriticalLineList = () => {
 
                       { wch: 8 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 15 }, { wch: 20 },
 
-                      { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 15 }, { wch: 18 }, { wch: 18 },
-
-                      // Process Line List column widths (optional)
-
-                      ...(cllHasPllData(data) ? CLL_PLL_COLUMNS.map(() => ({ wch: 16 })) : [])
+                      { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 15 }, { wch: 18 }, { wch: 18 }
 
                     ];
+
+                    if (pllMode) ws['!cols'] = CLL_EXPORT_FORMAT.map(() => ({ wch: 18 }));
 
                     
 
@@ -6938,6 +6974,8 @@ const CriticalLineList = () => {
                 <thead className="bg-gradient-to-r from-indigo-600 to-purple-600 sticky top-0">
 
                   <tr>
+
+                    {!cllHasPllData(extractedData?.lines) && (<>
 
                     {/* 8 BASE COLUMNS from P&ID (STEP 1) */}
 
@@ -7018,9 +7056,11 @@ const CriticalLineList = () => {
 
                     <th className="px-4 py-3 text-left text-xs font-medium text-yellow-200 uppercase tracking-wider whitespace-nowrap bg-purple-700">Criticality Stress</th>
 
-                    {/* PROCESS LINE LIST columns (teal) — only when a PLL Excel was uploaded */}
-                    {cllHasPllData(extractedData?.lines) && CLL_PLL_COLUMNS.map(c => (
-                      <th key={c.key} className="px-4 py-3 text-left text-xs font-medium text-teal-100 uppercase tracking-wider whitespace-nowrap bg-teal-700">{c.label}</th>
+                    </>)}
+
+                    {/* PROCESS LINE LIST final format — template columns + Critical Stress Line */}
+                    {cllHasPllData(extractedData?.lines) && CLL_EXPORT_FORMAT.map(c => (
+                      <th key={c.label} className={`px-4 py-3 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap ${c.label === 'CRITICAL STRESS LINE' ? 'text-yellow-100 bg-yellow-700' : 'text-teal-100 bg-teal-700'}`}>{c.label}</th>
                     ))}
 
                   </tr>
@@ -7032,6 +7072,8 @@ const CriticalLineList = () => {
                   {extractedData.lines.map((line, index) => (
 
                     <tr key={index} className="hover:bg-gray-50 transition-colors">
+
+                      {!cllHasPllData(extractedData?.lines) && (<>
 
                       {/* 8 BASE COLUMNS from P&ID (white background) */}
 
@@ -7148,9 +7190,11 @@ const CriticalLineList = () => {
 
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 bg-yellow-50">{line.criticality_stress || '-'}</td>
 
-                      {/* PROCESS LINE LIST columns (optional) */}
-                      {cllHasPllData(extractedData?.lines) && CLL_PLL_COLUMNS.map(c => (
-                        <td key={c.key} className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 bg-teal-50">{line[c.key] || '-'}</td>
+                      </>)}
+
+                      {/* PROCESS LINE LIST final format (optional) */}
+                      {cllHasPllData(extractedData?.lines) && CLL_EXPORT_FORMAT.map(c => (
+                        <td key={c.label} className={`px-4 py-3 whitespace-nowrap text-sm ${c.label === 'CRITICAL STRESS LINE' ? 'font-bold text-yellow-800 bg-yellow-50' : 'text-gray-700 bg-teal-50'}`}>{cllPickFirst(line, c.sources) || '-'}</td>
                       ))}
 
                     </tr>
