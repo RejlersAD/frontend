@@ -915,6 +915,7 @@ export const HELP_ROUTE_RULES = [
   { id: 'io-list', test: path => path === '/engineering/instrument/datasheet/io-list', resolve: () => IO_LIST_CONTEXT },
   { id: 'sld-comparison', test: path => path === '/engineering/electrical/sld', resolve: () => SLD_COMPARISON_CONTEXT },
   { id: 'electrical-checklist', test: path => path === '/engineering/electrical/checklist', resolve: () => ELECTRICAL_CHECKLIST_CONTEXT },
+  { id: 's3d-reference', test: path => path === '/engineering/digitization/smart-plant-3d', resolve: () => workspaceContext('engineering.s3d', 'engineering', 'S3D Database Builder', 'Extract piping data and review pinned reference matches.', 'Upload and extract the source, then use Matching to upload validated Match, SPEC and CAT workbooks. Run Matching to pin the reference revision. Select ambiguous candidates explicitly before approval, or reject/remap using a code in the pinned catalog. Freeze protects reference files; it does not issue a released specification. Review all engineering outputs before import.') },
   { id: 'engineering', test: path => path.startsWith('/engineering/'), resolve: () => MODULE_CONTEXTS.engineering },
   { id: 'pid-analysis', test: path => path.startsWith('/pid/'), resolve: () => MODULE_CONTEXTS.pid },
   { id: 'pfd-conversion', test: path => path.startsWith('/pfd/'), resolve: () => MODULE_CONTEXTS.pfd },

@@ -1087,7 +1087,7 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
     if (!job) return;
     try {
       const blob = await specCustomizationAPI.exportSmartplantSpec(job.id);
-      downloadBlob(blob, `spec_customisation_${job.id}_SPEC.xlsx`);
+      downloadBlob(blob, `DRAFT_spec_customisation_${job.id}_SPEC.xlsx`);
     } catch (e) { /* ignore */ }
   };
 
@@ -1095,7 +1095,7 @@ const PaperSpecExtractor = ({ projectId = null, projectByok = null, jobId = null
     if (!job) return;
     try {
       const blob = await specCustomizationAPI.exportSmartplantCat(job.id);
-      downloadBlob(blob, `spec_customisation_${job.id}_CAT.xlsx`);
+      downloadBlob(blob, `DRAFT_spec_customisation_${job.id}_CAT.xlsx`);
     } catch (e) { /* ignore */ }
   };
 

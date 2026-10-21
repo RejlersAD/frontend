@@ -9,14 +9,15 @@ import {
   CloudArrowUpIcon,
   CheckCircleIcon,
   XCircleIcon,
-  DocumentTextIcon,
   TableCellsIcon,
-  Cog6ToothIcon,
   ArrowPathIcon,
   SparklesIcon,
   ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 import apiClient from '../../../../services/api.service';
+import PropTypes from 'prop-types';
+import specCustomizationAPI from '../../../../services/specCustomizationAPI';
+import { buhasaSummary } from '../../../../services/buhasaCodelists';
 
 // ─── Soft-coded configuration ──────────────────────────────────────────────
 const WORKBOOK_MANAGER_CONFIG = {
@@ -37,7 +38,7 @@ const WORKBOOK_MANAGER_CONFIG = {
 // ───────────────────────────────────────────────────────────────────────────
 // Main Component
 // ───────────────────────────────────────────────────────────────────────────
-const ComponentMatchingWorkbookManager = ({ projectId }) => {
+const ComponentMatchingWorkbookManager = ({ projectId, onSetsChanged }) => {
   const [workbookSets, setWorkbookSets] = useState([]);
   const [activeSet, setActiveSet] = useState(null);
   const [rules, setRules] = useState([]);
@@ -50,6 +51,9 @@ const ComponentMatchingWorkbookManager = ({ projectId }) => {
   const [specFile, setSpecFile] = useState(null);
   const [catFile, setCatFile] = useState(null);
   const [versionLabel, setVersionLabel] = useState('');
+  const [standardEdition, setStandardEdition] = useState('');
+  const [units, setUnits] = useState('');
+  const [effectiveDate, setEffectiveDate] = useState('');
 
   // Load workbook sets for project
   const loadWorkbookSets = useCallback(async () => {
@@ -112,6 +116,9 @@ const ComponentMatchingWorkbookManager = ({ projectId }) => {
     formData.append('cat_file', catFile);
     formData.append('version_label', versionLabel || `Upload ${workbookSets.length + 1}`);
     formData.append('auto_parse', 'true');
+    formData.append('standard_edition', standardEdition);
+    formData.append('units', units);
+    if (effectiveDate) formData.append('effective_date', effectiveDate);
 
     try {
       const res = await apiClient.post(
@@ -126,6 +133,7 @@ const ComponentMatchingWorkbookManager = ({ projectId }) => {
       if (newSet) {
         setWorkbookSets([newSet, ...workbookSets.filter((s) => !s.is_active)]);
         setActiveSet(newSet);
+        onSetsChanged?.();
         
         if (newSet.is_parsed) {
           loadRules(newSet.id);
@@ -138,7 +146,7 @@ const ComponentMatchingWorkbookManager = ({ projectId }) => {
       setCatFile(null);
       setVersionLabel('');
     } catch (err) {
-      setError(err?.response?.data?.error || 'Upload failed');
+      setError(err?.response?.data?.schema_errors?.join(' ') || err?.response?.data?.error || 'Upload failed');
     } finally {
       setUploadingFiles(false);
     }
@@ -155,6 +163,7 @@ const ComponentMatchingWorkbookManager = ({ projectId }) => {
       if (res.data?.success) {
         // Reload sets and rules
         await loadWorkbookSets();
+        onSetsChanged?.();
       } else {
         setError(res.data?.error || 'Parsing failed');
       }
@@ -167,6 +176,7 @@ const ComponentMatchingWorkbookManager = ({ projectId }) => {
 
   return (
     <div className="space-y-6">
+      <p className="text-sm text-slate-600">BUHASA dictionary available: {buhasaSummary.entries.toLocaleString()} values across {buhasaSummary.sheets} codelists. Choose the BUHASA project dictionary when running matching; unresolved values require review before release.</p>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -183,7 +193,7 @@ const ComponentMatchingWorkbookManager = ({ projectId }) => {
         {activeSet && (
           <button
             onClick={handleReparse}
-            disabled={loading}
+            disabled={loading || Boolean(activeSet?.frozen_at)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-800/50 hover:bg-violet-50 dark:hover:bg-violet-900/20 rounded-lg disabled:opacity-50"
           >
             <ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -200,6 +210,22 @@ const ComponentMatchingWorkbookManager = ({ projectId }) => {
           <button onClick={() => setError('')} className="text-xs font-semibold underline">Dismiss</button>
         </div>
       )}
+
+      {activeSet && <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-4 text-sm">
+        <p>{activeSet.schema_valid ? 'Schema valid' : 'Schema unverified'} ? {activeSet.frozen_at ? 'Frozen reference' : 'Mutable reference'} ? Review: {activeSet.review_status || 'draft'}</p>
+        <p>Standard edition: {activeSet.standard_edition || 'unspecified'} ? Units: {activeSet.units || 'unspecified'}</p>
+        {['match', 'spec', 'cat'].map(kind => <p key={kind} className="break-all font-mono text-xs">{kind.toUpperCase()} SHA-256: {activeSet[`${kind}_file_hash`] || 'unverified'}</p>)}
+        <p className="text-xs text-slate-600">Freezing prevents reparse and deletion. It does not grant engineering release approval. Upload a new set for a revised reference.</p>
+        <button type="button" disabled={loading || Boolean(activeSet.frozen_at) || !activeSet.schema_valid || !activeSet.is_parsed}
+          onClick={async () => {
+            setLoading(true); setError('');
+            try { await specCustomizationAPI.freezeMatchingSet(activeSet.id); await loadWorkbookSets(); onSetsChanged?.(); }
+            catch (err) { setError(err?.response?.data?.error || 'Could not freeze reference set.'); }
+            finally { setLoading(false); }
+          }} className="rounded border border-blue-600 px-3 py-2 font-semibold text-blue-700 disabled:opacity-40">
+          {activeSet.frozen_at ? 'Reference frozen' : 'Freeze reference set'}
+        </button>
+      </div>}
 
       {/* Active Set Status */}
       {activeSet && (
@@ -246,6 +272,11 @@ const ComponentMatchingWorkbookManager = ({ projectId }) => {
         </div>
 
         <form onSubmit={handleUpload} className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <label className="text-sm">Standard edition<input value={standardEdition} onChange={e => setStandardEdition(e.target.value)} maxLength={64} className="mt-1 block w-full rounded border p-2" /></label>
+            <label className="text-sm">Unit convention<input value={units} onChange={e => setUnits(e.target.value)} maxLength={16} className="mt-1 block w-full rounded border p-2" /></label>
+            <label className="text-sm">Effective date<input type="date" value={effectiveDate} onChange={e => setEffectiveDate(e.target.value)} className="mt-1 block w-full rounded border p-2" /></label>
+          </div>
           {/* Version Label */}
           <div>
             <label className="block text-xs font-semibold text-gray-700 dark:text-gray-200 mb-1.5">
@@ -384,3 +415,5 @@ const ComponentMatchingWorkbookManager = ({ projectId }) => {
 
 export default ComponentMatchingWorkbookManager;
 
+
+ComponentMatchingWorkbookManager.propTypes = { projectId: PropTypes.string, onSetsChanged: PropTypes.func };

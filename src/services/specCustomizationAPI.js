@@ -230,6 +230,68 @@ const specCustomizationAPI = {
     return completeResp.data;
   },
 
+  async runJobMatching(jobId, workbookSetId, codelistProfile) {
+    const { data } = await apiClient.post('/spec-customization/matching-run/', {
+      job_id: jobId, ...(workbookSetId ? { workbook_set_id: workbookSetId } : {}),
+      ...(codelistProfile ? { codelist_profile: codelistProfile } : {}),
+    });
+    return data;
+  },
+
+  async listMatchDecisions(params = {}) {
+    const { data } = await apiClient.get('/spec-customization/matching-decisions/', { params });
+    return data;
+  },
+
+  async reviewMatchDecision(payload) {
+    const { data } = await apiClient.post('/spec-customization/matching-decision-review/', payload);
+    return data;
+  },
+
+  async freezeMatchingSet(workbookSetId) {
+    const { data } = await apiClient.post('/spec-customization/matching-set-freeze/', { workbook_set_id: workbookSetId });
+    return data;
+  },
+
+  async getMatchingSetDetail(workbookSetId) {
+    const { data } = await apiClient.get(`/spec-customization/matching/sets/${workbookSetId}/`);
+    return data;
+  },
+
+  async listMatchingSets(projectId) {
+    const { data } = await apiClient.get('/spec-customization/matching/sets/', { params: { project_id: projectId } });
+    return data;
+  },
+
+  async getReleaseState(jobId) {
+    const { data } = await apiClient.get(`/spec-customization/paper-spec/jobs/${jobId}/releases/`);
+    return data;
+  },
+  async createReleaseDraft(jobId) {
+    const { data } = await apiClient.post(`/spec-customization/paper-spec/jobs/${jobId}/releases/`);
+    return data;
+  },
+  async validateRelease(jobId) {
+    const { data } = await apiClient.post(`/spec-customization/paper-spec/jobs/${jobId}/releases/validate/`);
+    return data;
+  },
+  async freezeRelease(jobId, releaseId) {
+    const { data } = await apiClient.post(`/spec-customization/paper-spec/jobs/${jobId}/releases/${releaseId}/freeze/`);
+    return data;
+  },
+  async getReleaseHistory(jobId) {
+    const { data } = await apiClient.get(`/spec-customization/paper-spec/jobs/${jobId}/release-history/`);
+    return data;
+  },
+  async listImportAttempts(jobId) {
+    const { data } = await apiClient.get(`/spec-customization/paper-spec/jobs/${jobId}/import-attempts/`);
+    return data;
+  },
+  async recordImportAttempt(jobId, payload) {
+    const { data } = await apiClient.post(`/spec-customization/paper-spec/jobs/${jobId}/import-attempts/`, payload);
+    return data;
+  },
+
   async listJobs() {
     const { data } = await apiClient.get(path(SPEC_API_CONFIG.jobsPath));
     return data;
@@ -281,16 +343,18 @@ const specCustomizationAPI = {
   },
 
   /** SmartPlant 3D — SPEC workbook (piping spec rules). Returns a Blob. */
-  async exportSmartplantSpec(jobId) {
+  async exportSmartplantSpec(jobId, { draft = true, releaseId } = {}) {
     const { data } = await apiClient.get(path(SPEC_API_CONFIG.jobExportSpecPath(jobId)), {
+      params: { ...(draft ? { draft: 1 } : {}), ...(releaseId ? { release_id: releaseId } : {}) },
       responseType: 'blob',
     });
     return data;
   },
 
   /** SmartPlant 3D — CAT workbook (component catalog). Returns a Blob. */
-  async exportSmartplantCat(jobId) {
+  async exportSmartplantCat(jobId, { draft = true, releaseId } = {}) {
     const { data } = await apiClient.get(path(SPEC_API_CONFIG.jobExportCatPath(jobId)), {
+      params: { ...(draft ? { draft: 1 } : {}), ...(releaseId ? { release_id: releaseId } : {}) },
       responseType: 'blob',
     });
     return data;
