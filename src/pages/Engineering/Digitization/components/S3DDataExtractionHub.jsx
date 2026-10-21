@@ -13,10 +13,10 @@
  * The app Sidebar and Header are rendered by the route layout and are
  * intentionally not touched here.
  */
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { CheckCircle2, Clock3, Save } from 'lucide-react';
 import {
   CloudArrowUpIcon,
-  LockClosedIcon,
   ChevronDownIcon,
   DocumentTextIcon,
   ExclamationTriangleIcon,
@@ -26,18 +26,15 @@ import {
   ArrowPathIcon,
   InformationCircleIcon,
 } from '@heroicons/react/24/outline';
+import PropTypes from 'prop-types';
 import specCustomizationAPI from '../../../../services/specCustomizationAPI';
 import { radaiAlert } from '../../../../services/radaiDialog';
 import PaperSpecExtractor from './PaperSpecExtractor';
-import WorkbookCanvas from './WorkbookCanvas';
-
-const fmtBytes = (n) => {
-  if (!n) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB'];
-  let v = n; let i = 0;
-  while (v >= 1024 && i < units.length - 1) { v /= 1024; i += 1; }
-  return `${v.toFixed(v >= 100 ? 0 : 1)} ${units[i]}`;
-};
+import S3DReviewWorkspace from './S3DReviewWorkspace';
+import './S3DPreview.css';
+import MatchReviewQueue from './MatchReviewQueue';
+import ControlledReleasePanel from './ControlledReleasePanel';
+import ComponentMatchingWorkbookManager from './ComponentMatchingWorkbookManager';
 
 const downloadBlob = (blob, filename) => {
   const url = URL.createObjectURL(blob);
@@ -51,8 +48,8 @@ const downloadBlob = (blob, filename) => {
 };
 
 const EXPORT_ITEMS = [
-  { key: 'spec', label: 'SPEC.xlsx', description: 'SmartPlant 3D — Piping Spec Rules workbook', icon: DocumentTextIcon, iconClass: 'text-slate-500' },
-  { key: 'cat', label: 'CAT.xlsx', description: 'SmartPlant 3D — Component Catalog workbook', icon: DocumentTextIcon, iconClass: 'text-slate-500' },
+  { key: 'spec', label: 'Draft SPEC.xlsx', description: 'SmartPlant 3D — Piping Spec Rules workbook', icon: DocumentTextIcon, iconClass: 'text-slate-500' },
+  { key: 'cat', label: 'Draft CAT.xlsx', description: 'SmartPlant 3D — Component Catalog workbook', icon: DocumentTextIcon, iconClass: 'text-slate-500' },
   { key: 'xlsx', label: 'XLSX (combined)', description: 'One sheet per Piping Class', icon: TableCellsIcon, iconClass: 'text-emerald-600' },
   { key: 'json', label: 'JSON', description: 'Raw extracted data', icon: CodeBracketIcon, iconClass: 'text-slate-600' },
 ];
@@ -60,15 +57,22 @@ const EXPORT_ITEMS = [
 const HUB_TABS = [
   { key: 'classes', label: 'Piping classes' },
   { key: 'canvas', label: 'Workbook canvas' },
+  { key: 'matching', label: 'Matching' },
+  { key: 'release', label: 'Release & pilot' },
 ];
 
 const S3DDataExtractionHub = ({ jobId, onUploadAnother, onHistory }) => {
   const [job, setJob] = useState(null);
+  const [referenceSet, setReferenceSet] = useState(null);
+  const [matching, setMatching] = useState(false);
+  const [matchingError, setMatchingError] = useState('');
+  const [matchRevision, setMatchRevision] = useState(0);
   const [documentMeta, setDocumentMeta] = useState(null);
   const [loadingJob, setLoadingJob] = useState(Boolean(jobId));
   const [loadError, setLoadError] = useState('');
   const [loadRetry, setLoadRetry] = useState(0);
   const [activeView, setActiveView] = useState('canvas');
+  const [codelistProfile, setCodelistProfile] = useState('BUHASA');
   const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState('');
   const [saving, setSaving] = useState(false);
@@ -76,6 +80,22 @@ const S3DDataExtractionHub = ({ jobId, onUploadAnother, onHistory }) => {
   const [sheetsCount, setSheetsCount] = useState(null);
   const [rowsCount, setRowsCount] = useState(null);
   const exportMenuRef = useRef(null);
+  const reviewRef = useRef(null);
+  const [workspaceStatus, setWorkspaceStatus] = useState({});
+  const handleWorkspaceStatus = useCallback(status => setWorkspaceStatus(status), []);
+  const refreshReferences = useCallback(() => setMatchRevision(value => value + 1), []);
+  const linkSource = useCallback(({ page } = {}) => {
+    if (documentMeta?.file_url) window.open(`${documentMeta.file_url}#page=${page || 1}`, '_blank', 'noopener,noreferrer');
+    else void radaiAlert('The source document URL is unavailable. Source links are supplied by the extraction service; upload the source document to create a new extraction with its source evidence.');
+  }, [documentMeta?.file_url]);
+  const changeView = async value => {
+    try { await reviewRef.current?.saveChanges(); setActiveView(value); }
+    catch { /* Keep unsaved changes visible in the review workspace. */ }
+  };
+  const leaveWorkspace = async callback => {
+    try { await reviewRef.current?.saveChanges(); callback?.(); }
+    catch { /* A failed save must not discard the editable draft. */ }
+  };
 
   useEffect(() => {
     if (!jobId) return undefined;
@@ -96,6 +116,37 @@ const S3DDataExtractionHub = ({ jobId, onUploadAnother, onHistory }) => {
     })();
     return () => { cancelled = true; };
   }, [jobId, loadRetry]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setReferenceSet(null);
+    if (!job?.project_id) return undefined;
+    (async () => {
+      try {
+        const sets = await specCustomizationAPI.listMatchingSets(job.project_id);
+        if (!cancelled) {
+          setReferenceSet((sets.items || []).find(item => item.id === job.reference_workbook_set) || (sets.items || []).find(item => item.is_active) || null);
+        }
+      } catch (err) {
+        if (!cancelled) setMatchingError(err?.response?.data?.detail || 'Could not load reference sets. Open Matching to retry.');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [job?.project_id, job?.reference_workbook_set, matchRevision]);
+
+  const runMatching = async () => {
+    setMatching(true);
+    setMatchingError('');
+    try {
+      await reviewRef.current?.saveChanges();
+      await specCustomizationAPI.runJobMatching(jobId, referenceSet?.id, codelistProfile);
+      setMatchRevision(value => value + 1);
+      setActiveView('matching');
+      setJob(current => ({ ...current, reference_workbook_set: referenceSet.id }));
+    } catch (err) {
+      setMatchingError(err?.response?.data?.error || err?.response?.data?.detail || 'Matching failed. Try again.');
+    } finally { setMatching(false); }
+  };
 
   // Workbook totals for the document info card (SPEC template).
   useEffect(() => {
@@ -135,10 +186,11 @@ const S3DDataExtractionHub = ({ jobId, onUploadAnother, onHistory }) => {
     if (!jobId || exporting) return;
     setExporting(kind);
     try {
+      await reviewRef.current?.saveChanges();
       if (kind === 'spec') {
-        downloadBlob(await specCustomizationAPI.exportSmartplantSpec(jobId), `spec_customisation_${jobId}_SPEC.xlsx`);
+        downloadBlob(await specCustomizationAPI.exportSmartplantSpec(jobId), `DRAFT_spec_customisation_${jobId}_SPEC.xlsx`);
       } else if (kind === 'cat') {
-        downloadBlob(await specCustomizationAPI.exportSmartplantCat(jobId), `spec_customisation_${jobId}_CAT.xlsx`);
+        downloadBlob(await specCustomizationAPI.exportSmartplantCat(jobId), `DRAFT_spec_customisation_${jobId}_CAT.xlsx`);
       } else if (kind === 'xlsx') {
         downloadBlob(await specCustomizationAPI.exportJob(jobId, 'xlsx'), `paper_spec_${jobId}.xlsx`);
       } else if (kind === 'json') {
@@ -157,14 +209,18 @@ const S3DDataExtractionHub = ({ jobId, onUploadAnother, onHistory }) => {
     if (!job) return 'unverified';
     return job.status;
   }, [job]);
+  const emptyExtraction = job?.extraction_completeness?.state === 'empty';
 
   const saveExtractedData = async () => {
     if (saving || !jobId) return;
     setSaving(true);
     setSaveError('');
     try {
-      const updated = await specCustomizationAPI.saveJob(jobId);
-      setJob(updated);
+      await reviewRef.current?.saveChanges();
+      if (!job?.saved_at) {
+        const updated = await specCustomizationAPI.saveJob(jobId);
+        setJob(updated);
+      }
     } catch (err) {
       setSaveError(err?.response?.data?.error || err?.response?.data?.detail || err?.message || 'Could not save extracted data.');
     } finally {
@@ -173,37 +229,30 @@ const S3DDataExtractionHub = ({ jobId, onUploadAnother, onHistory }) => {
   };
 
   return (
-    <div className="min-h-[calc(100dvh-68px)] bg-[#f4f6f9] text-slate-900" style={{ fontFamily: "var(--font-sans, 'Segoe UI', system-ui, sans-serif)" }}>
-      <div className="mx-auto max-w-4xl px-6 py-6">
+    <div className="s3d-preview">
+      <div className="s3d-preview-inner">
                {/* Title + actions */}
-        <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
+        <div className="s3d-hub-heading">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">Data Extraction &amp; Integration Hub</h1>
-            <p className="mt-1 text-sm text-slate-500">Review source data, edit SPEC and CAT workbooks, and prepare exports.</p>
+            <h1>Data Extraction &amp; Integration Hub</h1>
+            <p>Review extracted records, resolve matches, and prepare your workbook.</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2.5">
-            <button type="button" onClick={onHistory} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">History Logs</button>
+          <div className="s3d-hub-actions">
+            <button type="button" onClick={() => leaveWorkspace(onHistory)} className="s3d-button"><Clock3 />History Logs</button>
+            <button type="button" onClick={() => leaveWorkspace(onUploadAnother)} className="s3d-button s3d-button--blue"><CloudArrowUpIcon />Upload document</button>
             {job?.status === 'completed' && (
-              <button type="button" onClick={saveExtractedData} disabled={saving || Boolean(job.saved_at)}
-                className="rounded-lg border border-blue-600 bg-white px-4 py-2 text-sm font-semibold text-blue-600 disabled:opacity-60">
-                {saving ? 'Saving…' : job.saved_at ? 'Saved to project' : 'Save extracted data'}
+              <button type="button" onClick={saveExtractedData} disabled={emptyExtraction || saving || (Boolean(job.saved_at) && !['unsaved', 'error'].includes(workspaceStatus.saveStatus))}
+                aria-label={saving ? 'Saving changes' : job.saved_at ? 'Saved to project' : 'Save extracted data'} className="s3d-button s3d-button--blue">
+                <Save />{saving ? 'Saving…' : 'Save changes'}
               </button>
             )}
-            <button
-              type="button"
-              onClick={onUploadAnother}
-              className="inline-flex items-center gap-2 rounded-lg border border-blue-600 bg-white px-4 py-2 text-sm font-semibold text-blue-600 shadow-sm transition hover:bg-blue-50"
-            >
-              <CloudArrowUpIcon className="h-4 w-4" />
-              Upload document
-            </button>
             <div className="relative" ref={exportMenuRef}>
               <button
                 type="button"
                 onClick={() => setExportOpen((open) => !open)}
                 aria-expanded={exportOpen}
                 aria-haspopup="menu"
-                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                className="s3d-button s3d-button--primary s3d-export-button"
               >
                 Export
                 <ChevronDownIcon className={`h-4 w-4 transition-transform ${exportOpen ? 'rotate-180' : ''}`} />
@@ -244,53 +293,37 @@ const S3DDataExtractionHub = ({ jobId, onUploadAnother, onHistory }) => {
             </div>
           </div>
         </div>
+        {matchingError && <p role="alert" className="mt-3 text-sm text-rose-700">{matchingError}</p>}
         {saveError && <p role="alert" className="mt-3 text-sm text-rose-700">{saveError}</p>}
-        {job?.saved_at && <p role="status" className="mt-3 text-sm text-emerald-700">Saved to project on {new Date(job.saved_at).toLocaleString()}.</p>}
+        {emptyExtraction && <p role="alert" className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">This extraction produced no component records. Choose Upload document and extract the source again to create a new attempt. The previous run remains in History Logs.</p>}
+        {job?.saved_at && <span className="sr-only" role="status">Saved to project on {new Date(job.saved_at).toLocaleString()}.</span>}
 
         {/* Document info card */}
-        <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg border border-slate-200 bg-white px-4 py-3.5 shadow-sm">
+        <div className="s3d-document-bar">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-slate-100">
-              <DocumentTextIcon className="h-5 w-5 text-slate-500" />
-            </div>
+            <div className="s3d-pdf-file-icon" aria-hidden="true">pdf</div>
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-slate-900">{documentMeta?.original_filename || 'Document'}</p>
-              <p className="text-xs text-slate-500">
-                {documentMeta
-                  ? `${documentMeta.total_pages || 0} pages · ${fmtBytes(documentMeta.file_size_bytes)}`
-                  : 'Source metadata unavailable'}
-              </p>
+              <p className="s3d-document-counts"><span>{documentMeta?.total_pages ?? '—'} pages</span><span>{workspaceStatus.sheets ?? sheetsCount ?? '—'} sheets</span><span>{workspaceStatus.records ?? rowsCount ?? '—'} records</span></p>
             </div>
           </div>
-          <span className="inline-flex items-center gap-1.5 rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">
-            <ExclamationTriangleIcon className="h-3.5 w-3.5" />
-            Source not linked
+          <span className={`s3d-badge s3d-badge--${extractionStatus === 'completed' && !emptyExtraction ? 'success' : 'warning'}`}>{emptyExtraction ? <ExclamationTriangleIcon /> : <CheckCircle2 />}{emptyExtraction ? 'No components extracted' : extractionStatus === 'completed' ? 'Extraction complete' : `Extraction ${extractionStatus}`}</span>
+          <span className={`s3d-badge s3d-badge--${workspaceStatus.sourceLinked ? 'success' : 'warning'}`}>
+            {workspaceStatus.sourceLinked ? <CheckCircle2 /> : <ExclamationTriangleIcon className="h-3.5 w-3.5" />}
+            {workspaceStatus.sourceLinked ? 'Source linked' : 'Source not linked'}
           </span>
-          <div className="ml-auto flex flex-wrap items-center">
-            <span className="border-l border-slate-200 px-4 text-xs text-slate-600 first:border-l-0 first:pl-0">
-              {sheetsCount ?? '—'} sheets
-            </span>
-            <span className="border-l border-slate-200 px-4 text-xs text-slate-600">
-              {rowsCount ?? '—'} workbook rows
-            </span>
-            <span className="border-l border-slate-200 px-4 text-xs text-slate-600">
-              Extraction status: <span className="font-medium text-slate-700">{extractionStatus}</span>
-            </span>
-            <span className="border-l border-slate-200 pl-4">
               <button
                 type="button"
-                onClick={() => radaiAlert('Source linking is automatic: rows are linked to extracted records when the AI matches a Piping Class or component to a template row. No manually uploaded source is attached to this document yet.')}
-                className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:underline"
+                onClick={() => linkSource()}
+                className="s3d-text-button"
               >
                 <LinkIcon className="h-3.5 w-3.5" />
                 Link source
               </button>
-            </span>
-          </div>
         </div>
 
         {/* View tabs */}
-        <div className="mt-6 border-b border-slate-200" role="tablist" aria-label="Data extraction views">
+        <div className="s3d-hub-tabs" role="tablist" aria-label="Data extraction views">
           <div className="flex gap-6">
             {HUB_TABS.map((tab) => (
               <button
@@ -298,7 +331,7 @@ const S3DDataExtractionHub = ({ jobId, onUploadAnother, onHistory }) => {
                 type="button"
                 role="tab"
                 aria-selected={activeView === tab.key}
-                onClick={() => setActiveView(tab.key)}
+                onClick={() => changeView(tab.key)}
                 className={`-mb-px border-b-2 px-1 pb-2.5 text-sm font-medium transition-colors ${
                   activeView === tab.key
                     ? 'border-blue-600 text-blue-600'
@@ -309,10 +342,18 @@ const S3DDataExtractionHub = ({ jobId, onUploadAnother, onHistory }) => {
               </button>
             ))}
           </div>
+          {referenceSet && job?.status === 'completed' && <div className="flex items-center gap-2"><label className="text-sm">Project dictionary <select aria-label="Project dictionary" value={codelistProfile} onChange={event => setCodelistProfile(event.target.value)} disabled={matching} className="ml-2 rounded border p-2"><option value="BUHASA">BUHASA codelists</option><option value="">Existing reference matching</option></select></label><button type="button" className="s3d-text-button s3d-run-matching" onClick={runMatching} disabled={matching || emptyExtraction}><ArrowPathIcon />{matching ? 'Matching…' : 'Run Matching'}</button></div>}
         </div>
 
+        {!loadingJob && !loadError && job?.status === 'completed' && activeView === 'matching' && <div className="mt-4 space-y-4">
+          <MatchReviewQueue key={jobId} jobId={jobId} revision={matchRevision} />
+          {job.project_id && <ComponentMatchingWorkbookManager projectId={job.project_id} onSetsChanged={() => setMatchRevision(value => value + 1)} />}
+        </div>}
+
+        {!loadingJob && !loadError && job?.status === 'completed' && activeView === 'release' && <div className="mt-4"><ControlledReleasePanel key={jobId} jobId={jobId} /></div>}
+
         {/* Content */}
-        <div className="mt-4 pb-8">
+        <div className={`s3d-hub-content ${activeView === 'canvas' ? 's3d-hub-content--canvas' : ''}`}>
           {loadingJob && (
             <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">
               <ArrowPathIcon className="h-4 w-4 animate-spin text-blue-600" />
@@ -341,13 +382,16 @@ const S3DDataExtractionHub = ({ jobId, onUploadAnother, onHistory }) => {
             <PaperSpecExtractor key={`${jobId}-classes`} jobId={jobId} previewOnly embedded activeView="classes" onViewChange={setActiveView} />
           )}
           {!loadingJob && !loadError && job?.status === 'completed' && activeView === 'canvas' && (
-            <WorkbookCanvas key={`${jobId}-canvas`} job={job} variant="hub" />
+            <S3DReviewWorkspace ref={reviewRef} key={`${jobId}-canvas`} job={job} documentMeta={documentMeta} onStatusChange={handleWorkspaceStatus} onLinkSource={linkSource} onRefreshReferences={refreshReferences} />
           )}
         </div>
+        {activeView === 'canvas' && <div className="s3d-workspace-footer"><span>{workspaceStatus.records ?? '—'} records <span>·</span> {workspaceStatus.issues ?? '—'} issues to review</span><div><span className="s3d-footer-save"><CheckCircle2 />{workspaceStatus.saveStatus === 'unsaved' ? 'Unsaved changes' : workspaceStatus.saveStatus === 'error' ? 'Save failed' : workspaceStatus.saveStatus === 'saving' ? 'Saving changes…' : 'Changes saved'}</span>{workspaceStatus.lastSaved && <span>Last saved today, {new Date(workspaceStatus.lastSaved).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}</div></div>}
       </div>
     </div>
   );
 };
+
+S3DDataExtractionHub.propTypes = { jobId: PropTypes.string, onUploadAnother: PropTypes.func, onHistory: PropTypes.func };
 
 export default S3DDataExtractionHub;
 

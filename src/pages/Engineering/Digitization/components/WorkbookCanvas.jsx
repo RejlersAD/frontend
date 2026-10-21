@@ -3227,7 +3227,7 @@ const WorkbookCanvas = ({ job, variant = "default" }) => {
                                       title={
                                         status === "error"
                                           ? local?.error
-                                          : undefined
+                                          : `Origin: ${local ? "override" : row.provenance?.[col] || row.origin || "unverified"}`
                                       }
                                     />
                                   </td>
