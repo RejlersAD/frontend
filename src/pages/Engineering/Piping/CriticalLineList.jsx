@@ -100,12 +100,76 @@ const CLL_THEME = {
 // Enrichment breakdown shown in the hero banner (soft-coded, no duplication).
 // Column counts are indicative — real backend returns 35 columns total.
 const CLL_ENRICHMENT_SOURCES = [
-  { key: 'pid',    label: 'P&ID',              cols: 8, color: '#3b82f6', desc: 'Base columns (Line No, Size, Fluid, Area, From/To)' },
-  { key: 'hmb',    label: 'HMB/PFD',           cols: 6, color: '#059669', desc: 'Temp, Pressure, Flow Rate, Density' },
-  { key: 'pms',    label: 'PMS',               cols: 8, color: '#d97706', desc: 'Material Grade, Schedule, Flanges, Gaskets' },
-  { key: 'nace',   label: 'NACE',              cols: 6, color: '#dc2626', desc: 'Corrosion, Inspection, Coating class' },
-  { key: 'stress', label: 'Stress Criticality', cols: 7, color: '#ca8a04', desc: 'Critical-line class, temp zone, stress tags' },
+  { key: 'pid',    label: 'P&ID',              cols: 8, color: '#3b82f6', required: true,  desc: 'Base columns (Line No, Size, Fluid, Area, From/To)' },
+  { key: 'hmb',    label: 'HMB/PFD',           cols: 6, color: '#059669', required: false, desc: 'Temp, Pressure, Flow Rate, Density (optional)' },
+  { key: 'pms',    label: 'PMS',               cols: 8, color: '#d97706', required: true,  desc: 'Material Grade, Schedule, Flanges, Gaskets' },
+  { key: 'nace',   label: 'NACE',              cols: 6, color: '#dc2626', required: false, desc: 'Corrosion, Inspection, Coating class (optional)' },
+  { key: 'stress', label: 'Stress Criticality', cols: 7, color: '#ca8a04', required: false, desc: 'Critical-line class, temp zone, stress tags (optional)' },
+  { key: 'pll',    label: 'Process Line List', cols: 9, color: '#0d9488', required: false, desc: 'Service, Op/Design P&T, Flow, Tracing (optional · Excel)' },
 ];
+
+// Upload policy — soft-coded per Process discipline workflow.
+// P&ID + PMS stay mandatory (material-complete register); HMB/PFD, NACE,
+// Stress Criticality and the Process Line List enrich when provided.
+const CLL_DOC_POLICY = {
+  required: ['pid', 'pms'],
+  optional: ['hmb', 'nace', 'stress', 'pll'],
+  labels: {
+    pid: 'P&ID Drawing', pms: 'PMS Specification', hmb: 'HMB/PFD',
+    nace: 'NACE Report', stress: 'Stress Criticality', pll: 'Process Line List',
+  },
+  formKeys: {
+    pid: 'pid_file', hmb: 'hmb_file', pms: 'pms_file',
+    nace: 'nace_file', stress: 'stress_criticality_file', pll: 'process_line_list_file',
+  },
+};
+
+// CRITICAL LINE LIST — FINAL OUTPUT FORMAT (soft-coded, mirrors backend
+// CRITICAL_LINE_LIST_EXPORT_FORMAT in apps/designiq/tasks.py).
+// Same column layout as the project Process Line List template
+// (Process_Line_List.xlsx) plus ONE extra column "Critical Stress Line".
+// `sources` are tried in order against each row (pll_* values first, then
+// core/base fallbacks). Used for the results table and the Excel export
+// ONLY when the processed rows carry PLL data — otherwise the legacy
+// 37-column layout is shown untouched.
+const CLL_EXPORT_FORMAT = [
+  { label: 'LINE NUMBER',                sources: ['original_detection', 'line_number'] },
+  { label: 'LINE',                       sources: ['pll_line_short', 'original_detection', 'line_number'] },
+  { label: 'FLUID',                      sources: ['pll_fluid', 'fluid_code'] },
+  { label: 'FROM',                       sources: ['pll_from', 'from_line', 'from_equipment', 'from'] },
+  { label: 'TO',                         sources: ['pll_to', 'to_line', 'to_equipment', 'to'] },
+  { label: 'LINE SIZE (IN)',             sources: ['pll_line_size', 'size'] },
+  { label: 'MATERIAL CLASS',             sources: ['pll_material_class', 'pipr_class'] },
+  { label: 'STRESS ANALYSIS',            sources: ['pll_stress_analysis'] },
+  { label: 'OPERATING PRESS.(kg/cm2g)',  sources: ['pll_operating_pressure', 'normal_pressure'] },
+  { label: 'OPERATING TEMP. (deg C)',    sources: ['pll_operating_temp', 'normal_temp'] },
+  { label: 'DESIGN PRESS.(kg/cm2g)',     sources: ['pll_design_pressure', 'design_pressure'] },
+  { label: 'DESIGN TEMP(deg C)',         sources: ['pll_design_temp', 'max_design_temp'] },
+  { label: 'PHASE',                      sources: ['pll_phase'] },
+  { label: 'TEST PRESS. (kg/cm2g)',      sources: ['pll_test_pressure', 'test_pressure'] },
+  { label: 'TEST MEDIA',                 sources: ['pll_test_medium', 'test_medium'] },
+  { label: 'INSUL CODE',                 sources: ['pll_insulation', 'insulation'] },
+  { label: 'THK.(MM)',                   sources: ['pll_thk', 'schedule_wall_thk'] },
+  { label: 'PAINT CODE',                 sources: ['pll_paint_code'] },
+  { label: 'CRITICALITY RATING',         sources: ['pll_criticality_rating', 'criticality_code'] },
+  { label: 'P&ID NUMBER',                sources: ['pll_pid_number', 'pid_no'] },
+  { label: 'NDE CLASS NOTE',             sources: ['pll_nde_class'] },
+  { label: 'REV',                        sources: ['pll_rev', 'pid_rev'] },
+  { label: 'CRITICAL STRESS LINE',       sources: ['criticality_stress'] },
+];
+
+// First non-empty value among the given source keys
+const cllPickFirst = (row, sources) => {
+  for (const k of sources) {
+    const v = row ? row[k] : undefined;
+    if (v !== undefined && v !== null && v !== '') return v;
+  }
+  return '';
+};
+
+// True when the processed lines carry Process Line List data
+const cllHasPllData = (lines) =>
+  Array.isArray(lines) && lines.some(l => l && typeof l === 'object' && 'pll_match' in l);
 const CLL_TOTAL_DOCS = CLL_ENRICHMENT_SOURCES.length;       // 5
 const CLL_TOTAL_COLS = CLL_ENRICHMENT_SOURCES.reduce((s, x) => s + x.cols, 0); // 35
 
@@ -206,8 +270,8 @@ const CLL_WORKFLOW_STEPS = [
     gradient:    'linear-gradient(135deg, #0891b2, #06b6d4)',
     icon:        UploadIcon,
     duration:    '5-10 min',
-    description: 'Upload P&ID, HMB/PFD, PMS, NACE, and Stress Criticality documents. All 5 documents are required for complete 35-column enrichment.',
-    keyActions:  ['Upload P&ID drawing', 'Upload HMB/PFD data', 'Upload PMS specification', 'Upload NACE requirements', 'Upload Stress Criticality list'],
+    description: 'Upload the P&ID drawing and PMS specification (mandatory). HMB/PFD, NACE, Stress Criticality and the Process Line List (Excel) are optional enrichments — the more you provide, the richer the register.',
+    keyActions:  ['Upload P&ID drawing (required)', 'Upload PMS specification (required)', 'Optionally add HMB/PFD, NACE, Stress Criticality', 'Optionally add Process Line List (Excel)'],
     proTips:     ['Ensure all documents are from the same project revision', 'Higher DPI (300+) improves AI accuracy'],
   },
   {
@@ -270,6 +334,7 @@ const CLL_AI_ASSIST_CONFIG = {
     { id: 'pms',    label: '3 · PMS',               defaultHint: 'piping material specification',   acceptedExts: ['pdf','xlsx','xls'] },
     { id: 'nace',   label: '4 · NACE',              defaultHint: 'nace mr0175 corrosion',           acceptedExts: ['pdf','xlsx','xls'] },
     { id: 'stress', label: '5 · Stress Criticality',defaultHint: 'stress critical line list',       acceptedExts: ['pdf','xlsx','xls'] },
+    { id: 'pll',    label: '6 · Process Line List', defaultHint: 'process line list',               acceptedExts: ['xlsx','xls']      },
   ],
 };
 
@@ -346,6 +411,7 @@ const CLL_DOC_ORBIT = [
   { key: 'pms',    label: 'PMS',     icon: '🔧', color: '#d97706' },
   { key: 'nace',   label: 'NACE',    icon: '⚗️', color: '#dc2626' },
   { key: 'stress', label: 'STRESS',  icon: '🧪', color: '#ca8a04' },
+  { key: 'pll',    label: 'PLL',     icon: '📑', color: '#0d9488' },
 ];
 
 // Processing modal — stage tracker (keyed to percent ranges from processAllDocuments)
@@ -504,6 +570,9 @@ const CriticalLineList = () => {
 
   const [stressCriticalityDocument, setStressCriticalityDocument] = useState(null);
 
+  // Optional Process Line List (Excel) — enriches lines with process data
+  const [processLineListDocument, setProcessLineListDocument] = useState(null);
+
   const [selectedFormat, setSelectedFormat] = useState(null);
 
   // AI Document Assist — which of the 5 doc slots receives the next Wrench file.
@@ -534,6 +603,8 @@ const CriticalLineList = () => {
   const naceRef = useRef(null);
 
   const stressRef = useRef(null);
+
+  const pllRef = useRef(null);
 
   // ─── Workflow & Documentation UI State ────────────────────────────────────
   const [workflowCollapsed, setWorkflowCollapsed] = useState(CLL_WORKFLOW_CONFIG.DEFAULT_COLLAPSED);
@@ -703,6 +774,7 @@ const CriticalLineList = () => {
     setPmsDocument(null);
     setNaceDocument(null);
     setStressCriticalityDocument(null);
+    setProcessLineListDocument(null);
     setExtractedData(null);
     setShowPreviewModal(false);
   };
@@ -1378,6 +1450,13 @@ const CriticalLineList = () => {
 
     const POLL_MAX_ATTEMPTS = 600;           // 50 minutes total (> 45-min Celery cap)
 
+    // Soft-coded network resilience: if the backend container restarts
+    // (OOM/deploy), the task is requeued server-side (acks_late) — tolerate
+    // transient connection failures instead of failing the upload at once.
+    const POLL_MAX_NETWORK_FAILURES = 24;    // 24 × 5s ≈ 2 min of outage tolerance
+
+    let networkFailures = 0;
+
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
     const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
@@ -1404,7 +1483,17 @@ const CriticalLineList = () => {
 
 
 
-        if (!response.ok) throw new Error('Failed to check status');
+        if (!response.ok) {
+
+          // 5xx/502 during a backend restart is transient — count and retry
+
+          const err = new Error(`Status check failed (HTTP ${response.status})`);
+
+          err.terminal = response.status === 400 || response.status === 401 || response.status === 403;
+
+          throw err;
+
+        }
 
 
 
@@ -1476,7 +1565,11 @@ const CriticalLineList = () => {
 
         if (status.state === 'FAILURE') {
 
-          throw new Error(status.error || 'Task failed');
+          const err = new Error(status.error || 'Task failed');
+
+          err.terminal = true;
+
+          throw err;
 
         }
 
@@ -1490,15 +1583,49 @@ const CriticalLineList = () => {
 
         console.error('Polling error:', error);
 
-        setUploadResult({
+        // Terminal task failure — report immediately
 
-          success: false,
+        if (error.terminal) {
 
-          message: error.message || 'Failed to check processing status'
+          setUploadResult({
 
-        });
+            success: false,
 
-        return;
+            message: error.message || 'Processing failed'
+
+          });
+
+          return;
+
+        }
+
+        // Transient network/server hiccup — keep polling through it
+
+        networkFailures += 1;
+
+        if (networkFailures > POLL_MAX_NETWORK_FAILURES) {
+
+          setUploadResult({
+
+            success: false,
+
+            message: 'Lost connection to the processing server. Your job may still complete in the background — please check the project history in a few minutes.'
+
+          });
+
+          return;
+
+        }
+
+        setProcessingProgress(prev => ({
+
+          ...prev,
+
+          step: `🔄 Connection interrupted — retrying (${networkFailures}/${POLL_MAX_NETWORK_FAILURES})…`
+
+        }));
+
+        await sleep(POLL_INTERVAL_MS);
 
       }
 
@@ -1538,13 +1665,33 @@ const CriticalLineList = () => {
 
     
 
-    if (!pidDocument || !hmbDocument || !pmsDocument || !naceDocument || !stressCriticalityDocument) {
+    // Soft-coded upload policy (CLL_DOC_POLICY): P&ID + PMS mandatory;
+    // HMB/PFD, NACE, Stress Criticality and Process Line List are optional.
+    const DOC_STATE = {
+
+      pid: pidDocument,
+
+      hmb: hmbDocument,
+
+      pms: pmsDocument,
+
+      nace: naceDocument,
+
+      stress: stressCriticalityDocument,
+
+      pll: processLineListDocument,
+
+    };
+
+    const missingRequired = CLL_DOC_POLICY.required.filter(k => !DOC_STATE[k]);
+
+    if (missingRequired.length) {
 
       setUploadResult({
 
         success: false,
 
-        message: 'Please upload all 5 documents before processing.'
+        message: `Please upload required documents: ${missingRequired.map(k => CLL_DOC_POLICY.labels[k]).join(', ')}. HMB/PFD, NACE Report, Stress Criticality and Process Line List are optional enrichments.`
 
       });
 
@@ -1660,17 +1807,25 @@ const CriticalLineList = () => {
 
 
 
-      // ENRICHMENT LAYER: Add all 5 documents for 35-column extraction
+      // ENRICHMENT LAYER: PMS is mandatory (policy), attach unconditionally
 
-      formData.append('hmb_file', hmbDocument);
+      formData.append(CLL_DOC_POLICY.formKeys.pms, pmsDocument);
 
-      formData.append('pms_file', pmsDocument);
+      // Optional documents: attach only when provided (soft-coded keys)
 
-      formData.append('nace_file', naceDocument);
+      CLL_DOC_POLICY.optional.forEach((key) => {
 
-      formData.append('stress_criticality_file', stressCriticalityDocument);
+        const file = DOC_STATE[key];
 
-      console.log('[5-Doc Enrichment] All documents attached for 35-column extraction');
+        if (file) {
+
+          formData.append(CLL_DOC_POLICY.formKeys[key], file);
+
+          console.log(`[Enrichment] ${CLL_DOC_POLICY.labels[key]} attached:`, file.name);
+
+        }
+
+      });
 
 
 
@@ -1704,9 +1859,20 @@ const CriticalLineList = () => {
 
       const timeoutId = setTimeout(() => controller.abort(), 1200000); // 20 minutes
 
+      // Soft-coded upload resilience: a container restart or proxy hiccup
+      // surfaces as TypeError("Failed to fetch") - retry a few times before
+      // giving up (a fresh FormData body is safe to resend per attempt).
+      const UPLOAD_MAX_ATTEMPTS = 3;
+      const UPLOAD_RETRY_DELAY_MS = 8000;
+      let response = null;
+      let lastError = null;
+      for (let attempt = 1; attempt <= UPLOAD_MAX_ATTEMPTS; attempt++) {
+        try {
 
 
-      const response = await fetch(`${API_BASE_URL}/designiq/critical-lists/upload_pid/`, {
+
+
+      response = await fetch(`${API_BASE_URL}/designiq/critical-lists/upload_pid/`, {
 
         method: 'POST',
 
@@ -1722,6 +1888,21 @@ const CriticalLineList = () => {
 
       });
 
+
+
+                lastError = null;
+          break;
+        } catch (err) {
+          lastError = err;
+          if (err.name === 'AbortError') break; // 20-min timeout - do not retry
+          console.warn(`Upload attempt ${attempt}/${UPLOAD_MAX_ATTEMPTS} failed:`, err.message);
+          if (attempt < UPLOAD_MAX_ATTEMPTS) {
+            setProcessingProgress({ step: `Connection issue - retrying upload (${attempt}/${UPLOAD_MAX_ATTEMPTS})...`, percent: 8 });
+            await new Promise(r => setTimeout(r, UPLOAD_RETRY_DELAY_MS));
+          }
+        }
+      }
+      if (lastError) throw lastError;
 
 
       clearTimeout(timeoutId);
@@ -1981,6 +2162,14 @@ const CriticalLineList = () => {
         formData.append('stress_criticality_file', stressCriticalityDocument);
 
         console.log('[Enrichment] Stress Criticality document attached:', stressCriticalityDocument.name);
+
+      }
+
+      if (processLineListDocument) {
+
+        formData.append('process_line_list_file', processLineListDocument);
+
+        console.log('[Enrichment] Process Line List document attached:', processLineListDocument.name);
 
       }
 
@@ -3550,7 +3739,7 @@ const CriticalLineList = () => {
                                 },
                                 {
                                   q: 'Can I upload documents in batches?',
-                                  a: 'Yes! Upload all 5 documents at once. The system processes them in parallel and automatically merges data. You can also upload individually in any order.',
+                                  a: 'Yes! Upload the mandatory P&ID + PMS together with any optional documents (HMB/PFD, NACE, Stress Criticality, Process Line List). The system processes them in parallel and automatically merges data. You can also upload individually in any order.',
                                 },
                                 {
                                   q: 'What if OCR extraction has errors?',
@@ -4751,7 +4940,7 @@ const CriticalLineList = () => {
                             },
                             {
                               q: 'Can I upload documents in batches?',
-                              a: 'Yes! Upload all 5 documents at once. The system processes them in parallel and automatically merges data. You can also upload individually in any order.',
+                              a: 'Yes! Upload the mandatory P&ID + PMS together with any optional documents (HMB/PFD, NACE, Stress Criticality, Process Line List). The system processes them in parallel and automatically merges data. You can also upload individually in any order.',
                             },
                             {
                               q: 'What if OCR extraction has errors?',
@@ -5051,7 +5240,7 @@ const CriticalLineList = () => {
               Smart Enriched Extraction
             </div>
             <div style={{ fontSize: '0.76rem', color: '#64748b', marginTop: 2 }}>
-              Upload <strong>P&ID + HMB + PMS + NACE + Stress Criticality</strong> — RAD AI returns a unified {CLL_TOTAL_COLS}-column register.
+              Upload <strong>P&ID + PMS</strong> (required) — optionally enrich with <strong>HMB/PFD · NACE · Stress Criticality · Process Line List (Excel)</strong>. RAD AI returns a unified {CLL_TOTAL_COLS}-column register.
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.72rem' }}>
@@ -5337,6 +5526,8 @@ const CriticalLineList = () => {
 
                 stress: (f) => setStressCriticalityDocument(f),
 
+                pll:    (f) => setProcessLineListDocument(f),
+
               };
 
               return (
@@ -5417,7 +5608,7 @@ const CriticalLineList = () => {
 
 
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
 
               {/* Document 1: P&ID (Mandatory) */}
 
@@ -5531,7 +5722,7 @@ const CriticalLineList = () => {
 
                   <label className="text-sm font-bold text-green-900">2. HMB/PFD</label>
 
-                  <span className="px-2 py-1 bg-green-600 text-white text-xs rounded-full">+10 cols</span>
+                  <span className="px-2 py-1 bg-green-600 text-white text-xs rounded-full">Optional · +10 cols</span>
 
                 </div>
 
@@ -5619,7 +5810,7 @@ const CriticalLineList = () => {
 
                   <label className="text-sm font-bold text-orange-900">3. PMS</label>
 
-                  <span className="px-2 py-1 bg-orange-600 text-white text-xs rounded-full">+8 cols</span>
+                  <span className="px-2 py-1 bg-orange-600 text-white text-xs rounded-full">Mandatory · +8 cols</span>
 
                 </div>
 
@@ -5707,7 +5898,7 @@ const CriticalLineList = () => {
 
                   <label className="text-sm font-bold text-red-900">4. NACE Report</label>
 
-                  <span className="px-2 py-1 bg-red-600 text-white text-xs rounded-full">+8 cols</span>
+                  <span className="px-2 py-1 bg-red-600 text-white text-xs rounded-full">Optional · +8 cols</span>
 
                 </div>
 
@@ -5795,7 +5986,7 @@ const CriticalLineList = () => {
 
                   <label className="text-sm font-bold text-yellow-900">5. Stress Criticality</label>
 
-                  <span className="px-2 py-1 bg-yellow-600 text-white text-xs rounded-full">+1 col</span>
+                  <span className="px-2 py-1 bg-yellow-600 text-white text-xs rounded-full">Optional · +1 col</span>
 
                 </div>
 
@@ -5873,6 +6064,94 @@ const CriticalLineList = () => {
 
               </div>
 
+
+
+              {/* Document 6: Process Line List (Optional · Excel) */}
+
+              <div className="border-2 border-teal-300 rounded-lg p-4 bg-teal-50">
+
+                <div className="flex items-center justify-between mb-2">
+
+                  <label className="text-sm font-bold text-teal-900">6. Process Line List</label>
+
+                  <span className="px-2 py-1 bg-teal-600 text-white text-xs rounded-full">Optional</span>
+
+                </div>
+
+                <p className="text-xs text-teal-700 mb-3">Service, Op/Design P&amp;T, Flow, Tracing — matched by Line No</p>
+
+                <input
+
+                  type="file"
+
+                  ref={pllRef}
+
+                  accept=".xlsx,.xls"
+
+                  onChange={(e) => setProcessLineListDocument(e.target.files?.[0] || null)}
+
+                  className="hidden"
+
+                />
+
+                <button
+
+                  onClick={() => pllRef.current?.click()}
+
+                  className="w-full flex items-center justify-center px-3 py-2 text-sm border-2 border-teal-400 text-teal-700 rounded-lg hover:bg-teal-100 transition-colors"
+
+                >
+
+                  {processLineListDocument ? (
+
+                    <>
+
+                      <svg className="w-4 h-4 mr-2 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+
+                      </svg>
+
+                      <span className="truncate text-xs">{processLineListDocument.name}</span>
+
+                    </>
+
+                  ) : (
+
+                    <>
+
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+
+                      </svg>
+
+                      Select PLL (Excel)
+
+                    </>
+
+                  )}
+
+                </button>
+
+                {processLineListDocument && (
+
+                  <button
+
+                    onClick={() => setProcessLineListDocument(null)}
+
+                    className="w-full mt-2 text-xs text-teal-600 hover:text-teal-800 font-medium"
+
+                  >
+
+                    Remove
+
+                  </button>
+
+                )}
+
+              </div>
+
             </div>
 
 
@@ -5887,7 +6166,7 @@ const CriticalLineList = () => {
 
                   <div className={`w-4 h-4 rounded-full ${
 
-                    pidDocument && hmbDocument && pmsDocument && naceDocument && stressCriticalityDocument
+                    pidDocument && pmsDocument
 
                       ? 'bg-green-500 animate-pulse' 
 
@@ -5899,7 +6178,7 @@ const CriticalLineList = () => {
 
                     <span className="text-sm font-medium text-gray-700">
 
-                      Documents: <strong className="text-lg">{[pidDocument, hmbDocument, pmsDocument, naceDocument, stressCriticalityDocument].filter(Boolean).length}/5</strong> uploaded
+                      Documents: <strong className="text-lg">{[pidDocument, hmbDocument, pmsDocument, naceDocument, stressCriticalityDocument, processLineListDocument].filter(Boolean).length}/6</strong> uploaded <span className="text-xs text-gray-500">(P&ID + PMS required; others optional)</span>
 
                     </span>
 
@@ -5935,6 +6214,12 @@ const CriticalLineList = () => {
 
                       }`}>STRESS</span>
 
+                      <span className={`text-xs px-2 py-0.5 rounded ${
+
+                        processLineListDocument ? 'bg-teal-100 text-teal-700' : 'bg-gray-100 text-gray-500'
+
+                      }`}>PLL</span>
+
                     </div>
 
                   </div>
@@ -5945,11 +6230,11 @@ const CriticalLineList = () => {
 
                   onClick={processAllDocuments}
 
-                  disabled={!pidDocument || !hmbDocument || !pmsDocument || !naceDocument || !stressCriticalityDocument || loading}
+                  disabled={!pidDocument || !pmsDocument || loading}
 
                   className={`px-6 py-3 rounded-lg font-bold text-white transition-all transform hover:scale-105 ${
 
-                    pidDocument && hmbDocument && pmsDocument && naceDocument && stressCriticalityDocument && !loading
+                    pidDocument && pmsDocument && !loading
 
                       ? 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 shadow-lg animate-pulse'
 
@@ -5985,7 +6270,7 @@ const CriticalLineList = () => {
 
                       </svg>
 
-                      <span>Process All 5 Documents</span>
+                      <span>Process Documents</span>
 
                     </div>
 
@@ -5995,7 +6280,7 @@ const CriticalLineList = () => {
 
               </div>
 
-              {pidDocument && hmbDocument && pmsDocument && naceDocument && stressCriticalityDocument && !loading && (
+              {pidDocument && pmsDocument && !loading && (
 
                 <div className="mt-3 flex items-center justify-center text-sm text-green-600 font-semibold">
 
@@ -6005,17 +6290,17 @@ const CriticalLineList = () => {
 
                   </svg>
 
-                  Ready! Click &quot;Process All 5 Documents&quot; to extract 35 columns (8 base from P&ID + 27 enriched via AI)
+                  Ready! Click &quot;Process Documents&quot; — 8 base columns from P&ID + enrichment from every document you provided
 
                 </div>
 
               )}
 
-              {(!pidDocument || !hmbDocument || !pmsDocument || !naceDocument || !stressCriticalityDocument) && (
+              {(!pidDocument || !pmsDocument) && (
 
                 <div className="mt-3 text-center text-sm text-yellow-700 font-medium">
 
-                  ⚠️ Upload all 5 documents to enable processing with 35-column enrichment
+                  ⚠️ Upload the P&ID drawing and PMS specification to enable processing. HMB/PFD, NACE Report, Stress Criticality and Process Line List (Excel) are optional enrichments.
 
                 </div>
 
@@ -6594,13 +6879,33 @@ const CriticalLineList = () => {
 
                     
 
-                    const wsData = [headers];
+                    // FINAL OUTPUT FORMAT (soft-coded): when a Process Line List
+
+                    // was uploaded, export mirrors the PLL template layout plus
+
+                    // the extra "Critical Stress Line" column.
+
+                    const pllMode = cllHasPllData(data);
+
+                    const exportHeaders = pllMode ? CLL_EXPORT_FORMAT.map(c => c.label) : headers;
+
+                    
+
+                    const wsData = [exportHeaders];
 
                     
 
                     // Add all 37 columns for each row
 
                     data.forEach(row => {
+
+                      if (pllMode) {
+
+                        wsData.push(CLL_EXPORT_FORMAT.map(c => cllPickFirst(row, c.sources)));
+
+                        return;
+
+                      }
 
                       wsData.push([
 
@@ -6707,6 +7012,8 @@ const CriticalLineList = () => {
 
                     ];
 
+                    if (pllMode) ws['!cols'] = CLL_EXPORT_FORMAT.map(() => ({ wch: 18 }));
+
                     
 
                     XLSX.utils.book_append_sheet(wb, ws, 'Critical Line List');
@@ -6748,6 +7055,8 @@ const CriticalLineList = () => {
                 <thead className="bg-gradient-to-r from-indigo-600 to-purple-600 sticky top-0">
 
                   <tr>
+
+                    {!cllHasPllData(extractedData?.lines) && (<>
 
                     {/* 8 BASE COLUMNS from P&ID (STEP 1) */}
 
@@ -6828,6 +7137,13 @@ const CriticalLineList = () => {
 
                     <th className="px-4 py-3 text-left text-xs font-medium text-yellow-200 uppercase tracking-wider whitespace-nowrap bg-purple-700">Criticality Stress</th>
 
+                    </>)}
+
+                    {/* PROCESS LINE LIST final format — template columns + Critical Stress Line */}
+                    {cllHasPllData(extractedData?.lines) && CLL_EXPORT_FORMAT.map(c => (
+                      <th key={c.label} className={`px-4 py-3 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap ${c.label === 'CRITICAL STRESS LINE' ? 'text-yellow-100 bg-yellow-700' : 'text-teal-100 bg-teal-700'}`}>{c.label}</th>
+                    ))}
+
                   </tr>
 
                 </thead>
@@ -6837,6 +7153,8 @@ const CriticalLineList = () => {
                   {extractedData.lines.map((line, index) => (
 
                     <tr key={index} className="hover:bg-gray-50 transition-colors">
+
+                      {!cllHasPllData(extractedData?.lines) && (<>
 
                       {/* 8 BASE COLUMNS from P&ID (white background) */}
 
@@ -6952,6 +7270,13 @@ const CriticalLineList = () => {
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 bg-yellow-50">{line.criticality_code || '-'}</td>
 
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 bg-yellow-50">{line.criticality_stress || '-'}</td>
+
+                      </>)}
+
+                      {/* PROCESS LINE LIST final format (optional) */}
+                      {cllHasPllData(extractedData?.lines) && CLL_EXPORT_FORMAT.map(c => (
+                        <td key={c.label} className={`px-4 py-3 whitespace-nowrap text-sm ${c.label === 'CRITICAL STRESS LINE' ? 'font-bold text-yellow-800 bg-yellow-50' : 'text-gray-700 bg-teal-50'}`}>{cllPickFirst(line, c.sources) || '-'}</td>
+                      ))}
 
                     </tr>
 
