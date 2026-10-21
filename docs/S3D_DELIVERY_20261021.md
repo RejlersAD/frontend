@@ -43,3 +43,27 @@ Verification on 21 October 2026:
 
 Test/runtime import fixes do not change application behavior. Generated
 dictionary content and sidebar implementation remain unchanged by alignment.
+
+## Release follow-up
+
+Fetched origin/development and origin/main explicitly. Development already
+matched its remote; the latest main merge commit was integrated by
+fast-forward without conflicts. The pending specCustomizationAPI.js and
+planning-package-restoration.spec.js edits are formatting only: Acorn parsing
+confirms identical syntax trees against their committed versions after
+excluding source positions and raw literal spelling. Both files pass ESLint.
+The production Vite/PWA build passes with the existing bundle-size and
+Browserslist-age warnings.
+
+The companion backend change repairs missing physical PostgreSQL FK target
+keys before migration 0014 runs. Local PostgreSQL has 0014-0016 applied, no
+pending migrations, consistent history and no S3D model-state drift. This
+does not establish production migration or deployment success.
+
+Current S3D browser verification: 25 tests passed in the initial suite; the
+first upload test exceeded its 90-second initial-load timeout. That test passed
+on a focused rerun with the documented S3D_TEST_TIMEOUT_MS=240000 setting
+(1.4 minutes total). All 26 scenarios therefore have passing results; this is
+not a claim of a single uninterrupted 26-test pass. Parent workspace logs:
+artifacts/release-20261021-playwright.log and
+artifacts/release-20261021-playwright-retry.log. git diff --check also passes.
