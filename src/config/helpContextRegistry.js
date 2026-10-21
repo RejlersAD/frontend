@@ -565,7 +565,17 @@ const SLD_COMPARISON_CONTEXT = {
         { heading: '3. RADAI AI Engine (Stage 2)', steps: ['Required only when a P&ID is uploaded.', 'Provide your personal Claude or OpenAI API key and test the connection.', 'Equipment List + Load List only → no API key needed (completely free).'] },
         { heading: '4. Electrical Legend (Stage 3 — required)', steps: ['Visit Legend Manager, activate your Electrical legend and return.', 'The Analyse button stays disabled until this step is completed.'] },
         { heading: '5. Analyse Drawing', steps: ['Click Analyse Drawing — AI reads the P&ID and compares against your lists.', 'Results show in 4 tabs: P&ID vs Equipment List, P&ID vs Load List, Equipment vs Load List, Full Comparison.'] },
-        { heading: '6. Review & Export', steps: ['Review MATCHED/MISSING/EXTRA results.', 'Download Annotated PDF to see issues marked directly on the drawing.', 'Export Excel with separate sheets per comparison tab.'] },
+        { heading: '6. Review & Export', steps: [
+          'Review MATCHED/MISSING/EXTRA results.',
+          "View documents in the interactive canvas viewer — click 'View Documents' to open the drawing with colored boxes: 🟢 Green = Matched tags 🔴 Red = Missing tags 🟡 Yellow = Extra tags 🟣 Purple = Located on scanned drawing. Use the filter buttons to show/hide each status on the drawing.",
+          'Export current tab results as Excel. In Combined Results view, export is generated directly in your browser.',
+        ] },
+        { heading: '7. Drafting Check (AGPS-SP-EDS-002)', steps: [
+          'After analysis, view the Drafting Check tab to see if your SLD drawing follows AGPS drafting standards:',
+          '✅ PASS — standard followed',
+          '❌ FAIL — standard violated',
+          '⚠️ REVIEW — needs manual verification (usually due to low scan resolution)',
+        ] },
       ]),
       article('sld-comparison-logic', 'Comparison logic', 'How tags are classified across the three documents.', [
         { heading: 'Statuses', steps: ['MATCHED — the tag exists on both sides of the comparison.', 'MISSING — the tag exists in the reference but not on the compared side.', 'EXTRA — the tag appears only on the compared side.'] },
@@ -583,8 +593,8 @@ const SLD_COMPARISON_CONTEXT = {
           'Keep all 3 documents from the same revision for accurate comparison.',
           "Review MISSING rows first — these are tags in your reference lists that don't appear on the drawing.",
           'Use Combined Results to merge findings across multiple SLD uploads in the same project.',
-          'Download Annotated PDF to see issues marked directly on the drawing.',
-          'Archive the Excel export after each approved analysis.',
+          "View documents in the interactive canvas viewer — click 'View Documents' to open the drawing with colored boxes: 🟢 Green = Matched tags 🔴 Red = Missing tags 🟡 Yellow = Extra tags 🟣 Purple = Located on scanned drawing. Use the filter buttons to show/hide each status on the drawing.",
+          'Archive the Excel export (current tab, or browser-generated in Combined Results) after each approved analysis.',
         ] },
       ]),
       article('sld-faq', 'FAQ', 'Common questions about electrical comparison.', [
@@ -598,8 +608,9 @@ const SLD_COMPARISON_CONTEXT = {
           'Do I need my own API key? Yes — when uploading a P&ID drawing, RADAI AI Engine requires a personal Claude or OpenAI API key. Equipment List + Load List comparison is free and needs no API key.',
           'Which AI model should I choose? Claude options: Sonnet 5 (recommended, balanced), Opus 5 (most accurate, higher cost), Sonnet 4.5 (legacy). OpenAI: GPT-4o. For most SLD drawings Claude Sonnet 5 gives the best balance.',
           'Why is the Analyse button disabled? Complete all 3 stages: upload at least 2 files, configure RADAI AI Engine (if P&ID uploaded), and activate your Electrical Legend in Legend Manager.',
-          'What is Combined Results? When a project has multiple SLD uploads, Combined Results merges findings across all of them — a tag found in ANY upload counts as MATCHED, only truly missing tags (in ALL uploads) show as MISSING.',
-          'What is the Annotated PDF? After analysis, download the Annotated PDF to see your original SLD drawing with colored boxes marking each tag: green = matched, red = missing, yellow = extra.',
+          'What is Combined Results? When a project has multiple SLD uploads, Combined Results merges findings across all of them — a tag found in ANY upload counts as MATCHED, only truly missing tags (in ALL uploads) show as MISSING. Exporting from Combined Results generates the Excel file directly in your browser — no server round-trip needed.',
+          "What is the Document Viewer? View documents in the interactive canvas viewer — click 'View Documents' to open the drawing with colored boxes: 🟢 Green = Matched tags 🔴 Red = Missing tags 🟡 Yellow = Extra tags 🟣 Purple = Located on scanned drawing. Use the filter buttons to show/hide each status on the drawing.",
+          'What is the Drafting Check? After analysis, the Drafting Check tab automatically verifies your SLD drawing against AGPS-SP-EDS-002 drafting standards. Each check shows PASS, FAIL or NEEDS REVIEW with a detailed explanation per page.',
         ] },
       ]),
       article('sld-formats', 'File formats', 'Supported inputs and outputs.', [
@@ -610,8 +621,8 @@ const SLD_COMPARISON_CONTEXT = {
           'At least 2 files required to proceed.',
         ] },
         { heading: 'Output', steps: [
-          'Comparison workbook (.xlsx) — separate sheet per comparison tab.',
-          'Annotated PDF — original drawing with colored tag boxes (green/red/yellow).',
+          'Export current tab results as Excel. In Combined Results view, export is generated directly in your browser.',
+          "Document Viewer — interactive canvas viewer with colored boxes: 🟢 Green = Matched tags 🔴 Red = Missing tags 🟡 Yellow = Extra tags 🟣 Purple = Located on scanned drawing.",
           'Combined Results — merged view across all SLD uploads in a project.',
         ] },
       ]),
