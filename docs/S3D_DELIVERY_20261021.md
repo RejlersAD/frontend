@@ -26,3 +26,20 @@ parent workspace's `docs/features/s3d-*.md` files, which are not part of this
 standalone repository.
 
 Alignment, final checks and PR evidence are recorded below before publication.
+
+Verification on 21 October 2026:
+
+- Merged current `origin/development` and the equipment/help fixes on
+  `origin/main`, preserving the S3D help entry. No conflicts remain.
+- Dedicated S3D Playwright suite: 26 passed, including responsive layout,
+  canonical selectors, evidence linking, keyboard review and release guards.
+- BUHASA parser unit suite: 7 passed.
+- Production Vite build: passed. Existing large-chunk/dependency warnings
+  remain; no build errors.
+- ESLint on changed JavaScript: zero errors; 78 existing warnings remain.
+  The subsequently aligned help registry also passes ESLint.
+- Backend verification is recorded in its companion delivery document;
+  migration success is local/disposable PostgreSQL evidence, not production.
+
+Test/runtime import fixes do not change application behavior. Generated
+dictionary content and sidebar implementation remain unchanged by alignment.
