@@ -1268,6 +1268,10 @@ const EquipmentList = () => {
     setRegisterChanges([]);
     setChangesError("");
     setReferencePage(1);
+    // BUG FIX: search bar must never carry over between projects — a
+    // leftover filter from the previous project can silently hide every
+    // row of the newly-loaded one.
+    setFilterText("");
     applyRegisterRecord(null);
     if (!activeProject?.project_id) {
       setRegisterLoading(false);
@@ -1529,6 +1533,9 @@ const EquipmentList = () => {
                   document_excerpt: r.document_excerpt || "",
                 });
                 setSelectedRows(new Set());
+                // BUG FIX: a stale filter from a previous search must never
+                // silently hide rows of a newly-loaded extraction.
+                setFilterText("");
                 // Smart flow: nothing found → the drawing is likely scanned or
                 // revision-clouded; open the AI pass automatically.
                 if (!r.equipment?.length) {
@@ -1710,6 +1717,9 @@ const EquipmentList = () => {
             document_excerpt: data.document_excerpt || "",
           });
           setSelectedRows(new Set());
+          // BUG FIX: a stale filter from a previous search must never
+          // silently hide rows of a newly-loaded extraction.
+          setFilterText("");
           // Smart flow: nothing found → open the AI pass automatically.
           if (!data.equipment?.length) {
             setShowDeepExtract(true);
@@ -3124,6 +3134,8 @@ const EquipmentList = () => {
                       <Search size={19} color="#50647e" />
                       <input
                         value={filterText}
+                        autoComplete="off"
+                        name="equipment-register-filter"
                         onChange={(event) => {
                           setFilterText(event.target.value);
                           setReferencePage(1);
@@ -7340,6 +7352,8 @@ const EquipmentList = () => {
                       type="text"
                       placeholder="Filter by tag, type, fluid…"
                       value={filterText}
+                      autoComplete="off"
+                      name="equipment-list-filter"
                       onChange={(e) => setFilterText(e.target.value)}
                       className="eq-filter-input pl-8 pr-3 py-2 text-sm rounded-lg outline-none w-56"
                       style={{
