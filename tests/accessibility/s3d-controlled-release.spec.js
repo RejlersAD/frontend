@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import process from 'node:process';
 import { Buffer } from 'node:buffer';
 
 test.setTimeout(Number(process.env.S3D_TEST_TIMEOUT_MS || 240000));

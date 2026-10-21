@@ -1,4 +1,5 @@
 import { defineConfig } from '@playwright/test';
+import process from 'node:process';
 
 const port = 5187;
 export default defineConfig({

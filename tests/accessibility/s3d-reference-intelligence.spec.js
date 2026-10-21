@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import process from 'node:process';
 import { readFileSync } from 'node:fs';
 
 const buhasa = JSON.parse(readFileSync(new URL('../../src/config/buhasa_codelists.json', import.meta.url), 'utf8'));

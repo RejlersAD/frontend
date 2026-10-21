@@ -1,6 +1,6 @@
 # RADAI SmartPlant 3D Strategic Roadmap & Product Assessment
-**Version:** 1.0  
-**Date:** October 2026  
+**Version:** 1.0\
+**Date:** October 2026\
 **Status:** Internal Architecture & Execution Guidance
 
 ---
