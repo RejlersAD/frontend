@@ -1,4 +1,5 @@
 @import './table-typography.css';
+@import './styles/radai-tokens.css';
 
 @tailwind base;
 @tailwind components;

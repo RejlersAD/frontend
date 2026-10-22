@@ -55,13 +55,11 @@ export default defineConfig(({ mode }) => {
       react(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: [
-          'assets/Rejlers_Logo.png',
-          'assets/radai-icon-192.png',
-          'assets/radai-icon-512.png',
-          'assets/radai-icon-maskable-512.png',
-          'assets/radai-apple-touch-icon.png',
-        ],
+        // NOTE: no `includeAssets` here — these files live in public/ and are
+        // already picked up (with revision hashes) by workbox.globPatterns.
+        // Listing them in includeAssets too adds a second, unrevisioned entry
+        // for the same URL and breaks precaching with
+        // "add-to-cache-list-conflicting-entries".
         manifest: {
           id: '/',
           name: 'RADAI',
