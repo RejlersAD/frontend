@@ -210,8 +210,8 @@ export default function RegisterTab() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map(l => (
-              <tr key={l._key} style={{ cursor: 'pointer' }} onClick={() => setSelected(l)}>
+            {filtered.map((l, rowIdx) => (
+              <tr key={`${l._key}-${rowIdx}`} style={{ cursor: 'pointer' }} onClick={() => setSelected(l)}>
                 {columns.map((h, i) => (
                   <td key={h} className={i === 0 ? 'rd-mono' : undefined}
                     style={i === 0 ? { color: 'var(--rd-accent)', fontWeight: 500 } : undefined}>

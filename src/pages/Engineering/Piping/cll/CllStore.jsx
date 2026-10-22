@@ -1,11 +1,20 @@
 // ============================================================================
 // CLL store — project-scoped. Users create/select a project BEFORE accessing
 // the Critical Line List; every project keeps its own files, upload history,
-// resolutions and legends (localStorage, keyed by project id).
+// resolutions and legends.
+//
+// Persistence: server-backed (apps/critical_line_list) with localStorage as
+// offline cache/fallback. Projects carry a `storage` choice:
+//   'database' | 's3'  → synced to the backend (payload in DB or S3)
+//   'local'            → this browser only
+// Server projects have `serverId`. Failed syncs mark the project `_unsynced`
+// and are retried on the next save. All storage/network calls are wrapped in
+// try/catch — a failed sync must never crash the app.
 // ============================================================================
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { matchFiles, diffRevisions, buildDiscrepancies } from './cllFiles';
 import { generateStressRecords, DEFAULT_LEGENDS } from './criticalityEngine';
+import cllApi from './cllApi';
 
 const CllCtx = createContext(null);
 export const useCll = () => useContext(CllCtx);
@@ -54,6 +63,27 @@ const save = (state) => {
   }
 };
 
+// Map a server project (snake_case) to the store's shape (camelCase + serverId).
+const fromServer = (sp) => ({
+  id: `srv-${sp.id}`,
+  serverId: sp.id,
+  name: sp.name,
+  unit: sp.unit,
+  client: sp.client || '',
+  description: sp.description || '',
+  storage: sp.storage || 'database',
+  createdAt: sp.created_at,
+  updatedAt: sp.updated_at,
+  summary: sp.summary || null,
+});
+
+const toServer = (p) => ({
+  name: p.name, unit: p.unit, client: p.client || '', description: p.description || '',
+  storage: p.storage === 'local' ? 'database' : p.storage,
+});
+
+const DATA_SYNC_DEBOUNCE_MS = 1500;
+
 export function CllProvider({ children }) {
   const persisted = useMemo(load, []);
   const [projects, setProjects] = useState(persisted?.projects || []);
@@ -69,9 +99,84 @@ export function CllProvider({ children }) {
     setTimeout(() => setToast(cur => (cur && cur.title === t.title ? null : cur)), 5200);
   };
 
+  const syncTimer = useRef(null);
+  const retrying = useRef(new Set());
+  // Latest state for async callbacks (avoids stale closures).
+  const stateRef = useRef({ projects, activeId, dataByProject });
+  stateRef.current = { projects, activeId, dataByProject };
+
+  // --- initial hydration: merge server projects with purely-local ones ---
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await cllApi.listProjects();
+        if (cancelled || !Array.isArray(list)) return;
+        setProjects(prev => {
+          const locals = prev.filter(p => !p.serverId);
+          return [...locals, ...list.map(fromServer)];
+        });
+      } catch { /* offline — keep working from localStorage */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // --- persist locally + sync to server ---
   useEffect(() => {
     save({ projects, activeId, data: dataByProject });
+
+    // Retry unsynced project headers (create/update/delete all collapse to an
+    // upsert here; soft-deleted local-only leftovers need no server call).
+    for (const p of projects) {
+      if (!p._unsynced || p.storage === 'local' || retrying.current.has(p.id)) continue;
+      retrying.current.add(p.id);
+      const req = p.serverId
+        ? cllApi.updateProject(p.serverId, toServer(p))
+        : cllApi.createProject(toServer(p));
+      req.then(sp => {
+        setProjects(prev => prev.map(x => x.id === p.id
+          ? { ...x, ...(!x.serverId ? fromServer(sp) : {}), _unsynced: false }
+          : x));
+        if (!p.serverId && sp?.id) remapProjectId(p.id, `srv-${sp.id}`);
+      }).catch(() => { /* stays _unsynced; retried on next save */ })
+        .finally(() => retrying.current.delete(p.id));
+    }
+
+    // Debounced payload sync for the active server project.
+    const proj = projects.find(p => p.id === activeId);
+    if (proj?.serverId && dataByProject[activeId]) {
+      clearTimeout(syncTimer.current);
+      const payload = dataByProject[activeId];
+      const serverId = proj.serverId;
+      const projId = proj.id;
+      syncTimer.current = setTimeout(() => {
+        cllApi.putProjectData(serverId, payload).catch(err => {
+          if (err?.response?.status === 503) {
+            // S3 not configured — inform and keep this project local-only.
+            showToast({
+              title: 'S3 storage is not configured — saved locally',
+              detail: 'The project data was kept in this browser instead.',
+            });
+            setProjects(prev => prev.map(p => p.id === projId ? { ...p, storage: 'local' } : p));
+          }
+          /* other failures: localStorage copy already saved */
+        });
+      }, DATA_SYNC_DEBOUNCE_MS);
+    }
+    return () => clearTimeout(syncTimer.current);
   }, [projects, activeId, dataByProject]);
+
+  // Re-key a project id everywhere (after a server id is assigned).
+  const remapProjectId = (oldId, newId) => {
+    if (oldId === newId) return;
+    setProjects(prev => prev.map(p => p.id === oldId ? { ...p, id: newId } : p));
+    setDataByProject(prev => {
+      if (!(oldId in prev)) return prev;
+      const { [oldId]: d, ...rest } = prev;
+      return { ...rest, [newId]: d };
+    });
+    setActiveId(cur => (cur === oldId ? newId : cur));
+  };
 
   const activeProject = projects.find(p => p.id === activeId) || null;
   const data = (activeId && dataByProject[activeId]) || EMPTY_DATA;
@@ -83,16 +188,55 @@ export function CllProvider({ children }) {
   };
 
   // --- project management ---
-  const createProject = ({ name, unit, client, description }) => {
+  const createProject = ({ name, unit, client, description, storage = 'database' }) => {
     const id = `prj-${Date.now()}`;
     setProjects(prev => [...prev, {
-      id, name, unit, client, description,
+      id, name, unit, client, description, storage,
       createdAt: new Date().toISOString(), createdBy: 'current.user',
     }]);
     setActiveId(id);
+    if (storage !== 'local') {
+      cllApi.createProject(toServer({ name, unit, client, description, storage }))
+        .then(sp => {
+          setProjects(prev => prev.map(p => p.id === id ? fromServer(sp) : p));
+          remapProjectId(id, `srv-${sp.id}`);
+        })
+        .catch(() => setProjects(prev => prev.map(p => p.id === id ? { ...p, _unsynced: true } : p)));
+    }
     return id;
   };
-  const selectProject = (id) => { setActiveId(id); setUploadDrawerOpen(false); };
+
+  const updateProject = (id, fields) => {
+    setProjects(prev => prev.map(p => (p.id === id ? { ...p, ...fields } : p)));
+    const proj = stateRef.current.projects.find(p => p.id === id);
+    if (proj?.serverId) {
+      cllApi.updateProject(proj.serverId, toServer({ ...proj, ...fields }))
+        .catch(() => setProjects(prev => prev.map(p => p.id === id ? { ...p, _unsynced: true } : p)));
+    }
+  };
+
+  const deleteProject = (id) => {
+    const proj = stateRef.current.projects.find(p => p.id === id);
+    setProjects(prev => prev.filter(p => p.id !== id));
+    setDataByProject(prev => { const { [id]: _d, ...rest } = prev; return rest; });
+    if (activeId === id) setActiveId(null);
+    if (proj?.serverId) cllApi.deleteProject(proj.serverId).catch(() => {});
+  };
+
+  const selectProject = (id) => {
+    setActiveId(id);
+    setUploadDrawerOpen(false);
+    const proj = projects.find(p => p.id === id);
+    if (proj?.serverId) {
+      cllApi.getProjectData(proj.serverId)
+        .then(res => {
+          if (res?.payload) {
+            setDataByProject(prev => ({ ...prev, [id]: { ...EMPTY_DATA, ...res.payload } }));
+          }
+        })
+        .catch(() => { /* offline — local cache stays */ });
+    }
+  };
   const exitProject = () => setActiveId(null);
 
   // --- RADAI auto-classification (Table 7.1 + Sec. 7.3) ---
@@ -182,7 +326,7 @@ export function CllProvider({ children }) {
     patchData(prev => ({ ...prev, legends: typeof updater === 'function' ? updater(prev.legends) : updater }));
 
   const value = {
-    projects, activeProject, createProject, selectProject, exitProject,
+    projects, activeProject, createProject, updateProject, deleteProject, selectProject, exitProject,
     files, match, discrepancies, history, resolved, legends, setLegends, generated,
     commitFile, resolveDiscrepancy, lastRunAt, markAnalysed,
     uploadDrawerOpen, setUploadDrawerOpen, drawerFileKind, setDrawerFileKind,
