@@ -6,9 +6,9 @@
  * Adjust `SPEC_API_CONFIG` to retune endpoints, polling cadence, or limits
  * without touching any UI component.
  */
-import apiClient from './api.service';
-import axios from 'axios';
-import { API_TIMEOUT_UPLOAD } from '../config/api.config';
+import apiClient from "./api.service";
+import axios from "axios";
+import { API_TIMEOUT_UPLOAD } from "../config/api.config";
 
 // ─── Soft-coded upload tuning ───────────────────────────────────────────────
 // Override at runtime via Vite env vars without code change:
@@ -24,17 +24,14 @@ const _envNum = (raw, fallback) => {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 };
 const _envFlag = (raw, fallback) => {
-  if (raw === undefined || raw === null || raw === '') return fallback;
-  return !['0', 'false', 'no', 'off'].includes(String(raw).toLowerCase());
+  if (raw === undefined || raw === null || raw === "") return fallback;
+  return !["0", "false", "no", "off"].includes(String(raw).toLowerCase());
 };
 const SPEC_UPLOAD_TIMEOUT_MS = _envNum(
   import.meta.env?.VITE_SPEC_UPLOAD_TIMEOUT_MS,
   API_TIMEOUT_UPLOAD,
 );
-const SPEC_MAX_FILE_MB = _envNum(
-  import.meta.env?.VITE_SPEC_MAX_FILE_MB,
-  1024,
-);
+const SPEC_MAX_FILE_MB = _envNum(import.meta.env?.VITE_SPEC_MAX_FILE_MB, 1024);
 const SPEC_PRESIGNED_ENABLED = _envFlag(
   import.meta.env?.VITE_SPEC_PRESIGNED_UPLOAD,
   true,
@@ -45,76 +42,122 @@ const SPEC_PRESIGNED_MIN_MB = _envNum(
 );
 
 export const SPEC_API_CONFIG = {
-  prefix:           '/spec-customization',
+  prefix: "/spec-customization",
   // Endpoints
-  uploadPath:       '/paper-spec/upload/',
-  uploadPresignPath:  '/paper-spec/upload/presign/',
-  uploadCompletePath: '/paper-spec/upload/complete/',
-  jobsPath:         '/paper-spec/jobs/',
-  jobDetailPath:    (id) => `/paper-spec/jobs/${id}/`,
-  jobClassesPath:   (id) => `/paper-spec/jobs/${id}/classes/`,
-  jobCancelPath:    (id) => `/paper-spec/jobs/${id}/cancel/`,
-  jobSavePath:      (id) => `/paper-spec/jobs/${id}/save/`,
-  jobExportPath:    (id, fmt = 'xlsx') => `/paper-spec/jobs/${id}/export/?format=${fmt}`,
+  uploadPath: "/paper-spec/upload/",
+  uploadPresignPath: "/paper-spec/upload/presign/",
+  uploadCompletePath: "/paper-spec/upload/complete/",
+  jobsPath: "/paper-spec/jobs/",
+  jobDetailPath: (id) => `/paper-spec/jobs/${id}/`,
+  jobClassesPath: (id) => `/paper-spec/jobs/${id}/classes/`,
+  jobCancelPath: (id) => `/paper-spec/jobs/${id}/cancel/`,
+  jobSavePath: (id) => `/paper-spec/jobs/${id}/save/`,
+  jobExportPath: (id, fmt = "xlsx") =>
+    `/paper-spec/jobs/${id}/export/?format=${fmt}`,
   // SmartPlant 3D bulk-load exports (two separate workbooks)
   jobExportSpecPath: (id) => `/paper-spec/jobs/${id}/export-spec/`,
-  jobExportCatPath:  (id) => `/paper-spec/jobs/${id}/export-cat/`,
+  jobExportCatPath: (id) => `/paper-spec/jobs/${id}/export-cat/`,
   // Workbook canvas — cross-check & edit SPEC/CAT data before download.
-  jobWorkbookPath:     (id) => `/paper-spec/jobs/${id}/workbook/`,
+  jobWorkbookPath: (id) => `/paper-spec/jobs/${id}/workbook/`,
   jobWorkbookCellPath: (id) => `/paper-spec/jobs/${id}/workbook/cell/`,
-  jobWorkbookChatbotPath: (id) => `/paper-spec/jobs/${id}/workbook/chatbot-edit/`,
+  jobWorkbookChatbotPath: (id) =>
+    `/paper-spec/jobs/${id}/workbook/chatbot-edit/`,
   jobWorkbookValidatePath: (id) => `/paper-spec/jobs/${id}/workbook/validate/`,
-  jobWorkbookBatchSavePath: (id) => `/paper-spec/jobs/${id}/workbook/batch-save/`,
-  jobWorkbookDeleteRowPath: (id) => `/paper-spec/jobs/${id}/workbook/delete-row/`,
-  jobWorkbookBulkDeletePath: (id) => `/paper-spec/jobs/${id}/workbook/bulk-delete/`,
-  classDetailPath:  (id) => `/paper-spec/classes/${id}/`,
+  jobWorkbookBatchSavePath: (id) =>
+    `/paper-spec/jobs/${id}/workbook/batch-save/`,
+  jobWorkbookDeleteRowPath: (id) =>
+    `/paper-spec/jobs/${id}/workbook/delete-row/`,
+  jobWorkbookBulkDeletePath: (id) =>
+    `/paper-spec/jobs/${id}/workbook/bulk-delete/`,
+  classDetailPath: (id) => `/paper-spec/classes/${id}/`,
   // ASME B16.34 advisory validation of a class's PT table (valve_standards DB).
   classAsmeValidationPath: (id) => `/paper-spec/classes/${id}/asme-validation/`,
-  configPath:       '/config/',
+  configPath: "/config/",
 
   // Field name expected by the backend `upload_paper_spec` view
-  fileFieldName:    'file',
+  fileFieldName: "file",
 
   // Polling cadence for job status (ms)
-  pollIntervalMs:   2500,
+  pollIntervalMs: 2500,
 
   // Frontend file limits — superset of formats the backend can normalise to PDF.
   // The authoritative list lives in backend `file_normalizer.SUPPORTED_FORMATS`
   // and is mirrored at runtime via /config/ → `accepted_extensions`.
-  acceptedExts:     [
-    'pdf',
-    'png', 'jpg', 'jpeg', 'tif', 'tiff', 'bmp', 'webp', 'gif',
-    'docx', 'doc', 'xlsx', 'xlsm', 'xls',
-    'txt', 'csv', 'log',
+  acceptedExts: [
+    "pdf",
+    "png",
+    "jpg",
+    "jpeg",
+    "tif",
+    "tiff",
+    "bmp",
+    "webp",
+    "gif",
+    "docx",
+    "doc",
+    "xlsx",
+    "xlsm",
+    "xls",
+    "txt",
+    "csv",
+    "log",
   ],
   // Soft-coded — large engineering PDFs/scans can reach ~1 GB.
   // Override via VITE_SPEC_MAX_FILE_MB env var without redeploy.
-  maxFileSizeMB:    SPEC_MAX_FILE_MB,
+  maxFileSizeMB: SPEC_MAX_FILE_MB,
 
   // Soft-coded axios timeout for the upload POST. Defaults to the centralized
   // API_TIMEOUT_UPLOAD (frontend/src/config/environments.json → timeout_upload).
-  uploadTimeoutMs:  SPEC_UPLOAD_TIMEOUT_MS,
+  uploadTimeoutMs: SPEC_UPLOAD_TIMEOUT_MS,
 
   // Direct-to-S3 presigned-upload feature flags (client-side prefs).
   // Backend authoritatively gates the feature via /config/.presigned_upload.
   presignedUpload: {
-    enabled:        SPEC_PRESIGNED_ENABLED,
-    minSizeBytes:   SPEC_PRESIGNED_MIN_MB * 1024 * 1024,
+    enabled: SPEC_PRESIGNED_ENABLED,
+    minSizeBytes: SPEC_PRESIGNED_MIN_MB * 1024 * 1024,
   },
 
   // Soft-coded UI metadata for each format group (icon + label).
   formatGroups: {
-    pdf:    { label: 'PDF',         badge: 'bg-rose-100 text-rose-700',     hint: 'Native — fastest path.' },
-    image:  { label: 'Image',       badge: 'bg-amber-100 text-amber-700',   hint: 'Scanned page — AI vision will read it.' },
-    office: { label: 'Office',      badge: 'bg-sky-100 text-sky-700',       hint: 'Word/Excel — auto-converted to PDF.' },
-    text:   { label: 'Text',        badge: 'bg-slate-100 text-slate-700',   hint: 'Plain text — rendered to PDF.' },
+    pdf: {
+      label: "PDF",
+      badge: "bg-rose-100 text-rose-700",
+      hint: "Native — fastest path.",
+    },
+    image: {
+      label: "Image",
+      badge: "bg-amber-100 text-amber-700",
+      hint: "Scanned page — AI vision will read it.",
+    },
+    office: {
+      label: "Office",
+      badge: "bg-sky-100 text-sky-700",
+      hint: "Word/Excel — auto-converted to PDF.",
+    },
+    text: {
+      label: "Text",
+      badge: "bg-slate-100 text-slate-700",
+      hint: "Plain text — rendered to PDF.",
+    },
   },
   extToGroup: {
-    pdf: 'pdf',
-    png: 'image', jpg: 'image', jpeg: 'image', tif: 'image', tiff: 'image',
-    bmp: 'image', webp: 'image', gif: 'image',
-    docx: 'office', doc: 'office', xlsx: 'office', xlsm: 'office', xls: 'office',
-    txt: 'text', csv: 'text', log: 'text',
+    pdf: "pdf",
+    png: "image",
+    jpg: "image",
+    jpeg: "image",
+    tif: "image",
+    tiff: "image",
+    bmp: "image",
+    webp: "image",
+    gif: "image",
+    docx: "office",
+    doc: "office",
+    xlsx: "office",
+    xlsm: "office",
+    xls: "office",
+    txt: "text",
+    csv: "text",
+    log: "text",
   },
 };
 
@@ -134,7 +177,18 @@ const specCustomizationAPI = {
    *      presign error, network blip) silently falls back to the legacy
    *      multipart upload below — UX stays identical.
    */
-  async upload({ file, projectId, autoProject = false, title, documentNumber, engineerName, userApiKey, userAiProvider, userAiModel, onUploadProgress } = {}) {
+  async upload({
+    file,
+    projectId,
+    autoProject = false,
+    title,
+    documentNumber,
+    engineerName,
+    userApiKey,
+    userAiProvider,
+    userAiModel,
+    onUploadProgress,
+  } = {}) {
     // ── Path A: direct-to-S3 (presigned) ─────────────────────────────
     const wantsPresign =
       SPEC_API_CONFIG.presignedUpload.enabled &&
@@ -143,38 +197,54 @@ const specCustomizationAPI = {
     if (wantsPresign) {
       try {
         const presigned = await this._tryPresignedUpload({
-          file, projectId, autoProject, title, documentNumber, engineerName, userApiKey, userAiProvider, userAiModel, onUploadProgress,
+          file,
+          projectId,
+          autoProject,
+          title,
+          documentNumber,
+          engineerName,
+          userApiKey,
+          userAiProvider,
+          userAiModel,
+          onUploadProgress,
         });
         if (presigned) return presigned;
         // presigned === null → backend signalled `enabled: false`; fall through.
       } catch (err) {
         // Network/S3 hiccup — don't fail the user, fall back to multipart.
         // eslint-disable-next-line no-console
-        console.warn('[SpecUpload] presigned path failed, falling back:', err?.message || err);
+        console.warn(
+          "[SpecUpload] presigned path failed, falling back:",
+          err?.message || err,
+        );
       }
     }
 
     // ── Path B: legacy multipart upload (default) ────────────────────
     const fd = new FormData();
     fd.append(SPEC_API_CONFIG.fileFieldName, file);
-    if (projectId)         fd.append('project_id', projectId);
-    if (autoProject)       fd.append('auto_project', '1');
-    if (title)             fd.append('title', title);
-    if (documentNumber)    fd.append('document_number', documentNumber);
-    if (engineerName)      fd.append('engineer_name', engineerName);         // BYOK attribution
-    if (userApiKey)        fd.append('user_api_key', userApiKey);            // BYOK user API key (OpenAI or Claude)
-    if (userAiProvider)    fd.append('user_ai_provider', userAiProvider);    // BYOK provider: "openai" or "claude"
-    if (userAiModel)       fd.append('user_ai_model', userAiModel);          // BYOK model ID
-    const { data } = await apiClient.post(path(SPEC_API_CONFIG.uploadPath), fd, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-      onUploadProgress,
-      // Override the default 120s API timeout — large files (up to ~1 GB)
-      // legitimately need many minutes on slow uplinks. Soft-coded above.
-      timeout: SPEC_API_CONFIG.uploadTimeoutMs,
-      // Lift axios body size cap so multipart payloads aren't truncated.
-      maxContentLength: Infinity,
-      maxBodyLength:    Infinity,
-    });
+    if (projectId) fd.append("project_id", projectId);
+    if (autoProject) fd.append("auto_project", "1");
+    if (title) fd.append("title", title);
+    if (documentNumber) fd.append("document_number", documentNumber);
+    if (engineerName) fd.append("engineer_name", engineerName); // BYOK attribution
+    if (userApiKey) fd.append("user_api_key", userApiKey); // BYOK user API key (OpenAI or Claude)
+    if (userAiProvider) fd.append("user_ai_provider", userAiProvider); // BYOK provider: "openai" or "claude"
+    if (userAiModel) fd.append("user_ai_model", userAiModel); // BYOK model ID
+    const { data } = await apiClient.post(
+      path(SPEC_API_CONFIG.uploadPath),
+      fd,
+      {
+        headers: { "Content-Type": "multipart/form-data" },
+        onUploadProgress,
+        // Override the default 120s API timeout — large files (up to ~1 GB)
+        // legitimately need many minutes on slow uplinks. Soft-coded above.
+        timeout: SPEC_API_CONFIG.uploadTimeoutMs,
+        // Lift axios body size cap so multipart payloads aren't truncated.
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity,
+      },
+    );
     return data;
   },
 
@@ -184,28 +254,41 @@ const specCustomizationAPI = {
    * explicitly says the feature is unavailable (so the caller knows to fall
    * back rather than retry).
    */
-  async _tryPresignedUpload({ file, projectId, autoProject, title, documentNumber, engineerName, userApiKey, userAiProvider, userAiModel, onUploadProgress }) {
+  async _tryPresignedUpload({
+    file,
+    projectId,
+    autoProject,
+    title,
+    documentNumber,
+    engineerName,
+    userApiKey,
+    userAiProvider,
+    userAiModel,
+    onUploadProgress,
+  }) {
     // Step 1 — ask backend for a presigned PUT URL.
     const presignResp = await apiClient.post(
       path(SPEC_API_CONFIG.uploadPresignPath),
       {
-        filename:     file.name,
-        size:         file.size,
-        content_type: file.type || 'application/octet-stream',
+        filename: file.name,
+        size: file.size,
+        content_type: file.type || "application/octet-stream",
       },
     );
     const presign = presignResp.data || {};
-    if (!presign.enabled) return null;  // backend says no — caller falls back
+    if (!presign.enabled) return null; // backend says no — caller falls back
 
     // Step 2 — PUT the raw file straight to S3. Use a fresh axios instance
     // (NOT apiClient) so our auth interceptors don't attach Authorization
     // headers, which would invalidate the presigned signature.
     await axios.put(presign.upload_url, file, {
-      headers: presign.headers || { 'Content-Type': file.type || 'application/octet-stream' },
+      headers: presign.headers || {
+        "Content-Type": file.type || "application/octet-stream",
+      },
       onUploadProgress,
-      timeout:          SPEC_API_CONFIG.uploadTimeoutMs,
+      timeout: SPEC_API_CONFIG.uploadTimeoutMs,
       maxContentLength: Infinity,
-      maxBodyLength:    Infinity,
+      maxBodyLength: Infinity,
       // Don't transform; we're sending raw bytes.
       transformRequest: [(data) => data],
     });
@@ -214,20 +297,111 @@ const specCustomizationAPI = {
     const completeResp = await apiClient.post(
       path(SPEC_API_CONFIG.uploadCompletePath),
       {
-        s3_key:               presign.s3_key,
-        filename:             file.name,
-        project_id:           projectId || null,
-        auto_project:         autoProject,
-        title:                title || '',
-        document_number:      documentNumber || '',
-        engineer_name:        engineerName || '',             // BYOK attribution
-        user_api_key:         userApiKey || '',               // BYOK user API key (OpenAI or Claude)
-        user_ai_provider:     userAiProvider || '',           // BYOK provider: "openai" or "claude"
-        user_ai_model:        userAiModel || '',              // BYOK model ID
+        s3_key: presign.s3_key,
+        filename: file.name,
+        project_id: projectId || null,
+        auto_project: autoProject,
+        title: title || "",
+        document_number: documentNumber || "",
+        engineer_name: engineerName || "", // BYOK attribution
+        user_api_key: userApiKey || "", // BYOK user API key (OpenAI or Claude)
+        user_ai_provider: userAiProvider || "", // BYOK provider: "openai" or "claude"
+        user_ai_model: userAiModel || "", // BYOK model ID
       },
       { timeout: SPEC_API_CONFIG.uploadTimeoutMs },
     );
     return completeResp.data;
+  },
+
+  async runJobMatching(jobId, workbookSetId, codelistProfile) {
+    const { data } = await apiClient.post("/spec-customization/matching-run/", {
+      job_id: jobId,
+      ...(workbookSetId ? { workbook_set_id: workbookSetId } : {}),
+      ...(codelistProfile ? { codelist_profile: codelistProfile } : {}),
+    });
+    return data;
+  },
+
+  async listMatchDecisions(params = {}) {
+    const { data } = await apiClient.get(
+      "/spec-customization/matching-decisions/",
+      { params },
+    );
+    return data;
+  },
+
+  async reviewMatchDecision(payload) {
+    const { data } = await apiClient.post(
+      "/spec-customization/matching-decision-review/",
+      payload,
+    );
+    return data;
+  },
+
+  async freezeMatchingSet(workbookSetId) {
+    const { data } = await apiClient.post(
+      "/spec-customization/matching-set-freeze/",
+      { workbook_set_id: workbookSetId },
+    );
+    return data;
+  },
+
+  async getMatchingSetDetail(workbookSetId) {
+    const { data } = await apiClient.get(
+      `/spec-customization/matching/sets/${workbookSetId}/`,
+    );
+    return data;
+  },
+
+  async listMatchingSets(projectId) {
+    const { data } = await apiClient.get("/spec-customization/matching/sets/", {
+      params: { project_id: projectId },
+    });
+    return data;
+  },
+
+  async getReleaseState(jobId) {
+    const { data } = await apiClient.get(
+      `/spec-customization/paper-spec/jobs/${jobId}/releases/`,
+    );
+    return data;
+  },
+  async createReleaseDraft(jobId) {
+    const { data } = await apiClient.post(
+      `/spec-customization/paper-spec/jobs/${jobId}/releases/`,
+    );
+    return data;
+  },
+  async validateRelease(jobId) {
+    const { data } = await apiClient.post(
+      `/spec-customization/paper-spec/jobs/${jobId}/releases/validate/`,
+    );
+    return data;
+  },
+  async freezeRelease(jobId, releaseId) {
+    const { data } = await apiClient.post(
+      `/spec-customization/paper-spec/jobs/${jobId}/releases/${releaseId}/freeze/`,
+    );
+    return data;
+  },
+  async getReleaseHistory(jobId) {
+    const { data } = await apiClient.get(
+      `/spec-customization/paper-spec/jobs/${jobId}/release-history/`,
+    );
+    return data;
+  },
+  async listImportAttempts(jobId) {
+    const { data } = await apiClient.get(
+      `/spec-customization/paper-spec/jobs/${jobId}/import-attempts/`,
+    );
+    return data;
+  },
+  async recordImportAttempt(jobId, payload) {
+    const { data } = await apiClient.post(
+      `/spec-customization/paper-spec/jobs/${jobId}/import-attempts/`,
+      payload,
+    );
+    return data;
   },
 
   async listJobs() {
@@ -236,63 +410,92 @@ const specCustomizationAPI = {
   },
 
   async getJob(jobId) {
-    const { data } = await apiClient.get(path(SPEC_API_CONFIG.jobDetailPath(jobId)));
+    const { data } = await apiClient.get(
+      path(SPEC_API_CONFIG.jobDetailPath(jobId)),
+    );
     return data;
   },
 
   async getJobClasses(jobId) {
-    const { data } = await apiClient.get(path(SPEC_API_CONFIG.jobClassesPath(jobId)));
+    const { data } = await apiClient.get(
+      path(SPEC_API_CONFIG.jobClassesPath(jobId)),
+    );
     return data;
   },
 
   async cancelJob(jobId) {
-    const { data } = await apiClient.post(path(SPEC_API_CONFIG.jobCancelPath(jobId)));
+    const { data } = await apiClient.post(
+      path(SPEC_API_CONFIG.jobCancelPath(jobId)),
+    );
     return data;
   },
 
   async saveJob(jobId) {
-    const { data } = await apiClient.post(path(SPEC_API_CONFIG.jobSavePath(jobId)));
+    const { data } = await apiClient.post(
+      path(SPEC_API_CONFIG.jobSavePath(jobId)),
+    );
     return data;
   },
 
   async listProjects() {
-    const { data } = await apiClient.get('/spec-customization/projects/');
+    const { data } = await apiClient.get("/spec-customization/projects/");
     return data;
   },
 
   async getClass(classId) {
-    const { data } = await apiClient.get(path(SPEC_API_CONFIG.classDetailPath(classId)));
+    const { data } = await apiClient.get(
+      path(SPEC_API_CONFIG.classDetailPath(classId)),
+    );
     return data;
   },
 
   /** Read advisory ASME results; callers handle access and network failures. */
   async getClassAsmeValidation(classId) {
-    const { data } = await apiClient.get(path(SPEC_API_CONFIG.classAsmeValidationPath(classId)));
+    const { data } = await apiClient.get(
+      path(SPEC_API_CONFIG.classAsmeValidationPath(classId)),
+    );
     return data;
   },
 
   /** Returns a Blob for XLSX, or parsed JSON for JSON exports. */
-  async exportJob(jobId, format = 'xlsx') {
-    const isBlob = format === 'xlsx';
-    const { data } = await apiClient.get(path(SPEC_API_CONFIG.jobExportPath(jobId, format)), {
-      responseType: isBlob ? 'blob' : 'json',
-    });
+  async exportJob(jobId, format = "xlsx") {
+    const isBlob = format === "xlsx";
+    const { data } = await apiClient.get(
+      path(SPEC_API_CONFIG.jobExportPath(jobId, format)),
+      {
+        responseType: isBlob ? "blob" : "json",
+      },
+    );
     return data;
   },
 
   /** SmartPlant 3D — SPEC workbook (piping spec rules). Returns a Blob. */
-  async exportSmartplantSpec(jobId) {
-    const { data } = await apiClient.get(path(SPEC_API_CONFIG.jobExportSpecPath(jobId)), {
-      responseType: 'blob',
-    });
+  async exportSmartplantSpec(jobId, { draft = true, releaseId } = {}) {
+    const { data } = await apiClient.get(
+      path(SPEC_API_CONFIG.jobExportSpecPath(jobId)),
+      {
+        params: {
+          ...(draft ? { draft: 1 } : {}),
+          ...(releaseId ? { release_id: releaseId } : {}),
+        },
+        responseType: "blob",
+      },
+    );
     return data;
   },
 
   /** SmartPlant 3D — CAT workbook (component catalog). Returns a Blob. */
-  async exportSmartplantCat(jobId) {
-    const { data } = await apiClient.get(path(SPEC_API_CONFIG.jobExportCatPath(jobId)), {
-      responseType: 'blob',
-    });
+  async exportSmartplantCat(jobId, { draft = true, releaseId } = {}) {
+    const { data } = await apiClient.get(
+      path(SPEC_API_CONFIG.jobExportCatPath(jobId)),
+      {
+        params: {
+          ...(draft ? { draft: 1 } : {}),
+          ...(releaseId ? { release_id: releaseId } : {}),
+        },
+        responseType: "blob",
+      },
+    );
     return data;
   },
 
@@ -300,15 +503,21 @@ const specCustomizationAPI = {
    * Workbook canvas — fetch SPEC or CAT contents as JSON
    * (with any cell-level overrides already merged in).
    */
-  async getWorkbookPreview(jobId, workbook = 'spec') {
-    const { data } = await apiClient.get(path(SPEC_API_CONFIG.jobWorkbookPath(jobId)), {
-      params: { workbook },
-    });
+  async getWorkbookPreview(jobId, workbook = "spec") {
+    const { data } = await apiClient.get(
+      path(SPEC_API_CONFIG.jobWorkbookPath(jobId)),
+      {
+        params: { workbook },
+      },
+    );
     return data;
   },
 
   /** Save a single cell override. */
-  async saveWorkbookCell(jobId, { workbook, sheet_name, row_key, column_name, value }) {
+  async saveWorkbookCell(
+    jobId,
+    { workbook, sheet_name, row_key, column_name, value },
+  ) {
     const { data } = await apiClient.post(
       path(SPEC_API_CONFIG.jobWorkbookCellPath(jobId)),
       { workbook, sheet_name, row_key, column_name, value },
@@ -317,7 +526,10 @@ const specCustomizationAPI = {
   },
 
   /** Clear a single cell override (revert to extracted value). */
-  async clearWorkbookCell(jobId, { workbook, sheet_name, row_key, column_name }) {
+  async clearWorkbookCell(
+    jobId,
+    { workbook, sheet_name, row_key, column_name },
+  ) {
     const { data } = await apiClient.delete(
       path(SPEC_API_CONFIG.jobWorkbookCellPath(jobId)),
       { data: { workbook, sheet_name, row_key, column_name } },
@@ -329,7 +541,7 @@ const specCustomizationAPI = {
    * Chatbot-assisted workbook editing.
    *
    * @param {string} jobId
-    * @param {object} payload - {instruction, workbook_scope, active_workbook, preview_only?}
+   * @param {object} payload - {instruction, workbook_scope, active_workbook, preview_only?}
    */
   async chatbotEditWorkbook(jobId, payload) {
     const { data } = await apiClient.post(
@@ -350,7 +562,7 @@ const specCustomizationAPI = {
 
   /**
    * Batch save multiple cell overrides at once.
-   * 
+   *
    * @param {string} jobId - Job ID
    * @param {Array} cells - Array of {workbook, sheet_name, row_key, column_name, value}
    * @returns {Promise<{saved_count, created, updated, s3_snapshot}>}
@@ -365,7 +577,7 @@ const specCustomizationAPI = {
 
   /**
    * Delete all cell overrides for a specific row.
-   * 
+   *
    * @param {string} jobId - Job ID
    * @param {object} params - {workbook, sheet_name, row_key}
    * @returns {Promise<{deleted_count, row_key, columns_deleted}>}
@@ -380,7 +592,7 @@ const specCustomizationAPI = {
 
   /**
    * Delete multiple rows at once.
-   * 
+   *
    * @param {string} jobId - Job ID
    * @param {object} params - {workbook, sheet_name, row_keys: Array}
    * @returns {Promise<{deleted_rows, deleted_cells, row_keys}>}
@@ -396,31 +608,41 @@ const specCustomizationAPI = {
   /**
    * List extraction jobs for a project (for history table).
    * Mirrors electrical_checklist pattern.
-   * 
+   *
    * @param {string} projectId - Project UUID
    * @param {object} params - {status?, page?, page_size?}
    * @returns {Promise<{success, jobs, pagination}>}
    */
   async listProjectJobs(projectId, params = {}) {
-    const { data } = await apiClient.get(`/spec-customization/projects/${projectId}/jobs/`, {
-      params,
-    });
+    const { data } = await apiClient.get(
+      `/spec-customization/projects/${projectId}/jobs/`,
+      {
+        params,
+      },
+    );
     return data;
   },
 
   /** Project-level BYOK settings (encrypted key stored on backend). */
   async getProjectAISettings(projectId) {
-    const { data } = await apiClient.get(`/spec-customization/projects/${projectId}/ai-settings/`);
+    const { data } = await apiClient.get(
+      `/spec-customization/projects/${projectId}/ai-settings/`,
+    );
     return data;
   },
 
   async saveProjectAISettings(projectId, payload) {
-    const { data } = await apiClient.post(`/spec-customization/projects/${projectId}/ai-settings/`, payload);
+    const { data } = await apiClient.post(
+      `/spec-customization/projects/${projectId}/ai-settings/`,
+      payload,
+    );
     return data;
   },
 
   async clearProjectAISettings(projectId) {
-    const { data } = await apiClient.delete(`/spec-customization/projects/${projectId}/ai-settings/`);
+    const { data } = await apiClient.delete(
+      `/spec-customization/projects/${projectId}/ai-settings/`,
+    );
     return data;
   },
 

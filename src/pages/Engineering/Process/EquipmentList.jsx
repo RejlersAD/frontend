@@ -897,6 +897,12 @@ const EquipmentList = () => {
   const [registerLoading, setRegisterLoading] = useState(false);
   const [registerError, setRegisterError] = useState("");
   const [registerSaveState, setRegisterSaveState] = useState("");
+  // Snapshot of extraction results saved right before clearing
+  // activeProject after a "Project not found" draft-save failure — restored
+  // once the user re-selects a (possibly different) project, so the
+  // completed extraction isn't lost while they recover. See
+  // persistExtractionDraft's catch block and the project-change effect below.
+  const [orphanedExtraction, setOrphanedExtraction] = useState(null);
   const [showLeaveConfirmation, setShowLeaveConfirmation] = useState(false);
   const [editingEquipment, setEditingEquipment] = useState(null);
   const [editDraft, setEditDraft] = useState({});
@@ -938,13 +944,30 @@ const EquipmentList = () => {
     // (reload / saved register), the backend recovers the SAME drawing from
     // the project S3 archive using the upload_id.
     const sourceFile = extractedFile || files?.[0];
-    const uploadId = results?.upload_id;
-    if (!sourceFile && !uploadId) {
+    const existingUploadId = results?.upload_id;
+    if (!sourceFile && !existingUploadId) {
       setDeepExtractMsg(
-        "No extraction is linked to this register yet — run Upload P&ID extraction first.",
+        "No file or extraction is linked to this register yet — upload a P&ID first.",
       );
       return;
     }
+    // BUG FIX (explicit request): now that Boost with AI can run with NO
+    // prior standard extraction (see boostReady above), existingUploadId
+    // can be empty here even though sourceFile exists. deep_extract_
+    // equipment's own response just echoes back whatever upload_id it was
+    // given — '' in, '' out — it never mints one. Left as-is, the draft-
+    // save call below (persistExtractionDraft's own
+    // `if (... || !uploadId) return null` guard) would then silently
+    // refuse to save: the AI results would render in the browser but
+    // never reach the database. A client-generated id is a safe stand-in
+    // — the backend only ever uses upload_id as an opaque cache key /
+    // import-dedup key (source_upload_id on EquipmentRevision), never as
+    // something that must already exist server-side.
+    const uploadId =
+      existingUploadId ||
+      (typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `local-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     if (!deepModel) {
       setDeepExtractMsg("Select an AI model first.");
       return;
@@ -1281,6 +1304,24 @@ const EquipmentList = () => {
     setRegisterChanges([]);
     setChangesError("");
     setReferencePage(1);
+    // BUG FIX: search bar must never carry over between projects — a
+    // leftover filter from the previous project can silently hide every
+    // row of the newly-loaded one.
+    setFilterText("");
+
+    // BUG FIX (explicit request): restore an extraction that was orphaned
+    // by a "Project not found" draft-save failure (see
+    // persistExtractionDraft's catch block) the moment a project is
+    // re-selected — skip the normal "load this project's saved register"
+    // fetch below for this one pass, since the user is recovering a
+    // pending save, not opening an existing register.
+    if (orphanedExtraction && activeProject?.project_id) {
+      setResults(orphanedExtraction);
+      setOrphanedExtraction(null);
+      setRegisterLoading(false);
+      return;
+    }
+
     applyRegisterRecord(null);
     if (!activeProject?.project_id) {
       setRegisterLoading(false);
@@ -1306,7 +1347,7 @@ const EquipmentList = () => {
     return () => {
       live = false;
     };
-  }, [activeProject?.project_id, applyRegisterRecord]);
+  }, [activeProject?.project_id, applyRegisterRecord, orphanedExtraction]);
 
   const loadRegisterChanges = useCallback(async () => {
     if (!registerRecord?.id) {
@@ -1501,15 +1542,34 @@ const EquipmentList = () => {
         return record;
       } catch (saveError) {
         setRegisterSaveState("failed");
-        setRegisterError(
-          saveError?.response?.data?.error
-            ? `Extraction completed, but the draft was not saved: ${saveError.response.data.error}`
-            : "Extraction completed, but the draft could not be saved. Retry before leaving this page.",
-        );
+        const backendError = saveError?.response?.data?.error || "";
+        // BUG FIX (explicit request): "Project not found" means the
+        // project this draft was about to save into no longer exists (e.g.
+        // deleted in another tab while extraction was running) — retrying
+        // the SAME save will just fail again forever. Instead of leaving
+        // the user stuck on a dead activeProject, show a clear message,
+        // stash the completed extraction so it isn't lost, and clear
+        // activeProject so the project-selection screen comes back — the
+        // project-change effect below restores these results the moment a
+        // (possibly different) project is re-selected, so the user can
+        // save again without re-running the extraction.
+        if (/project not found/i.test(backendError)) {
+          setOrphanedExtraction(payload);
+          setRegisterError(
+            "Project was not found. Please select your project again and re-run extraction.",
+          );
+          clearActiveProject();
+        } else {
+          setRegisterError(
+            backendError
+              ? `Extraction completed, but the draft was not saved: ${backendError}`
+              : "Extraction completed, but the draft could not be saved. Retry before leaving this page.",
+          );
+        }
         return null;
       }
     },
-    [activeProject?.project_id, files, applyRegisterRecord],
+    [activeProject?.project_id, files, applyRegisterRecord, clearActiveProject],
   );
 
   // Polling - used when server returns 202 + upload_id
@@ -1542,6 +1602,9 @@ const EquipmentList = () => {
                   document_excerpt: r.document_excerpt || "",
                 });
                 setSelectedRows(new Set());
+                // BUG FIX: a stale filter from a previous search must never
+                // silently hide rows of a newly-loaded extraction.
+                setFilterText("");
                 // Smart flow: nothing found → the drawing is likely scanned or
                 // revision-clouded; open the AI pass automatically.
                 if (!r.equipment?.length) {
@@ -1594,6 +1657,31 @@ const EquipmentList = () => {
     if (!files.length) {
       setError("Please upload a P&ID document first");
       return;
+    }
+    // BUG FIX (explicit request): re-validate the selected project still
+    // exists BEFORE spending time on extraction — previously a project
+    // deleted after selection (e.g. in another tab) was only discovered
+    // at draft-save time, after the whole extraction had already run.
+    // Best-effort: a failure of this CHECK itself (network blip) doesn't
+    // block extraction — the save-time check still catches a genuinely
+    // missing project either way.
+    if (!activeProject?.project_id) {
+      setError("No project selected. Please select a project first.");
+      return;
+    }
+    try {
+      const freshProjects = await projectOrganizerService.listProjects();
+      const stillExists = freshProjects.some(
+        (p) => p.project_id === activeProject.project_id,
+      );
+      if (!stillExists) {
+        setError(
+          "Project was not found. Please select your project again and re-run extraction.",
+        );
+        return;
+      }
+    } catch {
+      // non-fatal — see comment above
     }
     setIsProcessing(true);
     setError(null);
@@ -1723,6 +1811,9 @@ const EquipmentList = () => {
             document_excerpt: data.document_excerpt || "",
           });
           setSelectedRows(new Set());
+          // BUG FIX: a stale filter from a previous search must never
+          // silently hide rows of a newly-loaded extraction.
+          setFilterText("");
           // Smart flow: nothing found → open the AI pass automatically.
           if (!data.equipment?.length) {
             setShowDeepExtract(true);
@@ -2379,13 +2470,24 @@ const EquipmentList = () => {
     return noDesc / rows.length > 0.5;  // mostly hollow rows
   })();
 
-  // "Boost with AI" activates ONLY after the phase-1 extraction has produced
-  // a result set — never during upload/processing, never before it.
+  // BUG FIX (explicit request): "Boost with AI" used to require the
+  // standard (phase-1) extraction to have already produced a result set —
+  // forcing the user to wait through a standard pass (which can genuinely
+  // return 0 results on a scanned/revision-clouded drawing) before AI
+  // vision was even available as an option. handleDeepExtract already
+  // supports running with no prior extraction at all: it falls back to
+  // the raw uploaded file (`extractedFile || files?.[0]`) and only sends
+  // upload_id/current_items when they exist (both optional on the
+  // backend — see equipment_deep_extract.py's deep_extract_equipment,
+  // "upload_id (optional merge target)"). So "ready" now also includes
+  // "a file is uploaded, nothing has run yet" — not only "extraction
+  // already produced results" — letting the user jump straight to Boost
+  // with AI right after upload, standard extraction or not.
   const boostReady = Boolean(
     !isProcessing &&
       !deepExtractBusy &&
-      results &&
-      (results.upload_id || (results.equipment || []).length > 0),
+      ((results && (results.upload_id || (results.equipment || []).length > 0)) ||
+        files.length > 0),
   );
   const filteredReferenceRows = referenceRows
     .filter((row) => {
@@ -3191,6 +3293,8 @@ const EquipmentList = () => {
                       <Search size={19} color="#50647e" />
                       <input
                         value={filterText}
+                        autoComplete="off"
+                        name="equipment-register-filter"
                         onChange={(event) => {
                           setFilterText(event.target.value);
                           setReferencePage(1);
@@ -3295,8 +3399,12 @@ const EquipmentList = () => {
                           aria-expanded={showDeepExtract}
                           title={
                             boostReady
-                              ? "Optional AI vision pass — merges recovered records into this register (uses the same file you extracted)"
-                              : "Available after the Upload P&ID extraction completes"
+                              ? results
+                                ? "Optional AI vision pass — merges recovered records into this register (uses the same file you extracted)"
+                                : "Run an AI vision pass directly on the uploaded P&ID — no need to run standard extraction first"
+                              : files.length > 0
+                                ? "Extraction or an AI pass is already running"
+                                : "Upload a P&ID first"
                           }
                           onClick={() => {
                             if (!boostReady) return;
@@ -7488,6 +7596,8 @@ const EquipmentList = () => {
                       type="text"
                       placeholder="Filter by tag, type, fluid…"
                       value={filterText}
+                      autoComplete="off"
+                      name="equipment-list-filter"
                       onChange={(e) => setFilterText(e.target.value)}
                       className="eq-filter-input pl-8 pr-3 py-2 text-sm rounded-lg outline-none w-56"
                       style={{
