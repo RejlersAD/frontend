@@ -163,7 +163,10 @@ import LegendManagerPage from "./pages/Engineering/Legends/LegendManagerPage";
 import PFDQualityChecker from "./pages/Engineering/Process/PFDQualityChecker";
 import HMBStreamTableConsolidator from "./pages/Engineering/Process/HMBStreamTableConsolidator/HMBStreamTableConsolidator";
 import ManageProjectsPage from "./pages/ProjectOrganizer/ManageProjectsPage";
-import CriticalLineList from "./pages/Engineering/Piping/CriticalLineList";
+import CriticalLineList from "./pages/Engineering/Piping/cll/CllPage";
+import CllRegisterTab from "./pages/Engineering/Piping/cll/tabs/RegisterTab";
+import CllAnalysisTab from "./pages/Engineering/Piping/cll/tabs/AnalysisTab";
+import CllReviewTab from "./pages/Engineering/Piping/cll/tabs/ReviewTab";
 import ValveMTO from "./pages/Engineering/Piping/ValveMTO";
 // Electrical Datasheet Components
 import ElectricalDocumentsHub from "./pages/Engineering/Electrical/ElectricalDocumentsHub";
@@ -1311,6 +1314,15 @@ function App() {
                 </ModuleProtectedRoute>
               }
             />
+            {/* Equipment List 3D View deep link */}
+            <Route
+              path="engineering/process/equipment-list/3d"
+              element={
+                <ModuleProtectedRoute moduleCode="pid_equipment_list">
+                  <EquipmentList />
+                </ModuleProtectedRoute>
+              }
+            />
             <Route
               path="engineering/process/hmb-extractor"
               element={
@@ -1330,7 +1342,7 @@ function App() {
                 </ModuleProtectedRoute>
               }
             />
-            {/* Critical Line List - Full Enrichment (5 Documents) */}
+            {/* Critical Line List — Register / Upload Analysis / Review tabs */}
             <Route
               path="engineering/piping/critical-line-list"
               element={
@@ -1338,7 +1350,11 @@ function App() {
                   <CriticalLineList />
                 </ProtectedRoute>
               }
-            />
+            >
+              <Route index element={<CllRegisterTab />} />
+              <Route path="analysis" element={<CllAnalysisTab />} />
+              <Route path="review" element={<CllReviewTab />} />
+            </Route>
             {/* Piping Routes */}
             {/* Piping Hub - Landing page for /engineering/piping (fixes 404) */}
             <Route

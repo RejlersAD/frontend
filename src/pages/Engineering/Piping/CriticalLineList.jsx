@@ -5990,7 +5990,7 @@ const CriticalLineList = () => {
 
                 </div>
 
-                <p className="text-xs text-yellow-700 mb-3">Section 7 + Temperature Analysis</p>
+                <p className="text-xs text-yellow-700 mb-3">Section 7 + Temperature Analysis — PDF or Excel (.xlsx/.xls)</p>
 
                 <input
 
@@ -6038,7 +6038,7 @@ const CriticalLineList = () => {
 
                       </svg>
 
-                      Select Stress Document
+                      Select Stress Document (PDF/Excel)
 
                     </>
 

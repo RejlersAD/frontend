@@ -8,6 +8,8 @@
  */
 
 import React, { useState, useRef, useCallback, useEffect } from "react";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import EquipmentList3DTab from "../../../features/equipment-list/3d/EquipmentList3DTab";
 import {
   CloudArrowUpIcon,
   CheckCircleIcon,
@@ -862,7 +864,18 @@ const EquipmentList = () => {
   const [showManualForm, setShowManualForm] = useState(false);
   const [selectedRows, setSelectedRows] = useState(new Set());
   const [selectedEquipment, setSelectedEquipment] = useState(null);
-  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState("Equipment");
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const is3dRoute = /\/engineering\/process\/equipment-list\/3d\/?$/.test(
+    location.pathname,
+  );
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState(() =>
+    /\/engineering\/process\/equipment-list\/3d\/?$/.test(location.pathname)
+      ? "3D View"
+      : "Equipment",
+  );
+  const [model3dReviewItems, setModel3dReviewItems] = useState([]);
   const [activeDetailTab, setActiveDetailTab] = useState("Details");
   const [referenceFilters, setReferenceFilters] = useState({
     type: "",
@@ -2106,6 +2119,50 @@ const EquipmentList = () => {
     };
   }, [results]);
 
+  // Register rows and 3D View hooks MUST live above the project-gate early
+  // returns below, or the hook count changes between renders.
+  const referenceRows = results?.equipment || [];
+
+  // ── 3D View deep link (/engineering/process/equipment-list/3d?tag=…) ──
+  React.useEffect(() => {
+    if (!is3dRoute) return;
+    setActiveWorkspaceTab("3D View");
+    const tag = searchParams.get("tag");
+    if (tag && referenceRows.length) {
+      const row = referenceRows.find((entry) => entry.tag === tag);
+      if (row) setSelectedEquipment(row);
+    }
+  }, [is3dRoute, searchParams, referenceRows]);
+
+  const handleOpenInRegister3d = useCallback(
+    (tag) => {
+      const row = referenceRows.find((entry) => entry.tag === tag);
+      if (row) setSelectedEquipment(row);
+      setActiveWorkspaceTab("Equipment");
+      setActiveDetailTab("Details");
+      if (is3dRoute)
+        navigate("/engineering/process/equipment-list", { replace: true });
+      setTimeout(() => {
+        const cell = document.querySelector(
+          `[data-equipment-tag="${CSS.escape(tag)}"]`,
+        );
+        cell?.scrollIntoView({ block: "center", behavior: "smooth" });
+      }, 200);
+    },
+    [referenceRows, is3dRoute, navigate],
+  );
+
+  const handleOpenPid3d = useCallback(
+    (sourceSheet) => {
+      void sourceSheet;
+      // Document viewer is not wired to sheets yet — open the Documents tab.
+      setActiveWorkspaceTab("Documents");
+      if (is3dRoute)
+        navigate("/engineering/process/equipment-list", { replace: true });
+    },
+    [is3dRoute, navigate],
+  );
+
   // ── PROJECT GATE — V1-style workspace: select/create a project first ─────
   // SOFT-CODED: disable via EQ_PROJECTS.enabled = false (legacy single-shot).
   if (EQ_PROJECTS.enabled && (!projHydrated || loadingProjects)) {
@@ -2244,7 +2301,6 @@ const EquipmentList = () => {
 
   // Reference-aligned register workspace. The extraction workflow remains
   // available from the Actions menu and the compact upload card below.
-  const referenceRows = results?.equipment || [];
   const referenceSelected = selectedEquipment
     ? referenceRows.find(
         (row) =>
@@ -2384,6 +2440,7 @@ const EquipmentList = () => {
       );
       return sortAsc ? comparison : -comparison;
     });
+
   const referencePageSize = 10;
   const referencePageCount = Math.max(
     1,
@@ -2976,6 +3033,7 @@ const EquipmentList = () => {
                 "Validation",
                 "Reviews",
                 "Documents",
+                "3D View",
               ].map((tab) => (
                 <button
                   type="button"
@@ -2984,6 +3042,15 @@ const EquipmentList = () => {
                   onClick={() => {
                     setActiveWorkspaceTab(tab);
                     setOpenReferenceMenu("");
+                    if (tab === "3D View" && !is3dRoute) {
+                      navigate("/engineering/process/equipment-list/3d", {
+                        replace: true,
+                      });
+                    } else if (tab !== "3D View" && is3dRoute) {
+                      navigate("/engineering/process/equipment-list", {
+                        replace: true,
+                      });
+                    }
                   }}
                   className="pb-3 text-sm font-semibold"
                   style={{
@@ -3773,6 +3840,7 @@ const EquipmentList = () => {
                             return (
                               <tr
                                 key={row.id || row.tag || i}
+                                data-equipment-tag={row.tag || undefined}
                                 onClick={() => {
                                   setSelectedEquipment(row);
                                   setActiveDetailTab("Details");
@@ -4321,6 +4389,65 @@ const EquipmentList = () => {
                         </div>
                       );
                     })}
+                    {model3dReviewItems.length > 0 && (
+                      <div
+                        className="mb-4 rounded-lg overflow-hidden"
+                        style={{ border: "1px solid #dce5ef" }}
+                      >
+                        <div
+                          className="px-4 py-3 flex justify-between"
+                          style={{ background: "#f7fafc" }}
+                        >
+                          <span className="font-bold">3D model</span>
+                          <span
+                            className="text-sm"
+                            style={{ color: "#667892" }}
+                          >
+                            {model3dReviewItems.length}
+                          </span>
+                        </div>
+                        {model3dReviewItems.map((item) => (
+                          <button
+                            type="button"
+                            key={item.id}
+                            onClick={() => {
+                              if (item.tag) {
+                                const row = referenceRows.find(
+                                  (entry) => entry.tag === item.tag,
+                                );
+                                if (row) setSelectedEquipment(row);
+                              }
+                              setActiveWorkspaceTab("3D View");
+                              if (!is3dRoute)
+                                navigate(
+                                  "/engineering/process/equipment-list/3d",
+                                  { replace: true },
+                                );
+                            }}
+                            className="w-full flex justify-between px-4 py-3 border-t text-left hover:bg-slate-50"
+                            style={{ borderColor: "#e1e9f1" }}
+                          >
+                            <span>
+                              <strong>{item.title}</strong>
+                              {item.detail && (
+                                <span
+                                  className="ml-3 text-sm"
+                                  style={{ color: "#667892" }}
+                                >
+                                  {item.detail}
+                                </span>
+                              )}
+                            </span>
+                            <span
+                              className="text-sm font-semibold"
+                              style={{ color: "#087f91" }}
+                            >
+                              3D model
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
                 {activeWorkspaceTab === "Documents" && (
@@ -4377,6 +4504,27 @@ const EquipmentList = () => {
                       issued document or guaranteed downloadable file.
                     </div>
                   </div>
+                )}
+                {activeWorkspaceTab === "3D View" && (
+                  <EquipmentList3DTab
+                    equipment={filteredReferenceRows}
+                    allEquipment={referenceRows}
+                    referenceFilters={referenceFilters}
+                    selectedEquipment={selectedEquipment}
+                    setSelectedEquipment={setSelectedEquipment}
+                    registerRecord={registerRecord}
+                    role="Engineer"
+                    onReviewItems={setModel3dReviewItems}
+                    onOpenInRegister={handleOpenInRegister3d}
+                    onOpenPid={handleOpenPid3d}
+                    onGoToEquipment={() => {
+                      setActiveWorkspaceTab("Equipment");
+                      if (is3dRoute)
+                        navigate("/engineering/process/equipment-list", {
+                          replace: true,
+                        });
+                    }}
+                  />
                 )}
               </div>
             </section>
