@@ -3,8 +3,18 @@
 // quick filter chips, full-width table, line detail right drawer.
 // ============================================================================
 import React, { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useCll } from '../CllStore';
 import { CAT_PILL, LINE_LIST_FIELDS, exportRegisterWorkbook } from '../cllFiles';
+
+// §6C — URL filter chips: ?match=matched|conflict|missing|notinll and
+// ?category=critical, set by the Upload Analysis tiles / distribution card.
+const MATCH_FILTERS = {
+  matched: { label: 'Matched', test: l => l.match_status === 'Matched' },
+  conflict: { label: 'Conflicts', test: l => l.match_status === 'Conflict' },
+  missing: { label: 'Missing criticality', test: l => l.match_status === 'Missing criticality' },
+  notinll: { label: 'Not in line list', test: l => l.match_status === 'Not in line list' },
+};
 
 const MATCH_PILL = {
   'Matched': 'rd-pill-success',
@@ -96,6 +106,11 @@ export default function RegisterTab() {
   const { match, files } = useCll();
   const [chip, setChip] = useState('All');
   const [selected, setSelected] = useState(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const matchFilter = MATCH_FILTERS[searchParams.get('match')] || null;
+  const categoryCritical = searchParams.get('category') === 'critical';
+  const clearUrlFilters = () => setSearchParams({}, { replace: true });
 
   const kpis = useMemo(() => {
     if (!match) return null;
@@ -110,13 +125,16 @@ export default function RegisterTab() {
 
   const filtered = useMemo(() => {
     if (!match) return [];
+    let lines = match.lines;
+    if (matchFilter) lines = lines.filter(matchFilter.test);
+    if (categoryCritical) lines = lines.filter(l => ['L1', 'L2', 'L3'].includes(l.stress_category));
     switch (chip) {
-      case 'Stress critical': return match.lines.filter(l => ['L1', 'L2'].includes(l.stress_category));
-      case 'L1': return match.lines.filter(l => l.stress_category === 'L1');
-      case 'Needs review': return match.lines.filter(l => l.match_status !== 'Matched');
-      default: return match.lines;
+      case 'Stress critical': return lines.filter(l => ['L1', 'L2'].includes(l.stress_category));
+      case 'L1': return lines.filter(l => l.stress_category === 'L1');
+      case 'Needs review': return lines.filter(l => l.match_status !== 'Matched');
+      default: return lines;
     }
-  }, [match, chip]);
+  }, [match, chip, matchFilter, categoryCritical]);
 
   // Register mirrors the uploaded file's own columns (fallback: canonical labels).
   const columns = useMemo(
@@ -155,6 +173,20 @@ export default function RegisterTab() {
 
       {/* Filter chips + export */}
       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        {matchFilter && (
+          <span className="rd-pill rd-pill-info" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            Match status: {matchFilter.label}
+            <button onClick={clearUrlFilters} aria-label="Remove match filter"
+              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'inherit', fontWeight: 700 }}>✕</button>
+          </span>
+        )}
+        {categoryCritical && (
+          <span className="rd-pill rd-pill-danger" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            Category: Stress critical
+            <button onClick={clearUrlFilters} aria-label="Remove category filter"
+              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'inherit', fontWeight: 700 }}>✕</button>
+          </span>
+        )}
         {CHIPS.map(c => (
           <button key={c} onClick={() => setChip(c)}
             className={`rd-btn rd-btn-sm ${chip === c ? 'rd-btn-primary' : 'rd-btn-secondary'}`}>

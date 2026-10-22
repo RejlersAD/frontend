@@ -11,8 +11,48 @@ const CllCtx = createContext(null);
 export const useCll = () => useContext(CllCtx);
 
 const LS_KEY = 'radai.cll.v3';
-const load = () => { try { return JSON.parse(localStorage.getItem(LS_KEY)) || null; } catch { return null; } };
-const EMPTY_DATA = { files: { lineList: null, stress: null }, history: [], resolved: {}, legends: DEFAULT_LEGENDS };
+const load = () => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(LS_KEY)) || null;
+    // Normalise: quota-trimmed payloads may have records/detail stripped.
+    if (raw?.data) {
+      for (const d of Object.values(raw.data)) {
+        for (const k of Object.keys(d.files || {})) {
+          if (d.files[k] && !Array.isArray(d.files[k].records)) d.files[k].records = [];
+        }
+        if (Array.isArray(d.history)) d.history = d.history.map(h => ({ ...h, detail: h.detail ?? null }));
+      }
+    }
+    return raw;
+  } catch { return null; }
+};
+const EMPTY_DATA = { files: { lineList: null, stress: null }, history: [], resolved: {}, legends: DEFAULT_LEGENDS, lastRunAt: null };
+
+// localStorage quota is ~5 MB; a real Process Line List can exceed it.
+// Try the full payload, then progressively strip diff details, then raw records.
+const save = (state) => {
+  const attempts = [
+    state,
+    {
+      ...state,
+      data: Object.fromEntries(Object.entries(state.data).map(([pid, d]) => [pid, {
+        ...d,
+        history: (d.history || []).map(h => ({ ...h, detail: null })),
+      }])),
+    },
+    {
+      ...state,
+      data: Object.fromEntries(Object.entries(state.data).map(([pid, d]) => [pid, {
+        ...d,
+        files: Object.fromEntries(Object.entries(d.files || {}).map(([k, f]) => [k, f ? { ...f, records: [], recordsTrimmed: true } : f])),
+        history: (d.history || []).map(h => ({ ...h, detail: null })),
+      }])),
+    },
+  ];
+  for (const candidate of attempts) {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(candidate)); return; } catch { /* try slimmer */ }
+  }
+};
 
 export function CllProvider({ children }) {
   const persisted = useMemo(load, []);
@@ -20,14 +60,22 @@ export function CllProvider({ children }) {
   const [activeId, setActiveId] = useState(persisted?.activeId || null);
   const [dataByProject, setDataByProject] = useState(persisted?.data || {});
   const [uploadDrawerOpen, setUploadDrawerOpen] = useState(false);
+  // Which file the upload drawer is targeting ('processLineList' | 'stressCriticality')
+  const [drawerFileKind, setDrawerFileKind] = useState('processLineList');
+  // Top-right toast (upload feedback, etc.)
+  const [toast, setToast] = useState(null);
+  const showToast = (t) => {
+    setToast({ ...t, id: Date.now() });
+    setTimeout(() => setToast(cur => (cur && cur.title === t.title ? null : cur)), 5200);
+  };
 
   useEffect(() => {
-    localStorage.setItem(LS_KEY, JSON.stringify({ projects, activeId, data: dataByProject }));
+    save({ projects, activeId, data: dataByProject });
   }, [projects, activeId, dataByProject]);
 
   const activeProject = projects.find(p => p.id === activeId) || null;
   const data = (activeId && dataByProject[activeId]) || EMPTY_DATA;
-  const { files, history, resolved, legends } = data;
+  const { files, history, resolved, legends, lastRunAt } = data;
 
   const patchData = (fn) => {
     if (!activeId) return;
@@ -85,27 +133,44 @@ export function CllProvider({ children }) {
 
   const discrepancies = useMemo(() => buildDiscrepancies(match, resolved), [match, resolved]);
 
-  /** Commit an uploaded/validated file (from the drawer) as a new revision. */
-  const commitFile = (kind, fileInfo) => {
+  /** Commit an uploaded/validated file (from the drawer) as a new revision.
+   *  opts.analysed === false records a pending "analysis not run" history
+   *  entry and leaves lastRunAt untouched (→ state becomes 'outdated'). */
+  const commitFile = (kind, fileInfo, opts = { analysed: true }) => {
     patchData(prev => {
       const old = prev.files[kind];
       const revision = old ? old.revision + 1 : 1;
       const diff = old
         ? diffRevisions(old.records, fileInfo.records)
         : { added: fileInfo.records, removed: [], changed: [] };
+      const at = new Date().toISOString();
       const entry = {
-        at: new Date().toISOString(), by: 'current.user', kind,
+        at, by: 'current.user', kind,
         fileName: fileInfo.name, revision,
         added: diff.added.length, removed: diff.removed.length, changed: diff.changed.length,
-        detail: diff,
+        detail: {
+          added: diff.added.slice(0, 200),
+          removed: diff.removed.slice(0, 200),
+          changed: diff.changed.slice(0, 200),
+          truncated: diff.added.length > 200 || diff.removed.length > 200 || diff.changed.length > 200,
+        },
       };
+      const extra = opts.analysed === false
+        ? [{ at, by: 'current.user', kind: 'pending', fileName: fileInfo.name, revision,
+             added: 0, removed: 0, changed: 0, detail: null, notAnalysed: true }]
+        : [];
       return {
         ...prev,
         files: { ...prev.files, [kind]: { ...fileInfo, revision } },
-        history: [entry, ...prev.history],
+        history: [...extra, entry, ...prev.history],
+        lastRunAt: opts.analysed === false ? prev.lastRunAt || null : at,
       };
     });
   };
+
+  /** Mark the analysis as (re)run now — clears the 'outdated' state. */
+  const markAnalysed = () =>
+    patchData(prev => ({ ...prev, lastRunAt: new Date().toISOString() }));
 
   const resolveDiscrepancy = (id, resolution) =>
     patchData(prev => ({
@@ -119,8 +184,9 @@ export function CllProvider({ children }) {
   const value = {
     projects, activeProject, createProject, selectProject, exitProject,
     files, match, discrepancies, history, resolved, legends, setLegends, generated,
-    commitFile, resolveDiscrepancy,
-    uploadDrawerOpen, setUploadDrawerOpen,
+    commitFile, resolveDiscrepancy, lastRunAt, markAnalysed,
+    uploadDrawerOpen, setUploadDrawerOpen, drawerFileKind, setDrawerFileKind,
+    toast, showToast,
   };
 
   return <CllCtx.Provider value={value}>{children}</CllCtx.Provider>;
