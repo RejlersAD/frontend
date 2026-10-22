@@ -1,13 +1,14 @@
 // ============================================================================
-// §6B — Source file card. Used twice (Process Line List / Stress Criticality).
-// Header: XLSX tile, title + revision pill + status pill, muted file meta.
-// Meta strip: Rows · Sheet/header row · Required columns · Validation.
+// Source file cards — Process Line List (LDT) and Stress criticality criteria.
+// LDT meta strip: Rows · Sheet/header row · Required columns · Validation.
+// Criteria card: pills (Onshore · Built-in|Rev r), meta: Standard · Grid ·
+// Categories · Validation.
 // Empty slot renders a dashed drop zone.
 // ============================================================================
 import React, { useRef, useState } from 'react';
 import { useAnalysisSummary } from './useAnalysisSummary';
 import { useCll } from '../../../pages/Engineering/Piping/cll/CllStore';
-import { downloadTemplate } from '../../../pages/Engineering/Piping/cll/cllFiles';
+import { downloadLdtTemplate } from '../../../pages/Engineering/Piping/cll/cllFiles';
 import { fmtNum, fmtBytes, fmtDateTime } from './analysisState';
 
 function MetaCell({ label, value, color }) {
@@ -19,6 +20,8 @@ function MetaCell({ label, value, color }) {
   );
 }
 
+const Divider = () => <div style={{ width: 1, background: 'var(--rd-border-soft)' }} />;
+
 export default function SourceFileCard({ kind }) {
   const { summary, canUpload } = useAnalysisSummary();
   const { setUploadDrawerOpen, setDrawerFileKind } = useCll();
@@ -26,12 +29,12 @@ export default function SourceFileCard({ kind }) {
   const inputRef = useRef(null);
   const [drag, setDrag] = useState(false);
 
-  const storeKind = kind === 'processLineList' ? 'lineList' : 'stress';
   const openDrawer = () => { setDrawerFileKind(kind); setUploadDrawerOpen(true); };
+  const isLdt = kind === 'processLineList';
+  const title = isLdt ? 'Process Line List (LDT)' : 'Stress criticality criteria';
 
   /* ---------------- empty slot: dashed drop zone ---------------- */
   if (!file) {
-    const title = kind === 'processLineList' ? 'Process Line List' : 'Stress Criticality';
     return (
       <section className="rd-card" style={{ display: 'flex', flexDirection: 'column' }}>
         <div className="rd-card-body" style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
@@ -49,10 +52,12 @@ export default function SourceFileCard({ kind }) {
             <div style={{ fontSize: 'var(--rd-text-body)', color: 'var(--rd-text-muted)' }}>
               Drop {title} (.xlsx, .xls, .csv · max 25 MB)
             </div>
-            <button className="rd-btn rd-btn-ghost rd-btn-sm" style={{ marginTop: '0.5rem' }}
-              onClick={e => { e.stopPropagation(); downloadTemplate(storeKind); }}>
-              Download template
-            </button>
+            {isLdt && (
+              <button className="rd-btn rd-btn-ghost rd-btn-sm" style={{ marginTop: '0.5rem' }}
+                onClick={e => { e.stopPropagation(); downloadLdtTemplate(); }}>
+                Download template
+              </button>
+            )}
           </div>
         </div>
       </section>
@@ -74,18 +79,27 @@ export default function SourceFileCard({ kind }) {
           {/* XLSX tile */}
           <div style={{
             width: 44, height: 44, borderRadius: 8, flex: '0 0 auto',
-            background: 'var(--rd-success)', color: '#fff',
+            background: isLdt ? 'var(--rd-success)' : 'var(--rd-accent)', color: '#fff',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 10, fontWeight: 700, letterSpacing: 0.5,
           }}>XLSX</div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
               <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--rd-text)' }}>{file.title}</span>
-              <span className="rd-pill rd-pill-info">Rev {file.revision}</span>
+              {isLdt
+                ? <span className="rd-pill rd-pill-info">Rev {file.revision}</span>
+                : <>
+                    <span className="rd-pill rd-pill-info" style={{ textTransform: 'capitalize' }}>{file.locationType || '—'}</span>
+                    {file.source === 'builtin'
+                      ? <span className="rd-pill rd-pill-neutral">Built-in</span>
+                      : <span className="rd-pill rd-pill-info">Rev {file.revision}</span>}
+                  </>}
               {statusPill}
             </div>
             <div className="rd-text-muted" style={{ fontSize: 'var(--rd-text-caption)', marginTop: 3 }}>
-              <span className="rd-mono">{file.fileName}</span> · {fmtBytes(file.sizeBytes)} · uploaded by {file.uploadedBy}, {fmtDateTime(file.uploadedAt)}
+              <span className="rd-mono">{file.fileName}</span>
+              {file.sizeBytes ? ` · ${fmtBytes(file.sizeBytes)}` : ''}
+              {file.uploadedAt ? ` · uploaded by ${file.uploadedBy}, ${fmtDateTime(file.uploadedAt)}` : ''}
             </div>
           </div>
         </div>
@@ -95,22 +109,40 @@ export default function SourceFileCard({ kind }) {
           display: 'flex', flexWrap: 'wrap', marginTop: '1rem',
           border: '1px solid var(--rd-border-soft)', borderRadius: 8, overflow: 'hidden',
         }}>
-          <MetaCell label="Rows" value={`${fmtNum(file.rows)} lines`} />
-          <div style={{ width: 1, background: 'var(--rd-border-soft)' }} />
-          <MetaCell label="Sheet · header row" value={<><span className="rd-mono">{file.sheet}</span> · row {file.headerRow}</>} />
-          <div style={{ width: 1, background: 'var(--rd-border-soft)' }} />
-          <MetaCell label="Required columns" value={`${file.requiredMapped} of ${file.requiredTotal} mapped`} />
-          <div style={{ width: 1, background: 'var(--rd-border-soft)' }} />
-          <MetaCell label="Validation" value={`${file.errors} errors · ${file.warnings} warnings`} color={validationColor} />
+          {isLdt ? (
+            <>
+              <MetaCell label="Rows" value={`${fmtNum(file.rows)} lines`} />
+              <Divider />
+              <MetaCell label="Sheet · header row"
+                value={<><span className="rd-mono">{file.sheet}</span> · rows {file.headerRow}–{file.unitsRow}</>} />
+              <Divider />
+              <MetaCell label="Required columns" value={`${file.requiredMapped} of ${file.requiredTotal} mapped`} />
+              <Divider />
+              <MetaCell label="Validation" value={`${file.errors} errors · ${file.warnings} warnings`} color={validationColor} />
+            </>
+          ) : (
+            <>
+              <MetaCell label="Standard" value={`${file.standard}${file.criteriaRevision !== '—' ? ` Rev ${file.criteriaRevision}` : ''} · Table 2`} />
+              <Divider />
+              <MetaCell label="Grid" value={file.gridText} color={file.gridValid ? 'var(--rd-success)' : 'var(--rd-danger)'} />
+              <Divider />
+              <MetaCell label="Categories" value={file.categories.join(' · ') || '—'} />
+              <Divider />
+              <MetaCell label="Validation" value={`${file.errors} errors`} color={validationColor} />
+            </>
+          )}
         </div>
       </div>
 
       {/* Actions */}
       <div className="rd-card-body" style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', paddingTop: '0.875rem' }}>
-        {canUpload && <button className="rd-btn rd-btn-secondary rd-btn-sm" onClick={openDrawer}>Replace file</button>}
-        {canUpload && <button className="rd-btn rd-btn-secondary rd-btn-sm" onClick={openDrawer}>View column mapping</button>}
-        <button className="rd-btn rd-btn-secondary rd-btn-sm"
-          onClick={() => downloadTemplate(storeKind)}>Download</button>
+        {canUpload && <button className="rd-btn rd-btn-secondary rd-btn-sm" onClick={openDrawer}>
+          {isLdt ? 'Replace file' : 'Upload criteria'}
+        </button>}
+        {canUpload && isLdt && <button className="rd-btn rd-btn-secondary rd-btn-sm" onClick={openDrawer}>View column mapping</button>}
+        {isLdt && (
+          <button className="rd-btn rd-btn-secondary rd-btn-sm" onClick={() => downloadLdtTemplate()}>Download</button>
+        )}
         <button className="rd-btn rd-btn-ghost rd-btn-sm"
           onClick={() => document.getElementById('cll-upload-history')?.scrollIntoView({ behavior: 'smooth' })}>History</button>
       </div>

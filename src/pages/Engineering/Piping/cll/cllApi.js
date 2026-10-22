@@ -31,7 +31,13 @@ export const getProjectData = async (id) =>
 export const putProjectData = async (id, payload) =>
   (await apiClient.put(`${BASE}/projects/${id}/data/`, payload, CFG)).data;
 
+export const getCriteria = async (id) =>
+  (await apiClient.get(`${BASE}/projects/${id}/criteria/`, CFG)).data;
+
+export const putCriteria = async (id, criteria) =>
+  (await apiClient.put(`${BASE}/projects/${id}/criteria/`, { criteria }, CFG)).data;
+
 export default {
   listProjects, createProject, updateProject, deleteProject,
-  getProjectData, putProjectData,
+  getProjectData, putProjectData, getCriteria, putCriteria,
 };

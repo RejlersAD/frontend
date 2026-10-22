@@ -1,275 +1,441 @@
 // ============================================================================
-// CLL data layer — file definitions, Excel/CSV parsing, column mapping with
-// synonyms, validation, line-number normalisation, two-file matching,
-// revision diffing and discrepancy generation. Pure functions (no React).
+// CLL data layer — Line Designation Table (LDT) and stress-criticality
+// CRITERIA TABLE parsing.
+//
+// LDT (§2): sheet "Line Designation Table", header row 8 (names) / row 9
+// (units), data from row 10. 27 columns A–AA. All cells may be text — never
+// reject on type, never fail on malformed document properties.
+//
+// Criteria (§3): sheet "TABLE 2 ONSHORE" / "TABLE … OFFSHORE" — a fixed
+// 13 × 15 grid (NPS × design temperature → L1/L2/L3) + definitions rows.
+// Other sheets (e.g. README with #REF! formulas) are ignored, not warned.
+//
+// Pure functions (no React) so the module is testable from node.
 // ============================================================================
 import * as XLSX from 'xlsx';
+import {
+  NPS_ROWS, TEMP_LIMITS, TEMP_LABELS, CATEGORY_DEFINITIONS,
+} from './criticalityEngine.js';
 
 export const MAX_FILE_BYTES = 25 * 1024 * 1024; // 25 MB
 export const ACCEPT_EXT = ['.xlsx', '.xls', '.csv'];
 
-// --- Canonical field definitions -------------------------------------------
-export const LINE_LIST_FIELDS = [
-  { key: 'line_number',       label: 'Line Number',        required: true,  match: ['line number', 'line no', 'line_no', 'line id', 'line tag'] },
-  { key: 'size',              label: 'Size',               required: true,  match: ['size', 'nps', 'line size', 'nominal size', 'dia'] },
-  { key: 'fluid',             label: 'Fluid/Service',      required: true,  match: ['fluid', 'service', 'fluid/service', 'fluid code', 'service fluid'] },
-  { key: 'pipe_class',        label: 'Pipe Class',         required: true,  match: ['pipe class', 'piping class', 'material class', 'class'] },
-  { key: 'from',              label: 'From',               required: true,  match: ['from', 'from equipment', 'origin'] },
-  { key: 'to',                label: 'To',                 required: true,  match: ['to', 'to equipment', 'destination'] },
-  { key: 'pid_no',            label: 'P&ID No.',           required: true,  match: ['p&id', 'pid', 'p&id no', 'pid no', 'p id', 'p&id number'] },
-  { key: 'design_pressure',   label: 'Design Pressure',    required: true,  match: ['design pressure', 'dp', 'des pressure', 'design press'] },
-  { key: 'design_temperature',label: 'Design Temperature', required: true,  match: ['design temperature', 'design temp', 'dt', 'des temp'] },
-  // optional inputs that sharpen the auto-generated criticality (Sec. 7.3)
-  { key: 'phase',           label: 'Phase',            required: false, match: ['phase'] },
-  { key: 'insulation_code', label: 'Insulation Code',  required: false, match: ['insulation', 'insulation code', 'ins'] },
+// ---------------------------------------------------------------------------
+// §2.2 — LDT columns A–AA. `match` = normalised header fragments (header text
+// is normalised: lower-case, line breaks → space, whitespace collapsed).
+// ---------------------------------------------------------------------------
+export const LDT_FIELDS = [
+  { key: 'lineNumber',       col: 'A',  label: 'LINE NUMBER',                          required: true,  match: ['line number'] },
+  { key: 'lineKey',          col: 'B',  label: 'LINE',                                 required: true,  match: ['line'] },
+  { key: 'fluidCode',        col: 'C',  label: 'FLUID',                                required: true,  match: ['fluid'] },
+  { key: 'from',             col: 'D',  label: 'FROM',                                 required: true,  match: ['from'] },
+  { key: 'to',               col: 'E',  label: 'TO',                                   required: true,  match: ['to'] },
+  { key: 'sizeText',         col: 'F',  label: 'LINE SIZE',      unit: '(IN)',         required: true,  match: ['line size'] },
+  { key: 'pipeClass',        col: 'G',  label: 'MATERIAL CLASS',                       required: true,  match: ['material class'] },
+  { key: 'ldtStressFlag',    col: 'H',  label: 'STRESS ANALYSIS',                      required: false, match: ['stress analysis'] },
+  { key: 'operPressKgcm2',   col: 'I',  label: 'OPERATING PRESS.', unit: '(kg/cm²g)',  required: false, match: ['operating press'] },
+  { key: 'operTempC',        col: 'J',  label: 'OPERATING TEMP.',  unit: '(°C)',       required: false, match: ['operating temp'] },
+  { key: 'designPressKgcm2', col: 'K',  label: 'DESIGN PRESS.',    unit: '(kg/cm²g)',  required: true,  match: ['design press'] },
+  { key: 'designTempC',      col: 'L',  label: 'DESIGN TEMP',      unit: '(°C)',       required: true,  match: ['design temp'] },
+  { key: 'phase',            col: 'M',  label: 'PHASE',                                required: false, match: ['phase'] },
+  { key: 'testPressKgcm2',   col: 'N',  label: 'TEST PRESS.',      unit: '(kg/cm²g)',  required: false, match: ['test press'] },
+  { key: 'testMedia',        col: 'O',  label: 'TEST MEDIA',                           required: false, match: ['test media'] },
+  { key: 'insulCode',        col: 'P',  label: 'INSUL CODE',                           required: false, match: ['insul code'] },
+  { key: 'insulThkMm',       col: 'Q',  label: 'THK.',             unit: '(MM)',       required: false, match: ['thk'] },
+  { key: 'paintCode',        col: 'R',  label: 'PAINT CODE',                           required: false, match: ['paint code'] },
+  { key: 'paintCriticality', col: 'S',  label: 'Paint criticality',                    required: false, match: ['criticality rating'] },
+  { key: 'pidNumber',        col: 'T',  label: 'P&ID NUMBER',                          required: true,  match: ['p&id number'] },
+  { key: 'ndeClass',         col: 'U',  label: 'NDE CLASS NOTE:',                      required: false, match: ['nde class'] },
+  { key: 'comments',         col: 'V',  label: 'COMMENTS',                             required: false, match: ['comments'] },
+  { key: 'ldtRev',           col: 'W',  label: 'REV',                                  required: false, match: ['rev'] },
+  { key: 'maintainedTemp',   col: 'X',  label: 'MAINTAINED TEMPERATURE',               required: false, match: ['maintained temperature'] },
+  { key: 'instrumentCount',  col: 'Y',  label: 'NO OF INSTRUMENTS (VALVE, TT ETC)',    required: false, match: ['no of instruments'] },
+  { key: 'pipeJointCount',   col: 'Z',  label: 'NO OF PIPE JOINTS',                    required: false, match: ['no of pipe'] },
+  { key: 'lineLengthM',      col: 'AA', label: 'LINE LENGTH IN MTR',                   required: false, match: ['line length'] },
 ];
 
-export const STRESS_FIELDS = [
-  { key: 'line_number',          label: 'Line Number',         required: true,  match: ['line number', 'line no', 'line_no', 'line id', 'line tag'] },
-  { key: 'stress_category',      label: 'Stress Category',     required: true,  match: ['stress category', 'stress criticality', 'criticality level', 'criticality category', 'stress criticality level', 'criticality', 'stress level', 'analysis level', 'stress class', 'stress cat', 'category', 'cat', 'level'] },
-  { key: 'criteria_basis',       label: 'Criteria Basis',      required: false, match: ['criteria basis', 'basis', 'criteria', 'remarks', 'comment'] },
-  { key: 'analysis_method',      label: 'Analysis Method',     required: false, match: ['analysis method', 'method', 'analysis'] },
-  { key: 'responsible_engineer', label: 'Responsible Engineer',required: false, match: ['responsible engineer', 'engineer', 'responsible', 'stress engineer', 'checked by'] },
-  // optional mirror fields used for conflict detection
-  { key: 'size',               label: 'Size (optional)',              required: false, match: ['size', 'nps', 'line size'] },
-  { key: 'pipe_class',         label: 'Pipe Class (optional)',        required: false, match: ['pipe class', 'piping class', 'material class'] },
-  { key: 'design_pressure',    label: 'Design Pressure (optional)',   required: false, match: ['design pressure', 'dp', 'des pressure'] },
-  { key: 'design_temperature', label: 'Design Temperature (optional)',required: false, match: ['design temperature', 'design temp', 'dt'] },
-];
+export const LDT_REQUIRED_COUNT = LDT_FIELDS.filter(f => f.required).length; // 10
 
-export const FILE_KINDS = {
-  lineList: { key: 'lineList', title: 'Process Line List', fields: LINE_LIST_FIELDS,
-    templateHeader: LINE_LIST_FIELDS.map(f => f.label) },
-  stress:   { key: 'stress', title: 'Stress Criticality', fields: STRESS_FIELDS,
-    templateHeader: STRESS_FIELDS.filter(f => !f.label.includes('(optional)')).map(f => f.label) },
-};
+/** Normalise header text: trim, collapse line breaks/whitespace, lower-case. */
+const normHeader = (h) => String(h ?? '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
 
-export const STRESS_CATEGORIES = ['L1', 'L2', 'L3', 'Non-critical'];
-export const CAT_PILL = {
-  'L1': 'rd-pill-danger', 'L2': 'rd-pill-warning',
-  'L3': 'rd-pill-info', 'Non-critical': 'rd-pill-success',
-  'Not assessed': 'rd-pill-neutral',
-};
-
-/**
- * Level allocation — normalise any stress-criticality cell value onto the
- * canonical levels L1 / L2 / L3 / Non-critical. Handles vendor vocabularies:
- *   L1 ← "L1", "Cat 1", "Level 1", "1", "Comprehensive", "Full", "Critical", "High"
- *   L2 ← "L2", "Cat 2", "Level 2", "2", "Simplified", "Moderate", "Medium"
- *   L3 ← "L3", "Cat 3", "Level 3", "3", "Visual", "Low"
- *   Non-critical ← "NC", "Non critical", "Not critical", "N/A", "None"
- * Returns '' for empty input, null when the value is unrecognised.
- */
-export function normalizeCategory(raw) {
-  const s = String(raw ?? '').trim().toUpperCase().replace(/[_\-.]+/g, ' ').replace(/\s+/g, ' ');
-  if (!s) return '';
-  if (/^(L1|CAT\s?1|CATEGORY 1|LEVEL 1|CLASS 1|1|COMPREHENSIVE|FULL|CRITICAL|HIGH)\b/.test(s)) return 'L1';
-  if (/^(L2|CAT\s?2|CATEGORY 2|LEVEL 2|CLASS 2|2|SIMPLIFIED|MODERATE|MEDIUM)\b/.test(s)) return 'L2';
-  if (/^(L3|CAT\s?3|CATEGORY 3|LEVEL 3|CLASS 3|3|VISUAL|LOW)\b/.test(s)) return 'L3';
-  if (/^(NC|NON\s?CRITICAL|NOT CRITICAL|N\/?A|NONE|NO)\b/.test(s)) return 'Non-critical';
-  return null;
-}
-
-// --- Line number normalisation ----------------------------------------------
-/** trim, upper-case, unify separators (space/_/. – /inch quotes ⇒ '-'). */
-export function normalizeLineNo(v) {
-  return String(v ?? '')
-    .trim().toUpperCase()
-    .replace(/["″']/g, '')
-    .replace(/[\s_.–—\/]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-}
-
-// --- Parsing -----------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Workbook loading — tolerant of malformed custom doc properties (§2)
+// ---------------------------------------------------------------------------
 export async function parseWorkbook(file) {
   if (file.size > MAX_FILE_BYTES) throw new Error(`File exceeds the 25 MB limit (${(file.size / 1048576).toFixed(1)} MB).`);
   if (!ACCEPT_EXT.some(e => file.name.toLowerCase().endsWith(e))) throw new Error('Unsupported file type. Use .xlsx, .xls or .csv.');
   const buf = await file.arrayBuffer();
-  const wb = XLSX.read(buf, { type: 'array' });
+  return readWorkbookBuffer(buf);
+}
+
+export function readWorkbookBuffer(buf) {
+  // bookProps must stay off — the reference LDT has a malformed custom
+  // document property that would otherwise abort parsing.
+  const wb = XLSX.read(buf, { type: 'array', bookProps: false });
   const sheets = {};
   wb.SheetNames.forEach(name => {
-    sheets[name] = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '' });
+    try {
+      sheets[name] = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '', raw: true });
+    } catch {
+      sheets[name] = [];
+    }
   });
   return { sheets, sheetNames: wb.SheetNames };
 }
 
-/** Auto-detect header row: first row with ≥3 non-empty cells, preferring one
- *  that hits known synonyms for this file kind. */
-export function detectHeaderRow(grid, fields) {
-  let best = 0, bestScore = -1;
-  grid.slice(0, 20).forEach((row, i) => {
-    const nonEmpty = row.filter(c => String(c).trim() !== '').length;
-    if (nonEmpty < 3) return;
-    const lower = row.map(c => String(c).trim().toLowerCase());
-    const score = lower.reduce((s, cell) =>
-      s + (fields.some(f => f.match.some(m => cell === m || cell.includes(m))) ? 1 : 0), 0);
-    if (score > bestScore) { bestScore = score; best = i; }
-  });
-  return best;
+// ---------------------------------------------------------------------------
+// LDT sheet / header detection (§2)
+// ---------------------------------------------------------------------------
+function rowHasBothLdtMarkers(row) {
+  const cells = (row || []).map(normHeader);
+  return cells.some(c => c === 'line number') && cells.some(c => c.startsWith('design temp'));
 }
 
-export function gridToHeadersAndRows(grid, headerRow) {
-  const headers = (grid[headerRow] || []).map((h, i) => String(h).trim() || `col_${i + 1}`);
-  const rows = grid.slice(headerRow + 1)
-    .map((r, i) => ({ values: r, excelRow: headerRow + 2 + i }))
-    .filter(r => r.values.some(c => String(c).trim() !== ''));
-  return { headers, rows };
+/** Auto-select the first sheet whose header area contains LINE NUMBER + DESIGN TEMP. */
+export function detectLdtSheet(wb) {
+  for (const name of wb.sheetNames) {
+    const grid = wb.sheets[name] || [];
+    if (grid.slice(0, 30).some(rowHasBothLdtMarkers)) return name;
+  }
+  return wb.sheetNames[0] || null;
 }
 
-/** Guess a column mapping from uploaded headers. Scored matching
- *  (exact > starts-with > contains) and never assigns the same header twice. */
-export function guessMapping(headers, fields) {
-  const lower = headers.map(h => h.toLowerCase());
+/** Header row (0-based) — first row containing both markers; 8 in the template. */
+export function detectLdtHeaderRow(grid) {
+  const idx = grid.slice(0, 40).findIndex(rowHasBothLdtMarkers);
+  return idx === -1 ? 7 : idx;
+}
+
+/** Auto-map LDT columns by header text (exact normalised match wins). */
+export function guessLdtMapping(headers) {
+  const norm = headers.map(normHeader);
   const taken = new Set();
   const mapping = {};
-  // Most-specific fields first (longer synonym lists / earlier declaration).
+  // Longest match fragment first so 'line number' wins over 'line'.
+  const fields = [...LDT_FIELDS].sort(
+    (a, b) => Math.max(...b.match.map(m => m.length)) - Math.max(...a.match.map(m => m.length)));
   fields.forEach(f => {
     let bestIdx = -1, bestScore = -1;
-    lower.forEach((h, i) => {
+    norm.forEach((h, i) => {
       if (taken.has(i) || !h) return;
-      let score = 0;
       f.match.forEach(m => {
-        if (h === m) score = Math.max(score, 100 + m.length);
-        else if (h.startsWith(m)) score = Math.max(score, 60 + m.length);
-        else if (h.includes(m)) score = Math.max(score, 30 + m.length);
+        let score = 0;
+        if (h === m) score = 1000 + m.length;
+        else if (h.startsWith(m)) score = 500 + m.length;
+        else if (h.includes(m)) score = 100 + m.length;
+        if (score > bestScore) { bestScore = score; bestIdx = i; }
       });
-      if (score > bestScore) { bestScore = score; bestIdx = i; }
     });
-    if (bestIdx >= 0) { taken.add(bestIdx); mapping[f.key] = headers[bestIdx]; }
-    else mapping[f.key] = '';
+    if (bestIdx >= 0) { taken.add(bestIdx); mapping[f.key] = bestIdx; }
+    else mapping[f.key] = null;
   });
   return mapping;
 }
 
-/** Apply mapping ⇒ { records, issues }. Issues carry the Excel row number. */
-export function applyMapping(rows, headers, mapping, fields) {
-  const issues = [];
-  const unmapped = fields.filter(f => f.required && !mapping[f.key]);
-  unmapped.forEach(f => issues.push({ severity: 'error', row: null, message: `Required column "${f.label}" is not mapped.` }));
-  const records = rows.map(r => {
-    const rec = { _row: r.excelRow };
-    // keep every original column so the register/export mirror the file
-    rec._raw = Object.fromEntries(headers.map((h, i) => [h, String(r.values[i] ?? '').trim()]));
-    fields.forEach(f => {
-      const hdr = mapping[f.key];
-      rec[f.key] = hdr ? String(r.values[headers.indexOf(hdr)] ?? '').trim() : '';
-    });
-    fields.filter(f => f.required).forEach(f => {
-      if (mapping[f.key] && !rec[f.key]) {
-        issues.push({ severity: 'error', row: r.excelRow, message: `Row ${r.excelRow}: missing required "${f.label}".` });
-      }
-    });
-    return rec;
-  });
-  // Level allocation: normalise stress-category values onto Cat 1/2/3/Non-critical
-  if (fields.some(f => f.key === 'stress_category') && mapping.stress_category) {
-    records.forEach(rec => {
-      const norm = normalizeCategory(rec.stress_category);
-      if (norm === null) {
-        issues.push({ severity: 'warning', row: rec._row, message: `Row ${rec._row}: unrecognised stress level "${rec.stress_category}" — kept as-is; expected L1 / L2 / L3 / Non-critical.` });
-      } else if (norm !== '') {
-        rec.stress_category_raw = rec.stress_category;
-        rec.stress_category = norm;
-      }
-    });
-  }
-  // duplicate line numbers are warnings
-  const seen = {};
-  records.forEach(rec => {
-    const k = normalizeLineNo(rec.line_number);
-    if (!k) return;
-    if (seen[k]) issues.push({ severity: 'warning', row: rec._row, message: `Row ${rec._row}: duplicate line number "${rec.line_number}" (first on row ${seen[k]}).` });
-    else seen[k] = rec._row;
-  });
-  return { records, issues };
+// ---------------------------------------------------------------------------
+// Size parsing (§2): `2"`→2, `3/4"`→0.75, `1-1/2"`→1.5, `4",6"`→{all,[4,6]}
+// ---------------------------------------------------------------------------
+function parseOneSize(s) {
+  const t = s.replace(/["″']/g, '').trim();
+  if (!t) return null;
+  // mixed fraction: 1-1/2
+  let m = t.match(/^(\d+)\s*-\s*(\d+)\s*\/\s*(\d+)$/);
+  if (m) return parseInt(m[1], 10) + parseInt(m[2], 10) / parseInt(m[3], 10);
+  m = t.match(/^(\d+)\s*\/\s*(\d+)$/);
+  if (m) return parseInt(m[1], 10) / parseInt(m[2], 10);
+  const n = parseFloat(t);
+  return Number.isNaN(n) ? null : n;
 }
 
-// --- Matching ----------------------------------------------------------------
-const NUM = v => { const n = parseFloat(String(v).replace(/[^\d.\-]/g, '')); return isNaN(n) ? null : n; };
-const sameVal = (a, b, numeric) => {
-  if (a === '' || a == null || b === '' || b == null) return true; // unknown = no conflict
-  if (numeric) { const x = NUM(a), y = NUM(b); return x == null || y == null ? String(a) === String(b) : Math.abs(x - y) < 1e-6; }
-  return String(a).trim().toUpperCase() === String(b).trim().toUpperCase();
+export function parseSizeCell(raw) {
+  const s = String(raw ?? '').trim();
+  if (!s) return { sizeText: '', sizes: [], npsIn: null, multipleSizes: false };
+  const parts = s.split(',').map(p => p.trim()).filter(Boolean);
+  const sizes = parts.map(parseOneSize).filter(n => n != null);
+  return {
+    sizeText: s,
+    sizes,
+    npsIn: sizes.length ? Math.max(...sizes) : null,
+    multipleSizes: sizes.length > 1,
+  };
+}
+
+const num = (v) => {
+  const s = String(v ?? '').trim();
+  if (!s) return null;
+  const n = parseFloat(s.replace(/,/g, ''));
+  return Number.isNaN(n) ? null : n;
 };
 
-const CONFLICT_FIELDS = [
-  { key: 'size', label: 'Size', numeric: false },
-  { key: 'pipe_class', label: 'Pipe Class', numeric: false },
-  { key: 'design_pressure', label: 'Design P', numeric: true },
-  { key: 'design_temperature', label: 'Design T', numeric: true },
-];
+// ---------------------------------------------------------------------------
+// LDT record build + validation (§2)
+// ---------------------------------------------------------------------------
+const NUMERIC_KEYS = new Set([
+  'operPressKgcm2', 'operTempC', 'designPressKgcm2', 'designTempC',
+  'testPressKgcm2', 'insulThkMm', 'maintainedTemp', 'instrumentCount',
+  'pipeJointCount', 'lineLengthM', 'paintCriticality',
+]);
+const CODE_KEYS = new Set(['lineNumber', 'fluidCode', 'pipeClass', 'insulCode', 'lineKey']);
 
-/** Match stress records onto line-list records.
- *  Returns { lines, notInLineList, conflicts, summary }. */
-export function matchFiles(lineRecs, stressRecs) {
-  const stressByKey = new Map(stressRecs.map(s => [normalizeLineNo(s.line_number), s]));
-  const conflicts = [];
-  const usedStress = new Set();
+export function parseLdtSheet(grid, headerRowIdx, mapping = {}) {
+  const headers = (grid[headerRowIdx] || []).map((h, i) => String(h).trim() || `col_${i + 1}`);
+  const issues = [];
+  const records = [];
 
-  const lines = lineRecs.map(l => {
-    const key = normalizeLineNo(l.line_number);
-    const s = stressByKey.get(key);
-    if (!s) {
-      return { ...l, _key: key, stress_category: 'Not assessed', match_status: 'Missing criticality', _stress: null };
+  // Required columns present?
+  LDT_FIELDS.filter(f => f.required).forEach(f => {
+    if (mapping[f.key] == null) {
+      issues.push({ severity: 'error', row: null, type: 'required-column', message: `Required column "${f.label}" (${f.col}) is not mapped.` });
     }
-    usedStress.add(key);
-    const diffs = CONFLICT_FIELDS
-      .filter(f => s[f.key] !== undefined && s[f.key] !== '' && !sameVal(l[f.key], s[f.key], f.numeric))
-      .map(f => ({ field: f.label, lineListValue: l[f.key], criticalityValue: s[f.key] }));
-    diffs.forEach(d => conflicts.push({ line: l, stress: s, ...d }));
-    return {
-      ...l, _key: key,
-      stress_category: s.stress_category || 'Not assessed',
-      criteria_basis: s.criteria_basis, analysis_method: s.analysis_method,
-      responsible_engineer: s.responsible_engineer,
-      match_status: diffs.length ? 'Conflict' : 'Matched',
-      _stress: s,
-    };
   });
 
-  const lineKeys = new Set(lineRecs.map(l => normalizeLineNo(l.line_number)));
-  const notInLineList = stressRecs.filter(s => !lineKeys.has(normalizeLineNo(s.line_number)));
-
-  const summary = {
-    matched: lines.filter(l => l.match_status === 'Matched').length,
-    missing: lines.filter(l => l.match_status === 'Missing criticality').length,
-    notInLineList: notInLineList.length,
-    conflicts: conflicts.length,
+  const cell = (row, key) => {
+    const idx = mapping[key];
+    return idx == null ? '' : String(row[idx] ?? '').trim();
   };
-  return { lines, notInLineList, conflicts, summary };
+
+  const seenLineNumbers = new Map();
+  const seenLineKeys = new Map();
+
+  // Data rows: headerRow+2 … last row with non-empty LINE NUMBER (skip empty).
+  for (let r = headerRowIdx + 2; r < grid.length; r++) {
+    const row = grid[r] || [];
+    if (!row.some(c => String(c).trim() !== '')) continue; // skip empty rows
+    const excelRow = r + 1;
+    const lineNumberRaw = cell(row, 'lineNumber');
+    if (!lineNumberRaw) continue; // rows without a line number are not data
+
+    const rec = { _row: excelRow, ldtWarnings: [] };
+    rec._raw = Object.fromEntries(headers.map((h, i) => [h, String(row[i] ?? '').trim()]));
+    LDT_FIELDS.forEach(f => {
+      const v = cell(row, f.key);
+      rec[f.key] = NUMERIC_KEYS.has(f.key) ? num(v) : v;
+    });
+
+    // --- codes upper-cased; warn on normalisation ---
+    let lowerCaseFound = false;
+    CODE_KEYS.forEach(k => {
+      if (rec[k] && /[a-z]/.test(rec[k])) lowerCaseFound = true;
+    });
+    if (lowerCaseFound) {
+      rec.ldtWarnings.push({ type: 'lower-case', message: `Lower-case code normalised (row ${excelRow})` });
+      issues.push({ severity: 'warning', row: excelRow, type: 'lower-case', message: `Row ${excelRow}: lower-case code normalised.` });
+    }
+    CODE_KEYS.forEach(k => { if (typeof rec[k] === 'string') rec[k] = rec[k].toUpperCase(); });
+
+    // --- size ---
+    const sz = parseSizeCell(cell(row, 'sizeText'));
+    rec.sizeText = sz.sizeText;
+    rec.sizes = sz.sizes;
+    rec.npsIn = sz.npsIn;
+    rec.multipleSizes = sz.multipleSizes;
+    if (sz.multipleSizes) {
+      rec.ldtWarnings.push({ type: 'multiple-sizes', message: `Multiple sizes (${sz.sizeText}) — evaluated on ${sz.npsIn}"` });
+      issues.push({ severity: 'warning', row: excelRow, type: 'multiple-sizes', message: `Row ${excelRow}: multiple sizes (${sz.sizeText}) — evaluated on ${sz.npsIn}".` });
+    }
+
+    // --- line-number structure checks (warnings only unless noted) ---
+    const segs = rec.lineNumber.split('-');
+    if (rec.lineKey && !rec.lineNumber.startsWith(`${rec.lineKey}-`)) {
+      issues.push({ severity: 'warning', row: excelRow, type: 'line-key-prefix', message: `Row ${excelRow}: LINE NUMBER does not start with "${rec.lineKey}-".` });
+    }
+    if (segs.length >= 2 && rec.fluidCode && segs[1] !== rec.fluidCode) {
+      issues.push({ severity: 'warning', row: excelRow, type: 'fluid-mismatch', message: `Row ${excelRow}: fluid segment (${segs[1]}) differs from FLUID (${rec.fluidCode}).` });
+    }
+    if (segs.length >= 4 && rec.pipeClass && segs[3] !== rec.pipeClass) {
+      rec.ldtWarnings.push({ type: 'class-mismatch', message: `Class in line number (${segs[3]}) differs from MATERIAL CLASS (${rec.pipeClass})` });
+      issues.push({ severity: 'warning', row: excelRow, type: 'class-mismatch', message: `Row ${excelRow}: class in line number (${segs[3]}) differs from MATERIAL CLASS (${rec.pipeClass}).` });
+    }
+    if (segs.length >= 5 && rec.insulCode && segs[4].toUpperCase() !== rec.insulCode.toUpperCase()) {
+      issues.push({ severity: 'warning', row: excelRow, type: 'insul-mismatch', message: `Row ${excelRow}: insulation segment (${segs[4]}) differs from INSUL CODE (${rec.insulCode}).` });
+    }
+
+    // --- duplicates ---
+    if (seenLineNumbers.has(rec.lineNumber)) {
+      issues.push({ severity: 'error', row: excelRow, type: 'duplicate-line-number', message: `Row ${excelRow}: duplicate line number "${rec.lineNumber}" (first on row ${seenLineNumbers.get(rec.lineNumber)}).` });
+    } else {
+      seenLineNumbers.set(rec.lineNumber, excelRow);
+    }
+    if (rec.lineKey) {
+      if (seenLineKeys.has(rec.lineKey) && seenLineKeys.get(rec.lineKey).lineNumber !== rec.lineNumber) {
+        rec.ldtWarnings.push({ type: 'duplicate-line-key', message: `Duplicate line key ${rec.lineKey} (also row ${seenLineKeys.get(rec.lineKey).row}) — check insulation code` });
+        issues.push({ severity: 'warning', row: excelRow, type: 'duplicate-line-key', message: `Row ${excelRow}: duplicate line key "${rec.lineKey}" (also row ${seenLineKeys.get(rec.lineKey).row}) — check insulation code.` });
+      } else if (!seenLineKeys.has(rec.lineKey)) {
+        seenLineKeys.set(rec.lineKey, { row: excelRow, lineNumber: rec.lineNumber });
+      }
+    }
+
+    records.push(rec);
+  }
+
+  const unitsRow = grid[headerRowIdx + 1] || [];
+  return { headers, records, issues, unitsRow, headerRow: headerRowIdx, unitsRowIndex: headerRowIdx + 1 };
 }
 
-// --- Revision diff -----------------------------------------------------------
-/** Diff old vs new record sets (on normalised line number). */
-export function diffRevisions(oldRecs, newRecs) {
-  const oldMap = new Map((oldRecs || []).map(r => [normalizeLineNo(r.line_number), r]));
-  const newMap = new Map(newRecs.map(r => [normalizeLineNo(r.line_number), r]));
-  const added = [], removed = [], changed = [];
-  newMap.forEach((r, k) => {
-    if (!oldMap.has(k)) { added.push(r); return; }
-    const o = oldMap.get(k);
-    const delta = Object.keys(r).filter(key => !key.startsWith('_') && String(r[key]) !== String(o[key]));
-    if (delta.length) changed.push({ line: r, fields: delta });
-  });
-  oldMap.forEach((r, k) => { if (!newMap.has(k)) removed.push(r); });
-  return { added, removed, changed };
+// ---------------------------------------------------------------------------
+// Criteria table parsing (§3)
+// ---------------------------------------------------------------------------
+/** Sheet whose name or A1 title contains TABLE + ONSHORE/OFFSHORE. */
+export function detectCriteriaSheet(wb) {
+  for (const name of wb.sheetNames) {
+    const upper = name.toUpperCase();
+    const grid = wb.sheets[name] || [];
+    const a1 = String(grid[0]?.[0] ?? '').toUpperCase();
+    if ((upper.includes('TABLE') || a1.includes('TABLE')) &&
+        (upper.includes('ONSHORE') || upper.includes('OFFSHORE') || a1.includes('ONSHORE') || a1.includes('OFFSHORE'))) {
+      return name;
+    }
+  }
+  return null;
 }
 
-// --- Register export ---------------------------------------------------------
-/** Export the register in the uploaded file's own column layout, with
- *  "Stress Category" appended as the LAST column (colour-coded + filter). */
-export async function exportRegisterWorkbook(lines, rawHeaders, meta = {}) {
+const cellRef = (r, c) => `${String.fromCharCode(65 + c)}${r + 1}`;
+
+/**
+ * Parse the fixed criteria grid. `grid` is the sheet as array-of-arrays.
+ * Returns { table, errors, warnings, info }. Errors are blocking.
+ */
+export function parseCriteriaSheet(grid, projectLocationType) {
+  const errors = [];
+  const warnings = [];
+  const info = [];
+
+  const txt = (r, c) => String(grid[r]?.[c] ?? '').trim();
+
+  // Table type from the A1 title
+  const title = txt(0, 0).toUpperCase();
+  const locationType = title.includes('OFFSHORE') ? 'offshore' : title.includes('ONSHORE') ? 'onshore' : null;
+  if (projectLocationType && locationType && locationType !== projectLocationType) {
+    errors.push({
+      type: 'wrong-type',
+      message: `This criteria table is ${locationType.toUpperCase()}; the project is ${projectLocationType.toUpperCase()}.`,
+    });
+  }
+
+  // A2 source line: doc no + rev (e.g. "… AGPS-SP-PI-004 Rev. No: 01 …")
+  const a2 = txt(1, 0);
+  let standard = null;
+  let revision = null;
+  if (a2) {
+    const docM = a2.match(/([A-Z]{2,}(?:-[A-Z0-9]{2,}){2,})/);
+    const revM = a2.match(/Rev\.?\s*(?:No\.?)?\s*:?\s*([0-9]+)/i);
+    if (docM) standard = docM[1];
+    if (revM) revision = revM[1].padStart(2, '0');
+  } else {
+    warnings.push({ type: 'no-source', message: 'Standard reference not found in A2.' });
+  }
+
+  // Temp labels (row 3, B:P) + numeric limits (row 4, B:P)
+  const tempLabels = [];
+  const tempLimits = [];
+  for (let c = 1; c <= 15; c++) {
+    tempLabels.push(txt(2, c));
+    const lim = num(grid[3]?.[c]);
+    if (lim == null) errors.push({ type: 'temp-limit', message: `Temperature limit ${cellRef(3, c)} is empty or not numeric.` });
+    tempLimits.push(lim);
+  }
+  for (let i = 1; i < tempLimits.length; i++) {
+    if (tempLimits[i] != null && tempLimits[i - 1] != null && tempLimits[i] <= tempLimits[i - 1]) {
+      errors.push({ type: 'temp-order', message: 'Temperature limits are not strictly ascending.' });
+      break;
+    }
+  }
+
+  // NPS rows (A5:A17) + category grid (B5:P17)
+  const npsRows = [];
+  const gridCells = [];
+  for (let r = 0; r < 13; r++) {
+    const sheetRow = 4 + r; // 0-based row index of Excel row 5+r
+    const nps = num(grid[sheetRow]?.[0]);
+    if (nps == null) errors.push({ type: 'nps', message: `NPS value ${cellRef(sheetRow, 0)} is empty or not numeric.` });
+    npsRows.push(nps);
+    const rowCells = [];
+    for (let c = 0; c < 15; c++) {
+      const raw = txt(sheetRow, 1 + c);
+      const v = raw.toUpperCase();
+      if (!v) {
+        errors.push({ type: 'grid-empty', message: `Grid cell ${cellRef(sheetRow, 1 + c)} is empty.` });
+      } else if (!['L1', 'L2', 'L3'].includes(v)) {
+        errors.push({ type: 'grid-value', message: `${cellRef(sheetRow, 1 + c)} = "${raw}" — expected L1, L2 or L3.` });
+      }
+      rowCells.push(['L1', 'L2', 'L3'].includes(v) ? v : null);
+    }
+    gridCells.push(rowCells);
+  }
+  for (let i = 1; i < npsRows.length; i++) {
+    if (npsRows[i] != null && npsRows[i - 1] != null && npsRows[i] <= npsRows[i - 1]) {
+      errors.push({ type: 'nps-order', message: 'NPS rows are not strictly ascending.' });
+      break;
+    }
+  }
+
+  // Category definitions A20:B22
+  const definitions = { ...CATEGORY_DEFINITIONS };
+  for (let r = 19; r <= 21; r++) {
+    const cat = txt(r, 0).toUpperCase();
+    const def = txt(r, 1);
+    if (['L1', 'L2', 'L3'].includes(cat) && def) definitions[cat] = def;
+  }
+
+  const valid = errors.length === 0;
+  const table = valid || gridCells.flat().some(Boolean)
+    ? {
+        id: `upload-${Date.now()}`,
+        locationType: locationType || projectLocationType || 'onshore',
+        source: 'upload',
+        standard: standard || 'Unknown standard',
+        revision: revision || null,
+        npsRows, tempLimits, tempLabels,
+        grid: gridCells,
+        definitions,
+      }
+    : null;
+
+  return { table, errors, warnings, info, valid, standard, revision, locationType };
+}
+
+/** Note ignored non-criteria sheets (README with #REF! → info, not warning). */
+export function ignoredSheetNotes(wb, criteriaSheet) {
+  return wb.sheetNames
+    .filter(n => n !== criteriaSheet)
+    .map(n => ({ type: 'ignored-sheet', message: `${n} sheet ignored` }));
+}
+
+// ---------------------------------------------------------------------------
+// Templates / export
+// ---------------------------------------------------------------------------
+/** §2.4 — LDT-layout workbook: one sheet, header row 8 / units row 9,
+ *  frozen at row 10, one example row. */
+export function downloadLdtTemplate() {
+  const rows = [];
+  for (let i = 0; i < 7; i++) rows.push([]);
+  rows.push(LDT_FIELDS.map(f => f.label));
+  rows.push(LDT_FIELDS.map(f => f.unit || ''));
+  rows.push([
+    '2600-AY-005-17091R-V', '2600-AY-005', 'AY', '2600-AY-CB-004', '2600-AY-CB-005',
+    '6"', '17091R', 'N', '0', '40', '3.5', '87', 'LIQUID', '0', 'Visual Test',
+    'V', '0', '31', '4', '2600-224A', 'NA', '', '6', '', '', '', '',
+  ]);
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!freeze'] = { xSplit: 0, ySplit: 9 };
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Line Designation Table');
+  XLSX.writeFile(wb, 'Process_Line_List_LDT_Template.xlsx');
+}
+
+/** Register export — final category appended as the last column. */
+export async function exportRegisterWorkbook(evaluations, rawHeaders, meta = {}) {
   const ExcelJS = (await import('exceljs')).default;
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('Critical Line List');
   const headers = [...rawHeaders, 'Stress Category'];
   ws.columns = headers.map(h => ({ header: h, key: h, width: Math.max(14, String(h).length + 4) }));
-  const FILLS = { L1: 'FFDC2626', L2: 'FFD97706', L3: 'FF0284C7', 'Non-critical': 'FF059669' };
-  lines.forEach(l => {
-    const row = ws.addRow({ ...(l._raw || {}), 'Stress Category': l.stress_category || '' });
+  const FILLS = { L1: 'FFDC3545', L2: 'FFE3A02B', L3: 'FF12936F' };
+  evaluations.forEach(ev => {
+    const row = ws.addRow({ ...(ev._line?._raw || ev._raw || {}), 'Stress Category': ev.finalCategory || 'Cannot evaluate' });
     const cell = row.getCell('Stress Category');
-    const fill = FILLS[l.stress_category];
+    const fill = FILLS[ev.finalCategory];
     if (fill) {
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fill } };
       cell.font = { color: { argb: 'FFFFFFFF' }, bold: true };
@@ -285,65 +451,21 @@ export async function exportRegisterWorkbook(lines, rawHeaders, meta = {}) {
   a.click();
   URL.revokeObjectURL(a.href);
 }
-export function downloadTemplate(kind) {
-  const def = FILE_KINDS[kind];
-  const ws = XLSX.utils.aoa_to_sheet([def.templateHeader]);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, kind === 'lineList' ? 'Process Line List' : 'Stress Criticality');
-  XLSX.writeFile(wb, `${def.title.replace(/\s+/g, '_')}_Template.xlsx`);
-}
 
-// --- Discrepancies (Review Queue) --------------------------------------------
-/** Build review-queue items from the current match state. */
-export function buildDiscrepancies(matchResult, resolved = {}) {
-  if (!matchResult) return [];
-  const items = [];
-  matchResult.conflicts.forEach((c, i) => {
-    const id = `conflict-${c.line._key}-${c.field}`;
-    items.push({
-      id, severity: 'warning', issue: `${c.field} mismatch`,
-      line_number: c.line.line_number, line: c.line,
-      lineListValue: c.lineListValue, criticalityValue: c.criticalityValue,
-      cat: c.stress?.stress_category || c.line.stress_category,
-      resolved: resolved[id] || null,
-    });
+// ---------------------------------------------------------------------------
+// Revision diff (kept for upload history)
+// ---------------------------------------------------------------------------
+export function diffRevisions(oldRecs, newRecs) {
+  const key = r => String(r.lineNumber ?? r.line_number ?? '').trim().toUpperCase();
+  const oldMap = new Map((oldRecs || []).map(r => [key(r), r]));
+  const newMap = new Map((newRecs || []).map(r => [key(r), r]));
+  const added = [], removed = [], changed = [];
+  newMap.forEach((r, k) => {
+    if (!oldMap.has(k)) { added.push(r); return; }
+    const o = oldMap.get(k);
+    const delta = Object.keys(r).filter(key2 => !key2.startsWith('_') && String(r[key2]) !== String(o[key2]));
+    if (delta.length) changed.push({ line: r, fields: delta });
   });
-  matchResult.lines.filter(l => l.match_status === 'Missing criticality').forEach(l => {
-    const id = `missing-${l._key}`;
-    items.push({
-      id, severity: 'danger', issue: 'Missing criticality', line_number: l.line_number, line: l,
-      lineListValue: l.pipe_class, criticalityValue: '—', cat: 'Not assessed', resolved: resolved[id] || null,
-    });
-  });
-  // RADAI-allocated level (Size × Design Temperature) disagrees with the
-  // level in the uploaded Stress Criticality file.
-  matchResult.lines.filter(l => l.category_mismatch).forEach(l => {
-    const id = `cat-${l._key}`;
-    items.push({
-      id, severity: 'warning', issue: 'Stress category mismatch (file vs RADAI allocation)',
-      line_number: l.line_number, line: l,
-      lineListValue: `RADAI: ${l.generated_category} (Size ${l.size}, DT ${l.design_temperature})`,
-      criticalityValue: `File: ${l.file_category}`, cat: l.file_category, resolved: resolved[id] || null,
-    });
-  });
-  // RADAI-generated lines that could not be fully classified from the line
-  // list alone (insufficient data, below NPS 1) need a stress engineer.
-  matchResult.lines.filter(l => l._generated?.needs_review).forEach(l => {
-    const id = `review-${l._key}`;
-    items.push({
-      id, severity: 'warning', issue: `Auto-classification needs review (${l._generated.flags.join(', ').replace(/_/g, ' ').toLowerCase()})`,
-      line_number: l.line_number, line: l,
-      lineListValue: `Size ${l.size || '—'} / DT ${l.design_temperature || '—'}`,
-      criticalityValue: l.stress_category, cat: l.stress_category, resolved: resolved[id] || null,
-    });
-  });
-  matchResult.notInLineList.forEach(s => {
-    const id = `extra-${normalizeLineNo(s.line_number)}`;
-    items.push({
-      id, severity: 'orange', issue: 'Not in line list', line_number: s.line_number, line: null,
-      lineListValue: '—', criticalityValue: s.stress_category || '', cat: s.stress_category,
-      resolved: resolved[id] || null,
-    });
-  });
-  return items.filter(i => !i.resolved);
+  oldMap.forEach((r, k) => { if (!newMap.has(k)) removed.push(r); });
+  return { added, removed, changed };
 }

@@ -1,9 +1,10 @@
 // ============================================================================
 // Project gate — shown before the CLL workspace. Users select an existing
-// project or create a new one (name + unit required). Only then do the
-// Line Register / Upload Analysis / Review Queue tabs become available.
-// Projects can be edited and deleted from their cards, and each card shows
-// where its data lives (Database / S3 / Browser).
+// project or create a new one (name + unit + PROJECT LOCATION required).
+// The location picks which stress criticality criteria apply to every line:
+//   Onshore  → built-in ADNOC AGPS-SP-PI-004 Table 2 (Onshore)
+//   Offshore → the offshore criteria table must be uploaded
+// Cards show storage + location pills; projects can be edited/deleted.
 // ============================================================================
 import React, { useState } from 'react';
 import { useCll } from './CllStore';
@@ -20,6 +21,66 @@ const STORAGE_PILL = {
   local: { label: 'Browser', bg: 'rgba(100,116,139,.14)', fg: '#475569' },
 };
 
+export const LOCATION_OPTIONS = [
+  { value: 'onshore', label: 'Onshore', sub: 'Criteria: ADNOC AGPS-SP-PI-004 Table 2 (Onshore)' },
+  { value: 'offshore', label: 'Offshore', sub: 'Criteria: upload the offshore criteria table' },
+];
+
+/** Header pill for the project location (used on cards + page header). */
+export function LocationPill({ project, criteria }) {
+  const lt = project?.locationType;
+  if (!lt) return null;
+  if (lt === 'onshore') {
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        <span className="rd-pill rd-pill-info">Onshore</span>
+        <span className="rd-text-muted" style={{ fontSize: 'var(--rd-text-caption)' }}>· AGPS-SP-PI-004 Table 2</span>
+      </span>
+    );
+  }
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      <span className="rd-pill rd-pill-info">Offshore</span>
+      {criteria
+        ? <span className="rd-text-muted" style={{ fontSize: 'var(--rd-text-caption)' }}>· {criteria.fileName || criteria.standard} Rev {criteria.revision || '—'}</span>
+        : <span style={{ color: 'var(--rd-danger)', fontSize: 'var(--rd-text-caption)' }}>· criteria not uploaded</span>}
+    </span>
+  );
+}
+
+/** Two selectable location cards (radio semantics, keyboard accessible). */
+export function LocationCards({ value, onChange }) {
+  return (
+    <div role="radiogroup" aria-label="Project location" style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+      {LOCATION_OPTIONS.map(opt => {
+        const selected = value === opt.value;
+        return (
+          <button key={opt.value} type="button" role="radio" aria-checked={selected} tabIndex={0}
+            onClick={() => onChange(opt.value)}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onChange(opt.value); } }}
+            style={{
+              flex: 1, textAlign: 'left', cursor: 'pointer', padding: '0.75rem 0.875rem',
+              borderRadius: 8, background: 'var(--rd-surface)',
+              border: `2px solid ${selected ? 'var(--rd-accent)' : 'var(--rd-border-soft)'}`,
+              outline: 'none',
+            }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{
+                width: 14, height: 14, borderRadius: '50%', flex: '0 0 auto',
+                border: `2px solid ${selected ? 'var(--rd-accent)' : 'var(--rd-border)'}`,
+                background: selected ? 'var(--rd-accent)' : 'transparent',
+                boxShadow: selected ? 'inset 0 0 0 3px var(--rd-surface)' : 'none',
+              }} />
+              <span style={{ fontWeight: 600, color: 'var(--rd-text)' }}>{opt.label}</span>
+            </div>
+            <div className="rd-text-muted" style={{ fontSize: 11.5, marginTop: 4 }}>{opt.sub}</div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /** Shared create/edit project modal. Pass `project` to edit, omit to create. */
 function ProjectModal({ project, onClose }) {
   const { createProject, updateProject } = useCll();
@@ -30,12 +91,14 @@ function ProjectModal({ project, onClose }) {
     client: project?.client || '',
     description: project?.description || '',
     storage: project?.storage || 'database',
+    locationType: project?.locationType ?? null,
   });
+  const [touched, setTouched] = useState(false);
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
-  const valid = form.name.trim() && form.unit.trim();
+  const valid = form.name.trim() && form.unit.trim() && !!form.locationType;
 
   const submit = () => {
-    if (!valid) return;
+    if (!valid) { setTouched(true); return; }
     if (isEdit) updateProject(project.id, form);
     else createProject(form);
     onClose();
@@ -62,6 +125,17 @@ function ProjectModal({ project, onClose }) {
             </label>
           ))}
           <div className="rd-text-muted" style={{ fontSize: 'var(--rd-text-caption)' }}>
+            Project location *
+            <LocationCards value={form.locationType}
+              onChange={v => setForm(f => ({ ...f, locationType: v }))} />
+            <div style={{ marginTop: 4 }}>
+              Sets which stress criticality criteria apply to every line in this project.
+            </div>
+            {touched && !form.locationType && (
+              <div style={{ color: 'var(--rd-danger)', marginTop: 4 }}>Select Onshore or Offshore</div>
+            )}
+          </div>
+          <div className="rd-text-muted" style={{ fontSize: 'var(--rd-text-caption)' }}>
             Storage
             <div role="radiogroup" aria-label="Storage" style={{ display: 'flex', gap: 6, marginTop: 6 }}>
               {STORAGE_OPTIONS.map(opt => (
@@ -77,7 +151,9 @@ function ProjectModal({ project, onClose }) {
         </div>
         <footer className="rd-drawer-footer">
           <button className="rd-btn rd-btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="rd-btn rd-btn-primary" disabled={!valid} onClick={submit}>
+          <button className="rd-btn rd-btn-primary" disabled={!valid}
+            title={!form.locationType ? 'Select Onshore or Offshore' : undefined}
+            onClick={submit}>
             {isEdit ? 'Save changes' : 'Create & open'}
           </button>
         </footer>
@@ -174,11 +250,14 @@ export default function ProjectGate() {
                 <div className="rd-text-muted" style={{ fontSize: 'var(--rd-text-caption)', marginTop: 6 }}>{p.description}</div>
               )}
               <div className="rd-text-muted" style={{ fontSize: 'var(--rd-text-caption)', marginTop: 'auto', paddingTop: 8,
-                display: 'flex', alignItems: 'center', gap: 8 }}>
+                display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <span style={{ padding: '1px 8px', borderRadius: 999, background: pill.bg, color: pill.fg,
                   fontSize: 'var(--rd-text-caption)', fontWeight: 600 }}>
                   {pill.label}
                 </span>
+                {p.locationType && (
+                  <span className="rd-pill rd-pill-info" style={{ textTransform: 'capitalize' }}>{p.locationType}</span>
+                )}
                 Created {new Date(p.createdAt).toLocaleDateString()}
               </div>
             </button>

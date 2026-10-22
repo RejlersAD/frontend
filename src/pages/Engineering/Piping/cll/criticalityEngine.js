@@ -1,193 +1,277 @@
 // ============================================================================
-// RADAI Stress Criticality generator — AGES-SP-09-004 Rev.2 logic.
-// Given Process Line List records, derives the Stress Category per line:
-//   Table 7.1  (NPS × design temperature) → base level
-//   Section 7.3 (auto-evaluable items)    → can only RAISE the level
-// Levels map directly to the Stress Criticality vocabulary used in project
-// files: L1 (comprehensive analysis), L2 (simplified), L3 (visual).
-// Lines with insufficient data are flagged for stress-engineer review.
-// Pure functions; legends are soft-coded and editable.
+// Stress criticality evaluation engine — ADNOC AGPS-SP-PI-004 Table 2.
+// Categories (L1/L2/L3) are CALCULATED per line from a criteria grid
+// (NPS × design temperature); the stress-criticality file is a CRITERIA
+// TABLE, not a per-line list. Stress critical = L1.
+//
+// Pure functions (no React, no DOM) so the module is testable from node.
+// Data contracts (§6):
+//   CriteriaTable  { id, locationType, source:'builtin'|'upload', standard,
+//                    revision, npsRows[13], tempLimits[15], tempLabels[15],
+//                    grid[13][15], definitions:{L1,L2,L3} }
+//   LineEvaluation { lineNumber, lineKey, npsIn, sizeText, designTempC,
+//                    tableRow, tableCol, tableCategory, override?,
+//                    finalCategory, stressCritical, ldtStressFlag, flagCheck,
+//                    status, warnings[], basis }
 // ============================================================================
 
-// ---------------------------------------------------------------------------
-// Table 7.1 — criticality by NPS × design temperature.
-// Lookup rounds UP to the next size row / temperature column; >345 °C ⇒ L1.
-// Default matrix below — verify against the controlled copy of AGES-SP-09-004
-// Rev.2 Table 7.1 before issue for construction.
-// ---------------------------------------------------------------------------
-export const TABLE_7_1 = {
-  sizeRows: [1, 1.5, 2, 3, 4, 6, 8, 10, 12, 16, 20, 24], // last row = ≥24
-  tempCols: [-30, -10, 100, 200, 300, 345],              // upper bounds (°C)
-  matrix: [
-    ['L2', 'L3', 'L3', 'L3', 'L2', 'L2'], // NPS 1
-    ['L2', 'L3', 'L3', 'L3', 'L2', 'L2'], // NPS 1.5
-    ['L1', 'L2', 'L3', 'L3', 'L2', 'L2'], // NPS 2
-    ['L1', 'L2', 'L3', 'L2', 'L2', 'L1'], // NPS 3
-    ['L1', 'L2', 'L2', 'L2', 'L1', 'L1'], // NPS 4
-    ['L1', 'L2', 'L2', 'L1', 'L1', 'L1'], // NPS 6
-    ['L1', 'L1', 'L2', 'L1', 'L1', 'L1'], // NPS 8
-    ['L1', 'L1', 'L2', 'L1', 'L1', 'L1'], // NPS 10
-    ['L1', 'L1', 'L1', 'L1', 'L1', 'L1'], // NPS 12
-    ['L1', 'L1', 'L1', 'L1', 'L1', 'L1'], // NPS 16
-    ['L1', 'L1', 'L1', 'L1', 'L1', 'L1'], // NPS 20
-    ['L1', 'L1', 'L1', 'L1', 'L1', 'L1'], // NPS ≥24
-  ],
+export const NPS_ROWS = [1, 2, 3, 4, 6, 8, 10, 12, 14, 16, 18, 20, 24]; // last row = ≥24
+export const NPS_ROW_LABELS = ['1', '2', '3', '4', '6', '8', '10', '12', '14', '16', '18', '20', '≥24'];
+export const TEMP_LIMITS = [-46, -30, 30, 50, 65, 85, 120, 150, 170, 205, 230, 260, 290, 315, 345];
+export const TEMP_LABELS = [
+  '-46 and below', '-30', '30', '50', '65', '85', '120', '150', '170',
+  '205', '230', '260', '290', '315', '345 and above',
+];
+
+export const CATEGORY_DEFINITIONS = {
+  L1: 'A comprehensive computer stress analysis and stress report is required.',
+  L2: 'A simplified analysis method should be used.',
+  L3: 'Neither manual nor computer analysis is generally required. A visual review of the piping drawing or sketch should be made to ensure that the piping system has flexibility.',
 };
 
-export const LEVEL_TO_CATEGORY = { L1: 'L1', L2: 'L2', L3: 'L3' };
+export const METHOD_TEXT = {
+  L1: 'Comprehensive computer stress analysis + stress report',
+  L2: 'Simplified analysis method',
+  L3: 'Visual review of piping drawing / sketch',
+};
 
-export const DEFAULT_LEGENDS = {
-  fluidCodes: [
-    { code: 'ST',  meaning: 'Steam' },
-    { code: 'CND', meaning: 'Condensate' },
-    { code: 'FL',  meaning: 'Flare' },
-    { code: 'FW',  meaning: 'Fire Water' },
-    { code: 'BFW', meaning: 'Boiler Feed Water' },
-    { code: 'BD',  meaning: 'Blowdown' },
-    { code: 'CT',  meaning: 'Chemical / Toxic' },
-  ],
-  equipmentPrefixes: [
-    { prefix: 'P',   type: 'Rotating (Pump)' },
-    { prefix: 'K',   type: 'Rotating (Compressor)' },
-    { prefix: 'F',   type: 'Fired Heater' },
-    { prefix: 'BL',  type: 'Boiler' },
-    { prefix: 'A',   type: 'Air Cooler' },
-    { prefix: 'E',   type: 'Static (Exchanger)' },
-    { prefix: 'V',   type: 'Static (Vessel)' },
-    { prefix: 'C',   type: 'Static (Column)' },
-    { prefix: 'T',   type: 'Static (Tank)' },
-    { prefix: 'R',   type: 'Reactor' },
-    { prefix: 'PK',  type: 'Package' },
-    { prefix: 'PSV', type: 'PSV / Relief' },
-  ],
-  classRatingPattern: '(\\d{3,4})#?',
+// §5C proportion-bar / distribution colours
+export const CATEGORY_COLORS = {
+  L1: '#DC3545', L2: '#E3A02B', L3: '#12936F', cannotEvaluate: '#94A3B8',
+};
+
+// Soft tints for the criteria-grid heat-map cells
+export const CATEGORY_SOFT = {
+  L1: 'rgba(220,53,69,0.14)', L2: 'rgba(227,160,43,0.16)', L3: 'rgba(18,147,111,0.14)',
 };
 
 // ---------------------------------------------------------------------------
-export function parseNPS(raw) {
-  if (raw == null || raw === '') return { nps: null, multi: false };
-  const s = String(raw).replace(/["″]/g, '').trim();
-  const parts = s.split(/[xX×\-\/]/).map(p => parseFloat(p)).filter(n => !isNaN(n));
-  if (!parts.length) return { nps: null, multi: false };
-  return { nps: Math.max(...parts), multi: parts.length > 1 }; // multi-size ⇒ larger
-}
-
-export function parseClassRating(materialClass, pattern) {
-  if (!materialClass) return null;
-  const m = String(materialClass).match(new RegExp(pattern || DEFAULT_LEGENDS.classRatingPattern));
-  return m ? parseInt(m[1], 10) : null;
-}
-
-export function classifyTag(tag, legends) {
-  if (!tag) return null;
-  const m = String(tag).trim().toUpperCase().match(/^([A-Z]{1,3})/);
-  if (!m) return null;
-  const p = m[1];
-  const sorted = [...legends.equipmentPrefixes].sort((a, b) => b.prefix.length - a.prefix.length);
-  return sorted.find(e => p === e.prefix || p.startsWith(e.prefix)) || null;
-}
-
-const hasFluid = (line, legends, targets) => {
-  const f = String(line.fluid || '').toUpperCase();
-  return legends.fluidCodes.some(l =>
-    targets.includes(l.code) && (f === l.code || f.includes(l.meaning.toUpperCase())));
+// Built-in Onshore default grid — AGPS-SP-PI-004 Rev 01, Table 2 (Onshore).
+// MUST equal §3.2 and the reference Stress_Critical_Onshore.xlsx cell-for-cell.
+// Rows: NPS 1,2,3,4,6,8,10,12,14,16,18,20,≥24 × cols -46,-30,30,50,65,85,120,
+// 150,170,205,230,260,290,315,345+.
+// ---------------------------------------------------------------------------
+const G = {
+  1:  ['L1', 'L2', 'L3', 'L3', 'L3', 'L3', 'L2', 'L2', 'L2', 'L2', 'L2', 'L2', 'L2', 'L2', 'L2'],
+  2:  ['L1', 'L2', 'L3', 'L3', 'L3', 'L3', 'L2', 'L2', 'L2', 'L2', 'L1', 'L1', 'L1', 'L1', 'L1'],
+  3:  ['L1', 'L2', 'L3', 'L3', 'L3', 'L2', 'L2', 'L2', 'L2', 'L2', 'L1', 'L1', 'L1', 'L1', 'L1'],
+  4:  ['L1', 'L2', 'L3', 'L3', 'L3', 'L2', 'L2', 'L2', 'L2', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1'],
+  6:  ['L1', 'L1', 'L2', 'L2', 'L2', 'L2', 'L2', 'L2', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1'],
+  8:  ['L1', 'L1', 'L2', 'L2', 'L2', 'L2', 'L2', 'L2', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1'],
+  10: ['L1', 'L1', 'L2', 'L2', 'L2', 'L2', 'L2', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1'],
+  12: ['L1', 'L1', 'L2', 'L2', 'L2', 'L2', 'L2', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1'],
+  14: ['L1', 'L1', 'L2', 'L2', 'L2', 'L2', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1'],
+  16: ['L1', 'L1', 'L2', 'L2', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1'],
+  18: ['L1', 'L1', 'L2', 'L2', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1'],
+  20: ['L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1'],
+  24: ['L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1', 'L1'],
 };
-const isType = (cls, needle) => cls && cls.type.toUpperCase().includes(needle);
 
-export function table71Lookup(nps, designTempC) {
-  const res = { level: null, flags: [], basis: '' };
-  if (nps == null || isNaN(designTempC)) {
-    res.basis = 'Size or design temperature missing — Table 7.1 not evaluated';
-    res.flags.push('INSUFFICIENT_DATA');
-    return res;
-  }
+export const BUILTIN_ONSHORE = {
+  id: 'builtin-agps-sp-pi-004-t2-onshore',
+  locationType: 'onshore',
+  source: 'builtin',
+  standard: 'AGPS-SP-PI-004',
+  revision: '01',
+  sourceLabel: 'Built-in · AGPS-SP-PI-004 Rev 01',
+  npsRows: NPS_ROWS,
+  npsRowLabels: NPS_ROW_LABELS,
+  tempLimits: TEMP_LIMITS,
+  tempLabels: TEMP_LABELS,
+  grid: NPS_ROWS.map(r => G[r]),
+  definitions: { ...CATEGORY_DEFINITIONS },
+};
+
+export const CAT_PILL = {
+  L1: 'rd-pill-danger', L2: 'rd-pill-warning', L3: 'rd-pill-success',
+  'Cannot evaluate': 'rd-pill-neutral',
+};
+
+/** kg/cm²g → barg (×0.980665, 2 dp) for tooltips. */
+export function kgcm2ToBarg(v) {
+  const n = typeof v === 'number' ? v : parseFloat(v);
+  if (v == null || Number.isNaN(n)) return null;
+  return Math.round(n * 0.980665 * 100) / 100;
+}
+
+// ---------------------------------------------------------------------------
+// Table row / column lookup (§4)
+// ---------------------------------------------------------------------------
+/** Smallest table NPS ≥ npsIn. <1 → row 0 (1"); >20 → row ≥24. */
+export function tableRowFor(nps) {
+  if (nps == null || Number.isNaN(nps)) return null;
+  let flag = null;
   let size = nps;
-  if (size < 1) { res.flags.push('BELOW_NPS_1'); size = 1; }
-  const ri = Math.max(0, TABLE_7_1.sizeRows.findIndex(s => size <= s));
-  if (designTempC > 345) {
-    res.flags.push('ABOVE_345C');
-    res.level = 'L1';
-    res.basis = `Design temperature ${designTempC} °C exceeds 345 °C — L1 (comprehensive) required.`;
-    return res;
+  if (size < 1) { flag = 'below-1'; size = 1; }
+  let ri = NPS_ROWS.findIndex(r => size <= r);
+  if (ri === -1) ri = NPS_ROWS.length - 1; // >20 → ≥24 row
+  if (!flag && NPS_ROWS[ri] !== nps) flag = nps > 20 ? 'above-20' : 'between';
+  return { index: ri, flag };
+}
+
+/** First temperature limit ≥ designTempC; >345 → last (345+) column. */
+export function tempColFor(designTempC) {
+  if (designTempC == null || Number.isNaN(designTempC)) return null;
+  let ci = TEMP_LIMITS.findIndex(t => designTempC <= t);
+  if (ci === -1) ci = TEMP_LIMITS.length - 1;
+  return { index: ci };
+}
+
+// ---------------------------------------------------------------------------
+// Per-line evaluation (§4)
+// ---------------------------------------------------------------------------
+export function evaluateLine(line, criteria, override) {
+  const warnings = [];
+  const npsIn = line.npsIn ?? null;
+  const designTempC = line.designTempC ?? null;
+
+  const base = {
+    lineNumber: line.lineNumber,
+    lineKey: line.lineKey,
+    npsIn,
+    sizeText: line.sizeText ?? '',
+    designTempC,
+    designPressKgcm2: line.designPressKgcm2 ?? null,
+    ldtStressFlag: line.ldtStressFlag || '',
+    ldtWarnings: line.ldtWarnings || [],
+    override: override || null,
+    warnings,
+    _line: line, // original LDT record (register table / drawer / export)
+  };
+
+  // --- Cannot evaluate: size or design temperature missing/unparseable ---
+  const missing = [];
+  if (npsIn == null) missing.push('line size');
+  if (designTempC == null) missing.push('design temperature');
+  if (missing.length) {
+    warnings.push({ type: 'cannot-evaluate', message: `Missing ${missing.join(' and ')} — cannot evaluate` });
+    return {
+      ...base,
+      tableRow: null, tableCol: null, tableCategory: null,
+      finalCategory: null, stressCritical: false,
+      flagCheck: 'no-flag',
+      status: 'cannot-evaluate',
+      basis: `Cannot evaluate — ${missing.join(' and ')} not available in the line list.`,
+    };
   }
-  const ci = Math.max(0, TABLE_7_1.tempCols.findIndex(t => designTempC <= t));
-  res.level = TABLE_7_1.matrix[ri][ci];
-  res.basis = `Table 7.1: NPS ${nps} (row ${TABLE_7_1.sizeRows[ri]}), ${designTempC} °C (col ≤${TABLE_7_1.tempCols[ci]} °C) → ${res.level}.`;
-  return res;
-}
 
-/** Section 7.3 auto-evaluable items — any trigger raises the line to Cat 1. */
-export function evaluateSec73(line, legends) {
-  const t = [];
-  const nps = line._nps;
-  const rating = parseClassRating(line.pipe_class || line.material_class, legends.classRatingPattern);
-  const ends = [classifyTag(line.from, legends), classifyTag(line.to, legends)].filter(Boolean);
-  const dT = parseFloat(line.design_temperature ?? line.design_temp_c);
-  const phase = String(line.phase || '').toUpperCase();
-  const insul = String(line.insulation_code || '').toUpperCase();
-  const push = (id, why) => t.push({ id, why });
+  const row = tableRowFor(npsIn);
+  const col = tempColFor(designTempC);
+  if (row.flag === 'between') {
+    warnings.push({ type: 'nps-between', message: `NPS between table sizes — next larger row (${NPS_ROW_LABELS[row.index]})` });
+  } else if (row.flag === 'below-1') {
+    warnings.push({ type: 'nps-below-1', message: 'NPS below 1" — 1" row' });
+  } else if (row.flag === 'above-20') {
+    warnings.push({ type: 'nps-above-20', message: 'NPS above 20 — ≥24 row' });
+  }
+  if (line.multipleSizes) {
+    warnings.push({ type: 'multiple-sizes', message: `Multiple sizes — evaluated on ${npsIn}"` });
+  }
 
-  if (hasFluid(line, legends, ['CT'])) push('b', 'chemical/toxic service');
-  if (nps >= 4 && rating >= 900) push('c', `NPS ${nps} ≥ 4 at class ${rating}# ≥ 900#`);
-  if (nps >= 2 && ends.some(c => isType(c, 'ROTATING') || isType(c, 'FIRED HEATER')))
-    push('d', 'NPS ≥ 2 connected to rotating machinery / fired heater');
-  if (nps >= 3 && ends.some(c => isType(c, 'PSV'))) push('f', 'NPS ≥ 3 connected to PSV / rupture disc');
-  if (nps >= 2 && ends.some(c => isType(c, 'REACTOR') || isType(c, 'FIRED HEATER') || isType(c, 'AIR COOLER')))
-    push('i', 'NPS ≥ 2 connected to reactor / heater / air cooler');
-  if (nps >= 6 && ends.some(c => isType(c, 'STATIC'))) push('j', 'NPS ≥ 6 to/from static equipment');
-  if ((hasFluid(line, legends, ['BFW']) || hasFluid(line, legends, ['ST'])) && ends.some(c => isType(c, 'BOILER')))
-    push('k', 'boiler feed water / steam to or from a boiler');
-  if (!isNaN(dT) && dT < 5 && /^(C|CD|COLD|CRYO)/.test(insul)) push('l', `design temp ${dT} °C < 5 °C with cold insulation`);
-  if (nps >= 3 && hasFluid(line, legends, ['ST', 'CND', 'FL'])) push('m', 'NPS ≥ 3 steam / condensate / flare');
-  if (hasFluid(line, legends, ['FW'])) push('n', 'fire water network');
-  if (nps >= 2 && (phase.includes('2') || phase.includes('TWO') || hasFluid(line, legends, ['BD'])))
-    push('p', 'NPS ≥ 2 two-phase / blowdown');
-  return t;
-}
+  const tableCategory = criteria.grid[row.index][col.index];
+  const finalCategory = override?.category || tableCategory;
+  const stressCritical = finalCategory === 'L1';
+  const standard = criteria.standard || 'AGPS-SP-PI-004';
+  const basis = `${standard} Table 2 · NPS ${NPS_ROW_LABELS[row.index]} row · design T ≤ ${TEMP_LIMITS[col.index]} °C`;
 
-/** Full generation for one line-list record. */
-export function generateCriticality(line, legends = DEFAULT_LEGENDS) {
-  const { nps, multi } = parseNPS(line.size ?? line.nps);
-  const enriched = { ...line, _nps: nps };
-  const t71 = table71Lookup(nps, parseFloat(line.design_temperature ?? line.design_temp_c));
-  const sec73 = evaluateSec73(enriched, legends);
-
-  const flags = [...t71.flags];
-  if (multi) flags.push('MULTI_SIZE');
-
-  let level = t71.level || 'L3';
-  let raised = false;
-  if (sec73.length && level !== 'L1') { level = 'L1'; raised = true; } // raise, never lower
-
-  const basis = sec73.length
-    ? (t71.level === 'L1'
-      ? `L1 per Table 7.1; Sec. 7.3 item(s) ${sec73.map(s => s.id).join(', ')} also apply — ${sec73.map(s => s.why).join('; ')}.`
-      : `${t71.level || 'L3'} per Table 7.1; raised to L1 by Sec. 7.3 item(s) ${sec73.map(s => s.id).join(', ')} — ${sec73.map(s => s.why).join('; ')}.`)
-    : t71.basis;
+  // --- LDT flag check (line-list col H vs Table 2 result) ---
+  const flag = String(line.ldtStressFlag || '').trim().toUpperCase();
+  let flagCheck;
+  if (flag === 'Y' && finalCategory === 'L1') flagCheck = 'agrees';
+  else if (flag === 'N' && (finalCategory === 'L2' || finalCategory === 'L3')) flagCheck = 'agrees';
+  else if (flag === 'N' && finalCategory === 'L1') flagCheck = 'not-flagged-L1';
+  else if (flag === 'Y' && (finalCategory === 'L2' || finalCategory === 'L3')) flagCheck = 'flagged-conservative';
+  else flagCheck = 'no-flag';
 
   return {
-    category: LEVEL_TO_CATEGORY[level] || 'L3',
-    level, table71: t71, sec73, raisedBy73: raised,
-    criteria_basis: basis,
-    analysis_method: level === 'L1' ? 'Comprehensive (computer analysis)'
-      : level === 'L2' ? 'Simplified (chart/formula methods)' : 'Visual review',
-    flags,
-    needs_review: flags.includes('INSUFFICIENT_DATA') || flags.includes('BELOW_NPS_1'),
+    ...base,
+    tableRow: row.index, tableCol: col.index,
+    tableCategory, finalCategory, stressCritical,
+    flagCheck,
+    status: 'evaluated',
+    basis,
   };
 }
 
-/** Bulk: generate stress-criticality records from line-list records. */
-export function generateStressRecords(lineRecs, legends = DEFAULT_LEGENDS) {
-  return lineRecs.map(l => {
-    const g = generateCriticality(l, legends);
-    return {
-      line_number: l.line_number,
-      stress_category: g.category,
-      criteria_basis: g.criteria_basis,
-      analysis_method: g.analysis_method,
-      responsible_engineer: g.needs_review ? 'Stress Engineer (review required)' : 'RADAI auto-classification',
-      _generated: g,
-      _row: l._row,
-    };
+// ---------------------------------------------------------------------------
+// Bulk evaluation + summary + review items
+// ---------------------------------------------------------------------------
+export function evaluateAll(lines, criteria, overrides = {}) {
+  const evaluations = lines.map(l => evaluateLine(l, criteria, overrides[l.lineNumber]));
+
+  const results = { L1: 0, L2: 0, L3: 0, cannotEvaluate: 0 };
+  const flagCheck = { agrees: 0, notFlaggedL1: 0, flaggedConservative: 0, noFlag: 0 };
+  // cellCounts[row][col] = how many lines fell into that grid cell
+  const cellCounts = NPS_ROWS.map(() => TEMP_LIMITS.map(() => 0));
+
+  evaluations.forEach(ev => {
+    if (ev.status === 'cannot-evaluate') results.cannotEvaluate++;
+    else results[ev.finalCategory]++;
+    if (ev.flagCheck === 'agrees') flagCheck.agrees++;
+    else if (ev.flagCheck === 'not-flagged-L1') flagCheck.notFlaggedL1++;
+    else if (ev.flagCheck === 'flagged-conservative') flagCheck.flaggedConservative++;
+    else flagCheck.noFlag++;
+    if (ev.tableRow != null && ev.tableCol != null) cellCounts[ev.tableRow][ev.tableCol]++;
   });
+
+  return { evaluations, results, flagCheck, cellCounts };
+}
+
+/** Build review-queue items from evaluations + LDT parse issues (§5 review). */
+export function buildReviewItems(evaluations, resolved = {}, overrides = {}) {
+  const items = [];
+  const push = (id, severity, type, lineNumber, detail, ev) => items.push({
+    id, severity, type, line_number: lineNumber, detail, line: ev || null,
+    resolved: resolved[id] || null,
+  });
+
+  evaluations.forEach(ev => {
+    const ln = ev.lineNumber;
+    if (ev.flagCheck === 'not-flagged-L1') {
+      push(`notflag-${ln}`, 'critical', 'Line list not flagged for stress analysis', ln,
+        'Line list not flagged — Table 2 requires L1', ev);
+    }
+    if (ev.status === 'cannot-evaluate') {
+      push(`canteval-${ln}`, 'warning', 'Cannot evaluate', ln,
+        ev.warnings.find(w => w.type === 'cannot-evaluate')?.message || 'Missing data', ev);
+    }
+    if (ev.warnings.some(w => w.type === 'multiple-sizes')) {
+      push(`multisize-${ln}`, 'warning', 'Multiple sizes', ln,
+        `Multiple sizes — evaluated on ${ev.npsIn}"`, ev);
+    }
+    (ev.ldtWarnings || []).forEach(w => {
+      if (w.type === 'class-mismatch') {
+        push(`classmm-${ln}`, 'warning', 'Class mismatch in line number', ln, w.message, ev);
+      } else if (w.type === 'duplicate-line-key') {
+        push(`dupkey-${ln}`, 'warning', 'Duplicate line key', ln, w.message, ev);
+      } else if (w.type === 'lower-case') {
+        push(`lower-${ln}`, 'warning', 'Lower-case code normalised', ln, w.message, ev);
+      }
+    });
+  });
+
+  Object.values(overrides).forEach(o => {
+    if (o.pendingApproval) {
+      push(`ovrpend-${o.lineNumber}`, 'warning', 'Override pending approval', o.lineNumber,
+        `Downgrade from table L1 to ${o.category} needs Lead Stress Engineer approval`, null);
+    }
+  });
+
+  return items.filter(i => !i.resolved);
+}
+
+/** Compact criteria-table summary used by the drawer / cards. */
+export function criteriaSummary(criteria) {
+  if (!criteria) return null;
+  const cells = criteria.grid.flat();
+  return {
+    rows: criteria.grid.length,
+    cols: criteria.grid[0]?.length || 0,
+    valid: cells.every(c => ['L1', 'L2', 'L3'].includes(c)),
+    categories: [...new Set(cells)],
+    standard: criteria.standard,
+    revision: criteria.revision,
+    source: criteria.source,
+    locationType: criteria.locationType,
+  };
 }

@@ -1,33 +1,44 @@
 // ============================================================================
-// CLL store — project-scoped. Users create/select a project BEFORE accessing
-// the Critical Line List; every project keeps its own files, upload history,
-// resolutions and legends.
+// CLL store — project-scoped. Every project keeps its own files (Process Line
+// List LDT + stress-criticality criteria), the active CriteriaTable, upload
+// history, review-item resolutions and per-line category overrides.
+//
+// Categories are CALCULATED per line (criticalityEngine.evaluateAll) from the
+// project criteria grid — there is no per-line criticality file anymore.
+//
+// Projects carry a required `locationType` ('onshore' | 'offshore'):
+//   onshore  → built-in AGPS-SP-PI-004 Rev 01 Table 2 attached at creation
+//   offshore → no criteria; analysis blocked until a table is uploaded
+//   null     → legacy project; opening it shows the blocking location modal
+//
+// Role stub (§1): the app has no role context yet — ROLE defaults to
+// 'Engineer' and, for now, Engineer IS allowed to set/change the project
+// location (spec allows Lead/Admin; marked here so the stub is easy to
+// tighten once roles exist).
 //
 // Persistence: server-backed (apps/critical_line_list) with localStorage as
-// offline cache/fallback. Projects carry a `storage` choice:
-//   'database' | 's3'  → synced to the backend (payload in DB or S3)
-//   'local'            → this browser only
-// Server projects have `serverId`. Failed syncs mark the project `_unsynced`
-// and are retried on the next save. All storage/network calls are wrapped in
-// try/catch — a failed sync must never crash the app.
+// offline cache/fallback; same sync strategy as before.
 // ============================================================================
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { matchFiles, diffRevisions, buildDiscrepancies } from './cllFiles';
-import { generateStressRecords, DEFAULT_LEGENDS } from './criticalityEngine';
+import { diffRevisions } from './cllFiles';
+import { BUILTIN_ONSHORE, evaluateAll, buildReviewItems } from './criticalityEngine';
 import cllApi from './cllApi';
+
+// Role stub — see header comment. TODO(roles): wire to the real role context.
+export const ROLE = 'Engineer';
+export const CAN_SET_LOCATION = true; // Engineer treated as allowed for now
 
 const CllCtx = createContext(null);
 export const useCll = () => useContext(CllCtx);
 
-const LS_KEY = 'radai.cll.v3';
+const LS_KEY = 'radai.cll.v4';
 const load = () => {
   try {
     const raw = JSON.parse(localStorage.getItem(LS_KEY)) || null;
-    // Normalise: quota-trimmed payloads may have records/detail stripped.
     if (raw?.data) {
       for (const d of Object.values(raw.data)) {
         for (const k of Object.keys(d.files || {})) {
-          if (d.files[k] && !Array.isArray(d.files[k].records)) d.files[k].records = [];
+          if (d.files[k] && !Array.isArray(d.files[k].records ?? [])) delete d.files[k].records;
         }
         if (Array.isArray(d.history)) d.history = d.history.map(h => ({ ...h, detail: h.detail ?? null }));
       }
@@ -35,10 +46,18 @@ const load = () => {
     return raw;
   } catch { return null; }
 };
-const EMPTY_DATA = { files: { lineList: null, stress: null }, history: [], resolved: {}, legends: DEFAULT_LEGENDS, lastRunAt: null };
+const EMPTY_DATA = {
+  files: { lineList: null, criteriaFile: null },
+  criteria: null,
+  criteriaHistory: [],
+  history: [],
+  resolved: {},
+  overrides: {},
+  lastRunAt: null,
+  pendingReRun: false,
+};
 
-// localStorage quota is ~5 MB; a real Process Line List can exceed it.
-// Try the full payload, then progressively strip diff details, then raw records.
+// localStorage quota is ~5 MB; strip heavy pieces progressively on save.
 const save = (state) => {
   const attempts = [
     state,
@@ -63,7 +82,6 @@ const save = (state) => {
   }
 };
 
-// Map a server project (snake_case) to the store's shape (camelCase + serverId).
 const fromServer = (sp) => ({
   id: `srv-${sp.id}`,
   serverId: sp.id,
@@ -72,6 +90,7 @@ const fromServer = (sp) => ({
   client: sp.client || '',
   description: sp.description || '',
   storage: sp.storage || 'database',
+  locationType: sp.location_type ?? null,
   createdAt: sp.created_at,
   updatedAt: sp.updated_at,
   summary: sp.summary || null,
@@ -80,6 +99,7 @@ const fromServer = (sp) => ({
 const toServer = (p) => ({
   name: p.name, unit: p.unit, client: p.client || '', description: p.description || '',
   storage: p.storage === 'local' ? 'database' : p.storage,
+  location_type: p.locationType ?? null,
 });
 
 const DATA_SYNC_DEBOUNCE_MS = 1500;
@@ -90,9 +110,8 @@ export function CllProvider({ children }) {
   const [activeId, setActiveId] = useState(persisted?.activeId || null);
   const [dataByProject, setDataByProject] = useState(persisted?.data || {});
   const [uploadDrawerOpen, setUploadDrawerOpen] = useState(false);
-  // Which file the upload drawer is targeting ('processLineList' | 'stressCriticality')
+  // Which file the upload drawer targets: 'processLineList' | 'stressCriteria'
   const [drawerFileKind, setDrawerFileKind] = useState('processLineList');
-  // Top-right toast (upload feedback, etc.)
   const [toast, setToast] = useState(null);
   const showToast = (t) => {
     setToast({ ...t, id: Date.now() });
@@ -101,7 +120,6 @@ export function CllProvider({ children }) {
 
   const syncTimer = useRef(null);
   const retrying = useRef(new Set());
-  // Latest state for async callbacks (avoids stale closures).
   const stateRef = useRef({ projects, activeId, dataByProject });
   stateRef.current = { projects, activeId, dataByProject };
 
@@ -125,8 +143,6 @@ export function CllProvider({ children }) {
   useEffect(() => {
     save({ projects, activeId, data: dataByProject });
 
-    // Retry unsynced project headers (create/update/delete all collapse to an
-    // upsert here; soft-deleted local-only leftovers need no server call).
     for (const p of projects) {
       if (!p._unsynced || p.storage === 'local' || retrying.current.has(p.id)) continue;
       retrying.current.add(p.id);
@@ -142,7 +158,6 @@ export function CllProvider({ children }) {
         .finally(() => retrying.current.delete(p.id));
     }
 
-    // Debounced payload sync for the active server project.
     const proj = projects.find(p => p.id === activeId);
     if (proj?.serverId && dataByProject[activeId]) {
       clearTimeout(syncTimer.current);
@@ -152,21 +167,18 @@ export function CllProvider({ children }) {
       syncTimer.current = setTimeout(() => {
         cllApi.putProjectData(serverId, payload).catch(err => {
           if (err?.response?.status === 503) {
-            // S3 not configured — inform and keep this project local-only.
             showToast({
               title: 'S3 storage is not configured — saved locally',
               detail: 'The project data was kept in this browser instead.',
             });
             setProjects(prev => prev.map(p => p.id === projId ? { ...p, storage: 'local' } : p));
           }
-          /* other failures: localStorage copy already saved */
         });
       }, DATA_SYNC_DEBOUNCE_MS);
     }
     return () => clearTimeout(syncTimer.current);
   }, [projects, activeId, dataByProject]);
 
-  // Re-key a project id everywhere (after a server id is assigned).
   const remapProjectId = (oldId, newId) => {
     if (oldId === newId) return;
     setProjects(prev => prev.map(p => p.id === oldId ? { ...p, id: newId } : p));
@@ -179,24 +191,48 @@ export function CllProvider({ children }) {
   };
 
   const activeProject = projects.find(p => p.id === activeId) || null;
-  const data = (activeId && dataByProject[activeId]) || EMPTY_DATA;
-  const { files, history, resolved, legends, lastRunAt } = data;
+  const data = (activeId && { ...EMPTY_DATA, ...dataByProject[activeId] }) || EMPTY_DATA;
+  const { files, criteria, criteriaHistory, history, resolved, overrides, lastRunAt, pendingReRun } = data;
 
   const patchData = (fn) => {
     if (!activeId) return;
-    setDataByProject(prev => ({ ...prev, [activeId]: fn(prev[activeId] || EMPTY_DATA) }));
+    setDataByProject(prev => ({ ...prev, [activeId]: fn({ ...EMPTY_DATA, ...prev[activeId] }) }));
   };
 
   // --- project management ---
-  const createProject = ({ name, unit, client, description, storage = 'database' }) => {
+  const createProject = ({ name, unit, client, description, storage = 'database', locationType }) => {
     const id = `prj-${Date.now()}`;
     setProjects(prev => [...prev, {
-      id, name, unit, client, description, storage,
+      id, name, unit, client, description, storage, locationType: locationType ?? null,
       createdAt: new Date().toISOString(), createdBy: 'current.user',
     }]);
     setActiveId(id);
+    if (locationType === 'onshore') {
+      // Built-in AGPS-SP-PI-004 Rev 01 Table 2 attached at project creation.
+      const at = new Date().toISOString();
+      setDataByProject(prev => ({
+        ...prev,
+        [id]: {
+          ...EMPTY_DATA,
+          criteria: BUILTIN_ONSHORE,
+          criteriaHistory: [{ at, table: BUILTIN_ONSHORE, note: 'Built-in criteria attached' }],
+          history: [
+            { at, by: 'current.user', kind: 'location', title: 'Project location set to Onshore', detail: null },
+            { at, by: 'system', kind: 'criteria', title: 'Built-in criteria attached', detail: 'Built-in · AGPS-SP-PI-004 Rev 01 · Table 2 (Onshore)' },
+          ],
+        },
+      }));
+    } else if (locationType === 'offshore') {
+      setDataByProject(prev => ({
+        ...prev,
+        [id]: {
+          ...EMPTY_DATA,
+          history: [{ at: new Date().toISOString(), by: 'current.user', kind: 'location', title: 'Project location set to Offshore', detail: 'Criteria: upload the offshore criteria table' }],
+        },
+      }));
+    }
     if (storage !== 'local') {
-      cllApi.createProject(toServer({ name, unit, client, description, storage }))
+      cllApi.createProject(toServer({ name, unit, client, description, storage, locationType }))
         .then(sp => {
           setProjects(prev => prev.map(p => p.id === id ? fromServer(sp) : p));
           remapProjectId(id, `srv-${sp.id}`);
@@ -239,57 +275,62 @@ export function CllProvider({ children }) {
   };
   const exitProject = () => setActiveId(null);
 
-  // --- RADAI auto-classification (Table 7.1 + Sec. 7.3) ---
-  const generated = useMemo(
-    () => (files.lineList ? generateStressRecords(files.lineList.records, legends) : []),
-    [files.lineList, legends]);
-
-  const generatedByKey = useMemo(
-    () => new Map(generated.map(g => [String(g.line_number).trim().toUpperCase().replace(/["″']/g, '').replace(/[\s_.–—\/]+/g, '-').replace(/-+/g, '-'), g])),
-    [generated]);
-
-  const match = useMemo(() => {
-    if (!files.lineList) return null;
-    const CANON = ['L1', 'L2', 'L3', 'Non-critical'];
-    const stressRecs = files.stress?.records || generated;
-    const m = matchFiles(files.lineList.records, stressRecs);
-    m.lines = m.lines.map(l => {
-      const gen = generatedByKey.get(l._key);
-      const fileCat = files.stress && CANON.includes(l.stress_category) ? l.stress_category : null;
-      const genCat = gen?.stress_category || null;
-      const effective = fileCat || genCat || 'Not assessed';
+  // --- project location (§1) ------------------------------------------------
+  /** Set or change the project location. On change, the criteria for all
+   *  lines is replaced (overrides kept) and the analysis becomes outdated. */
+  const setLocationType = (locationType) => {
+    if (!activeProject) return;
+    const changing = !!activeProject.locationType && activeProject.locationType !== locationType;
+    updateProject(activeProject.id, { locationType });
+    patchData(prev => {
+      const at = new Date().toISOString();
+      const entries = [{
+        at, by: 'current.user', kind: 'location',
+        title: `Project location set to ${locationType === 'onshore' ? 'Onshore' : 'Offshore'}`,
+        detail: changing ? 'Criteria replaced for all lines — overrides kept; re-run the analysis' : null,
+      }];
+      let nextCriteria = prev.criteria;
+      let nextCriteriaHistory = prev.criteriaHistory || [];
+      if (locationType === 'onshore' && (!prev.criteria || prev.criteria.locationType !== 'onshore' || changing)) {
+        nextCriteria = BUILTIN_ONSHORE;
+        nextCriteriaHistory = [...nextCriteriaHistory, { at, table: BUILTIN_ONSHORE, note: 'Built-in criteria attached' }];
+        entries.push({ at, by: 'system', kind: 'criteria', title: 'Built-in criteria attached', detail: 'Built-in · AGPS-SP-PI-004 Rev 01 · Table 2 (Onshore)' });
+      }
+      if (locationType === 'offshore') {
+        nextCriteria = prev.criteria?.locationType === 'offshore' ? prev.criteria : null;
+      }
       return {
-        ...l,
-        stress_category: effective,
-        file_category: fileCat,
-        generated_category: genCat,
-        category_source: fileCat ? 'file' : genCat ? 'generated' : 'none',
-        category_mismatch: !!(fileCat && genCat && fileCat !== genCat),
-        criteria_basis: l.criteria_basis || gen?.criteria_basis,
-        analysis_method: l.analysis_method || gen?.analysis_method,
-        responsible_engineer: l.responsible_engineer || gen?.responsible_engineer,
-        _generated: gen?._generated || null,
+        ...prev,
+        criteria: nextCriteria,
+        criteriaHistory: nextCriteriaHistory,
+        history: [...entries, ...prev.history],
+        pendingReRun: changing ? true : prev.pendingReRun,
       };
     });
-    m.summary.categoryMismatches = m.lines.filter(l => l.category_mismatch).length;
-    return m;
-  }, [files, generated, generatedByKey]);
+  };
 
-  const discrepancies = useMemo(() => buildDiscrepancies(match, resolved), [match, resolved]);
+  // --- evaluation (replaces matching) ----------------------------------------
+  const evaluation = useMemo(() => {
+    if (!files.lineList || !criteria) return null;
+    return evaluateAll(files.lineList.records || [], criteria, overrides);
+  }, [files.lineList, criteria, overrides]);
 
-  /** Commit an uploaded/validated file (from the drawer) as a new revision.
-   *  opts.analysed === false records a pending "analysis not run" history
-   *  entry and leaves lastRunAt untouched (→ state becomes 'outdated'). */
-  const commitFile = (kind, fileInfo, opts = { analysed: true }) => {
+  const reviewItems = useMemo(
+    () => buildReviewItems(evaluation?.evaluations || [], resolved, overrides),
+    [evaluation, resolved, overrides]);
+
+  // --- file commits -----------------------------------------------------------
+  /** Commit the uploaded LDT as a new revision. */
+  const commitLineList = (fileInfo, opts = { analysed: true }) => {
     patchData(prev => {
-      const old = prev.files[kind];
+      const old = prev.files.lineList;
       const revision = old ? old.revision + 1 : 1;
-      const diff = old
+      const diff = old && Array.isArray(old.records) && old.records.length
         ? diffRevisions(old.records, fileInfo.records)
         : { added: fileInfo.records, removed: [], changed: [] };
       const at = new Date().toISOString();
       const entry = {
-        at, by: 'current.user', kind,
+        at, by: 'current.user', kind: 'lineList',
         fileName: fileInfo.name, revision,
         added: diff.added.length, removed: diff.removed.length, changed: diff.changed.length,
         detail: {
@@ -299,38 +340,82 @@ export function CllProvider({ children }) {
           truncated: diff.added.length > 200 || diff.removed.length > 200 || diff.changed.length > 200,
         },
       };
-      const extra = opts.analysed === false
-        ? [{ at, by: 'current.user', kind: 'pending', fileName: fileInfo.name, revision,
-             added: 0, removed: 0, changed: 0, detail: null, notAnalysed: true }]
-        : [];
       return {
         ...prev,
-        files: { ...prev.files, [kind]: { ...fileInfo, revision } },
-        history: [...extra, entry, ...prev.history],
+        files: { ...prev.files, lineList: { ...fileInfo, revision } },
+        history: [entry, ...prev.history],
         lastRunAt: opts.analysed === false ? prev.lastRunAt || null : at,
       };
     });
   };
 
-  /** Mark the analysis as (re)run now — clears the 'outdated' state. */
-  const markAnalysed = () =>
-    patchData(prev => ({ ...prev, lastRunAt: new Date().toISOString() }));
+  /** Commit an uploaded criteria table as a new revision (replaces the
+   *  current criteria; history keeps both). */
+  const commitCriteria = (fileInfo, table) => {
+    patchData(prev => {
+      const old = prev.files.criteriaFile;
+      const revision = old ? old.revision + 1 : 1;
+      const at = new Date().toISOString();
+      const revTable = { ...table, source: table.source || 'upload' };
+      return {
+        ...prev,
+        files: { ...prev.files, criteriaFile: { ...fileInfo, revision } },
+        criteria: revTable,
+        criteriaHistory: [...(prev.criteriaHistory || []), { at, table: revTable, note: `Uploaded ${fileInfo.name} (Rev ${revision})` }],
+        history: [{
+          at, by: 'current.user', kind: 'criteria',
+          title: `Criteria table uploaded — ${table.standard || 'criteria'} Rev ${table.revision || '—'}`,
+          detail: `${fileInfo.name} · replaces ${prev.criteria?.source === 'builtin' ? 'built-in table' : `Rev ${old?.revision ?? '—'}`}`,
+        }, ...prev.history],
+        lastRunAt: at,
+        pendingReRun: false,
+      };
+    });
+  };
 
-  const resolveDiscrepancy = (id, resolution) =>
+  const markAnalysed = () =>
+    patchData(prev => ({ ...prev, lastRunAt: new Date().toISOString(), pendingReRun: false }));
+
+  const resolveItem = (id, resolution) =>
     patchData(prev => ({
       ...prev,
       resolved: { ...prev.resolved, [id]: { ...resolution, at: new Date().toISOString(), by: 'current.user' } },
     }));
 
-  const setLegends = (updater) =>
-    patchData(prev => ({ ...prev, legends: typeof updater === 'function' ? updater(prev.legends) : updater }));
+  /** Engineer override to L1/L2/L3 (reason mandatory). Downgrade from a table
+   *  L1 is marked pending Lead Stress Engineer approval (route marker). */
+  const setOverride = (lineNumber, category, reason, approver) => {
+    const ev = evaluation?.evaluations.find(e => e.lineNumber === lineNumber);
+    const pendingApproval = !!(ev && ev.tableCategory === 'L1' && category !== 'L1' && !approver);
+    patchData(prev => ({
+      ...prev,
+      overrides: {
+        ...prev.overrides,
+        [lineNumber]: {
+          lineNumber, category, reason,
+          approver: approver || null,
+          pendingApproval,
+          at: new Date().toISOString(), by: 'current.user',
+        },
+      },
+    }));
+  };
+
+  const clearOverride = (lineNumber) =>
+    patchData(prev => {
+      const { [lineNumber]: _o, ...rest } = prev.overrides;
+      return { ...prev, overrides: rest };
+    });
 
   const value = {
     projects, activeProject, createProject, updateProject, deleteProject, selectProject, exitProject,
-    files, match, discrepancies, history, resolved, legends, setLegends, generated,
-    commitFile, resolveDiscrepancy, lastRunAt, markAnalysed,
+    files, criteria, criteriaHistory, evaluation, reviewItems, history, resolved, overrides,
+    commitLineList, commitCriteria, resolveItem, setOverride, clearOverride,
+    setLocationType,
+    lastRunAt, pendingReRun, markAnalysed,
     uploadDrawerOpen, setUploadDrawerOpen, drawerFileKind, setDrawerFileKind,
     toast, showToast,
+    role: ROLE, canSetLocation: CAN_SET_LOCATION,
   };
 
   return <CllCtx.Provider value={value}>{children}</CllCtx.Provider>;

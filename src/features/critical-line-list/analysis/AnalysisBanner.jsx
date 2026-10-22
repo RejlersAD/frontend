@@ -6,7 +6,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAnalysisSummary } from './useAnalysisSummary';
 import { useCll } from '../../../pages/Engineering/Piping/cll/CllStore';
-import { MATCH_COLORS } from './analysisState';
+import { RESULT_COLORS } from './analysisState';
 
 const BASE = '/engineering/piping/critical-line-list';
 
@@ -42,23 +42,36 @@ function Shell({ tone, title, sub, chips, action, canAct }) {
 
 export default function AnalysisBanner() {
   const { summary, state, runAnalysis, canUpload } = useAnalysisSummary();
-  const { setUploadDrawerOpen, setDrawerFileKind } = useCll();
+  const { setUploadDrawerOpen, setDrawerFileKind, activeProject } = useCll();
   const navigate = useNavigate();
 
-  // complete with 0 open → hidden
+  // Offshore without criteria → blocking banner with an upload action
+  if (activeProject?.locationType === 'offshore' && !summary.criteria) {
+    return (
+      <Shell tone="red"
+        title="Offshore criteria table not uploaded."
+        sub="Analysis is blocked until the offshore criteria table is uploaded."
+        canAct={canUpload}
+        action={{
+          label: 'Upload offshore criteria',
+          onClick: () => { setDrawerFileKind('stressCriteria'); setUploadDrawerOpen(true); },
+        }}
+      />
+    );
+  }
+
   if (state === 'complete' && summary.review.open === 0) return null;
   if (state === 'empty' || state === 'running') return null;
 
   if (state === 'complete' && summary.review.open > 0) {
-    const { missingCriticality, notInLineList, conflicts } = summary.match;
+    const fc = summary.flagCheck;
     return (
       <Shell tone="amber"
         title={`${summary.review.open} lines need review before the register can be issued`}
         sub={`Resolve ${summary.review.critical} critical items to unlock “Issue register”.`}
         chips={[
-          { label: 'Missing criticality', count: missingCriticality, color: MATCH_COLORS.missingCriticality },
-          { label: 'Not in line list', count: notInLineList, color: MATCH_COLORS.notInLineList },
-          { label: 'Conflicts', count: conflicts, color: MATCH_COLORS.conflicts },
+          { label: 'Not flagged but L1', count: fc.notFlaggedL1, color: RESULT_COLORS.L1 },
+          { label: 'Cannot evaluate', count: summary.results.cannotEvaluate, color: RESULT_COLORS.cannotEvaluate },
         ]}
         action={{ label: 'Open review queue →', onClick: () => navigate(`${BASE}/review`) }}
       />
@@ -66,16 +79,11 @@ export default function AnalysisBanner() {
   }
 
   if (state === 'outdated') {
-    // Find the file uploaded after the last run.
-    const changed = Object.values(summary.files).filter(Boolean)
-      .find(f => f.uploadedAt && summary.lastRunAt && new Date(f.uploadedAt) > new Date(summary.lastRunAt))
-      || summary.files.processLineList;
-    const code = (changed.revision || 'B').charCodeAt(0);
-    const prevRev = code > 65 ? String.fromCharCode(code - 1) : '—';
+    const ll = summary.files.processLineList;
     return (
       <Shell tone="red"
-        title={`Analysis is out of date — ${changed.title} changed (Rev ${prevRev} → Rev ${changed.revision})`}
-        sub="Counts below are from the previous run. Re-run to refresh matches and the review queue."
+        title={`Analysis is out of date${ll ? ` — LDT Rev ${ll.revision}` : ''}`}
+        sub="Counts below are from the previous run. Re-run to refresh categories and the review queue."
         canAct={canUpload}
         action={{ label: '↻ Re-run analysis', onClick: runAnalysis }}
       />
@@ -90,7 +98,7 @@ export default function AnalysisBanner() {
         sub={summary.blockingReason}
         canAct={canUpload}
         action={{
-          label: 'Fix column mapping',
+          label: 'Fix upload',
           onClick: () => { setDrawerFileKind(bad?.kind || 'processLineList'); setUploadDrawerOpen(true); },
         }}
       />

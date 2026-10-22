@@ -2,7 +2,7 @@
 // Upload Analysis tab — composes sections A–F in order:
 //   A  AnalysisStepper              (Analysis progress)
 //   B  SourceFileCard × 2           (source files, 2-col grid)
-//   C  MatchResultsCard             (Match results)
+//   C  CriticalityResultsCard       (Criticality results)
 //   D  CriticalityDistributionCard + ChangesSinceLastCard (side by side)
 //   E  ValidationChecksTable        (Validation checks)
 //   F  UploadHistoryTimeline        (Upload history)
@@ -13,7 +13,7 @@ import { useAnalysisSummary } from './useAnalysisSummary';
 import { useCll } from '../../../pages/Engineering/Piping/cll/CllStore';
 import AnalysisStepper from './AnalysisStepper';
 import SourceFileCard from './SourceFileCard';
-import MatchResultsCard from './MatchResultsCard';
+import CriticalityResultsCard from './CriticalityResultsCard';
 import CriticalityDistributionCard from './CriticalityDistributionCard';
 import ChangesSinceLastCard from './ChangesSinceLastCard';
 import ValidationChecksTable from './ValidationChecksTable';
@@ -61,12 +61,12 @@ export default function UploadAnalysisTab({ loading, loadError, onRetry }) {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 16V4m0 0L8 8m4-4l4 4M4 20h16" />
         </svg>
         <p style={{ margin: '0.75rem 0 1.25rem', color: 'var(--rd-text-muted)' }}>
-          Upload the Process Line List and Stress Criticality files to build the list
+          Upload the Process Line List (LDT) to evaluate every line against the criteria table
         </p>
         {canUpload && (
           <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-            <button className="rd-btn rd-btn-primary" onClick={() => open('processLineList')}>Upload Process Line List</button>
-            <button className="rd-btn rd-btn-secondary" onClick={() => open('stressCriticality')}>Upload Stress Criticality</button>
+            <button className="rd-btn rd-btn-primary" onClick={() => open('processLineList')}>Upload Process Line List (LDT)</button>
+            <button className="rd-btn rd-btn-secondary" onClick={() => open('stressCriteria')}>Upload criteria table</button>
           </div>
         )}
       </div>
@@ -90,11 +90,11 @@ export default function UploadAnalysisTab({ loading, loadError, onRetry }) {
       {/* B · Source files */}
       <div className="cll-analysis-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <SourceFileCard kind="processLineList" />
-        <SourceFileCard kind="stressCriticality" />
+        <SourceFileCard kind="stressCriteria" />
       </div>
 
-      {/* C · Match results */}
-      <MatchResultsCard />
+      {/* C · Criticality results */}
+      <CriticalityResultsCard />
 
       {/* D · Distribution + changes */}
       <div className="cll-analysis-grid-2" style={{ display: 'grid', gridTemplateColumns: hasChanges ? '1fr 1fr' : '1fr', gap: 14 }}>

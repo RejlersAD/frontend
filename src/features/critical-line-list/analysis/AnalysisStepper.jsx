@@ -50,7 +50,7 @@ function buildSteps(summary, state) {
   const errors = files.reduce((n, f) => n + (f.errors || 0), 0);
   const warnings = files.reduce((n, f) => n + (f.warnings || 0), 0);
   const badFile = files.find(f => f.errors > 0);
-  const matchedTotal = summary.match.matched + summary.match.conflicts;
+  const evaluated = (summary.results.L1 + summary.results.L2 + summary.results.L3);
   const llRows = ll?.rows || 0;
 
   const steps = [];
@@ -59,30 +59,28 @@ function buildSteps(summary, state) {
   steps.push({
     label: 'Files uploaded', status: 'done',
     sub: state === 'outdated' && ll
-      ? `Line list Rev ${ll.revision} · just now`
-      : `${files.length} files · ${fmtShort(files.map(f => f.uploadedAt).sort().pop())}`,
+      ? `LDT Rev ${ll.revision} · just now`
+      : `${files.length} files · ${fmtShort(files.map(f => f.uploadedAt).filter(Boolean).sort().pop())}`,
   });
 
   // 2 · Columns mapped
-  const mapped = files.reduce((n, f) => n + (f.requiredMapped || 0), 0);
-  const total = files.reduce((n, f) => n + (f.requiredTotal || 0), 0);
   steps.push({
     label: 'Columns mapped', status: 'done',
-    sub: state === 'outdated' ? 'Saved profile applied' : `${mapped} of ${total} required`,
+    sub: state === 'outdated' ? 'Saved mapping applied' : `${ll?.requiredMapped ?? 0} of ${ll?.requiredTotal ?? 10} required`,
   });
 
   // 3 · Validated
-  steps.push(state === 'blocked'
+  steps.push(state === 'blocked' && errors > 0
     ? { label: 'Validated', status: 'error', sub: `${errors} errors in ${badFile?.title || 'file'}` }
     : { label: 'Validated', status: 'done', sub: `${errors} errors · ${warnings} warnings` });
 
-  // 4 · Lines matched
+  // 4 · Criticality evaluated
   if (state === 'blocked') {
-    steps.push({ label: 'Lines matched', status: 'locked', sub: 'Waiting for validation' });
+    steps.push({ label: 'Criticality evaluated', status: 'locked', sub: summary.blockingReason || 'Waiting for validation' });
   } else if (state === 'outdated') {
-    steps.push({ label: 'Lines matched', status: 'warning', sub: 'Re-run needed' });
+    steps.push({ label: 'Criticality evaluated', status: 'warning', sub: 'Re-run needed' });
   } else {
-    steps.push({ label: 'Lines matched', status: 'done', sub: `${fmtNum(matchedTotal)} of ${fmtNum(llRows)}` });
+    steps.push({ label: 'Criticality evaluated', status: 'done', sub: `${fmtNum(evaluated)} of ${fmtNum(llRows)} lines` });
   }
 
   // 5 · Review
