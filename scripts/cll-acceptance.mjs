@@ -72,8 +72,8 @@ if (warns.length !== 12) {
 // --- evaluation totals --------------------------------------------------------
 const { evaluations, results, flagCheck } = engine.evaluateAll(parsed.records, engine.BUILTIN_ONSHORE);
 check('L1', results.L1, 1113);
-check('L2', results.L2, 3140);
-check('L3', results.L3, 0);
+check('L2', results.L2, 2437); // 3,140 grid-L2 minus 703 small-bore (<1") → L3
+check('L3', results.L3, 703);  // small-bore rule: 1/4, 1/2, 3/4 in → L3
 check('Cannot evaluate', results.cannotEvaluate, 0);
 check('Agrees', flagCheck.agrees, 3476);
 check('Not flagged but L1', flagCheck.notFlaggedL1, 335);

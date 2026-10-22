@@ -160,7 +160,7 @@ export function evaluateLine(line, criteria, override) {
   if (row.flag === 'between') {
     warnings.push({ type: 'nps-between', message: `NPS between table sizes — next larger row (${NPS_ROW_LABELS[row.index]})` });
   } else if (row.flag === 'below-1') {
-    warnings.push({ type: 'nps-below-1', message: 'NPS below 1" — 1" row' });
+    warnings.push({ type: 'nps-below-1', message: 'NPS below 1" (1/4, 1/2, 3/4) — small-bore rule → L3' });
   } else if (row.flag === 'above-20') {
     warnings.push({ type: 'nps-above-20', message: 'NPS above 20 — ≥24 row' });
   }
@@ -168,11 +168,16 @@ export function evaluateLine(line, criteria, override) {
     warnings.push({ type: 'multiple-sizes', message: `Multiple sizes — evaluated on ${npsIn}"` });
   }
 
-  const tableCategory = criteria.grid[row.index][col.index];
+  // Small-bore rule: sizes below 1" (1/4, 1/2, 3/4) are always L3,
+  // regardless of the criteria-grid cell.
+  const smallBore = npsIn < 1;
+  const tableCategory = smallBore ? 'L3' : criteria.grid[row.index][col.index];
   const finalCategory = override?.category || tableCategory;
   const stressCritical = finalCategory === 'L1';
   const standard = criteria.standard || 'AGPS-SP-PI-004';
-  const basis = `${standard} Table 2 · NPS ${NPS_ROW_LABELS[row.index]} row · design T ≤ ${TEMP_LIMITS[col.index]} °C`;
+  const basis = smallBore
+    ? `Small-bore rule · NPS ${line.sizeText || `${npsIn}"`} (< 1") → L3`
+    : `${standard} Table 2 · NPS ${NPS_ROW_LABELS[row.index]} row · design T ≤ ${TEMP_LIMITS[col.index]} °C`;
 
   // --- LDT flag check (line-list col H vs Table 2 result) ---
   const flag = String(line.ldtStressFlag || '').trim().toUpperCase();
