@@ -34,6 +34,9 @@ filters and verifies persistence after a page reload.
   candidate forms, Talent Acquisition and Careers synchronization.
 - Scoped ESLint completed without errors; existing warnings remain.
 - The paired backend passed 93 HR/recruitment/import/approval regressions.
+- Another 15 backend employee-profile synchronization tests passed with the
+  existing signal-enabled config.settings_console_test registry. Earlier
+  failures used registries that disable the HR signals these tests exercise.
 
 Run the helper tests with Node's `--experimental-vm-modules` option. The focused
 HR Playwright suite uses `playwright.hr-enhancements.config.js`, a running Vite
