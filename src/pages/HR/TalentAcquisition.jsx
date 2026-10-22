@@ -875,6 +875,7 @@ export default function TalentAcquisition() {
             if (!saving) setModal(null);
           }}
         >
+          <CareersPositionSync onSynced={load} />
           <div className="ta-opening-list">
             {openings.length ? (
               openings.map((job) => (

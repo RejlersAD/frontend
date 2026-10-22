@@ -27,7 +27,7 @@ Sidebar/shared-shell SHA-256 hashes match the pre-task working files, including
 the user's pre-existing edits. Local Vite serves the new workspace module (200).
 Synthetic-data screenshots and check results: `artifacts/onboarding-reference/`.
 
-Production verification: Vite transformed 16,224 modules and compiled the
-application bundle. The subsequent PWA generation failed because the shared
-22.2 MB index bundle exceeds Workbox's configured/default 2 MiB precache limit.
-No shared build/PWA configuration was changed for this page-scoped request.
+Initial verification in the development container compiled the application but
+hit the Workbox size limit. Subsequent aligned release verification explicitly
+used NODE_ENV=production and passed Vite/PWA generation with a 15.6 MB bundle.
+The shared cache limit was not increased. See HR_RELEASE_20261022.md.

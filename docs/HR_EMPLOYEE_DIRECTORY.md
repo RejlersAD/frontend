@@ -34,7 +34,7 @@ and its local dependency graph bundle successfully with esbuild; Vite serves the
 new module (HTTP 200). Protected Sidebar/Header/Layout/config file hashes match
 the task baseline. Evidence: `artifacts/employees-reference/`.
 
-Full production/PWA packaging was not repeated: the immediately preceding page
-task compiled the application but failed Workbox packaging because the shared
-22.2 MB bundle exceeds its 2 MiB precache limit. Shared build configuration is
-outside this main-content request.
+The initial development-container build hit the Workbox bundle-size limit.
+The aligned release was subsequently built with NODE_ENV=production and passed
+Vite/PWA generation with a 15.6 MB application bundle and 124 precache entries.
+The shared precache limit was not increased. See HR_RELEASE_20261022.md.
