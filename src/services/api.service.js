@@ -5,6 +5,17 @@ import { toast } from 'react-toastify'
 import { clearDevicePushSession } from './pushDeviceSession'
 import { REDIRECT_AFTER_LOGIN_KEY } from '../config/solutions.config'
 
+const DEBUG_HTTP_LOGS = import.meta.env.DEV
+const debugHttpLog = (...args) => {
+  if (DEBUG_HTTP_LOGS) console.log(...args)
+}
+const debugHttpWarn = (...args) => {
+  if (DEBUG_HTTP_LOGS) console.warn(...args)
+}
+const debugHttpError = (...args) => {
+  if (DEBUG_HTTP_LOGS) console.error(...args)
+}
+
 /**
  * Enhanced Axios instance with CORS error handling and retry logic
  * Handles authentication, errors, and request/response transformations
@@ -98,7 +109,7 @@ const _clearAuthAndRedirect = (showToast = true) => {
  */
 const _refreshAccessToken = () => {
   if (_refreshPromise) {
-    console.log('[API] ♻️  Refresh already in-flight, awaiting shared promise')
+    debugHttpLog('[API] ♻️  Refresh already in-flight, awaiting shared promise')
     return _refreshPromise
   }
 
@@ -107,7 +118,7 @@ const _refreshAccessToken = () => {
     return Promise.reject(new Error('No refresh token available'))
   }
 
-  console.log('[API] 🔄 Starting single-flight token refresh...')
+  debugHttpLog('[API] 🔄 Starting single-flight token refresh...')
   _refreshPromise = axios
     .post(
       `${API_BASE_URL}/auth/refresh/`,
@@ -121,12 +132,12 @@ const _refreshAccessToken = () => {
       // Persist rotated refresh token if backend returns one (DRF SimpleJWT rotation)
       if (refresh) localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refresh)
       _refreshFailureCount = 0
-      console.log('[API] ✅ Token refresh successful (shared)')
+      debugHttpLog('[API] ✅ Token refresh successful (shared)')
       return access
     })
     .catch((err) => {
       _refreshFailureCount += 1
-      console.error('[API] ❌ Token refresh failed:', err.message)
+      debugHttpError('[API] ❌ Token refresh failed:', err.message)
       throw err
     })
     .finally(() => {
@@ -139,7 +150,7 @@ const _refreshAccessToken = () => {
 
 // CORS Health Check Function
 const testCorsConnection = async (baseURL = API_BASE_URL) => {
-  console.log('[CORS_TEST] 🩺 Testing CORS connection to:', baseURL);
+  debugHttpLog('[CORS_TEST] 🩺 Testing CORS connection to:', baseURL);
   
   try {
     // Test with simple fetch request to avoid axios interceptors
@@ -154,13 +165,13 @@ const testCorsConnection = async (baseURL = API_BASE_URL) => {
     
     if (response.ok) {
       const data = await response.json();
-      console.log('[CORS_TEST] ✅ CORS health check passed:', data);
+      debugHttpLog('[CORS_TEST] ✅ CORS health check passed:', data);
       return data;
     } else {
       throw new Error(`CORS health check failed: ${response.status} ${response.statusText}`);
     }
   } catch (error) {
-    console.error('[CORS_TEST] ❌ CORS health check failed:', error);
+    debugHttpError('[CORS_TEST] ❌ CORS health check failed:', error?.message || 'unknown error');
     throw error;
   }
 };
@@ -176,10 +187,10 @@ const apiClient = axios.create({
   // This fixes CORS issues with Access-Control-Allow-Origin
 })
 
-console.log('[API Service] Enhanced Axios client initialized with CORS support')
-console.log('[API Service] Base URL:', API_BASE_URL)
-console.log('[API Service] Timeout:', API_TIMEOUT)
-console.log('[API Service] With Credentials:', false) // JWT in localStorage
+debugHttpLog('[API Service] Enhanced Axios client initialized with CORS support')
+debugHttpLog('[API Service] Base URL:', API_BASE_URL)
+debugHttpLog('[API Service] Timeout:', API_TIMEOUT)
+debugHttpLog('[API Service] With Credentials:', false) // JWT in localStorage
 
 // Request interceptor - Add auth token and handle content types
 apiClient.interceptors.request.use(
@@ -196,7 +207,7 @@ apiClient.interceptors.request.use(
       }
       // Remove Content-Type to let browser set multipart boundary
       config.headers.setContentType(false)
-      console.log('[API] 📎 FormData detected, Authorization explicitly set, Content-Type cleared');
+      debugHttpLog('[API] 📎 FormData detected, Authorization explicitly set, Content-Type cleared');
     } else {
       // For non-FormData requests, set Authorization normally
       if (token) {
@@ -204,15 +215,14 @@ apiClient.interceptors.request.use(
       }
     }
     
-    console.log('[API Request] 📤', config.method?.toUpperCase(), config.url);
-    console.log('[API Request] Authorization:', config.headers.Authorization ? '✅ Present' : '❌ Missing');
-    console.log('[API Request] Headers:', Object.keys(config.headers));
+    debugHttpLog('[API Request] 📤', config.method?.toUpperCase(), config.url);
+    debugHttpLog('[API Request] Authorization header set:', Boolean(config.headers.Authorization));
     
     return config
   },
   (error) => {
     if (error.config?.sensitiveRequest) console.error('[API] Sensitive request could not be prepared');
-    else console.error('[API] ❌ Request interceptor error:', error);
+    else console.error('[API] ❌ Request interceptor error:', error?.message || 'unknown error');
     return Promise.reject(error)
   }
 )
@@ -220,7 +230,7 @@ apiClient.interceptors.request.use(
 // Enhanced response interceptor - Handle CORS and network errors
 apiClient.interceptors.response.use(
   (response) => {
-    console.log('[API Response] ✅', response.status, response.config.method?.toUpperCase(), response.config.url);
+    debugHttpLog('[API Response] ✅', response.status, response.config.method?.toUpperCase(), response.config.url);
     
     // Check for password expiry headers
     if (response.headers['x-password-expiry-warning'] === 'true' || 
@@ -230,7 +240,7 @@ apiClient.interceptors.response.use(
         const passwordExpiryService = module.default;
         passwordExpiryService.handleResponseHeaders(response.headers);
       }).catch(err => {
-        console.warn('[API] Failed to load password expiry service:', err);
+        debugHttpWarn('[API] Failed to load password expiry service:', err?.message || 'unknown error');
       });
     }
     
@@ -251,22 +261,18 @@ apiClient.interceptors.response.use(
     // Enhanced error logging for debugging — but stay quiet for background
     // pollers so DevTools doesn't drown in red on a slow worker.
     if (error.config?.sensitiveRequest) {
-      console.warn('[API] Sensitive request failed', error.response?.status || 'network');
+      debugHttpWarn('[API] Sensitive request failed', error.response?.status || 'network');
     } else if (_silent) {
-      console.warn('[API] Silent endpoint error:', error.config?.url, '→', error.message)
+      debugHttpWarn('[API] Silent endpoint error:', error.config?.url, '→', error.message)
     } else {
-      console.group('[API Error] ❌ Detailed Error Information');
-      console.error('Error Message:', error.message);
-      console.error('Error Code:', error.code);
-      console.error('Response Status:', error.response?.status);
-      console.error('Response Data:', error.response?.data);
-      console.error('Response Data (JSON):', JSON.stringify(error.response?.data, null, 2));
-      console.error('Request URL:', error.config?.url);
-      console.error('Request Method:', error.config?.method);
-      console.error('Request Data:', error.config?.data);
-      console.error('Request Timeout:', error.config?.timeout);
-      console.error('Full Error Object:', error);
-      console.groupEnd();
+      console.error('[API Error] Request failed', {
+        message: error.message,
+        code: error.code,
+        status: error.response?.status,
+        url: error.config?.url,
+        method: error.config?.method,
+        timeout: error.config?.timeout,
+      });
     }
 
     // Detect and handle timeout errors specifically
@@ -300,7 +306,7 @@ apiClient.interceptors.response.use(
       
       // Check if it's a CORS issue
       if (error.message.includes('CORS') || error.code === 'ERR_NETWORK') {
-        console.warn('[API] 🔥 CORS/Network error detected, running diagnostics...');
+        debugHttpWarn('[API] 🔥 CORS/Network error detected, running diagnostics...');
         
         const networkError = new Error('Cannot connect to server');
         networkError.isNetworkError = true;
@@ -449,7 +455,7 @@ apiClientLongTimeout.interceptors.response.use(
   apiClient.interceptors.response.handlers[0].rejected
 )
 
-console.log('[API Service] Long timeout client initialized for file processing')
-console.log('[API Service] Long Timeout:', API_TIMEOUT_LONG, 'ms')
+debugHttpLog('[API Service] Long timeout client initialized for file processing')
+debugHttpLog('[API Service] Long Timeout:', API_TIMEOUT_LONG, 'ms')
 
 export default apiClient

@@ -50,7 +50,13 @@ const Login = () => {
         navigate(NAVIGATION.afterLogin)
       }
     } catch (error) {
-      if (LOGGING.enabled) console.error(LOGGING.login.failed, error)
+      if (LOGGING.enabled) {
+        console.error(LOGGING.login.failed, {
+          message: error?.message,
+          code: error?.code,
+          status: error?.response?.status,
+        })
+      }
 
       const { message: parsedMessage, gate } = parseLoginError(error)
       let errorMessage = parsedMessage || ERROR_MESSAGES.unexpected.message
@@ -108,4 +114,3 @@ const Login = () => {
 }
 
 export default Login
-
