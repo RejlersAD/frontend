@@ -219,6 +219,10 @@ export const LEAVE_ENCASHMENT_WORKING_DAYS = Number(
 //     Entitlement values reflect UAE Labour Law (Federal Law No.33 of 2021).
 // ─────────────────────────────────────────────────────────────────────────────
 export const ESS_LEAVE_TYPE_CONFIG = {
+  compassionate: { label: 'Compassionate Leave', color: '#64748b', bg: 'bg-slate-50', text: 'text-slate-700', bar: 'bg-slate-500', entitlement: null, enabled: true },
+  national_service: { label: 'National Service Leave', color: '#64748b', bg: 'bg-slate-50', text: 'text-slate-700', bar: 'bg-slate-500', entitlement: null, enabled: true },
+  work_from_home: { label: 'Work From Home', color: '#64748b', bg: 'bg-slate-50', text: 'text-slate-700', bar: 'bg-slate-500', entitlement: null, enabled: true },
+  flex_utilization: { label: 'Flex Utilization', color: '#64748b', bg: 'bg-slate-50', text: 'text-slate-700', bar: 'bg-slate-500', entitlement: null, enabled: true },
   annual:       { label: 'Annual Leave',       color: '#3b82f6', bg: 'bg-blue-50',    text: 'text-blue-700',    bar: 'bg-blue-500',    entitlement: DEFAULT_ANNUAL_ENTITLEMENT, enabled: true  },
   sick:         { label: 'Sick Leave',         color: '#10b981', bg: 'bg-emerald-50', text: 'text-emerald-700', bar: 'bg-emerald-500', entitlement: 15,                         enabled: true  },
   emergency:    { label: 'Emergency Leave',    color: '#f59e0b', bg: 'bg-amber-50',   text: 'text-amber-700',   bar: 'bg-amber-500',   entitlement: 3,                          enabled: false },

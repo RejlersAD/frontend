@@ -12,6 +12,7 @@ import apiClient from '../../services/api.service'
 import DatePicker from '../../components/DatePicker'
 import OrganizationSuggestions from '../../components/HR/OrganizationSuggestions'
 import OnboardingDashboard from './OnboardingDashboard'
+import LifecycleWorkspace from './LifecycleWorkspace'
 import CreateEmployeeWizard from './CreateEmployeeWizard'
 import FullOnboardingOverview from './FullOnboardingOverview'
 import './OnboardingDashboard.css'
@@ -259,13 +260,13 @@ export default function OnboardingOffboarding() {
   />
 
   return (
-    <div className="employee-lifecycle">
+    <div className={`employee-lifecycle${activeTab === 'overview' ? ' employee-lifecycle-reference' : ''}`}>
       <nav className="lifecycle-breadcrumb" aria-label="Breadcrumb">
-        <a href="/hr">HR</a><span aria-hidden="true">/</span><span aria-current="page">Employee Lifecycle</span>
+        <a href="/hr">Human Resources</a><span aria-hidden="true">/</span><span aria-current="page">Employee Lifecycle</span>
       </nav>
-      <h1>Employee Lifecycle</h1>
+      {activeTab !== 'overview' && <h1>Employee Lifecycle</h1>}
       {exitError && <div role="alert" className="onboarding-notice">{exitError}</div>}
-      {activeTab === 'overview' || activeTab === 'offboarding' ? (
+      {activeTab === 'overview' ? <LifecycleWorkspace onOpenOnboarding={openDetail} onOpenOffboarding={openExitDetail} onOpenRegister={type => setActiveTab(type === 'offboarding' ? 'offboarding-list' : 'onboarding')} onStart={type => type === 'offboarding' ? setShowInitiateExit(true) : setActiveTab('create')} refreshKey={refreshKey} /> : activeTab === 'offboarding' ? (
         <OnboardingDashboard
           key={activeTab}
           mode={isOffboarding ? 'offboarding' : 'onboarding'}

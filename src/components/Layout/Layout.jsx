@@ -52,6 +52,7 @@ const Layout = () => {
     '/terms-of-service',
     '/privacy-policy',
     '/setup-password',
+    '/candidate-forms',
     '/reset-password',
     '/request-password-reset',
     '/forgot-password',
@@ -89,7 +90,7 @@ const Layout = () => {
   const isFlushWorkspace = ['/profile', '/hr/Employeprofile'].includes(location.pathname)
   const isFinanceCommandWorkspace = ['/finance', '/finance/'].includes(location.pathname)
   const isProcurementOverview = ['/procurement', '/procurement/'].includes(location.pathname)
-  const isHRDashboard = ['/hr', '/hr/'].includes(location.pathname)
+  const isHRDashboard = ['/hr', '/hr/', '/hr/talent-acquisition'].includes(location.pathname)
   // Hide the shared footer on public pages that render their own or are auth flow pages.
   const showFooter = !isPublicRoute && !isPurchaseRecommendationFormRoute && !isPurchaseOrderFormRoute && !isViewportWorkspace && !isFlushWorkspace && !isFinanceCommandWorkspace && !isProcurementOverview && !isHRDashboard
 

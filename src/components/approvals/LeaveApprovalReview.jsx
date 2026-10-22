@@ -14,6 +14,10 @@ export default function LeaveApprovalReview({ requestId, onClose, onUpdated, pag
   const [request, setRequest] = useState(null)
   const [error, setError] = useState('')
   const [note, setNote] = useState('')
+  const [approvedStart, setApprovedStart] = useState('')
+  const [approvedEnd, setApprovedEnd] = useState('')
+  const [negativeBalance, setNegativeBalance] = useState(false)
+  const [overrideReason, setOverrideReason] = useState('')
   const [saving, setSaving] = useState(false)
   const [printing, setPrinting] = useState(false)
   const [failedPhoto, setFailedPhoto] = useState(null)
@@ -24,7 +28,7 @@ export default function LeaveApprovalReview({ requestId, onClose, onUpdated, pag
     setError('')
     setNote('')
     apiClient.get(`/payroll/leave-requests/${requestId}/`).then(({ data }) => {
-      if (active) setRequest(data)
+      if (active) { setRequest(data); setApprovedStart(data.start_date); setApprovedEnd(data.end_date); setNegativeBalance(false); setOverrideReason('') }
     }).catch(err => { if (active) setError(leaveError(err)) })
     return () => { active = false }
   }, [requestId, page])
@@ -35,7 +39,10 @@ export default function LeaveApprovalReview({ requestId, onClose, onUpdated, pag
     setError('')
     try {
       const endpoint = request.status === 'PENDING' && request.review_stage !== 'hr_review' ? `rm-${action}` : action
-      const { data } = await apiClient.post(`/payroll/leave-requests/${requestId}/${endpoint}/`, { note })
+      const finalApproval = action === 'approve' && endpoint === 'approve'
+      const { data } = await apiClient.post(`/payroll/leave-requests/${requestId}/${endpoint}/`, { note,
+        ...(finalApproval ? { approved_start_date: approvedStart, approved_end_date: approvedEnd,
+          allow_negative_balance: negativeBalance, override_reason: overrideReason } : {}) })
       setRequest(data)
       onUpdated()
     } catch (err) {
@@ -58,7 +65,7 @@ export default function LeaveApprovalReview({ requestId, onClose, onUpdated, pag
   const directHR = status === 'PENDING' && request?.review_stage === 'hr_review'
   const pending = ['PENDING', 'RM_APPROVED'].includes(status)
   const declined = ['RM_REJECTED', 'REJECTED'].includes(status)
-  const statusLabel = directHR ? 'Awaiting HR' : ({ PENDING: 'Awaiting manager', RM_APPROVED: 'Awaiting HR', APPROVED: 'Approved', RM_REJECTED: 'Declined by manager', REJECTED: 'Declined by HR', CANCELLED: 'Cancelled' })[status] || request?.status_display
+  const statusLabel = directHR ? 'Awaiting HR' : ({ PENDING: request?.approval_steps?.find(step => step.active)?.title ? `Awaiting ${request.approval_steps.find(step => step.active).title}` : 'Awaiting manager', RM_APPROVED: 'Awaiting HR', APPROVED: 'Approved', RM_REJECTED: 'Declined by manager', REJECTED: 'Declined by HR', CANCELLED: 'Cancelled' })[status] || request?.status_display
   const statusStyle = declined ? 'border-rose-200 bg-rose-50 text-rose-700' : status === 'APPROVED' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : pending ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-slate-200 bg-slate-50 text-slate-600'
   const date = (value, time = false) => {
     if (!value) return 'Not recorded'
@@ -66,7 +73,7 @@ export default function LeaveApprovalReview({ requestId, onClose, onUpdated, pag
     return Number.isNaN(parsed.getTime()) ? 'Not recorded' : parsed.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', ...(time ? { hour: '2-digit', minute: '2-digit' } : {}) })
   }
   const managerDone = Boolean(request?.rm_reviewed_at) || ['RM_APPROVED', 'APPROVED', 'REJECTED'].includes(status)
-  const steps = request ? [
+  const steps = request?.approval_steps?.length ? [{ title: 'Request submitted', detail: request.employee_name, at: request.created_at, complete: true }, ...request.approval_steps] : request ? [
     { title: 'Request submitted', detail: request.employee_name, at: request.created_at, complete: true },
     { title: 'Manager review', detail: request.rm_reviewed_by_name || request.line_manager_name || (directHR ? 'No manager assigned' : 'Manager not available'), at: request.rm_reviewed_at, note: request.rm_note, complete: managerDone && status !== 'RM_REJECTED', rejected: status === 'RM_REJECTED', active: status === 'PENDING' && !directHR, skipped: directHR, label: status === 'PENDING' && !directHR ? 'Awaiting review' : null },
     { title: 'HR approval', detail: request.reviewed_by_name || (status === 'PENDING' && !directHR ? 'After manager approval' : status === 'RM_APPROVED' ? 'Awaiting review' : 'No pending action'), at: request.reviewed_at, note: request.reviewer_note, complete: status === 'APPROVED', rejected: status === 'REJECTED', active: status === 'RM_APPROVED' || directHR },
@@ -95,7 +102,7 @@ export default function LeaveApprovalReview({ requestId, onClose, onUpdated, pag
               <h4 className="flex items-center gap-2 text-sm font-semibold"><DocumentTextIcon className="h-4 w-4 text-indigo-500" />Request details</h4>
               <dl className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2 text-sm">
                 {[
-                  ['Manager', request.line_manager_name || (directHR ? 'No manager assigned' : 'Manager not available')],
+                  [request.leave_type_detail?.code === 'FU' ? 'Current approver' : 'Manager', request.line_manager_name || (directHR ? 'No manager assigned' : 'Manager not available')],
                   ['Substitute', request.substitute_employee_name || request.substitute_name || 'Not provided'],
                   ['Contact during leave', request.contact_number || 'Not provided'],
                   ['Submitted on', date(request.created_at, true)],
@@ -114,7 +121,10 @@ export default function LeaveApprovalReview({ requestId, onClose, onUpdated, pag
             </aside>
           </div>
           <footer className="border-t border-slate-200 bg-white p-6">
-            {request.can_review ? <div className="space-y-4"><div><h4 className="text-sm font-semibold">Your decision</h4><p className="mt-1 text-xs text-slate-500">{status === 'PENDING' && !directHR ? 'Your approval sends this request to HR for the final decision.' : 'Your approval completes the leave approval process.'}</p></div><label className="block text-sm font-medium text-slate-700">Comment <span className="font-normal text-slate-500">(required to reject)</span><textarea value={note} onChange={event => setNote(event.target.value)} disabled={saving} placeholder="Add a comment for the employee..." className="mt-2 w-full rounded-lg border border-slate-200 bg-slate-50/50 p-3 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" rows={3} /></label><div className="flex flex-wrap justify-end gap-3"><button type="button" disabled={saving} onClick={() => decide('reject')} className="rounded-lg border border-rose-200 px-4 py-2.5 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-50">Reject</button><button type="button" disabled={saving} onClick={() => decide('approve')} className="rounded-lg bg-indigo-700 px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-indigo-800 disabled:opacity-50">{saving ? 'Saving...' : status === 'PENDING' && !directHR ? 'Approve and send to HR' : 'Approve leave'}</button></div></div> : <div className="flex items-start gap-3 text-sm"><UserIcon className="mt-0.5 h-5 w-5 shrink-0 text-indigo-500" /><div><p className="font-medium text-slate-700">{pending ? 'With the current approver' : 'Review complete'}</p><p className="mt-1 text-xs leading-5 text-slate-500">{status === 'PENDING' && !directHR ? 'Awaiting the assigned manager. HR can act after manager approval.' : status === 'RM_APPROVED' || directHR ? 'Awaiting the assigned HR approver.' : 'This request has no pending approval action.'}</p></div></div>}
+            {['unconfigured', 'failed'].includes(request.department_head_notification_status) && <p role="status" className="mb-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm">{request.department_head_notification_status === 'unconfigured' ? 'Department Head notification awaits an unambiguous department-head assignment.' : 'Department Head notification could not be created. HR follow-up is required.'}</p>}
+            {request.status === 'APPROVED' && request.hr_override_reason && <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm"><p>Original request: {date(request.requested_start_date)} to {date(request.requested_end_date)} / {Number(request.requested_days)} days.</p><p>HR approved: {date(request.start_date)} to {date(request.end_date)} / {Number(request.days_requested)} days.</p><p className="mt-1 whitespace-pre-wrap">HR adjustment: {request.hr_override_reason}</p></div>}
+            {request.can_review && (status === 'RM_APPROVED' || directHR) && <fieldset className="mb-5 space-y-3 rounded-lg border border-indigo-100 p-4" disabled={saving}><legend className="px-1 text-sm font-semibold">HR final approved leave</legend><div className="grid gap-3 sm:grid-cols-2"><label className="text-sm">Approved start date<input type="date" value={approvedStart} onChange={event => setApprovedStart(event.target.value)} className="mt-1 block w-full rounded border p-2" /></label><label className="text-sm">Approved end date<input type="date" value={approvedEnd} onChange={event => setApprovedEnd(event.target.value)} className="mt-1 block w-full rounded border p-2" /></label></div>{request.leave_type_detail?.category === 'annual' && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={negativeBalance} onChange={event => setNegativeBalance(event.target.checked)} />Allow approval beyond available annual leave balance</label>}<label className="block text-sm">Reason for HR adjustment<textarea value={overrideReason} onChange={event => setOverrideReason(event.target.value)} className="mt-1 w-full rounded border p-2" rows={2} /></label><p className="text-xs text-slate-500">Date changes and balance exceptions require a reason. Approved working days are deducted once; the balance may become negative.</p></fieldset>}
+            {request.can_review ? <div className="space-y-4"><div><h4 className="text-sm font-semibold">Your decision</h4><p className="mt-1 text-xs text-slate-500">{status === 'PENDING' && !directHR ? 'Your approval sends this request to the next required approver.' : 'Your approval completes the leave approval process.'}</p></div><label className="block text-sm font-medium text-slate-700">Comment <span className="font-normal text-slate-500">(required to reject)</span><textarea value={note} onChange={event => setNote(event.target.value)} disabled={saving} placeholder="Add a comment for the employee..." className="mt-2 w-full rounded-lg border border-slate-200 bg-slate-50/50 p-3 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" rows={3} /></label><div className="flex flex-wrap justify-end gap-3"><button type="button" disabled={saving} onClick={() => decide('reject')} className="rounded-lg border border-rose-200 px-4 py-2.5 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-50">Reject</button><button type="button" disabled={saving} onClick={() => decide('approve')} className="rounded-lg bg-indigo-700 px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-indigo-800 disabled:opacity-50">{saving ? 'Saving...' : status === 'PENDING' && !directHR ? 'Approve and continue' : 'Approve leave'}</button></div></div> : <div className="flex items-start gap-3 text-sm"><UserIcon className="mt-0.5 h-5 w-5 shrink-0 text-indigo-500" /><div><p className="font-medium text-slate-700">{pending ? 'With the current approver' : 'Review complete'}</p><p className="mt-1 text-xs leading-5 text-slate-500">{status === 'PENDING' && !directHR ? 'Awaiting the assigned manager. HR can act after manager approval.' : status === 'RM_APPROVED' || directHR ? 'Awaiting the assigned HR approver.' : 'This request has no pending approval action.'}</p></div></div>}
           </footer>
         </>}
       </div>

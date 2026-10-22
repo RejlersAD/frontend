@@ -7,8 +7,8 @@ const RBAC_BASE_URL = '/rbac';
 
 class RBACService {
   // ==================== Organizations ====================
-  async getOrganizations() {
-    return apiService.get(`${RBAC_BASE_URL}/organizations/`);
+  async getOrganizations(config = {}) {
+    return apiService.get(`${RBAC_BASE_URL}/organizations/`, config);
   }
 
   async createOrganization(data) {

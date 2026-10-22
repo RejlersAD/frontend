@@ -1,0 +1,269 @@
+{
+  "kind": "pre_onboarding",
+  "version": "rad-2026-10-v2",
+  "sections": [
+    {
+      "key": "identity",
+      "title": "Identity as per passport",
+      "fields": [
+        {
+          "key": "first_name",
+          "label": "First name (as per passport)",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "family_name",
+          "label": "Family name (as per passport)",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "birth_date",
+          "label": "Date of birth",
+          "type": "date",
+          "required": true
+        },
+        {
+          "key": "birth_place",
+          "label": "Place of birth",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "nationality",
+          "label": "Nationality",
+          "type": "text",
+          "required": true
+        }
+      ],
+      "repeatable": false
+    },
+    {
+      "key": "personal",
+      "title": "Personal and family details",
+      "fields": [
+        {
+          "key": "father_name",
+          "label": "Father's full name (optional)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "mother_name",
+          "label": "Mother's full name (optional)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "marital_status",
+          "label": "Marital status (optional)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "religion",
+          "label": "Religion (optional)",
+          "type": "text",
+          "required": false
+        }
+      ],
+      "repeatable": false
+    },
+    {
+      "key": "contact",
+      "title": "Personal contact details",
+      "fields": [
+        {
+          "key": "phone",
+          "label": "Personal contact number(s)",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "email",
+          "label": "Personal email address",
+          "type": "email",
+          "required": true
+        },
+        {
+          "key": "languages",
+          "label": "Languages known",
+          "type": "text",
+          "required": false
+        }
+      ],
+      "repeatable": false
+    },
+    {
+      "key": "home",
+      "title": "Home-country details",
+      "fields": [
+        {
+          "key": "address",
+          "label": "Address (home country)",
+          "type": "textarea",
+          "required": false
+        },
+        {
+          "key": "telephone",
+          "label": "Telephone (home country)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "airport",
+          "label": "International airport (home country)",
+          "type": "text",
+          "required": false
+        }
+      ],
+      "repeatable": false
+    },
+    {
+      "key": "relatives_question",
+      "title": "Relatives in UAE",
+      "fields": [
+        {
+          "key": "has_relatives",
+          "label": "I have relatives in the UAE",
+          "type": "checkbox",
+          "required": false
+        }
+      ],
+      "repeatable": false
+    },
+    {
+      "key": "relatives",
+      "title": "Relatives in UAE - details",
+      "fields": [
+        {
+          "key": "name",
+          "label": "Full name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "address",
+          "label": "Address",
+          "type": "textarea",
+          "required": false
+        },
+        {
+          "key": "phone",
+          "label": "Contact number",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "relationship",
+          "label": "Relationship",
+          "type": "text",
+          "required": true
+        }
+      ],
+      "repeatable": true
+    },
+    {
+      "key": "emergency",
+      "title": "Contact person in case of emergency",
+      "fields": [
+        {
+          "key": "name",
+          "label": "Full name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "address",
+          "label": "Address",
+          "type": "textarea",
+          "required": false
+        },
+        {
+          "key": "phone",
+          "label": "Contact number",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "relationship",
+          "label": "Relationship",
+          "type": "text",
+          "required": true
+        }
+      ],
+      "repeatable": false
+    },
+    {
+      "key": "dependants",
+      "title": "Employee's dependant(s) details",
+      "fields": [
+        {
+          "key": "name",
+          "label": "Name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "relationship",
+          "label": "Relationship",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "birthday",
+          "label": "Birthday",
+          "type": "date",
+          "required": false
+        }
+      ],
+      "repeatable": true
+    },
+    {
+      "key": "beneficiary",
+      "title": "Beneficiary declaration",
+      "fields": [
+        {
+          "key": "candidate_name",
+          "label": "Candidate full name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "beneficiary_name",
+          "label": "Nominated person",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "beneficiary_relationship",
+          "label": "Relationship",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "typed_name",
+          "label": "Typed name acknowledgement",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "date",
+          "label": "Date",
+          "type": "date",
+          "required": true
+        },
+        {
+          "key": "accepted",
+          "label": "I have read and acknowledge the company-template beneficiary declaration.",
+          "type": "checkbox",
+          "required": true
+        }
+      ],
+      "repeatable": false
+    }
+  ],
+  "declaration": "Subject to Article 15 of the Federal Law No. 33/2021, the employee should specify in writing the concerned family member/person who would receive the rights in case of death. I, {candidate_name}, hereby authorize {beneficiary_name}, relationship: {beneficiary_relationship}, to receive my rights in case of my death during my employment at Rejlers International Engineering Solutions - Abu Dhabi.",
+  "signature_note": "Typed names record acknowledgement; they are not verified digital signatures."
+}

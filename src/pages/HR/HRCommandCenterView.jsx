@@ -329,6 +329,7 @@ export default function HRCommandCenterView({
             daily: dailyRows,
             monthRollup
           })} disabled={loading || Boolean(workforceError)}>Export</Button>
+        <Button icon="UserGroupIcon" onClick={() => navigate("/hr/talent-acquisition")}>4.6 Talent Acquisition</Button>
         <Button icon="PlusIcon" primary onClick={() => navigate("/hr/onboarding?tab=create")}>Add employee</Button>
       </div><p className="hr-wi-freshness" role="status"><i className={`hr-wi-dot${incompleteSources ? " is-off" : ""}`} />{refreshedText}</p></div>
     </header>

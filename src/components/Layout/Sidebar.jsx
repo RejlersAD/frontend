@@ -539,6 +539,14 @@ const Sidebar = ({
           description: "Employee lifecycle management",
           moduleCode: "hr_onboarding",
         },
+        {
+          id: "hrTalentAcquisition",
+          title: "4.6 Talent Acquisition",
+          icon: UsersIcon,
+          path: "/hr/talent-acquisition",
+          description: "Candidate recruitment and open positions",
+          moduleCode: "hr_management",
+        },
       ],
     },
     {

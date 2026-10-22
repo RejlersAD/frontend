@@ -677,8 +677,17 @@ const AIInsightsPanel = ({ insights, loading }) => (
 // -----------------------------------------------------------------------------
 
 const LeaveRequestForm = ({ leaveTypes, leaveRecord, requests, onSubmit, submitting, submitResult }) => {
+  const [managerOptions, setManagerOptions] = useState(null)
+  const [managerError, setManagerError] = useState('')
+  useEffect(() => {
+    let active = true
+    apiClient.get('/payroll/leave-requests/manager-options/').then(({ data }) => { if (active) setManagerOptions(data) })
+      .catch(() => { if (active) setManagerError('Approving managers could not be loaded. Refresh to retry.') })
+    return () => { active = false }
+  }, [])
   const [form, setForm] = useState({
     leave_type: '',
+    selected_manager: '',
     start_date: '',
     end_date: '',
     half_day: false,
@@ -724,10 +733,12 @@ const LeaveRequestForm = ({ leaveTypes, leaveRecord, requests, onSubmit, submitt
   const handleSubmit = (e) => {
     e.preventDefault()
     if (!form.leave_type || !form.start_date || !form.end_date) return
-    onSubmit(form)
+    onSubmit({ ...form, selected_manager: isFlex ? undefined : form.selected_manager || undefined })
   }
 
-  const insufficient = form.leave_type === 'annual' && calcDays !== null && calcDays > balance
+  const selectedType = leaveTypes?.find(type => String(type.id) === String(form.leave_type))
+  const isFlex = selectedType?.code === 'FU' || form.leave_type === 'flex_utilization'
+  const insufficient = (selectedType?.category === 'annual' || form.leave_type === 'annual') && calcDays !== null && calcDays > balance
 
   // Default leave types (fallback when API returns nothing) — mirrors
   // ESS_LEAVE_TYPE_CONFIG enabled entries; uses category as id so the
@@ -738,7 +749,7 @@ const LeaveRequestForm = ({ leaveTypes, leaveRecord, requests, onSubmit, submitt
   const types = leaveTypes?.length > 0 ? leaveTypes : defaultTypes
 
   return (
-    <LeavePanel title="Apply for leave" subtitle="Choose your dates. Your line manager reviews first, then HR.">
+    <LeavePanel title="Apply for leave" subtitle={isFlex ? 'Choose your dates. Jemal, Rafat and Mohammed review in sequence, followed by HR.' : 'Choose your dates. Your line manager reviews first, then HR.'}>
       {submitResult?.success && (
         <div className="mb-4 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl p-3 text-sm flex items-center gap-2">
           <Icon name="CheckCircleIcon" className="w-4 h-4 flex-shrink-0" />
@@ -753,6 +764,9 @@ const LeaveRequestForm = ({ leaveTypes, leaveRecord, requests, onSubmit, submitt
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        {isFlex && <p className="text-sm text-indigo-700">Approval sequence: Jemal → Rafat → Mohammed → HR.</p>}
+        {managerError && <p role="alert" className="text-sm text-rose-700">{managerError}</p>}
+        {managerOptions?.manual_selection_required && !isFlex && <label className="block text-sm">Approving manager<select required value={form.selected_manager} onChange={event => set('selected_manager', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 p-2"><option value="">Select approving manager</option>{managerOptions.results.map(manager => <option key={manager.id} value={manager.id}>{manager.name} / {manager.department}</option>)}</select></label>}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {/* Leave type */}
           <div>
@@ -907,7 +921,7 @@ const LeaveRequestForm = ({ leaveTypes, leaveRecord, requests, onSubmit, submitt
             </div>
             <div className="text-xs space-y-0.5">
               <div>Duration: <strong>{calcDays} working day{calcDays !== 1 ? 's' : ''}</strong></div>
-              {form.leave_type === 'annual' && (
+              {(selectedType?.category === 'annual' || form.leave_type === 'annual') && (
                 <div>Balance after approval: <strong>{(balance - calcDays).toFixed(1)} days</strong></div>
               )}
               {conflict && <div>Warning: overlapping leave request detected</div>}
@@ -918,7 +932,7 @@ const LeaveRequestForm = ({ leaveTypes, leaveRecord, requests, onSubmit, submitt
 
         <div className="flex flex-col items-stretch gap-3 border-t border-slate-100 pt-4">
           <div className="text-xs text-slate-400">
-            Line manager review, then HR final approval
+            {isFlex ? 'Jemal → Rafat → Mohammed → HR final approval' : 'Line manager review, then HR final approval'}
           </div>
           <button
             type="submit"
@@ -3634,6 +3648,7 @@ export default function EmployeeSelfService() {
       if (form.attachment) {
         const formData = new FormData()
         formData.append('leave_type', form.leave_type)
+        if (form.selected_manager) formData.append('selected_manager', form.selected_manager)
         formData.append('start_date', form.start_date)
         formData.append('end_date', form.end_date)
         formData.append('half_day', form.half_day ? 'true' : 'false')
@@ -3659,7 +3674,7 @@ export default function EmployeeSelfService() {
       }
       
       window.dispatchEvent(new Event('leave-approval-updated'))
-      setSubmitResult({ success: true, message: `Leave request submitted. Awaiting ${response?.line_manager_name || 'line manager'} approval, followed by HR.` })
+      setSubmitResult({ success: true, message: response?.leave_type_detail?.code === 'FU' ? 'Flex Utilization submitted: Jemal → Rafat → Mohammed → HR.' : `Leave request submitted. Awaiting ${response?.line_manager_name || 'line manager'} approval, followed by HR.` })
       // Reload requests — mine=true scopes to current user even for HR/Admin roles
       const reqRes = await payrollService.getLeaveRequests({ mine: true, page_size: 50 }).catch(() => ({ results: [] }))
       const reqs   = Array.isArray(reqRes) ? reqRes : reqRes?.results || []

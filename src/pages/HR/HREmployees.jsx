@@ -30,6 +30,8 @@ import analyticsService from "../../services/analyticsService";
 import payrollService from "../../services/payroll.service";
 import payrollEngineService from "../../services/payrollEngine.service";
 import TimeSheetAnalytics from "./TimeSheetAnalytics";
+import EmployeeDirectoryWorkspace from "./EmployeeDirectoryWorkspace";
+import EmployeeRegisterImport from "../../components/HR/EmployeeRegisterImport";
 import ProbationPerformancePanel from "../../components/HR/ProbationPerformancePanel";
 import EmployeeDataQualityPanel from "../../components/HR/EmployeeDataQualityPanel";
 import EmployeeTalentPerformancePanel from "../../components/HR/EmployeeTalentPerformancePanel";
@@ -52,7 +54,6 @@ import {
   HR_DEFAULT_DETAIL_TAB,
   HR_DRAWER_WIDTH_DEFAULT,
   HR_PAGE_SIZES,
-  HR_DEFAULT_PAGE_SIZE,
   HR_DATA_FETCH_PAGE_SIZE,
   HR_COPY,
   HR_DISCIPLINES,
@@ -741,7 +742,7 @@ const EmployeeQuickActions = ({ emp, onAction, compact = false }) => {
 };
 
 const probationSummary = (employee) => {
-  const joinedValue = employee?.join_date || employee?.created_at;
+  const joinedValue = employee?.probation_start_date || employee?.join_date || employee?.created_at;
   if (!joinedValue) return null;
   const joined = new Date(`${String(joinedValue).slice(0, 10)}T00:00:00Z`);
   if (Number.isNaN(joined.getTime())) return null;
@@ -4844,12 +4845,13 @@ export default function HREmployees() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterValues, setFilterValues] = useState({});
   const [viewMode, setViewMode] = useState(HR_DEFAULT_VIEW_MODE);
-  const [pageSize, setPageSize] = useState(HR_DEFAULT_PAGE_SIZE);
+  const [pageSize, setPageSize] = useState(8);
   const [pageIndex, setPageIndex] = useState(0);
   const [employeeIdSort, setEmployeeIdSort] = useState(null);
   const [selectedEmp, setSelectedEmp] = useState(null);
   const [selectedTab, setSelectedTab] = useState(null); // optional initial tab when opening drawer
   const [selectedEdit, setSelectedEdit] = useState(false);
+  const [showRegisterImport, setShowRegisterImport] = useState(false);
   const detailCacheRef = useRef(new Map());
   const deepLinkHandledRef = useRef("");
   const currentUser =
@@ -5052,7 +5054,9 @@ export default function HREmployees() {
   const sortedEmployees = useMemo(
     () => viewMode === "table" && employeeIdSort
       ? sortEmployeesById(filteredEmployees, employeeIdSort)
-      : filteredEmployees,
+      : viewMode === "table"
+        ? [...filteredEmployees].sort((a, b) => fullName(a).localeCompare(fullName(b)))
+        : filteredEmployees,
     [filteredEmployees, employeeIdSort, viewMode],
   );
 
@@ -5156,8 +5160,25 @@ export default function HREmployees() {
 
   // ──────── Render ────────
   return (
-    <div className="min-h-screen w-full min-w-0 bg-slate-50 p-4 lg:p-6 dark:bg-slate-950">
-      <div className="w-full min-w-0 max-w-none space-y-4">
+    <div className={["table", "dept", "timesheet"].includes(viewMode) ? "employee-directory-reference" : "min-h-screen w-full min-w-0 bg-slate-50 p-4 lg:p-6 dark:bg-slate-950"}>
+      {["table", "dept", "timesheet"].includes(viewMode) && <EmployeeDirectoryWorkspace
+        employees={employees} filteredEmployees={filteredEmployees} paginated={paginated}
+        loading={loading} error={error} onRetry={fetchEmployees}
+        query={searchTerm} onQuery={setSearchTerm} onSubmitSearch={handleSubmitSearch}
+        searching={searching} searchNotice={searchNotice} onDismissNotice={() => setSearchNotice(null)}
+        filters={filterValues} onFilter={setFilterValue} onReset={resetFilters}
+        selectedKpi={selectedKpi} onKpi={setSelectedKpi}
+        pageIndex={pageIndex} onPage={setPageIndex} pageSize={pageSize} onPageSize={setPageSize}
+        totalPages={totalPages} viewMode={viewMode} onViewMode={setViewMode}
+        employeeIdSort={employeeIdSort} onEmployeeIdSort={() => setEmployeeIdSort(previous => previous === "ascending" ? "descending" : "ascending")}
+        onOpenProfile={openEmp} onAction={handleEmployeeAction} onNavigate={navigate}
+        onImport={() => setShowRegisterImport(true)}
+        canEdit={HR_EDIT_CONFIG.enableEditMode && hasConfiguredAccess(currentUser, HR_EDIT_CONFIG.allowedRoles, HR_EDIT_CONFIG.requiredPermission)}
+        organizationContent={<OrgDemographyView employees={filteredEmployees} onSelect={openEmp} onAction={handleEmployeeAction} />}
+        timesheetContent={<TimeSheetAnalytics embedded />}
+        probationSummary={probationSummary}
+      />}
+      {!["table", "dept", "timesheet"].includes(viewMode) && <div className="w-full min-w-0 max-w-none space-y-4">
         {/* Workforce overview, directory search, filters and view navigation */}
         <KpiStrip
           employees={employees}
@@ -5393,6 +5414,8 @@ export default function HREmployees() {
           </>
       </div>
 
+      }
+      {showRegisterImport && <EmployeeRegisterImport onClose={() => setShowRegisterImport(false)} onCompleted={fetchEmployees} />}
       {/* Detail drawer */}
       {selectedEmp && (
         <DetailDrawer

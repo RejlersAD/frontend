@@ -8,13 +8,20 @@ import { clearDevicePushSession, getPushOwner } from './pushDeviceSession'
 
 // SOFT-CODED: Auth timeout from centralized config (90s to handle Railway cold-start DB reconnect)
 const { timeoutAuth: AUTH_TIMEOUT_MS } = getApiTimeouts()
+const DEBUG_AUTH_LOGS = import.meta.env.DEV
+const debugAuthLog = (...args) => {
+  if (DEBUG_AUTH_LOGS) console.log(...args)
+}
+const debugAuthWarn = (...args) => {
+  if (DEBUG_AUTH_LOGS) console.warn(...args)
+}
 
 // =============================================================================
 // SOFT-CODED LOGIN RESILIENCE CONFIG
 // -----------------------------------------------------------------------------
-// Railway free/shared tiers cold-start the Django container + DB pool on the
-// first request after idle. Symptom: /health/ and /auth/login/ both ECONNABORTED.
-// This config controls warmup + retry behavior. Tune values here without
+// Railway can cold-start the Django container + DB pool on the first request.
+// The login request itself wakes the backend; a separate health endpoint must
+// never delay authentication. This config controls retry behavior. Tune it without
 // changing any of the underlying request/response logic.
 //
 // Override at runtime (e.g. from DevTools) via:
@@ -24,16 +31,8 @@ const _runtimeOverride =
   (typeof window !== 'undefined' && window.__LOGIN_RESILIENCE_OVERRIDE) || {}
 
 const LOGIN_RESILIENCE_CONFIG = {
-  // Warmup ping — wakes Railway container & opens DB pool before the real POST.
-  // Hardcoded 15 s was too short for true cold-start; bumped to 45 s and we
-  // retry a couple of times since the first hit usually triggers boot.
-  WARMUP_TIMEOUT_MS: 45000,
-  WARMUP_MAX_ATTEMPTS: 3,
-  WARMUP_RETRY_DELAY_MS: 1500,
-
   // Login POST — total attempts including the first try.
-  // After a successful warmup the server is hot, so a retry almost always
-  // succeeds quickly even if the first POST timed out mid-cold-start.
+  // Retry transient cold-start failures without waiting for a health probe.
   LOGIN_MAX_ATTEMPTS: 2,
   LOGIN_RETRY_DELAY_MS: 2000,
   // Per-attempt login timeout — overridable independently of the global
@@ -60,33 +59,6 @@ const LOGIN_RESILIENCE_CONFIG = {
 const _sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 /**
- * Wake the backend with retries. Non-fatal — login is still attempted even
- * if every warmup attempt fails (the POST itself can succeed once the
- * container finishes booting partway through our wait).
- */
-async function _warmupBackend() {
-  const { WARMUP_MAX_ATTEMPTS, WARMUP_TIMEOUT_MS, WARMUP_RETRY_DELAY_MS } =
-    LOGIN_RESILIENCE_CONFIG
-  for (let attempt = 1; attempt <= WARMUP_MAX_ATTEMPTS; attempt++) {
-    const t0 = Date.now()
-    try {
-      await apiClient.get(API_ENDPOINTS.HEALTH, { timeout: WARMUP_TIMEOUT_MS })
-      console.log(
-        `[AuthService] ✅ Backend warmed up (attempt ${attempt}/${WARMUP_MAX_ATTEMPTS}) in ${Date.now() - t0} ms`
-      )
-      return true
-    } catch (err) {
-      console.warn(
-        `[AuthService] ⚠️ Warmup attempt ${attempt}/${WARMUP_MAX_ATTEMPTS} failed in ${Date.now() - t0} ms:`,
-        err.message
-      )
-      if (attempt < WARMUP_MAX_ATTEMPTS) await _sleep(WARMUP_RETRY_DELAY_MS)
-    }
-  }
-  return false
-}
-
-/**
  * Authentication Service
  * Smart authentication operations
  */
@@ -96,25 +68,18 @@ export const authService = {
    * Login user with enhanced error handling and timeout detection
    */
   async login(credentials) {
-    console.log('[AuthService] 🔐 Starting login process...')
-    console.log('[AuthService] Email:', credentials.email)
-    console.log('[AuthService] API Endpoint:', API_ENDPOINTS.LOGIN)
-    console.log('[AuthService] Auth timeout:', AUTH_TIMEOUT_MS, 'ms')
+    debugAuthLog('[AuthService] 🔐 Starting login process...')
+    debugAuthLog('[AuthService] Email:', credentials.email)
+    debugAuthLog('[AuthService] API Endpoint:', API_ENDPOINTS.LOGIN)
+    debugAuthLog('[AuthService] Auth timeout:', AUTH_TIMEOUT_MS, 'ms')
     
     try {
       const loginStartTime = Date.now()
 
-      // Warmup ping(s): wake the Railway backend before the login POST.
-      // Soft-coded retries + extended timeout — Railway cold-start can take
-      // 30-90 s and a single 15 s ping wasn't enough. Failures are non-fatal.
-      console.log('[AuthService] 🌡️ Warming up backend connection...')
-      await _warmupBackend()
-
-      console.log('[AuthService] 📡 Sending login request to backend...')
+      debugAuthLog('[AuthService] 📡 Sending login request to backend...')
 
       // Retry the login POST on transient errors (timeout / 5xx / network).
-      // By the time we retry, the warmup attempts above have usually finished
-      // booting the container, so the second attempt is fast. We NEVER retry
+      // The initial POST wakes the backend if needed. We NEVER retry
       // on 401 / validation errors — those are real auth failures.
       const { LOGIN_MAX_ATTEMPTS, LOGIN_RETRY_DELAY_MS, LOGIN_ATTEMPT_TIMEOUT_MS } =
         LOGIN_RESILIENCE_CONFIG
@@ -126,7 +91,7 @@ export const authService = {
           response = await apiClient.post(API_ENDPOINTS.LOGIN, credentials, {
             timeout: LOGIN_ATTEMPT_TIMEOUT_MS,
           })
-          console.log(
+          debugAuthLog(
             `[AuthService] ✅ Login attempt ${attempt}/${LOGIN_MAX_ATTEMPTS} succeeded in ${Date.now() - tAttempt} ms`
           )
           lastErr = null
@@ -134,7 +99,7 @@ export const authService = {
         } catch (err) {
           lastErr = err
           const transient = LOGIN_RESILIENCE_CONFIG.isTransient(err)
-          console.warn(
+          debugAuthWarn(
             `[AuthService] ⚠️ Login attempt ${attempt}/${LOGIN_MAX_ATTEMPTS} failed in ${Date.now() - tAttempt} ms (transient=${transient}):`,
             err.message
           )
@@ -151,7 +116,7 @@ export const authService = {
       }
 
       const loginEndTime = Date.now()
-      console.log('[AuthService] ✅ Login request completed in', loginEndTime - loginStartTime, 'ms')
+      debugAuthLog('[AuthService] ✅ Login request completed in', loginEndTime - loginStartTime, 'ms')
       
       const { access, refresh } = response.data
       
@@ -160,13 +125,13 @@ export const authService = {
         throw new Error('Invalid response from server - missing tokens')
       }
       
-      console.log('[AuthService] 🔑 Tokens received, storing...')
+      debugAuthLog('[AuthService] 🔑 Tokens received, storing...')
       
       // Store tokens
       localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, access)
       localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refresh)
       
-      console.log('[AuthService] 👤 Fetching user data...')
+      debugAuthLog('[AuthService] 👤 Fetching user data...')
       
       // Get user data with retry logic
       let userData;
@@ -180,7 +145,7 @@ export const authService = {
           if (retries === 0) {
             throw userError;
           }
-          console.warn(`[AuthService] Failed to get user data, retrying... (${retries} attempts left)`);
+          debugAuthWarn(`[AuthService] Failed to get user data, retrying... (${retries} attempts left)`);
           await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second before retry
         }
       }
@@ -188,15 +153,15 @@ export const authService = {
       if (getPushOwner() && getPushOwner().userId !== String(userData?.user?.id ?? userData?.id ?? '')) await clearDevicePushSession()
       localStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(userData))
       
-      console.log('[AuthService] ✅ Login process completed successfully')
+      debugAuthLog('[AuthService] ✅ Login process completed successfully')
       
       // Start password expiry checking
       try {
         await passwordExpiryService.checkPasswordExpiry()
         passwordExpiryService.startPeriodicCheck()
-        console.log('[AuthService] 🔒 Password expiry monitoring started')
+        debugAuthLog('[AuthService] 🔒 Password expiry monitoring started')
       } catch (expiryError) {
-        console.warn('[AuthService] ⚠️ Failed to initialize password expiry checking:', expiryError)
+        console.warn('[AuthService] ⚠️ Failed to initialize password expiry checking:', expiryError?.message || 'unknown error')
         // Don't fail login if expiry check fails
       }
       
@@ -242,7 +207,7 @@ export const authService = {
     localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN)
     localStorage.removeItem(STORAGE_KEYS.USER_DATA)
     
-    console.log('[AuthService] 🚪 Logged out successfully')
+    debugAuthLog('[AuthService] 🚪 Logged out successfully')
   },
 
   /**
