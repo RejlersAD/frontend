@@ -123,6 +123,7 @@ const PATTERN_MIN_RATIO = 0.8;
 const byokStorageKeys = (projectId) => ({
   provider: `radai_vmto_byok_provider::${projectId || 'none'}`,
   apiKey: `radai_vmto_byok_apikey::${projectId || 'none'}`,
+  model: `radai_vmto_byok_model::${projectId || 'none'}`,
 });
 const readByok = (projectId) => {
   try {
@@ -130,9 +131,22 @@ const readByok = (projectId) => {
     return {
       provider: sessionStorage.getItem(k.provider) || 'openai',
       apiKey: sessionStorage.getItem(k.apiKey) || '',
+      model: sessionStorage.getItem(k.model) || '',
     };
-  } catch { return { provider: 'openai', apiKey: '' }; }
+  } catch { return { provider: 'openai', apiKey: '', model: '' }; }
 };
+
+// Fallback catalog when the engine test hasn't run yet — the authoritative
+// list comes from the backend (engine_status().models), soft-coded from the
+// extractor's own VISION_MODELS/COST tables.
+const BYOK_MODEL_FALLBACK = {
+  openai: { default: 'gpt-4o-mini', options: ['gpt-4o-mini', 'gpt-4o'] },
+  claude: { default: 'claude-opus-5-5', options: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'] },
+};
+
+// Inline option styles — bulletproof against native-popup theme bugs AND
+// stale service-worker CSS caches (inline beats every stylesheet).
+const OPTION_STYLE = { backgroundColor: '#ffffff', color: '#0f172a' };
 
 // §7 data contract — stage states and row enums.
 export const STAGE_STATES = ['locked', 'active', 'complete', 'needs-recheck'];
@@ -1299,9 +1313,9 @@ function StagePid({ status, busy, drawings, activeDrawing, settings, draftDrawin
                         setCustomRegex(t.regex);
                         onPatternChange('custom', t.regex);
                       }}>
-                      <option value="" disabled>Choose a ready-made regex template…</option>
+                      <option value="" disabled style={OPTION_STYLE}>Choose a ready-made regex template…</option>
                       {CUSTOM_REGEX_TEMPLATES.map((t) => (
-                        <option key={t.id} value={t.id}>{t.label} — {t.example}</option>
+                        <option key={t.id} value={t.id} style={OPTION_STYLE}>{t.label} — {t.example}</option>
                       ))}
                     </select>
                     <input className="rd-input rd-mono" placeholder="(?P<fluid>…)-(?P<seq>…)-(?P<size>…)-(?P<class>…)-(?P<insul>…)"
@@ -1408,6 +1422,7 @@ function StageEngine({ status, busy, settings, engineTest, onTest, onSave, hasTe
   // BYOK — key lives only in sessionStorage (see byokStorageKeys above).
   const [byokProvider, setByokProvider] = useState(() => readByok(projectId).provider);
   const [byokKey, setByokKey] = useState(() => readByok(projectId).apiKey);
+  const [byokModel, setByokModel] = useState(() => readByok(projectId).model);
   const [byokTest, setByokTest] = useState(null); // null | { valid, message }
   const [byokBusy, setByokBusy] = useState(false);
   useEffect(() => {
@@ -1416,21 +1431,26 @@ function StageEngine({ status, busy, settings, engineTest, onTest, onSave, hasTe
     setInstruments(settings.engine_instruments); setReviewThreshold(settings.engine_review_threshold);
   }, [settings?.updated_at]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const persistByok = (provider, key) => {
+  const persistByok = (provider, key, model = byokModel) => {
     try {
       const k = byokStorageKeys(projectId);
       sessionStorage.setItem(k.provider, provider);
       if (key) sessionStorage.setItem(k.apiKey, key);
       else sessionStorage.removeItem(k.apiKey);
+      if (model) sessionStorage.setItem(k.model, model);
+      else sessionStorage.removeItem(k.model);
     } catch { /* sessionStorage unavailable — extraction will use central keys */ }
   };
-  const onByokProvider = (v) => { setByokProvider(v); setByokTest(null); persistByok(v, byokKey); };
+  const onByokProvider = (v) => { setByokProvider(v); setByokTest(null); setByokModel(''); persistByok(v, byokKey, ''); };
   const onByokKey = (v) => { setByokKey(v); setByokTest(null); persistByok(byokProvider, v); };
+  const onByokModel = (v) => { setByokModel(v); setByokTest(null); persistByok(byokProvider, byokKey, v); };
+  // Model catalog: server-advertised (engine test) with static fallback.
+  const modelCatalog = engineTest?.models?.[byokProvider] || BYOK_MODEL_FALLBACK[byokProvider];
   const testByokKey = async () => {
     if (!byokKey.trim()) { setByokTest({ valid: false, message: 'Enter an API key first.' }); return; }
     setByokBusy(true);
     try {
-      setByokTest(await valveMtoService.testApiKey(byokProvider, byokKey.trim()));
+      setByokTest(await valveMtoService.testApiKey(byokProvider, byokKey.trim(), byokModel));
     } catch (e) {
       setByokTest({ valid: false, message: e?.response?.data?.message || e?.response?.data?.error || 'Key test failed.' });
     } finally { setByokBusy(false); }
@@ -1459,9 +1479,16 @@ function StageEngine({ status, busy, settings, engineTest, onTest, onSave, hasTe
             </span>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <select className="rd-select" value={byokProvider} onChange={(e) => onByokProvider(e.target.value)} aria-label="BYOK provider">
-              <option value="openai">OpenAI</option>
-              <option value="claude">Claude (Anthropic)</option>
+            <select className="rd-select" value={byokProvider} onChange={(e) => onByokProvider(e.target.value)} aria-label="BYOK provider"
+              style={{ minWidth: 180, width: 'auto', flexShrink: 0, paddingRight: '2rem' }}>
+              <option value="openai" style={OPTION_STYLE}>OpenAI</option>
+              <option value="claude" style={OPTION_STYLE}>Claude (Anthropic)</option>
+            </select>
+            <select className="rd-select" value={byokModel} onChange={(e) => onByokModel(e.target.value)} aria-label="AI model" style={{ minWidth: 240, width: 'auto', flexShrink: 0, paddingRight: '2rem' }}>
+              <option value="" style={OPTION_STYLE}>Default — {modelCatalog?.default || 'server default'}</option>
+              {(modelCatalog?.options || []).filter((m) => m !== modelCatalog?.default).map((m) => (
+                <option key={m} value={m} style={OPTION_STYLE}>{m}</option>
+              ))}
             </select>
             <input className="rd-input" type="password" style={{ minWidth: 280, flex: 1 }}
               placeholder={byokProvider === 'openai' ? 'sk-…' : 'sk-ant-…'}
@@ -1489,22 +1516,22 @@ function StageEngine({ status, busy, settings, engineTest, onTest, onSave, hasTe
           <label style={{ display: 'grid', gap: 4, fontSize: 'var(--rd-text-caption)' }}>
             <span className="rd-text-muted">Extraction method</span>
             <select className="rd-select" value={method} onChange={(e) => setMethod(e.target.value)}>
-              <option value="vector-vision">Vector + vision</option>
-              <option value="vision-only">Vision only</option>
+              <option value="vector-vision" style={OPTION_STYLE}>Vector + vision</option>
+              <option value="vision-only" style={OPTION_STYLE}>Vision only</option>
             </select>
           </label>
           <label style={{ display: 'grid', gap: 4, fontSize: 'var(--rd-text-caption)' }}>
             <span className="rd-text-muted">Valve scope</span>
             <select className="rd-select" value={scope} onChange={(e) => setScope(e.target.value)}>
-              <option value="project-scope">Project scope only — valves inside scope clouds</option>
-              <option value="all-visible">All visible valves</option>
+              <option value="project-scope" style={OPTION_STYLE}>Project scope only — valves inside scope clouds</option>
+              <option value="all-visible" style={OPTION_STYLE}>All visible valves</option>
             </select>
           </label>
           <label style={{ display: 'grid', gap: 4, fontSize: 'var(--rd-text-caption)' }}>
             <span className="rd-text-muted">Instrument items</span>
             <select className="rd-select" value={instruments} onChange={(e) => setInstruments(e.target.value)}>
-              <option value="list-separately">List separately (control, on-off, PSV, solenoid)</option>
-              <option value="exclude">Exclude</option>
+              <option value="list-separately" style={OPTION_STYLE}>List separately (control, on-off, PSV, solenoid)</option>
+              <option value="exclude" style={OPTION_STYLE}>Exclude</option>
             </select>
           </label>
           <label style={{ display: 'grid', gap: 4, fontSize: 'var(--rd-text-caption)' }}>

@@ -161,8 +161,10 @@ const valveMtoService = {
    * ioListWorkflowService.testVisionApiKey's contract exactly. One
    * minimal, cheap call, no PDF/image involved.
    */
-  async testApiKey(provider, apiKey) {
-    const { data } = await apiClient.post(TEST_KEY_URL, { provider, api_key: apiKey }, {
+  async testApiKey(provider, apiKey, model = '') {
+    const { data } = await apiClient.post(TEST_KEY_URL, {
+      provider, api_key: apiKey, ...(model ? { model } : {}),
+    }, {
       sensitiveRequest: true, timeout: 30000,
     })
     return data
@@ -243,6 +245,7 @@ const valveMtoService = {
       body.vision_provider = byok.provider || 'openai'
       body.vision_api_key = byok.apiKey
     }
+    if (byok.model) body.vision_model = byok.model
     const { data } = await apiClient.post(`${BASE}${projectId}/extract/`, body, {
       timeout: 30000,
       ...(byok.apiKey ? { sensitiveRequest: true } : {}),
