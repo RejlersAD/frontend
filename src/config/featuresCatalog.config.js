@@ -121,7 +121,7 @@ export const FEATURES_CATALOG = {
         name: 'Valve MTO',
         shortName: 'Valve MTO',
         description: 'Valve Material Take-Off — quantities, specs and project rollup',
-        path: '/engineering/piping/pms',
+        path: '/engineering/piping/valve-mto',
         moduleCode: 'piping_pms',
         status: FEATURE_STATUS.NEW,
         badges: [FEATURE_BADGES.NEW],

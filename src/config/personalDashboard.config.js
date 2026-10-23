@@ -91,7 +91,7 @@ export const MODULE_META = {
   mechanical_datasheet:  { icon: '⚙️', label: 'Mechanical',          route: '/engineering/mechanical',                  category: 'engineering', accent: 'from-slate-500 to-gray-700' },
   civil_datasheet:       { icon: '🏗️', label: 'Civil',               route: '/engineering/civil',                       category: 'engineering', accent: 'from-stone-500 to-neutral-700' },
   piping_datasheet:      { icon: '🧵', label: 'Piping',              route: '/engineering/piping',                      category: 'engineering', accent: 'from-rose-500 to-pink-600' },
-  piping_pms:            { icon: '📎', label: 'Piping Material Spec', route: '/engineering/piping/pms',                 category: 'engineering', accent: 'from-pink-500 to-rose-600' },
+  piping_pms:            { icon: '📎', label: 'Piping Material Spec', route: '/engineering/piping/valve-mto',           category: 'engineering', accent: 'from-pink-500 to-rose-600' },
   spec_customization:    { icon: '🧩', label: 'Spec Customization',  route: '/engineering/piping/spec-customization',   category: 'engineering', accent: 'from-violet-500 to-purple-600' },
   non_teff_metadata:     { icon: '🗂️', label: 'Non-TEFF Metadata',   route: '/engineering/non-teff',                    category: 'engineering', accent: 'from-neutral-500 to-slate-600' },
   pid_line_list:         { icon: '📏', label: 'Line List',           route: '/engineering/process/line-list',           category: 'engineering', accent: 'from-blue-500 to-sky-600' },

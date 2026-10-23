@@ -910,7 +910,7 @@ export const HELP_ROUTE_RULES = [
   { id: 'pid-verification-v1', test: path => path === '/engineering/process/pid-verification-v1', resolve: () => PID_VERIFICATION_V1_CONTEXT },
   { id: 'pid-checker-v2', test: path => path === '/engineering/process/pid-checker-v2', resolve: () => PID_CHECKER_V2_CONTEXT },
   { id: 'critical-line-list', test: path => path === '/engineering/piping/critical-line-list', resolve: () => CRITICAL_LINE_LIST_CONTEXT },
-  { id: 'pms-valve-mto', test: path => path === '/engineering/piping/pms', resolve: () => PMS_VALVE_MTO_CONTEXT },
+  { id: 'pms-valve-mto', test: path => path === '/engineering/piping/pms' || path.startsWith('/engineering/piping/valve-mto'), resolve: () => PMS_VALVE_MTO_CONTEXT },
   { id: 'instrument-index', test: path => path === '/engineering/instrument/index', resolve: () => INSTRUMENT_INDEX_CONTEXT },
   { id: 'io-list', test: path => path === '/engineering/instrument/datasheet/io-list', resolve: () => IO_LIST_CONTEXT },
   { id: 'sld-comparison', test: path => path === '/engineering/electrical/sld', resolve: () => SLD_COMPARISON_CONTEXT },
