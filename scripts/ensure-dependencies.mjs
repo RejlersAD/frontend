@@ -11,7 +11,10 @@ const installedHash = existsSync(markerPath)
   ? readFileSync(markerPath, 'utf8').trim().split(/\s+/)[0]
   : ''
 
-if (installedHash === lockHash) {
+const viteCommandPath = process.platform === 'win32'
+  ? 'node_modules/.bin/vite.cmd'
+  : 'node_modules/.bin/vite'
+if (installedHash === lockHash && existsSync(viteCommandPath) && existsSync('node_modules/vite/bin/vite.js')) {
   process.exit(0)
 }
 

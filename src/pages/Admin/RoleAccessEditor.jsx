@@ -3,6 +3,7 @@ import { Users, ShieldCheck, AlertTriangle, FileText, Search, ChevronDown, Arrow
 import { radaiConfirm } from '../../services/radaiDialog';
 import rbacService from '../../services/rbac.service';
 import { getRoleName, getRoleDescription } from '../../utils/roleDisplay.utils';
+import ExecutiveTabPermissions from './ExecutiveTabPermissions';
 
 const ids = entries => new Set((entries || []).map(item => item.id));
 const userName = profile => [profile.user?.first_name, profile.user?.last_name].filter(Boolean).join(' ') || profile.user?.email || 'User';
@@ -132,6 +133,7 @@ export default function RoleAccessEditor({ role, modules, groups, users, usersLo
       <div className="ra-tabs ra-detail-tabs" role="tablist" aria-label="Role details">{[['users', 'Assigned users'], ['modules', 'Permissions'], ['history', 'Change history']].map(([key, label]) => <button key={key} role="tab" aria-selected={tab === key} onClick={() => changeTab(key)}>{label}</button>)}</div>
       <div className="ra-editor-content">
         {tab === 'modules' && <>
+          {catalogueState === 'ready' && <ExecutiveTabPermissions permissions={catalogue} disabled={locked || saving} value={p => implicit || permissionIds.has(p.id)} onChange={(p, checked) => toggle(setPermissionIds, [p.id], checked)} />}
           <div className="ra-notice ra-warning"><AlertTriangle size={16} /><span>{role.is_system_role ? 'System role' : 'Custom role'} · permission changes affect {affected} users</span>{role.is_system_role && <small>System roles cannot be deleted.</small>}</div>
           {locked && <p className="ra-readonly"><Lock size={14} />{implicit ? 'Super Administrator access is governed by system policy.' : ownRole ? 'Your own effective access is protected. Another Super Administrator must review changes to this role.' : 'Only Super Administrators can edit permissions.'}</p>}
           <div className="ra-matrix-filters"><label className="ra-search"><Search size={16} /><input aria-label="Search permissions" placeholder="Search permissions…" value={query} onChange={event => setQuery(event.target.value)} /></label><select aria-label="Access level" value={accessFilter} onChange={event => setAccessFilter(event.target.value)}><option value="">All access levels</option>{columns.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select><select aria-label="Permission source" value={sourceFilter} onChange={event => setSourceFilter(event.target.value)}><option value="">All sources</option><option value="direct">Direct</option><option value="none">Not granted</option></select><label className="ra-granted"><input type="checkbox" checked={grantedOnly} onChange={event => setGrantedOnly(event.target.checked)} />Show granted only</label></div>

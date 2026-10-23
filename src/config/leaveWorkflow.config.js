@@ -77,7 +77,7 @@ export const LEAVE_WORKFLOW_STAGES = {
 export const LEAVE_REQUEST_STATUSES = {
   PENDING: {
     code: 'PENDING',
-    label: 'Pending',
+    label: 'Pending Approval',
     description: 'Waiting for Reporting Manager approval',
     color: 'amber',
     bgColor: 'bg-amber-50',
@@ -89,7 +89,7 @@ export const LEAVE_REQUEST_STATUSES = {
   },
   RM_APPROVED: {
     code: 'RM_APPROVED',
-    label: 'Pending HR Approval',
+    label: 'Pending Approval',
     description: 'Approved by Reporting Manager, awaiting HR',
     color: 'blue',
     bgColor: 'bg-blue-50',

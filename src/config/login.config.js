@@ -251,7 +251,7 @@ export const NAVIGATION = {
 
 // Console Logging Configuration
 export const LOGGING = {
-  enabled: true,
+  enabled: import.meta.env.DEV,
   login: {
     attempt: '[Login] 🔐 Attempting login with email:',
     sending: '[Login] 📡 Sending request to backend...',
@@ -428,4 +428,3 @@ export const FORM_TILT = {
   perspective: 1200,
   resetMs: 320,
 }
-

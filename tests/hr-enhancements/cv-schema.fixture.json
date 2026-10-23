@@ -1,0 +1,247 @@
+{
+  "kind": "cv",
+  "version": "rad-2026-10-v3",
+  "sections": [
+    {
+      "key": "candidate",
+      "title": "Candidate details",
+      "fields": [
+        {
+          "key": "name",
+          "label": "Full name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "position_applied",
+          "label": "Position Applied",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "nationality",
+          "label": "Nationality",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "current_position",
+          "label": "Current position",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "current_department",
+          "label": "Current department",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "birth_year",
+          "label": "Year of birth (optional)",
+          "type": "year",
+          "required": false
+        },
+        {
+          "key": "email",
+          "label": "Personal email",
+          "type": "email",
+          "required": true,
+          "supplemental": true
+        },
+        {
+          "key": "phone",
+          "label": "Personal contact number",
+          "type": "text",
+          "required": true,
+          "supplemental": true
+        }
+      ],
+      "repeatable": false
+    },
+    {
+      "key": "education",
+      "title": "Education",
+      "fields": [
+        {
+          "key": "qualification",
+          "label": "Qualification",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "institution",
+          "label": "Institution",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "period",
+          "label": "Period",
+          "type": "text",
+          "required": false
+        }
+      ],
+      "repeatable": true
+    },
+    {
+      "key": "languages",
+      "title": "Languages",
+      "fields": [
+        {
+          "key": "language",
+          "label": "Language",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "proficiency",
+          "label": "Proficiency",
+          "type": "text",
+          "required": false
+        }
+      ],
+      "repeatable": true
+    },
+    {
+      "key": "competence",
+      "title": "Fields of competence",
+      "fields": [
+        {
+          "key": "projects",
+          "label": "Projects",
+          "type": "textarea",
+          "required": false
+        },
+        {
+          "key": "technology",
+          "label": "Technology",
+          "type": "textarea",
+          "required": false
+        },
+        {
+          "key": "techniques",
+          "label": "Techniques",
+          "type": "textarea",
+          "required": false
+        }
+      ],
+      "repeatable": false
+    },
+    {
+      "key": "summary",
+      "title": "Experience summary",
+      "fields": [
+        {
+          "key": "text",
+          "label": "Professional summary",
+          "type": "textarea",
+          "required": false
+        }
+      ],
+      "repeatable": false
+    },
+    {
+      "key": "projects",
+      "title": "Relevant project experience",
+      "fields": [
+        {
+          "key": "period",
+          "label": "Period",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "title",
+          "label": "Title",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "company",
+          "label": "Company",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "projects",
+          "label": "Projects",
+          "type": "textarea",
+          "required": false
+        },
+        {
+          "key": "responsibilities",
+          "label": "Key responsibilities",
+          "type": "textarea",
+          "required": false
+        }
+      ],
+      "repeatable": true
+    },
+    {
+      "key": "employment",
+      "title": "Employment history",
+      "fields": [
+        {
+          "key": "period",
+          "label": "Period",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "title",
+          "label": "Title",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "company",
+          "label": "Company",
+          "type": "text",
+          "required": false
+        }
+      ],
+      "repeatable": true
+    },
+    {
+      "key": "achievements",
+      "title": "Key achievements and certifications",
+      "fields": [
+        {
+          "key": "achievements",
+          "label": "Key achievements",
+          "type": "textarea",
+          "required": false
+        },
+        {
+          "key": "certifications",
+          "label": "Certifications (if any)",
+          "type": "textarea",
+          "required": false
+        }
+      ],
+      "repeatable": false
+    },
+    {
+      "key": "acknowledgement",
+      "title": "Accuracy acknowledgement",
+      "fields": [
+        {
+          "key": "name",
+          "label": "Typed full name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "accurate",
+          "label": "I confirm that the information provided is accurate to the best of my knowledge.",
+          "type": "checkbox",
+          "required": true
+        }
+      ],
+      "repeatable": false
+    }
+  ],
+  "declaration": "",
+  "signature_note": "Typed names record acknowledgement; they are not verified digital signatures."
+}

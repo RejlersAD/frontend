@@ -83,6 +83,8 @@ import InvoiceRegisterDetail from "./pages/Finance/InvoiceRegisterDetail";
 import SalarySlip from "./pages/Finance/SalarySlip";
 import HREmployees from "./pages/HR/HREmployees";
 import HRDashboard from "./pages/HR/HRDashboard";
+import TalentAcquisition from "./pages/HR/TalentAcquisition";
+import CandidateOnlineForm from "./pages/HR/CandidateOnlineForm";
 import Payroll from "./pages/HR/Payroll";
 import EmployeeSelfService from "./pages/HR/EmployeeSelfService";
 import OnboardingOffboarding from "./pages/HR/OnboardingOffboarding";
@@ -584,6 +586,7 @@ function App() {
         /> */}
             {/* Password Reset Routes - Public */}
             <Route path="setup-password" element={<SetupPassword />} />
+            <Route path="candidate-forms" element={<CandidateOnlineForm />} />
             <Route path="reset-password" element={<SetupPassword />} />
             <Route
               path="request-password-reset"
@@ -891,6 +894,14 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <LeaveRequestReviewPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="hr/talent-acquisition"
+                  element={
+                    <ProtectedRoute>
+                      <TalentAcquisition />
                     </ProtectedRoute>
                   }
                 />

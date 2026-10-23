@@ -284,6 +284,8 @@ export default defineConfig(({ mode }) => {
     // Without pre-bundling @emotion packages, the default export can resolve 
     // to undefined → "styled_default is not a function".
     optimizeDeps: {
+      // Scan the application entry rather than archived builds and HTML reports.
+      entries: ['index.html'],
       // Rebuild after every dev-server restart. This deliberately trades a
       // few seconds of startup time for deterministic collaboration: an old
       // node_modules/.vite bundle can never survive a branch pull/restart.

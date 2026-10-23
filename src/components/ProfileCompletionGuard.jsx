@@ -5,6 +5,7 @@ import { CheckCircleIcon, ExclamationTriangleIcon, UserCircleIcon } from '@heroi
 import apiClient from '../services/api.service'
 
 const EXEMPT_ROUTES = new Set([
+  '/candidate-forms',
   '/', '/home', '/login', '/profile', '/hr/Employeprofile', '/change-password',
   '/setup-password', '/reset-password', '/request-password-reset', '/forgot-password',
   '/terms-of-service', '/privacy-policy', '/about', '/solutions', '/enquiry', '/enquiries',
