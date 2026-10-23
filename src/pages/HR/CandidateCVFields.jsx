@@ -10,6 +10,7 @@ const choices = {
   proficiency: ['Native / Bilingual', 'Fluent', 'Professional working proficiency', 'Intermediate', 'Basic'],
 }
 const examples = {
+  position_applied: 'e.g. Senior Mechanical Engineer', nationality: 'e.g. Emirati',
   name: 'e.g. Aisha Ahmed', current_position: 'e.g. Senior Mechanical Engineer', current_department: 'e.g. Engineering',
   email: 'e.g. aisha@example.com', phone: '+971 50 123 4567', qualification: 'e.g. Bachelor of Engineering', institution: 'e.g. Khalifa University',
   language: 'e.g. English', proficiency: 'e.g. Fluent', title: 'e.g. Lead Process Engineer', company: 'e.g. Rejlers',

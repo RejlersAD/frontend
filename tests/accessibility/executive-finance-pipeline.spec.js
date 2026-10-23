@@ -43,14 +43,14 @@ function invoices(id, offset = 0) {
 }
 
 async function open(page, tab = '') {
-  const state = { id: 7, deny: false, requests: [], errors: [], unknown: [] };
+  const state = { id: 7, deny: false, allowedTabs: ['overview', 'financial', 'portfolio', 'commercial', 'workforce', 'risk'], requests: [], errors: [], unknown: [] };
   page.on('pageerror', error => state.errors.push(error.message));
   await page.addInitScript(() => localStorage.setItem('radai_access_token', 'synthetic-executive-pipeline'));
   await page.route('**/api/**', async route => {
     const request = route.request(), url = new URL(request.url()), path = url.pathname;
     state.requests.push({ path, method: request.method(), params: Object.fromEntries(url.searchParams) });
     const reply = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
-    if (path === '/api/v1/dashboard/executive/') return reply(report);
+    if (path === '/api/v1/dashboard/executive/') return reply({ ...report, allowed_tabs: state.allowedTabs });
     if (path === '/api/v1/dashboard/executive/receivables/') return state.deny ? reply({ detail: 'Denied' }, 403) : reply(finance(state.id, url.searchParams.get('currency')));
     if (path === '/api/v1/dashboard/executive/portfolio-workbook/revenue/') return reply(portfolio);
     if (path === '/api/v1/dashboard/executive/portfolio-workbook/outgoing-invoices/') {
@@ -117,4 +117,34 @@ test('Portfolio pins Finance publication across pages and reloads changed source
   await expect(section).toContainText('SYNTHETIC-8-0');
   await expect(section).toContainText('Page 1 of 2');
   clean(state);
+});
+
+
+test('tab revocation removes tabs and prevents denied deep-link rendering', async ({ page }) => {
+  const state = await open(page, 'financial');
+  await expect(page.getByRole('tab', { name: 'Financial performance', exact: true })).toHaveAttribute('aria-selected', 'true');
+  state.allowedTabs = ['portfolio', 'commercial', 'workforce', 'risk'];
+  await page.evaluate(() => window.dispatchEvent(new Event('radai:access-changed')));
+  await expect(page.getByRole('tab', { name: 'Financial performance', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('tab', { name: 'Overview', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('tab', { name: 'Project portfolio', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await page.goto('/tests/fixtures/executive-finance-pipeline.html?tab=financial');
+  await expect(page.getByRole('tab', { name: 'Financial performance', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('tab', { name: 'Project portfolio', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page).toHaveURL(/tab=portfolio/);
+  clean(state);
+});
+
+test('older Executive responses explain the required update without displaying report data', async ({ page }) => {
+  const unexpected = [];
+  await page.addInitScript(() => localStorage.setItem('radai_access_token', 'synthetic-executive-contract'));
+  await page.route('**/api/**', async route => {
+    if (!route.request().url().endsWith('/dashboard/executive/')) unexpected.push(route.request().url());
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(report) });
+  });
+  await page.goto('/tests/fixtures/executive-finance-pipeline.html');
+  await expect(page.getByRole('heading', { name: 'Executive update required' })).toBeVisible();
+  await expect(page.getByRole('tab')).toHaveCount(0);
+  await expect(page.getByRole('tabpanel')).toHaveCount(0);
+  expect(unexpected).toEqual([]);
 });

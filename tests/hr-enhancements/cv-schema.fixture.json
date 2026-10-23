@@ -1,6 +1,6 @@
 {
   "kind": "cv",
-  "version": "rad-2026-10-v2",
+  "version": "rad-2026-10-v3",
   "sections": [
     {
       "key": "candidate",
@@ -11,6 +11,18 @@
           "label": "Full name",
           "type": "text",
           "required": true
+        },
+        {
+          "key": "position_applied",
+          "label": "Position Applied",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "nationality",
+          "label": "Nationality",
+          "type": "text",
+          "required": false
         },
         {
           "key": "current_position",

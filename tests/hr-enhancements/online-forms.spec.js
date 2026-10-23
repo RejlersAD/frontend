@@ -10,6 +10,8 @@ const schema = {
   sections: [
     { key: 'candidate', title: 'Candidate details', repeatable: false, fields: [
       { key: 'name', label: 'Full name', type: 'text', required: true },
+      { key: 'position_applied', label: 'Position Applied', type: 'text', required: false },
+      { key: 'nationality', label: 'Nationality', type: 'text', required: false },
       { key: 'email', label: 'Personal email', type: 'email', required: true },
       { key: 'phone', label: 'Personal contact number', type: 'text', required: true },
     ] },
@@ -83,6 +85,8 @@ test('candidate saves repeatable CV data, reviews and submits without an account
   await expect(page.getByRole('heading', { name: 'Candidate CV Submission Form', exact: true })).toBeVisible()
   expect(new URL(page.url()).hash).toBe('')
   await page.getByLabel('Full name *', { exact: true }).fill('Updated Candidate')
+  await page.getByLabel('Position Applied', { exact: true }).fill('Lead Engineer')
+  await page.getByLabel('Nationality', { exact: true }).fill('Emirati')
   await page.getByRole('button', { name: 'Save draft', exact: true }).click()
   await expect(page.getByRole('status')).toContainText('Draft saved')
   await page.getByLabel('Qualification *', {exact:true}).selectOption('__other__')
@@ -96,7 +100,13 @@ test('candidate saves repeatable CV data, reviews and submits without an account
   await page.getByRole('button', { name: 'Submit to HR', exact: true }).click()
   await expect(page.getByText('Submission received', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Submit to HR', exact: true })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Print / Save as PDF', exact: true })).toBeVisible()
+  await expect(page.getByRole('button')).toHaveCount(1)
+  await expect(page.getByRole('button', { name: 'Close page', exact: true })).toBeVisible()
+  await expect(page.getByRole('textbox')).toHaveCount(0)
+  expect(await page.evaluate(() => sessionStorage.getItem('radai-candidate-form-session'))).toBeNull()
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Submission received' })).toBeVisible()
+  await expect(page.getByRole('button')).toHaveCount(1)
 })
 
 test('pre-onboarding asks for an emailed verification code', async ({ page }) => {
@@ -108,6 +118,24 @@ test('pre-onboarding asks for an emailed verification code', async ({ page }) =>
   await page.getByRole('button', { name: 'Verify and open form' }).click()
   await expect(page.getByRole('heading', { name: 'Pre-Onboarding Employee Form', exact: true })).toBeVisible()
 })
+
+for (const shared of [true, false]) {
+  test(`completed ${shared ? 'shared' : 'private'} CV link shows only acknowledgement and closes`, async ({ page }) => {
+    await page.setViewportSize({width:390, height:844})
+    await page.route(`**/candidate-forms/${shared ? 'apply' : 'access'}/`, route => route.fulfill(shared
+      ? {status:409, json:{detail:'This CV link has already received a submission and is now closed.',code:'cv_link_closed',kind:'cv'}}
+      : {json:{closed:true,kind:'cv',state:'submitted'}}))
+    await page.goto(`/tests/hr-enhancements/online-forms.html#${shared ? 'apply' : 'invite'}=completed-test-link`)
+    await expect(page.getByRole('heading', {name:'Submission received'})).toBeVisible()
+    await expect(page.getByRole('button')).toHaveCount(1)
+    await expect(page.getByRole('textbox')).toHaveCount(0)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    // Exercise the fallback used when a browser refuses to close a normal tab.
+    await page.evaluate(() => { window.close = () => {} })
+    await page.getByRole('button', {name:'Close page',exact:true}).click()
+    await expect(page).toHaveURL('about:blank')
+  })
+}
 
 test('invalid invitation shows a clear error and no candidate data', async ({ page }) => {
   await setup(page, { expired: true })

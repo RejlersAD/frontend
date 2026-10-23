@@ -3,6 +3,7 @@ import PropTypes from 'prop-types';
 import { ChevronDown, Search, ShieldCheck, X } from 'lucide-react';
 import rbacService from '../../services/rbac.service';
 import { radaiConfirm } from '../../services/radaiDialog';
+import ExecutiveTabPermissions, { isExecutiveTabPermission } from './ExecutiveTabPermissions';
 
 const actions = [['read', 'View'], ['create', 'Create'], ['update', 'Edit'], ['approve', 'Approve'], ['delete', 'Delete'], ['export', 'Export']];
 
@@ -64,6 +65,7 @@ export default function UserPermissionEditor({ user, modules, groups, onClose })
     try {
       const response = await rbacService.saveUserPermissionOverrides(user.id, { snapshot: data.snapshot, reason: reason.trim(), changes });
       setData(response.data); setDraft({}); setReason(''); setSaved(true);
+      window.dispatchEvent(new Event('radai:access-changed'));
     } catch (err) { setError(err.response?.data?.detail || 'Could not save permissions. Your changes have been kept.'); }
     finally { setSaving(false); }
   };
@@ -92,8 +94,9 @@ export default function UserPermissionEditor({ user, modules, groups, onClose })
       <div className="ra-section-title"><div><h2 id="ra-user-permission-title">Edit permissions · {name}</h2><p>{user.user?.email || user.email}</p></div><button type="button" aria-label="Close user permissions" disabled={saving} onClick={close}><X size={18} /></button></div>
       <div className="ra-notice"><ShieldCheck size={18} /><span>Changes apply only to this user. Their role assignments and other users stay unchanged.</span></div>
       {loading ? <p role="status">Loading user permissions…</p> : data && <>
+        <ExecutiveTabPermissions individual permissions={permissions} disabled={data.locked || saving} value={p => draft[p.id] ?? p.effect} onChange={(p, effect) => { setDraft(previous => ({ ...previous, [p.id]: effect })); setSaved(false); }} />
         {data.locked && <p className="ra-readonly">{data.lock_reason}</p>}
-        <div className="ra-users-toolbar"><label className="ra-search"><Search size={16} /><input aria-label="Search user permissions" placeholder="Search applications…" value={query} onChange={event => setQuery(event.target.value)} /></label><button type="button" disabled={data.locked || saving} onClick={() => { setDraft(Object.fromEntries(permissions.filter(p => actions.some(([action]) => action === p.action)).map(p => [p.id, 'inherit']))); setSaved(false); }}>Use role permissions</button></div>
+        <div className="ra-users-toolbar"><label className="ra-search"><Search size={16} /><input aria-label="Search user permissions" placeholder="Search applications…" value={query} onChange={event => setQuery(event.target.value)} /></label><button type="button" disabled={data.locked || saving} onClick={() => { setDraft(Object.fromEntries(permissions.filter(p => isExecutiveTabPermission(p) || actions.some(([action]) => action === p.action)).map(p => [p.id, 'inherit']))); setSaved(false); }}>Use role permissions</button></div>
         <div className="ra-users-toolbar ra-user-module-summary"><span>{shownCount} of {modules.length} modules - select an action for a group or a single row</span><button type="button" onClick={() => setCollapsed(collapsed.size ? new Set() : new Set(moduleGroups.map(group => group.id)))}>{collapsed.size ? 'Expand all groups' : 'Collapse all groups'}</button></div>
         <div className="ra-table-scroll ra-user-module-table"><table className="ra-matrix"><thead><tr><th>Application</th>{columns.map(([key, label]) => <th key={key}>{label}</th>)}<th>Source</th></tr></thead><tbody>
           {grouped.map(group => <React.Fragment key={group.id}>

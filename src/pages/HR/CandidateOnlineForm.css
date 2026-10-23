@@ -1,4 +1,5 @@
 @font-face{font-family:CandidateRoboto;src:url('../../assets/fonts/receivables/roboto-latin.woff2') format('woff2');font-weight:100 900;font-display:swap}
+.candidate-online-form.cf-acknowledgement{min-height:100dvh;display:grid;place-items:center;padding:24px}.cf-acknowledgement>.cf-card{width:min(100%,560px);text-align:center}.cf-acknowledgement h1{font-size:28px;color:#16385f;margin:0 0 18px}.cf-acknowledgement p{color:#526783;line-height:1.6}.cf-acknowledgement button{margin-top:18px}
 .cf-email-confirm{border:1px solid #d5e3f6;border-radius:9px;background:#f4f8ff;padding:20px;margin:24px 0}.cf-email-confirm h3{margin:0 0 10px;font-size:16px}.cf-email-confirm p{font-size:13px;color:#526783}.cf-email-confirm .cf-field{max-width:260px;margin:16px 0}
 .cf-cv-uploads>div,.cf-photo-upload>div{min-width:0}.cf-upload-label input[type=file]{width:100%;min-width:0}
 .candidate-online-form .cf-suggestions button{border:1px dashed #d4e1f3;background:#fff;color:#4f729e;font-size:11px;padding:4px 8px;font-weight:400}

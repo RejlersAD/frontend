@@ -40,9 +40,12 @@ export default function ExecutiveDashboard() {
   const refreshWorkbook = useCallback(() => setRevision(value => value + 1), []);
   const [selection, setSelection] = useState(null);
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = TABS.some(tab => tab.id === searchParams.get('tab')) ? searchParams.get('tab') : 'overview';
+  const tabs = TABS.filter(tab => report?.allowed_tabs?.includes(tab.id));
+  const requestedTab = TABS.some(tab => tab.id === searchParams.get('tab')) ? searchParams.get('tab') : 'overview';
+  const activeTab = tabs.some(tab => tab.id === requestedTab) ? requestedTab : tabs[0]?.id || requestedTab;
   const setActiveTab = id => setSearchParams(previous => {
     const next = new URLSearchParams(previous);
+    if (!tabs.some(tab => tab.id === id)) return next;
     if (id === 'overview') next.delete('tab');
     else next.set('tab', id);
     return next;
@@ -61,6 +64,12 @@ export default function ExecutiveDashboard() {
   const financialMenu = useRef(null);
   const overviewMenu = useRef(null);
   const portfolioMenu = useRef(null);
+
+  useEffect(() => {
+    if (report && activeTab !== requestedTab) {
+      setSearchParams(previous => { const next = new URLSearchParams(previous); next.set('tab', activeTab); return next; }, { replace: true });
+    }
+  }, [report, activeTab, requestedTab, setSearchParams]);
 
   useEffect(() => { if (activeTab !== 'financial') setFinancialSnapshot(null); }, [activeTab]);
   useEffect(() => { if (activeTab !== 'overview') setOverviewSnapshot(null); }, [activeTab]);
@@ -91,7 +100,7 @@ export default function ExecutiveDashboard() {
       if (active) { setReport(null); setSelection(null); setError(requestError(problem)); }
     }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; controller.abort(); };
-  }, [revision, activeTab]);
+  }, [revision]);
 
   useEffect(() => {
     let lastRefresh = 0;
@@ -101,8 +110,10 @@ export default function ExecutiveDashboard() {
       setRevision(value => value + 1);
     };
     window.addEventListener('focus', refresh);
+    window.addEventListener('radai:access-changed', refresh);
     document.addEventListener('visibilitychange', refresh);
-    return () => { window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); };
+    const timer = window.setInterval(refresh, 60000);
+    return () => { window.removeEventListener('focus', refresh); window.removeEventListener('radai:access-changed', refresh); document.removeEventListener('visibilitychange', refresh); window.clearInterval(timer); };
   }, [printing]);
 
   useEffect(() => {
@@ -172,10 +183,11 @@ export default function ExecutiveDashboard() {
   const navigateTabs = event => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
     event.preventDefault();
-    const current = TABS.findIndex(tab => tab.id === activeTab);
-    const index = event.key === 'Home' ? 0 : event.key === 'End' ? TABS.length - 1
-      : (current + (event.key === 'ArrowRight' ? 1 : -1) + TABS.length) % TABS.length;
-    setActiveTab(TABS[index].id);
+    if (!tabs.length) return;
+    const current = tabs.findIndex(tab => tab.id === activeTab);
+    const index = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1
+      : (current + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+    setActiveTab(tabs[index].id);
     tabList.current.querySelectorAll('[role="tab"]')[index].focus();
   };
   const visibleTab = activeTab;
@@ -211,7 +223,7 @@ export default function ExecutiveDashboard() {
         </div>
       </div>
         <div className="rv-report-status"><span role="status"><i className={loading || revenueBusy || !['available', 'partial'].includes(revenueData?.status) ? 'rv-dot-muted' : ''} />{loading || revenueSnapshot?.loading ? 'Updating revenue figures…' : revenueSnapshot?.error ? 'Revenue scope unavailable' : `Cutoff ${formatDate(revenueData?.source?.reporting_date)} · Updated ${formatDate(revenueData?.source?.imported_at, true)}`}</span><button type="button" className="cc-text-button cc-screen-only" onClick={() => setSelection({ all: true })}>Data definitions</button><button type="button" className="rv-refresh-button cc-screen-only" aria-label="Refresh revenue" title="Refresh revenue" onClick={() => setRevision(value => value + 1)} disabled={loading || revenueSnapshot?.loading}><ArrowPathIcon /></button></div>
-      <div ref={tabList} className="cc-tabs cc-screen-only" role="tablist" aria-label="Executive dashboard sections" onKeyDown={navigateTabs}>{TABS.map(tab => <button key={tab.id} id={`executive-tab-${tab.id}`} role="tab" aria-selected={activeTab === tab.id} aria-controls={`executive-tabpanel-${tab.id}`} tabIndex={activeTab === tab.id ? 0 : -1} onClick={() => setActiveTab(tab.id)}>{tab.label}</button>)}</div>
+      <div ref={tabList} className="cc-tabs cc-screen-only" role="tablist" aria-label="Executive dashboard sections" onKeyDown={navigateTabs}>{tabs.map(tab => <button key={tab.id} id={`executive-tab-${tab.id}`} role="tab" aria-selected={activeTab === tab.id} aria-controls={`executive-tabpanel-${tab.id}`} tabIndex={activeTab === tab.id ? 0 : -1} onClick={() => setActiveTab(tab.id)}>{tab.label}</button>)}</div>
     </header> : <header className="cc-page-header">
       <div className="cc-title-row"><div className="cc-title-block"><div className="cc-breadcrumb"><span>Executive</span> / {TABS.find(tab => tab.id === activeTab)?.label}</div><h1>{isFinancial ? 'Financial Performance' : isPortfolio ? 'Project Portfolio' : isCommercial ? 'Commercial Pipeline' : isWorkforce ? 'Workforce' : isRisk ? 'Risk & Compliance' : 'Executive Command Center'}</h1><p>{isFinancial ? 'Invoicing, collections, receivables and Finance outlook' : isPortfolio ? 'Portfolio value, delivery confidence and executive interventions' : isCommercial ? 'Pipeline value, win confidence, client exposure and delivery demand.' : isWorkforce ? 'Capacity, utilization, critical skills and workforce risk.' : isRisk ? 'Enterprise risk, QHSE performance, obligations and assurance.' : 'Company performance, portfolio risk and decisions requiring attention.'}</p></div>
         <div className="cc-header-right"><div className="cc-toolbar cc-screen-only">
@@ -240,7 +252,7 @@ export default function ExecutiveDashboard() {
           </>}
         </div><div className="cc-retrieved" role="status"><i className={loading || !report || financialBusy || financialUnavailable || (isWorkforce && !['available', 'partial'].includes(workforce.status)) || (isRisk && !['available', 'partial'].includes(risk.status)) ? 'cc-dot-muted' : ''} />{loading ? 'Updating overview…' : report ? isFinancial ? financialBusy ? 'Updating invoice balances...' : `Provisional · ${financialSource.timestampLabel}: ${financialSource.timestamp ? formatDate(financialSource.timestamp, true) : 'not recorded'}` : isPortfolio ? `Provisional · Latest project record: ${portfolio.source_updated_at ? formatDate(portfolio.source_updated_at, true) : 'not recorded'}` : isCommercial ? `Latest CRM record: ${commercial.source_updated_at ? formatDate(commercial.source_updated_at, true) : 'not recorded'}` : isWorkforce ? `Latest HR record: ${workforce.source_updated_at ? formatDate(workforce.source_updated_at, true) : 'not recorded'}` : isRisk ? `Latest QHSE record: ${risk.source_updated_at ? formatDate(risk.source_updated_at, true) : 'not recorded'}` : `Provisional \u00b7 Updated ${formatDate(report.generated_at, true)}` : 'Report not loaded'}</div></div>
       </div>
-      <div ref={tabList} className="cc-tabs cc-screen-only" role="tablist" aria-label="Executive dashboard sections" onKeyDown={navigateTabs}>{TABS.map(tab => <button key={tab.id} id={`executive-tab-${tab.id}`} role="tab" aria-selected={activeTab === tab.id} aria-controls={`executive-tabpanel-${tab.id}`} tabIndex={activeTab === tab.id ? 0 : -1} onClick={() => setActiveTab(tab.id)}>{tab.label}</button>)}</div>
+      <div ref={tabList} className="cc-tabs cc-screen-only" role="tablist" aria-label="Executive dashboard sections" onKeyDown={navigateTabs}>{tabs.map(tab => <button key={tab.id} id={`executive-tab-${tab.id}`} role="tab" aria-selected={activeTab === tab.id} aria-controls={`executive-tabpanel-${tab.id}`} tabIndex={activeTab === tab.id ? 0 : -1} onClick={() => setActiveTab(tab.id)}>{tab.label}</button>)}</div>
     </header>}
 
     <div className="cc-content" aria-busy={loading}>

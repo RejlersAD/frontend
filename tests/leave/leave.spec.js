@@ -60,3 +60,87 @@ test('HR can approve an extended range with an explicit balance exception and re
   await page.getByRole('button', { name: 'Approve leave', exact: true }).click()
   expect((await decision).postDataJSON()).toMatchObject({ approved_end_date: '2026-10-14', allow_negative_balance: true, override_reason: 'Additional three days approved by HR' })
 })
+
+test('Refer To transfers the selected request and preserves pending status and history', async ({ page }) => {
+  let item = { ...leave, can_refer: true }
+  let payload
+  await page.route('**/api/**', async route => {
+    if (route.request().url().endsWith('/referral-options/')) return route.fulfill({ json: { results: [{ id: 42, name: 'Alternate Approver' }] } })
+    if (route.request().url().endsWith('/refer-to/')) {
+      payload = route.request().postDataJSON()
+      item = { ...item, can_review: false, can_refer: false, line_manager_name: 'Alternate Approver', referral_history: [{ id: 'referral-1', actor: 'Line Manager', approver: 'Alternate Approver', stage: 'manager_review', at: '2026-10-23T08:00:00Z', note: payload.note }] }
+    }
+    return route.fulfill({ json: item })
+  })
+  await page.goto('/tests/leave/harness.html')
+  await page.getByRole('button', { name: 'Refer To', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Refer request', exact: true })).toBeDisabled()
+  await page.getByRole('combobox', { name: 'Refer to employee' }).fill('Alternate')
+  await page.getByRole('option', { name: 'Alternate Approver' }).click()
+  await page.getByRole('textbox', { name: 'Comment (required to reject)' }).fill('Please cover my absence')
+  await page.getByRole('button', { name: 'Refer request', exact: true }).click()
+  await expect(page.getByRole('region', { name: 'Referral history' })).toContainText('Line Manager referred to Alternate Approver')
+  await expect(page.getByRole('region', { name: 'Referral history' })).toContainText('Please cover my absence')
+  expect(payload).toEqual({ approver_id: 42, note: 'Please cover my absence' })
+  await expect(page.getByText('Pending Approval', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Refer To', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Print', exact: true })).toBeDisabled()
+})
+
+test('referral failure preserves recipient and comment for retry', async ({ page }) => {
+  await page.route('**/api/**', async route => {
+    if (route.request().url().endsWith('/referral-options/')) return route.fulfill({ json: { results: [{ id: 42, name: 'Alternate Approver' }] } })
+    if (route.request().url().endsWith('/refer-to/')) return route.fulfill({ status: 400, json: { approver_id: 'This approver is no longer authorized.' } })
+    return route.fulfill({ json: { ...leave, can_refer: true } })
+  })
+  await page.goto('/tests/leave/harness.html')
+  await page.getByRole('button', { name: 'Refer To', exact: true }).click()
+  await page.getByRole('combobox', { name: 'Refer to employee' }).fill('Alternate')
+  await page.getByRole('option', { name: 'Alternate Approver' }).click()
+  await page.getByRole('textbox', { name: 'Comment (required to reject)' }).fill('Cover required')
+  await page.getByRole('button', { name: 'Refer request', exact: true }).click()
+  await expect(page.getByRole('alert')).toHaveText('This approver is no longer authorized.')
+  await expect(page.getByRole('combobox', { name: 'Refer to employee' })).toHaveValue('Alternate Approver')
+  await expect(page.getByRole('textbox', { name: 'Comment (required to reject)' })).toHaveValue('Cover required')
+})
+
+test('cancel referral leaves approval available and sends no decision', async ({ page }) => {
+  const posts = []
+  await page.route('**/api/**', async route => {
+    if (route.request().method() === 'POST') posts.push(route.request().url())
+    if (route.request().url().endsWith('/referral-options/')) return route.fulfill({ json: { results: [] } })
+    return route.fulfill({ json: { ...leave, can_refer: true } })
+  })
+  await page.goto('/tests/leave/harness.html')
+  await page.getByRole('button', { name: 'Refer To', exact: true }).click()
+  await expect(page.getByText('No employees found.', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Cancel referral', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Approve and continue', exact: true })).toBeEnabled()
+  expect(posts).toEqual([])
+})
+
+test('employee search covers names, employee codes and departments without filtering out other employees', async ({ page }) => {
+  await page.route('**/api/**', route => route.fulfill({ json: route.request().url().endsWith('/referral-options/') ? { results: [
+    { id: 42, name: 'Alternate Approver', employee_code: 'E0042', department: 'Engineering', eligible: true },
+    { id: 43, name: 'Finance Employee', employee_code: 'F0043', department: 'Finance', eligible: false },
+    { id: null, employee_id: 'imported', name: 'Imported Employee', employee_code: 'I0044', department: 'Sales', eligible: false },
+  ] } : { ...leave, can_refer: true } }))
+  await page.goto('/tests/leave/harness.html')
+  await page.getByRole('button', { name: 'Refer To', exact: true }).click()
+  const search = page.getByRole('combobox', { name: 'Refer to employee' })
+  await expect(page.getByRole('option')).toHaveCount(3)
+  await search.fill('f0043')
+  await expect(page.getByRole('option')).toHaveCount(1)
+  await expect(page.getByRole('option')).toContainText('Finance Employee')
+  await page.getByRole('option').click()
+  await expect(page.getByRole('button', { name: 'Refer request', exact: true })).toBeEnabled()
+  await search.fill('engineering')
+  await expect(page.getByRole('option')).toHaveCount(1)
+  await search.press('Enter')
+  await expect(search).toHaveValue('Alternate Approver / E0042')
+  await search.fill('imported')
+  await expect(page.getByRole('option')).toContainText('No RADAI account')
+  await expect(page.getByRole('button', { name: 'Imported Employee', exact: false })).toBeDisabled()
+  await search.fill('unknown')
+  await expect(page.getByText('No employees found.')).toBeVisible()
+})

@@ -77,7 +77,8 @@ export const getLeaveType = (code, apiTypes = null) => {
 // 3. REQUEST STATUS STYLES
 // ─────────────────────────────────────────────────────────────────────────────
 export const LEAVE_STATUS = {
-  PENDING:   { label: 'Pending',   bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200',   dot: 'bg-amber-400',   icon: 'ClockIcon' },
+  PENDING:   { label: 'Pending Approval', bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', dot: 'bg-amber-400', icon: 'ClockIcon' },
+  RM_APPROVED: { label: 'Pending Approval', bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', dot: 'bg-amber-400', icon: 'ClockIcon' },
   APPROVED:  { label: 'Approved',  bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500', icon: 'CheckCircleIcon' },
   REJECTED:  { label: 'Rejected',  bg: 'bg-rose-50',    text: 'text-rose-700',    border: 'border-rose-200',    dot: 'bg-rose-500',    icon: 'XCircleIcon' },
   CANCELLED: { label: 'Cancelled', bg: 'bg-slate-50',   text: 'text-slate-500',   border: 'border-slate-200',   dot: 'bg-slate-300',   icon: 'MinusCircleIcon' },

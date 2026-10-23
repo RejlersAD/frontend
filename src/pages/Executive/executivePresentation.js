@@ -45,10 +45,19 @@ export function validateExecutiveReport(data) {
     || !data.scope || !data.portfolio || !data.generated_at) {
     throw new Error('The executive report could not be read. Refresh to try again.');
   }
+  if (!Array.isArray(data.allowed_tabs)) {
+    const error = new Error('Executive tab access information is missing.');
+    error.code = 'EXECUTIVE_ACCESS_UPDATE_REQUIRED';
+    throw error;
+  }
   return data;
 }
 
 export function requestError(error) {
+  if (error.code === 'EXECUTIVE_ACCESS_UPDATE_REQUIRED') return {
+    title: 'Executive update required',
+    detail: 'The server needs the Executive access update. Ask your administrator to finish the update, then try again.',
+  };
   const status = error.response?.status;
   if (status === 403) return { title: 'Executive access required', detail: 'Your account does not have access to the executive overview. Your administrator can assign executive viewing access and the relevant department permissions.' };
   if (status === 401) return { title: 'Please sign in again', detail: 'Your session has expired. Sign in to view the executive overview.' };
