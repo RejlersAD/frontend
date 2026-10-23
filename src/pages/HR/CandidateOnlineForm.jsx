@@ -12,6 +12,19 @@ const API = `${API_BASE_URL.replace(/\/$/, "")}/candidate-forms`;
 const STORAGE_KEY = "radai-candidate-form-session";
 const RESUME_KEY = "radai-candidate-form-resume";
 const PENDING_KEY = "radai-candidate-form-pending";
+const COMPLETED_KEY = "radai-candidate-cv-completed";
+
+function rememberCompletedCV() {
+  [STORAGE_KEY, RESUME_KEY, PENDING_KEY].forEach(key => sessionStorage.removeItem(key));
+  sessionStorage.setItem(COMPLETED_KEY, "true");
+}
+
+function closeCandidatePage() {
+  window.close();
+  // Browsers may refuse to close a tab they did not open. Leave a blank page
+  // in that case, without returning to an editable form or another application.
+  if (!window.closed) window.location.replace("about:blank");
+}
 
 const FORM_TITLES = {
   cv: "Candidate CV Submission Form",
@@ -52,6 +65,7 @@ async function request(path, payload, session, signal) {
     }
     const error = new Error(message);
     error.status = response.status;
+    error.closedCV = data?.code === "cv_link_closed";
     throw error;
   }
 
@@ -150,6 +164,10 @@ export default function CandidateOnlineForm() {
 
   const load = useCallback(async (currentSession, signal) => {
     const loaded = await request("session", null, currentSession, signal);
+    if (loaded.kind === "cv" && ["submitted", "verified"].includes(loaded.state)) {
+      rememberCompletedCV(); setForm(loaded); setSession(""); setData({}); setAttachments([]); setDirty(false);
+      return;
+    }
     const draft = { ...loaded.data };
 
     if (!["submitted", "verified"].includes(loaded.state)) {
@@ -219,6 +237,7 @@ export default function CandidateOnlineForm() {
     const requestedForm = new URLSearchParams(window.location.search).get("form");
 
     if (token.current || applicationToken.current) {
+      sessionStorage.removeItem(COMPLETED_KEY);
       sessionStorage.setItem(
         PENDING_KEY,
         JSON.stringify({
@@ -277,12 +296,18 @@ export default function CandidateOnlineForm() {
 
           if (result.verification_required) {
             setVerification(true);
+          } else if (result.closed && result.kind === "cv") {
+            rememberCompletedCV(); setForm(result);
           } else {
             sessionStorage.setItem(STORAGE_KEY, result.session);
             await load(result.session, controller.signal);
             token.current = "";
           }
         } else {
+          if (!requestedForm && sessionStorage.getItem(COMPLETED_KEY)) {
+            setForm({kind: "cv", state: "submitted", closed: true});
+            return;
+          }
           const saved = sessionStorage.getItem(STORAGE_KEY);
           if (requestedForm || !saved) {
             await loadPreview(
@@ -297,14 +322,16 @@ export default function CandidateOnlineForm() {
               if (!previousToken) throw failure;
               token.current = previousToken;
               const result = await request("access", {token: previousToken}, null, controller.signal);
-              if (result.verification_required) setVerification(true);
+              if (result.closed && result.kind === "cv") { rememberCompletedCV(); setForm(result); }
+              else if (result.verification_required) setVerification(true);
               else { sessionStorage.setItem(STORAGE_KEY, result.session); await load(result.session, controller.signal); token.current = ""; }
             }
           }
         }
       } catch (failure) {
         if (failure.name !== "AbortError") {
-          setError(failure.message);
+          if (failure.closedCV) { rememberCompletedCV(); setForm({kind: "cv", state: "submitted", closed: true, previouslySubmitted: true}); }
+          else setError(failure.message);
         }
       } finally {
         setBusy(false);
@@ -382,9 +409,18 @@ export default function CandidateOnlineForm() {
         savedData[s.key] = (savedData[s.key] || []).map(row => Object.fromEntries(Object.entries(row).filter(([key]) => key !== "_uid"))).filter(row => Object.values(row).some(value => value !== "" && value != null && value !== false));
       });
       const result = await request("session", { action, revision: form.revision, data: savedData }, session);
+      if (action === "submit" && form.kind === "cv") {
+        rememberCompletedCV(); setSession(""); setData({}); setAttachments([]); setDirty(false);
+        setForm({kind: "cv", ...result});
+        return;
+      }
       setForm(previous => ({...previous, ...result})); setDirty(latestData.current !== snapshot); setSaveStatus("All changes saved");
       if (!automatic) setNotice(action === "submit" ? "Your form has been submitted to HR." : "Draft saved.");
     } catch (failure) {
+      if (failure.closedCV || (failure.status === 409 && form.kind === "cv" && failure.message.includes("already been submitted"))) {
+        rememberCompletedCV(); setForm({kind: "cv", state: "submitted", closed: true}); setSession(""); setData({}); setAttachments([]); setDirty(false);
+        return;
+      }
       setError(failure.message); setSaveStatus("Changes not saved"); setSaveBlocked(true); failedSave.current = {data: snapshot, status: failure.status};
     } finally { savingRef.current = false; setSaving(false); if (!automatic) setBusy(false); }
   }, [form, session]);
@@ -436,8 +472,8 @@ export default function CandidateOnlineForm() {
       (s) => s.key !== "relatives" || data.relatives_question?.has_relatives
     ) || [];
 
-  const sections = isCV && form ? cvSections(form.schema) : sourceSections;
-  const progress = isCV && form ? completion(form.schema, data, attachments.some(file => file.kind === "photo")) : 0;
+  const sections = isCV && form?.schema ? cvSections(form.schema) : sourceSections;
+  const progress = isCV && form?.schema ? completion(form.schema, data, attachments.some(file => file.kind === "photo")) : 0;
   const reviewing = step >= sections.length || readonly;
   const currentSection = sections[Math.min(step, Math.max(0, sections.length - 1))];
 
@@ -527,6 +563,17 @@ export default function CandidateOnlineForm() {
         </div>
       )}
     </section>
+  );
+
+  if (isCV && readonly && !busy) return (
+    <main className="candidate-online-form cf-acknowledgement">
+      <section className="cf-card" aria-labelledby="cv-submission-received">
+        <h1 id="cv-submission-received">Submission received</h1>
+        <p>{form.previouslySubmitted ? "This CV link has already received a submission." : "Thank you. Your CV has been submitted to HR successfully."}</p>
+        <p>This link is now closed and cannot accept another submission.</p>
+        <button type="button" onClick={closeCandidatePage}>Close page</button>
+      </section>
+    </main>
   );
 
   return (
