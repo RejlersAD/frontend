@@ -60,7 +60,9 @@ export const ioExtractionService = {
   },
 
   exportUrl(projectId, extractionId, format) {
-    return `/api/v1${BASE}/projects/${projectId}/extractions/${extractionId}/export/?format=${format}`
+    // NOTE: 'format' is DRF's reserved renderer-negotiation param (a
+    // ?format=review request 404s before reaching the view) — use 'fmt'.
+    return `/api/v1${BASE}/projects/${projectId}/extractions/${extractionId}/export/?fmt=${format}`
   },
 }
 
