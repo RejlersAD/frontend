@@ -9,6 +9,11 @@
 import apiClient from "./api.service";
 import axios from "axios";
 import { API_TIMEOUT_UPLOAD } from "../config/api.config";
+import { STORAGE_KEYS } from "../config/app.config";
+import { createInFlightReads } from "./inFlightReads";
+
+const previewReads = createInFlightReads(() =>
+  typeof localStorage === 'undefined' ? '' : localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN) || '');
 
 // ─── Soft-coded upload tuning ───────────────────────────────────────────────
 // Override at runtime via Vite env vars without code change:
@@ -53,7 +58,7 @@ export const SPEC_API_CONFIG = {
   jobCancelPath: (id) => `/paper-spec/jobs/${id}/cancel/`,
   jobSavePath: (id) => `/paper-spec/jobs/${id}/save/`,
   jobExportPath: (id, fmt = "xlsx") =>
-    `/paper-spec/jobs/${id}/export/?format=${fmt}`,
+    `/paper-spec/jobs/${id}/export/?export_format=${fmt}`,
   // SmartPlant 3D bulk-load exports (two separate workbooks)
   jobExportSpecPath: (id) => `/paper-spec/jobs/${id}/export-spec/`,
   jobExportCatPath: (id) => `/paper-spec/jobs/${id}/export-cat/`,
@@ -406,8 +411,8 @@ const specCustomizationAPI = {
     return data;
   },
 
-  async listJobs() {
-    const { data } = await apiClient.get(path(SPEC_API_CONFIG.jobsPath));
+  async listJobs(params = {}) {
+    const { data } = await apiClient.get(path(SPEC_API_CONFIG.jobsPath), { params });
     return data;
   },
 
@@ -506,13 +511,12 @@ const specCustomizationAPI = {
    * (with any cell-level overrides already merged in).
    */
   async getWorkbookPreview(jobId, workbook = "spec") {
-    const { data } = await apiClient.get(
-      path(SPEC_API_CONFIG.jobWorkbookPath(jobId)),
-      {
-        params: { workbook },
-      },
-    );
-    return data;
+    return previewReads.get(JSON.stringify([jobId, workbook]), async signal => {
+      const { data } = await apiClient.get(path(SPEC_API_CONFIG.jobWorkbookPath(jobId)), {
+        params: { workbook }, signal,
+      });
+      return data;
+    });
   },
 
   /** Save a single cell override. */
@@ -520,6 +524,7 @@ const specCustomizationAPI = {
     jobId,
     { workbook, sheet_name, row_key, column_name, value },
   ) {
+    previewReads.invalidate();
     const { data } = await apiClient.post(
       path(SPEC_API_CONFIG.jobWorkbookCellPath(jobId)),
       { workbook, sheet_name, row_key, column_name, value },
@@ -532,6 +537,7 @@ const specCustomizationAPI = {
     jobId,
     { workbook, sheet_name, row_key, column_name },
   ) {
+    previewReads.invalidate();
     const { data } = await apiClient.delete(
       path(SPEC_API_CONFIG.jobWorkbookCellPath(jobId)),
       { data: { workbook, sheet_name, row_key, column_name } },
@@ -546,6 +552,7 @@ const specCustomizationAPI = {
    * @param {object} payload - {instruction, workbook_scope, active_workbook, preview_only?}
    */
   async chatbotEditWorkbook(jobId, payload) {
+    previewReads.invalidate();
     const { data } = await apiClient.post(
       path(SPEC_API_CONFIG.jobWorkbookChatbotPath(jobId)),
       payload,
@@ -570,6 +577,7 @@ const specCustomizationAPI = {
    * @returns {Promise<{saved_count, created, updated, s3_snapshot}>}
    */
   async batchSaveWorkbookCells(jobId, cells) {
+    previewReads.invalidate();
     const { data } = await apiClient.post(
       path(SPEC_API_CONFIG.jobWorkbookBatchSavePath(jobId)),
       { cells },
@@ -585,6 +593,7 @@ const specCustomizationAPI = {
    * @returns {Promise<{deleted_count, row_key, columns_deleted}>}
    */
   async deleteWorkbookRow(jobId, { workbook, sheet_name, row_key }) {
+    previewReads.invalidate();
     const { data } = await apiClient.delete(
       path(SPEC_API_CONFIG.jobWorkbookDeleteRowPath(jobId)),
       { data: { workbook, sheet_name, row_key } },
@@ -600,6 +609,7 @@ const specCustomizationAPI = {
    * @returns {Promise<{deleted_rows, deleted_cells, row_keys}>}
    */
   async bulkDeleteWorkbookRows(jobId, { workbook, sheet_name, row_keys }) {
+    previewReads.invalidate();
     const { data } = await apiClient.delete(
       path(SPEC_API_CONFIG.jobWorkbookBulkDeletePath(jobId)),
       { data: { workbook, sheet_name, row_keys } },
