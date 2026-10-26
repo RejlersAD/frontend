@@ -58,7 +58,7 @@ function Pill({ children, tone = 'slate' }) {
 
 export default function PidExtractionWorkspace({ project, onBack, onManageLegends }) {
   const [files, setFiles] = useState({ pid: null, iolist: null, vendor: [] })
-  const [slotInfo, setSlotInfo] = useState({ pid: null, iolist: null, vendor: [] })
+  const [slotInfo, setSlotInfo] = useState({ pid: null, iolist: null, vendorDcs: null, vendorEsd: null })
   const [stageState, setStageState] = useState({})
   const [docInfo, setDocInfo] = useState({ docNo: '', revision: '', rejlersNumber: '' })
   const [rulesOnly, setRulesOnly] = useState(false)
@@ -80,10 +80,12 @@ export default function PidExtractionWorkspace({ project, onBack, onManageLegend
     try {
       const data = await ioExtractionService.listFiles(project.id)
       const list = data.files || []
+      const vendors = list.filter((f) => f.documentType === 'vendor_db')
       setSlotInfo({
         pid: list.find((f) => f.documentType === 'pid_drawing') || null,
         iolist: list.find((f) => f.documentType === 'io_list') || null,
-        vendor: list.filter((f) => f.documentType === 'vendor_db'),
+        vendorDcs: vendors.find((f) => f.vendorSystem === 'DCS') || null,
+        vendorEsd: vendors.find((f) => f.vendorSystem === 'ESD') || null,
       })
     } catch { /* list is best-effort */ }
   }, [project.id])
@@ -93,7 +95,8 @@ export default function PidExtractionWorkspace({ project, onBack, onManageLegend
 
   // ── Stage logic ─────────────────────────────────────────────────────
   const stageDone = useMemo(() => ({
-    1: !!slotInfo.pid || !!slotInfo.iolist,
+    1: !!slotInfo.pid && !!slotInfo.vendorDcs && !!slotInfo.vendorEsd
+       && stageState['1'] === 'complete',
     2: stageState['2'] === 'complete',
     3: !!(docInfo.docNo && docInfo.revision) || stageState['3'] === 'complete',
     4: rulesOnly || !!keyInfo?.saved || !slotInfo.pid,
@@ -108,7 +111,15 @@ export default function PidExtractionWorkspace({ project, onBack, onManageLegend
       try {
         const summary = await ioExtractionService.uploadFile(project.id, file)
         if (summary.error) { setError(summary.error); continue }
-        if (summary.kind === 'vendor') setSlotInfo((s) => ({ ...s, vendor: [...s.vendor, summary] }))
+        if (summary.kind === 'vendor') {
+          // The server detects DCS vs ESD from the sheet's column spelling —
+          // the file lands in its own slot regardless of which slot was used.
+          const slotKey = summary.vendorSystem === 'DCS' ? 'vendorDcs' : 'vendorEsd'
+          setSlotInfo((s) => {
+            if (s[slotKey] && s[slotKey].vendorSystem !== summary.vendorSystem) return s
+            return { ...s, [slotKey]: summary }
+          })
+        }
         else if (summary.kind === 'pid') setSlotInfo((s) => ({ ...s, pid: summary }))
         else setSlotInfo((s) => ({ ...s, iolist: summary }))
       } catch (err) {
@@ -365,7 +376,7 @@ export default function PidExtractionWorkspace({ project, onBack, onManageLegend
             {/* Readiness + CTA */}
             <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between">
               <div className="flex gap-3 text-xs text-slate-500">
-                <Ready ok={stageDone[1]} label="P&ID uploaded" />
+                <Ready ok={stageDone[1]} label="P&ID + DCS + ESD uploaded" />
                 <Ready ok={stageDone[2]} label="Legend cross-check addressed" />
                 <Ready ok={stageDone[3]} label="Document number & revision filled" />
                 <Ready ok={stageDone[4]} label="AI key choice confirmed (BYOK tested or rules only)" />
@@ -411,21 +422,27 @@ function Ready({ ok, label }) {
   )
 }
 
-/* Stage 1 — three upload slots */
+/* Stage 1 — four upload slots: P&ID, IO list baseline (optional), and the
+   two compulsory vendor databases (DCS and ESD are different files). */
 function StageUpload({ slotInfo, upload, onContinue, onRemoveFile }) {
   const slots = [
-    { key: 'pid', title: 'P&ID drawings (PDF)', accept: '.pdf', multiple: true, info: slotInfo.pid,
+    { key: 'pid', title: 'P&ID drawings (PDF) *', accept: '.pdf', multiple: true, info: slotInfo.pid,
       help: 'One or more P&ID sheets as PDF.' },
     { key: 'iolist', title: 'IO list baseline (optional)', accept: '.xlsx,.pdf', multiple: false, info: slotInfo.iolist,
       help: 'One workbook or PDF — switches on comparison.' },
+    { key: 'vendor-dcs', title: 'Vendor DCS database *', accept: '.xlsx', multiple: false, info: slotInfo.vendorDcs,
+      help: 'The DCS IO assignment workbook (.xlsx).' },
+    { key: 'vendor-esd', title: 'Vendor ESD database *', accept: '.xlsx', multiple: false, info: slotInfo.vendorEsd,
+      help: 'The ESD IO assignment workbook (.xlsx) — a different file from the DCS one.' },
   ]
+  const ready = slotInfo.pid && slotInfo.vendorDcs && slotInfo.vendorEsd
   return (
     <div className="mt-3 space-y-2">
       <p className="text-xs text-slate-500">
-        P&amp;ID drawings are required. The IO list and the vendor IO databases are
-        optional and switch on comparison and auto-fill.
+        P&amp;ID drawings and the two vendor databases (DCS and ESD — two separate files)
+        are required. The IO list baseline is optional and switches on comparison.
       </p>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">
         {slots.map((slot) => (
           <label key={slot.key}
                  className={`rounded border-2 border-dashed p-3 text-xs cursor-pointer transition-colors ${slot.info ? 'border-green-400 bg-green-50/50 dark:bg-green-900/10' : 'border-slate-300 dark:border-slate-600 hover:border-blue-400'}`}>
@@ -437,32 +454,23 @@ function StageUpload({ slotInfo, upload, onContinue, onRemoveFile }) {
               : <span className="text-slate-400 flex items-center gap-1"><Upload className="w-3.5 h-3.5" /> {slot.help}</span>}
           </label>
         ))}
-
-        {/* Vendor slot: files are added one at a time so each one is checked
-            and summarised on its own; the list grows with every add. */}
-        <div className={`rounded border-2 border-dashed p-3 text-xs ${slotInfo.vendor.length ? 'border-green-400 bg-green-50/50 dark:bg-green-900/10' : 'border-slate-300 dark:border-slate-600'}`}>
-          <div className="font-medium text-slate-700 dark:text-slate-200 mb-1">Vendor IO databases (optional)</div>
-          {slotInfo.vendor.length > 0 && (
-            <div className="space-y-1 mb-2">
-              {slotInfo.vendor.map((v) => <SlotSummary key={v.id || v.name} info={v} onRemove={onRemoveFile} />)}
-            </div>
-          )}
-          <label className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 cursor-pointer">
-            <input type="file" className="hidden" accept=".xlsx"
-                   onChange={(e) => { if (e.target.files?.[0]) upload('vendor', [e.target.files[0]]); e.target.value = '' }} />
-            <Upload className="w-3.5 h-3.5" />
-            {slotInfo.vendor.length ? 'Add another vendor database' : 'Add a vendor database'}
-          </label>
-          <p className="text-slate-400 mt-1">
-            Add them one at a time — for example the DCS database first, then the ESD one.
-            Each file is checked and listed above.
-          </p>
-        </div>
       </div>
-      <button className="rd-btn bg-blue-600 text-white text-xs" disabled={!slotInfo.pid && !slotInfo.iolist}
-              onClick={onContinue}>
-        Confirm files and continue
-      </button>
+      <div className="flex items-center gap-2">
+        <button className="rd-btn bg-blue-600 text-white text-xs" disabled={!ready}
+                title={ready ? '' : 'Upload the P&ID and both vendor databases (DCS and ESD) first'}
+                onClick={onContinue}>
+          Confirm files and continue
+        </button>
+        {!ready && (
+          <span className="text-[11px] text-slate-400">
+            Missing: {[
+              !slotInfo.pid && 'P&ID',
+              !slotInfo.vendorDcs && 'DCS database',
+              !slotInfo.vendorEsd && 'ESD database',
+            ].filter(Boolean).join(' · ')}
+          </span>
+        )}
+      </div>
     </div>
   )
 }
@@ -477,6 +485,7 @@ function SlotSummary({ info, onRemove }) {
   if (info.rows) rows.push(['Rows', `${info.rows} · ${info.columns} columns`])
   if (info.systems) rows.push(['Systems', Object.entries(info.systems).map(([k, v]) => `${k} ${v}`).join(' · ')])
   if (info.liveTags) rows.push(['Live tags', info.liveTags])
+  if (info.vendorSystem) rows.push(['Database', info.vendorSystem])
   return (
     <div className="space-y-0.5 text-slate-600 dark:text-slate-300">
       {rows.map(([k, v]) => (
