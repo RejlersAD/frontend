@@ -17,6 +17,7 @@ import {
   Loader2, Lock, Sparkles, Trash2, Upload, X,
 } from 'lucide-react'
 import ioExtractionService from '../../../../services/ioExtractionService'
+import ioListWorkflowService from '../../../../services/ioListWorkflowService'
 import useAiKeyStatus from './useAiKeyStatus'
 
 const VIOLET = '#4F2BF5'
@@ -115,6 +116,16 @@ export default function PidExtractionWorkspace({ project, onBack, onManageLegend
       }
     }
     refreshFiles()
+  }
+
+  const removeFile = async (docId) => {
+    setError('')
+    try {
+      await ioListWorkflowService.deleteDocument(docId)
+      await refreshFiles()
+    } catch (err) {
+      setError(err.response?.data?.error || `Remove failed: ${err.message}`)
+    }
   }
 
   const saveDocInfo = async () => {
@@ -277,7 +288,7 @@ export default function PidExtractionWorkspace({ project, onBack, onManageLegend
 
                       {/* Stage bodies */}
                       {open && n === 1 && (
-                        <StageUpload slotInfo={slotInfo} upload={upload} onContinue={() => setStageState((s) => ({ ...s, 1: 'complete' }))} />
+                        <StageUpload slotInfo={slotInfo} upload={upload} onRemoveFile={removeFile} onContinue={() => setStageState((s) => ({ ...s, 1: 'complete' }))} />
                       )}
                       {open && n === 2 && (
                         <div className="mt-2 text-xs text-slate-600 dark:text-slate-300 space-y-2">
@@ -401,11 +412,12 @@ function Ready({ ok, label }) {
 }
 
 /* Stage 1 — three upload slots */
-function StageUpload({ slotInfo, upload, onContinue }) {
+function StageUpload({ slotInfo, upload, onContinue, onRemoveFile }) {
   const slots = [
-    { key: 'pid', title: 'P&ID drawings (PDF)', accept: '.pdf', multiple: true, info: slotInfo.pid },
-    { key: 'iolist', title: 'IO list baseline (optional)', accept: '.xlsx,.pdf', multiple: false, info: slotInfo.iolist },
-    { key: 'vendor', title: 'Vendor IO databases (optional, one or more .xlsx)', accept: '.xlsx', multiple: true, info: null, list: slotInfo.vendor },
+    { key: 'pid', title: 'P&ID drawings (PDF)', accept: '.pdf', multiple: true, info: slotInfo.pid,
+      help: 'One or more P&ID sheets as PDF.' },
+    { key: 'iolist', title: 'IO list baseline (optional)', accept: '.xlsx,.pdf', multiple: false, info: slotInfo.iolist,
+      help: 'One workbook or PDF — switches on comparison.' },
   ]
   return (
     <div className="mt-3 space-y-2">
@@ -416,19 +428,36 @@ function StageUpload({ slotInfo, upload, onContinue }) {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
         {slots.map((slot) => (
           <label key={slot.key}
-                 className={`rounded border-2 border-dashed p-3 text-xs cursor-pointer transition-colors ${(slot.info || slot.list?.length) ? 'border-green-400 bg-green-50/50 dark:bg-green-900/10' : 'border-slate-300 dark:border-slate-600 hover:border-blue-400'}`}>
+                 className={`rounded border-2 border-dashed p-3 text-xs cursor-pointer transition-colors ${slot.info ? 'border-green-400 bg-green-50/50 dark:bg-green-900/10' : 'border-slate-300 dark:border-slate-600 hover:border-blue-400'}`}>
             <input type="file" className="hidden" accept={slot.accept} multiple={slot.multiple}
                    onChange={(e) => { if (e.target.files?.length) upload(slot.key, [...e.target.files]); e.target.value = '' }} />
             <div className="font-medium text-slate-700 dark:text-slate-200 mb-1">{slot.title}</div>
-            {slot.info ? (
-              <SlotSummary info={slot.info} />
-            ) : slot.list?.length ? (
-              <div className="space-y-1">{slot.list.map((v) => <SlotSummary key={v.id || v.name} info={v} />)}</div>
-            ) : (
-              <span className="text-slate-400 flex items-center gap-1"><Upload className="w-3.5 h-3.5" /> Drop or browse</span>
-            )}
+            {slot.info
+              ? <SlotSummary info={slot.info} onRemove={onRemoveFile} />
+              : <span className="text-slate-400 flex items-center gap-1"><Upload className="w-3.5 h-3.5" /> {slot.help}</span>}
           </label>
         ))}
+
+        {/* Vendor slot: files are added one at a time so each one is checked
+            and summarised on its own; the list grows with every add. */}
+        <div className={`rounded border-2 border-dashed p-3 text-xs ${slotInfo.vendor.length ? 'border-green-400 bg-green-50/50 dark:bg-green-900/10' : 'border-slate-300 dark:border-slate-600'}`}>
+          <div className="font-medium text-slate-700 dark:text-slate-200 mb-1">Vendor IO databases (optional)</div>
+          {slotInfo.vendor.length > 0 && (
+            <div className="space-y-1 mb-2">
+              {slotInfo.vendor.map((v) => <SlotSummary key={v.id || v.name} info={v} onRemove={onRemoveFile} />)}
+            </div>
+          )}
+          <label className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 cursor-pointer">
+            <input type="file" className="hidden" accept=".xlsx"
+                   onChange={(e) => { if (e.target.files?.[0]) upload('vendor', [e.target.files[0]]); e.target.value = '' }} />
+            <Upload className="w-3.5 h-3.5" />
+            {slotInfo.vendor.length ? 'Add another vendor database' : 'Add a vendor database'}
+          </label>
+          <p className="text-slate-400 mt-1">
+            Add them one at a time — for example the DCS database first, then the ESD one.
+            Each file is checked and listed above.
+          </p>
+        </div>
       </div>
       <button className="rd-btn bg-blue-600 text-white text-xs" disabled={!slotInfo.pid && !slotInfo.iolist}
               onClick={onContinue}>
@@ -438,7 +467,7 @@ function StageUpload({ slotInfo, upload, onContinue }) {
   )
 }
 
-function SlotSummary({ info }) {
+function SlotSummary({ info, onRemove }) {
   const rows = []
   if (info.name) rows.push(['File', info.name])
   if (info.sheets) rows.push(['Sheets', info.sheets])
@@ -453,6 +482,12 @@ function SlotSummary({ info }) {
       {rows.map(([k, v]) => (
         <div key={k} className="flex gap-2"><span className="text-slate-400 w-20 shrink-0">{k}</span><span className="break-all">{String(v)}</span></div>
       ))}
+      {onRemove && info.id && (
+        <button type="button" className="text-red-500 hover:text-red-600 mt-0.5"
+                onClick={(e) => { e.preventDefault(); onRemove(info.id) }}>
+          Remove
+        </button>
+      )}
     </div>
   )
 }
