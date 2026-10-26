@@ -124,9 +124,14 @@ export default function PidExtractionWorkspace({ project, onBack, onManageLegend
   }
 
   const markLegendDone = async (legendId) => {
-    await ioExtractionService.saveLegend(project.id, { legendId })
-    setStageState((s) => ({ ...s, 2: 'complete' }))
-    showToast('Stage 2 complete · Stage 3 unlocked')
+    setError('')
+    try {
+      await ioExtractionService.saveLegend(project.id, { legendId })
+      setStageState((s) => ({ ...s, 2: 'complete' }))
+      showToast('Stage 2 complete · Stage 3 unlocked')
+    } catch (err) {
+      setError(err.response?.data?.error || `Legend activation failed: ${err.message}`)
+    }
   }
 
   const runExtraction = async () => {
@@ -277,6 +282,25 @@ export default function PidExtractionWorkspace({ project, onBack, onManageLegend
                       {open && n === 2 && (
                         <div className="mt-2 text-xs text-slate-600 dark:text-slate-300 space-y-2">
                           <p>Symbol and tag rules used to read each bubble before it becomes an IO row.</p>
+                          <div className="overflow-x-auto rounded border border-slate-200 dark:border-slate-700">
+                            <table className="min-w-full">
+                              <thead>
+                                <tr className="text-left text-slate-500 border-b border-slate-200 dark:border-slate-700">
+                                  <th className="px-2 py-1 font-medium">Rule</th>
+                                  <th className="px-2 py-1 font-medium">From legend</th>
+                                  <th className="px-2 py-1 font-medium">Used for</th>
+                                </tr>
+                              </thead>
+                              <tbody className="text-slate-600 dark:text-slate-300">
+                                <tr className="border-b border-slate-100 dark:border-slate-800"><td className="px-2 py-1">Tag format</td><td className="px-2 py-1">2-digit unit · function letters · loop no. · suffix → 13-LT-7201A</td><td className="px-2 py-1">Tag</td></tr>
+                                <tr className="border-b border-slate-100 dark:border-slate-800"><td className="px-2 py-1">Letter under bubble</td><td className="px-2 py-1">I DCS · S ESD · P/PX package PLC · M MCC · K F&amp;G · H hardwired</td><td className="px-2 py-1">System</td></tr>
+                                <tr className="border-b border-slate-100 dark:border-slate-800"><td className="px-2 py-1">Bubble shape</td><td className="px-2 py-1">plain circle = field device · square frame = DCS function · centre bar = panel · dashed = other P&amp;ID</td><td className="px-2 py-1">field I/O vs software</td></tr>
+                                <tr className="border-b border-slate-100 dark:border-slate-800"><td className="px-2 py-1">Alarm letters</td><td className="px-2 py-1">SHH HH H SH L SL LL SLL beside the bubble</td><td className="px-2 py-1">alarm columns</td></tr>
+                                <tr className="border-b border-slate-100 dark:border-slate-800"><td className="px-2 py-1">Line number</td><td className="px-2 py-1">size&quot;-unit-service-serial-class[-insulation]</td><td className="px-2 py-1">Line ↔ tag</td></tr>
+                                <tr><td className="px-2 py-1">Service templates</td><td className="px-2 py-1">HS …C ESD RESET · …T ESD TEST RUN/OK · ZSH OPEN · ZSL CLOSE · ZT LIFT · ZI POSITION · Y SOV</td><td className="px-2 py-1">Service</td></tr>
+                              </tbody>
+                            </table>
+                          </div>
                           <div className="flex gap-2">
                             {onManageLegends && (
                               <button className="rd-btn text-xs" onClick={onManageLegends}>Manage legends</button>
@@ -381,7 +405,7 @@ function StageUpload({ slotInfo, upload, onContinue }) {
   const slots = [
     { key: 'pid', title: 'P&ID drawings (PDF)', accept: '.pdf', multiple: true, info: slotInfo.pid },
     { key: 'iolist', title: 'IO list baseline (optional)', accept: '.xlsx,.pdf', multiple: false, info: slotInfo.iolist },
-    { key: 'vendor', title: 'Vendor IO databases (optional)', accept: '.xlsx', multiple: true, info: null, list: slotInfo.vendor },
+    { key: 'vendor', title: 'Vendor IO databases (optional, one or more .xlsx)', accept: '.xlsx', multiple: true, info: null, list: slotInfo.vendor },
   ]
   return (
     <div className="mt-3 space-y-2">

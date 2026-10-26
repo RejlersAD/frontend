@@ -3030,6 +3030,7 @@ const DetailView = ({ doc, onBack, onBackToProjects, onReExtract, onForceFreshEx
 // Page root
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function IOListWorkflowPage() {
+  const navigate = useNavigate()
   const [documents, setDocuments]     = useState([])
   const [loading, setLoading]         = useState(false)
   const [activeDoc, setActiveDoc]     = useState(null)
@@ -3529,6 +3530,7 @@ export default function IOListWorkflowPage() {
           <PidExtractionWorkspace
             project={activeProjectFilter}
             onBack={() => setActiveProjectFilter(null)}
+            onManageLegends={() => navigate(IO_STAGE_FLOW[1].instruction.legendManagerRoute)}
           />
         ) : (
           /* Inside a project (or project management disabled): document list */
