@@ -285,10 +285,11 @@ export default function PidExtractionWorkspace({ project, onBack, onManageLegend
             <ChevronLeft className="w-4 h-4" /> Back to projects
           </button>
           {extraction && (
-            <a className="rd-btn text-sm flex items-center gap-1"
-               href={ioExtractionService.exportUrl(project.id, extraction.id, 'iolist')}>
+            <button className="rd-btn text-sm flex items-center gap-1"
+                    onClick={() => ioExtractionService.exportWorkbook(project.id, extraction.id, 'iolist')
+                      .catch((err) => setError(err.response?.data?.error || 'Export failed'))}>
               <Download className="w-4 h-4" /> Export
-            </a>
+            </button>
           )}
         </div>
       </div>
@@ -432,7 +433,7 @@ export default function PidExtractionWorkspace({ project, onBack, onManageLegend
           summary={summary} activeTab={activeTab} setActiveTab={setActiveTab}
           tabData={tabData} sheetFilter={sheetFilter} setSheetFilter={setSheetFilter}
           onDecide={decide} onAskAi={askAi} onEditRow={saveRowEdit}
-          exportUrl={(fmt) => ioExtractionService.exportUrl(project.id, extraction.id, fmt)}
+          exportWorkbook={(fmt) => ioExtractionService.exportWorkbook(project.id, extraction.id, fmt)}
         />
       )}
 
@@ -656,7 +657,7 @@ function ConnectKeyModal({ onClose, onTest, onSave, testState }) {
 }
 
 /* Results */
-function ResultsView({ summary, activeTab, setActiveTab, tabData, sheetFilter, setSheetFilter, onDecide, onAskAi, onEditRow, exportUrl }) {
+function ResultsView({ summary, activeTab, setActiveTab, tabData, sheetFilter, setSheetFilter, onDecide, onAskAi, onEditRow, exportWorkbook }) {
   const kpis = [
     ['Tags read', summary.tags, `${summary.confirmed || 0} confirmed by smart tags · ${summary.sheets || 0} sheets`],
     ['Field I/O rows', summary.fieldIO, summary.derived ? `+${summary.derived} derived from valve typical` : ''],
@@ -706,9 +707,9 @@ function ResultsView({ summary, activeTab, setActiveTab, tabData, sheetFilter, s
             <option value="">All sheets</option>
             {[...Array(summary.sheets || 0)].map((_, i) => <option key={i + 1} value={i + 1}>Sheet {i + 1}</option>)}
           </select>
-          <a className="rd-btn text-xs flex items-center gap-1" href={exportUrl('review')}>
+          <button className="rd-btn text-xs flex items-center gap-1" onClick={() => exportWorkbook('review')}>
             <Download className="w-3.5 h-3.5" /> Review workbook
-          </a>
+          </button>
         </div>
       </div>
 

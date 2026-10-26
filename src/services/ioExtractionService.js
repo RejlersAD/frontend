@@ -71,10 +71,22 @@ export const ioExtractionService = {
     return data
   },
 
-  exportUrl(projectId, extractionId, format) {
-    // NOTE: 'format' is DRF's reserved renderer-negotiation param (a
-    // ?format=review request 404s before reaching the view) — use 'fmt'.
-    return `/api/v1${BASE}/projects/${projectId}/extractions/${extractionId}/export/?fmt=${format}`
+  /** Authenticated workbook download (a plain <a href> carries no JWT). */
+  async exportWorkbook(projectId, extractionId, format) {
+    const { data, headers } = await apiClient.get(
+      `${BASE}/projects/${projectId}/extractions/${extractionId}/export/`,
+      { params: { fmt: format }, responseType: 'blob', timeout: 120000 })
+    const disposition = headers?.['content-disposition'] || ''
+    const m = disposition.match(/filename="?([^";]+)"?/)
+    const filename = m ? m[1] : `io-list-${format}.xlsx`
+    const url = URL.createObjectURL(data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
   },
 }
 
