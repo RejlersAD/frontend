@@ -53,6 +53,18 @@ export const ioExtractionService = {
     return data
   },
 
+  async listExtractions(projectId) {
+    const { data } = await apiClient.get(`${BASE}/projects/${projectId}/extractions/`)
+    return data
+  },
+
+  async patchRow(projectId, extractionId, tag, updates) {
+    const { data } = await apiClient.patch(
+      `${BASE}/projects/${projectId}/extractions/${extractionId}/rows/${encodeURIComponent(tag)}/`,
+      updates)
+    return data
+  },
+
   async askAi(projectId, extractionId, loopKey) {
     const { data } = await apiClient.post(
       `${BASE}/projects/${projectId}/extractions/${extractionId}/ai/${encodeURIComponent(loopKey)}/`)

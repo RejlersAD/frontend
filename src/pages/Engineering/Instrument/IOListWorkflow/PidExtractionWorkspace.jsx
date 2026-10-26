@@ -67,6 +67,7 @@ export default function PidExtractionWorkspace({ project, onBack, onManageLegend
   const [activeTab, setActiveTab] = useState('io')
   const [tabData, setTabData] = useState(null)
   const [sheetFilter, setSheetFilter] = useState('')
+  const [history, setHistory] = useState([])
   const [toast, setToast] = useState('')
   const [error, setError] = useState('')
   const pollRef = useRef(null)
@@ -92,6 +93,40 @@ export default function PidExtractionWorkspace({ project, onBack, onManageLegend
 
   useEffect(() => { refreshFiles() }, [refreshFiles])
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current) }, [])
+
+  const refreshHistory = useCallback(async () => {
+    try {
+      const data = await ioExtractionService.listExtractions(project.id)
+      setHistory(data.extractions || [])
+    } catch { /* history is best-effort */ }
+  }, [project.id])
+
+  useEffect(() => { refreshHistory() }, [refreshHistory])
+
+  const openExtraction = async (extId) => {
+    setError('')
+    try {
+      const st = await ioExtractionService.getStatus(project.id, extId)
+      if (st.status !== 'completed') { setError(st.error || 'This extraction is not complete.'); return }
+      setExtraction({ id: extId, summary: st.summary })
+      setActiveTab('io')
+      setSheetFilter('')
+      loadTab('io', extId, '')
+    } catch (err) {
+      setError(err.response?.data?.error || err.message)
+    }
+  }
+
+  const saveRowEdit = async (tag, updates) => {
+    setError('')
+    try {
+      await ioExtractionService.patchRow(project.id, extraction.id, tag, updates)
+      showToast(`Row ${tag} updated`)
+      loadTab(activeTab)
+    } catch (err) {
+      setError(err.response?.data?.error || err.message)
+    }
+  }
 
   // ── Stage logic ─────────────────────────────────────────────────────
   const stageDone = useMemo(() => ({
@@ -172,6 +207,7 @@ export default function PidExtractionWorkspace({ project, onBack, onManageLegend
             const s = st.summary || {}
             showToast(`Extraction complete · ${s.tags || 0} tags · ${s.vendorCells || 0} vendor cells filled · ${s.aiTags || 0} rows to review`)
             loadTab('io', extractionId)
+            refreshHistory()
           }
         } catch { /* keep polling */ }
       }, 2000)
@@ -395,9 +431,34 @@ export default function PidExtractionWorkspace({ project, onBack, onManageLegend
         <ResultsView
           summary={summary} activeTab={activeTab} setActiveTab={setActiveTab}
           tabData={tabData} sheetFilter={sheetFilter} setSheetFilter={setSheetFilter}
-          onDecide={decide} onAskAi={askAi}
+          onDecide={decide} onAskAi={askAi} onEditRow={saveRowEdit}
           exportUrl={(fmt) => ioExtractionService.exportUrl(project.id, extraction.id, fmt)}
         />
+      )}
+
+      {/* Extraction history — past runs stay reopenable */}
+      {!extraction && history.length > 0 && (
+        <div className="rd-card p-4">
+          <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Previous extractions</h3>
+          <div className="space-y-1">
+            {history.map((h) => (
+              <div key={h.id} className="flex items-center gap-3 text-xs border-b border-slate-100 dark:border-slate-800 last:border-0 py-1.5">
+                <Pill tone={h.status === 'completed' ? 'green' : h.status === 'failed' ? 'red' : 'amber'}>
+                  {h.status}{h.isOutdated ? ' · outdated' : ''}
+                </Pill>
+                <span className="text-slate-500">{new Date(h.createdAt).toLocaleString()}</span>
+                <span className="text-slate-400">{h.createdBy}</span>
+                <span className="text-slate-600 dark:text-slate-300">
+                  {h.summary?.tags ?? '—'} tags · {h.summary?.fieldIO ?? '—'} field I/O · {h.summary?.vendorCells ?? '—'} vendor cells
+                </span>
+                <button className="rd-btn text-xs ml-auto" disabled={h.status !== 'completed'}
+                        onClick={() => openExtraction(h.id)}>
+                  Open results
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* BYOK modal */}
@@ -595,7 +656,7 @@ function ConnectKeyModal({ onClose, onTest, onSave, testState }) {
 }
 
 /* Results */
-function ResultsView({ summary, activeTab, setActiveTab, tabData, sheetFilter, setSheetFilter, onDecide, onAskAi, exportUrl }) {
+function ResultsView({ summary, activeTab, setActiveTab, tabData, sheetFilter, setSheetFilter, onDecide, onAskAi, onEditRow, exportUrl }) {
   const kpis = [
     ['Tags read', summary.tags, `${summary.confirmed || 0} confirmed by smart tags · ${summary.sheets || 0} sheets`],
     ['Field I/O rows', summary.fieldIO, summary.derived ? `+${summary.derived} derived from valve typical` : ''],
@@ -654,28 +715,52 @@ function ResultsView({ summary, activeTab, setActiveTab, tabData, sheetFilter, s
       {!tabData ? (
         <div className="p-6 text-center text-slate-400 text-sm"><Loader2 className="w-5 h-5 animate-spin inline" /></div>
       ) : (
-        <ResultTable tab={activeTab} data={tabData} onDecide={onDecide} onAskAi={onAskAi} />
+        <ResultTable tab={activeTab} data={tabData} onDecide={onDecide} onAskAi={onAskAi} onEditRow={onEditRow} />
       )}
     </div>
   )
 }
 
-function ResultTable({ tab, data, onDecide, onAskAi }) {
+/* Inline-editable text cell — click to edit, Enter/blur saves */
+function EditableCell({ value, onSave }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(value || '')
+  if (!editing) {
+    return (
+      <button type="button" className="text-left w-full hover:bg-blue-50 dark:hover:bg-slate-700 rounded px-1"
+              title="Click to edit" onClick={() => { setDraft(value || ''); setEditing(true) }}>
+        {value || <span className="text-slate-400">—</span>}
+      </button>
+    )
+  }
+  const commit = () => { setEditing(false); if (draft !== (value || '')) onSave(draft) }
+  return (
+    <input autoFocus className="rd-input text-xs w-full" value={draft}
+           onChange={(e) => setDraft(e.target.value)}
+           onBlur={commit}
+           onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false) }} />
+  )
+}
+
+function ResultTable({ tab, data, onDecide, onAskAi, onEditRow }) {
   const rows = data.rows || []
   if (tab === 'io') {
     return (
       <DataTable
-        cols={['Tag', 'System', 'Service', 'Confidence', 'Line number', 'Set point', 'IO type']}
+        cols={['Tag', 'System', 'Service', 'Confidence', 'Line number', 'Set point', 'IO type', 'Review']}
         rows={rows.map((t) => [
-          <span className="text-blue-600 font-medium">{t.tag}</span>,
+          <span className="text-blue-600 font-medium">{t.tag}{t.editedBy ? <span className="text-[10px] text-green-600"> edited</span> : null}</span>,
           t.system || '—',
-          <ServiceCell tag={t} />,
+          <EditableCell value={t.service} onSave={(v) => onEditRow(t.tag, { service: v })} />,
           <Pill tone={t.serviceConfidence >= 0.85 ? 'green' : t.serviceConfidence >= 0.6 ? 'amber' : 'violet'}>
             {t.serviceConfidence >= 0.85 ? 'High' : t.serviceConfidence >= 0.6 ? 'Review' : 'AI step'}
           </Pill>,
-          t.line || '—',
+          <EditableCell value={t.line} onSave={(v) => onEditRow(t.tag, { line: v })} />,
           '',
           t.ioType || '',
+          t.decision
+            ? <Pill tone="green">{t.decision}</Pill>
+            : <button className="rd-btn text-[11px]" onClick={() => onDecide(t.tag, 'confirm')}>Confirm</button>,
         ])}
         empty="No field IO rows on this sheet."
       />
@@ -722,7 +807,10 @@ function ResultTable({ tab, data, onDecide, onAskAi }) {
         cols={['Sheet', 'Tag', 'Point', 'Set point (P&ID)', 'Scale label', 'IO list column']}
         rows={rows.map((s) => [
           s.sheet, s.tag, s.point,
-          s.value ? `${s.value} ${s.unit}` : 'Letter only — value comes from C&E / datasheet',
+          <EditableCell
+            value={s.value ? `${s.value} ${s.unit}` : ''}
+            onSave={(v) => onEditRow(s.tag, { setpoint: { point: s.point, value: v.replace(/[^\d.+-]/g, ''), unit: s.unit, column: s.column } })}
+          />,
           s.label, s.column,
         ])}
         empty="No set points read from the drawing."
@@ -770,15 +858,6 @@ function ResultTable({ tab, data, onDecide, onAskAi }) {
     )
   }
   return null
-}
-
-function ServiceCell({ tag }) {
-  return (
-    <div>
-      <div>{tag.service || <span className="text-slate-400">—</span>}</div>
-      {tag.serviceAlt && <div className="text-[11px] text-blue-500">{tag.serviceAlt}</div>}
-    </div>
-  )
 }
 
 function DataTable({ cols, rows, empty }) {
