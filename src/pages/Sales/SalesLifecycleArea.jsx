@@ -200,6 +200,10 @@ const AREAS = {
       "verification_status",
       "new_proposals_permitted",
       "country",
+      "city",
+      "website",
+      "account_manager",
+      "currency",
       "health_score",
       "churn_risk",
       "commercial_risks",
@@ -208,6 +212,12 @@ const AREAS = {
     editFields: [
       ["company_name", "Company name"],
       ["legal_name", "Legal name"],
+      ["industry_type", "Industry", "select", []],
+      ["city", "City"],
+      ["website", "Website", "url"],
+      ["account_manager", "Account owner", "select", []],
+      ["country", "Country"],
+      ["currency", "Currency"],
       [
         "status",
         "Status",
@@ -800,11 +810,9 @@ function RecordDrawer({
                             }
                             className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
                           >
-                            {[...new Set([...(draft[key] ? [draft[key]] : []), ...options])].map((option) => (
-                              <option key={option} value={option}>
-                                {key === "opportunity_type" && option ? opportunityTypeLabel(option) : label(option)}
-                              </option>
-                            ))}
+                            {key === 'account_manager' && <option value="">Unassigned</option>}
+                            {draft[key] && !options.some(option => String(typeof option === 'object' ? option.value : option) === String(draft[key])) && <option value={draft[key]}>{key === 'account_manager' ? record.account_manager_details?.full_name || [record.account_manager_details?.first_name, record.account_manager_details?.last_name].filter(Boolean).join(' ') || 'Current owner' : label(draft[key])}</option>}
+                            {options.map(option => { const value = typeof option === 'object' ? option.value : option; return <option key={value} value={value}>{typeof option === 'object' ? option.label : key === 'opportunity_type' && option ? opportunityTypeLabel(option) : label(option)}</option>; })}
                           </select>
                         ) : (
                           <input
@@ -931,7 +939,9 @@ function RecordDrawer({
 export default function SalesLifecycleArea() {
   const { area } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [clientFormOptions, setClientFormOptions] = useState(null);
   const config = AREAS[area];
+  const drawerConfig = useMemo(() => area === 'clients' ? { ...AREAS.clients, editFields: AREAS.clients.editFields.map(field => field[0] === 'industry_type' ? [...field.slice(0, 3), clientFormOptions?.industries || []] : field[0] === 'account_manager' ? [...field.slice(0, 3), clientFormOptions?.owners || []] : field) } : AREAS[area], [area, clientFormOptions]);
   const [rows, setRows] = useState([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -1117,8 +1127,13 @@ export default function SalesLifecycleArea() {
     setSearchParams({}, { replace: true });
   }, [area, setSearchParams]);
 
-  const beginEdit = () => {
+  const beginEdit = async () => {
     if (recordLoading || recordError) return;
+    const request = recordRequest.current;
+    if (area === 'clients') {
+      try { const options = await salesService.getClientFormOptions(); if (request !== recordRequest.current) return; setClientFormOptions(options); }
+      catch (failure) { setError(apiError(failure, 'Unable to load client form options. Retry Edit client.')); return; }
+    }
     setError("");
     editBaseline.current = structuredClone(record);
     setDraft(
@@ -1158,7 +1173,7 @@ export default function SalesLifecycleArea() {
       } else if (area === "proposals") {
         payload = proposalEditPayload(draft, editBaseline.current || record);
       } else {
-        payload = draft;
+        payload = area === 'clients' ? { ...draft, account_manager: draft.account_manager === '' ? null : draft.account_manager } : draft;
       }
       const updated = await config.update(selectedId, payload);
       if (request !== recordRequest.current) return;
@@ -1194,10 +1209,19 @@ export default function SalesLifecycleArea() {
     });
   };
 
+  const deleteClient = () => {
+    if (!record || recordLoading || recordError) return;
+    showAction({ title: 'Delete client', submitLabel: 'Delete client', danger: true,
+      description: `Permanently delete ${record.client_code} - ${record.company_name}? This cannot be undone. Clients with linked records cannot be deleted; set their status to Inactive to retain their history.`,
+      fields: [], deleteId: record.id, execute: () => salesService.deleteClient(record.id) });
+  };
+
   const openCreate = async (preselectedOpportunity = null) => {
     const suffix = Date.now().toString().slice(-6);
     try {
       if (area === "clients") {
+        const options = await salesService.getClientFormOptions();
+        setClientFormOptions(options);
         showAction(
           {
             title: "Register client",
@@ -1205,43 +1229,21 @@ export default function SalesLifecycleArea() {
             description:
               "Create the governed client identity before linking opportunities or frameworks.",
             fields: [
-              { name: "company_name", label: "Company name", required: true },
-              { name: "legal_name", label: "Legal name", required: true },
-              {
-                name: "industry_type",
-                label: "Industry",
-                type: "select",
-                required: true,
-                options: [
-                  "oil_gas",
-                  "petrochemical",
-                  "power_generation",
-                  "water_treatment",
-                  "manufacturing",
-                  "construction",
-                  "government",
-                  "other",
-                ],
-              },
-              {
-                name: "client_tier",
-                label: "Client tier",
-                type: "select",
-                required: true,
-                options: ["bronze", "silver", "gold", "platinum"],
-              },
-              { name: "country", label: "Country", required: true },
-              { name: "city", label: "City" },
-              {
-                name: "notes",
-                label: "Relationship notes",
-                type: "textarea",
-                full: true,
-              },
+              { name: 'company_name', label: 'Company name', required: true },
+              { name: 'legal_name', label: 'Legal name', required: true },
+              { name: 'industry_type', label: 'Industry', type: 'select', options: options.industries, required: true },
+              { name: 'city', label: 'City' },
+              { name: 'website', label: 'Website', type: 'url' },
+              { name: 'account_manager', label: 'Account owner', type: 'select', options: options.owners },
+              { name: 'country', label: 'Country', required: true },
+              { name: 'currency', label: 'Currency', placeholder: 'AED, USD, EUR...' },
+              { name: 'client_tier', label: 'Client tier', type: 'select', required: true, options: ['bronze', 'silver', 'gold', 'platinum'] },
+              { name: 'notes', label: 'Relationship notes', type: 'textarea', full: true },
             ],
             execute: (values) =>
               salesService.createClient({
                 ...values,
+                account_manager: values.account_manager || null,
                 status: "active",
                 // verification_status is a governed decision field. The server
                 // defaults a new client to "unverified", so it is never sent.
@@ -1249,6 +1251,8 @@ export default function SalesLifecycleArea() {
               }),
           },
           {
+            account_manager: options.default_owner,
+            currency: '',
             industry_type: "oil_gas",
             client_tier: "bronze",
             country: "United Arab Emirates",
@@ -1856,6 +1860,7 @@ export default function SalesLifecycleArea() {
         return;
       }
       await load();
+      if (area === 'clients' && actionDialog.title === 'Register client' && result?.id) { await openRecord(String(result.id), false); return; }
       if (area === 'proposals' && actionDialog.requiresOpportunity && result?.id) { await openRecord(String(result.id), false); return; }
       if (selectedId && request === recordRequest.current) {
         if (area === "frameworks") {
@@ -1948,7 +1953,7 @@ export default function SalesLifecycleArea() {
           onRefresh={refreshOpportunities} onSelect={selectClient}
           onRetryRecord={() => record && openRecord(record, false)}
           onOpenFullRecord={(row) => row && openRecord(row, true)}
-          onEdit={() => { setFullRecordOpen(true); beginEdit(); }} onCreate={openCreate}
+          onEdit={() => { setFullRecordOpen(true); beginEdit(); }} onCreate={openCreate} onDelete={deleteClient}
         />
       ) : area === "frameworks" ? (
         <SalesFrameworkRegister
@@ -2168,7 +2173,7 @@ export default function SalesLifecycleArea() {
       {registrationOpen && <SalesOpportunityRegistrationDialog onClose={() => setRegistrationOpen(false)} onCreated={(created) => { setRegistrationOpen(false); load(); openRecord(created); }} />}
       {record && (!["opportunities", "proposals", "clients", "forecasts", "frameworks"].includes(area) || fullRecordOpen) && (
         <RecordDrawer
-          config={config}
+          config={drawerConfig}
           record={record}
           loading={recordLoading}
           editing={editing}

@@ -141,6 +141,38 @@ test('synthetic connection test requires a model and reports failure without los
   expect(state.unexpected).toEqual([])
 })
 
+for (const [reason, explanation] of [
+  ['provider_incomplete', 'The model stopped before completing the connection test.'],
+  ['request_configuration_error', 'The provider rejected the connection-test settings.'],
+  ['provider_request', 'The provider rejected the connection-test request.'],
+  ['provider_dependency_missing', 'The server is missing the provider integration dependency.'],
+  ['provider_unavailable', 'The server could not complete the provider connection.'],
+  ['invalid_response', 'The provider response did not match the expected connection-test result.'],
+  ['provider_refused', 'The model declined the synthetic connection test.'],
+]) {
+  test(`connection test explains ${reason} and retains the saved credential`, async ({ page }) => {
+    const state = await prepare(page, { handle: (call, state) => call.path.endsWith('/test/') ? {
+      status: 200, json: { ...state.data, test: { success: false, reason, model: call.body.model } },
+    } : undefined })
+    await row(page, 'Primary Claude').getByRole('button', { name: 'Test Primary Claude' }).click()
+    await page.getByRole('button', { name: 'Test connection', exact: true }).click()
+    await expect(page.getByRole('status')).toContainText(explanation)
+    await expect(page.getByRole('status')).toContainText('The saved credential was retained.')
+    await expect(row(page, 'Primary Claude')).toBeVisible()
+    expect(state.calls.filter(call => call.method === 'DELETE')).toEqual([])
+  })
+}
+
+test('saved failed tests explain the result without echoing untrusted reason text', async ({ page }) => {
+  const data = overview()
+  data.credentials[0] = { ...data.credentials[0], last_test_status: 'failed', last_test_reason: 'provider_incomplete', last_test_model: 'claude-sonnet-5-5' }
+  data.credentials[1] = { ...data.credentials[1], last_test_status: 'failed', last_test_reason: secret }
+  await prepare(page, { data })
+  await expect(row(page, 'Primary Claude')).toContainText('The model stopped before completing the connection test.')
+  await expect(row(page, 'Backup Claude')).toContainText('The connection test failed.')
+  expect(await page.locator('body').innerText()).not.toContain(secret)
+})
+
 test('provider configuration keeps explicit enabled and model settings', async ({ page }) => {
   const state = await prepare(page)
   await page.getByRole('article').filter({ has: page.getByRole('heading', { name: 'Anthropic Claude', exact: true }) }).getByRole('button', { name: 'Provider settings' }).click()

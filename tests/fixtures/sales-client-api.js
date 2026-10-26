@@ -70,6 +70,8 @@ const listFields = [
   "new_proposals_permitted",
   "email",
   "website",
+  "city",
+  "currency",
 ];
 const listProjection = (row) =>
   Object.fromEntries(listFields.map((key) => [key, row[key]]));
@@ -87,7 +89,7 @@ const detailProjection = (row) =>
   );
 
 // Synthetic API records only. Industry/status values follow the current model;
-// Client deliberately has no currency field and no invented export endpoint.
+// Client currency is an optional account preference; no export endpoint is invented.
 export function clientRow(index, changes = {}) {
   const owner = index % 6 === 4 ? null : owners[index % 2];
   const letter = String.fromCharCode(65 + index);
@@ -105,6 +107,7 @@ export function clientRow(index, changes = {}) {
     account_manager_details: owner,
     country: countries[index % 6],
     city: index === 0 ? "Abu Dhabi" : "",
+    currency: "",
     website: `https://client-${letter.toLowerCase()}.example`,
     email: "",
     phone: "",
@@ -364,6 +367,10 @@ export async function prepareClients(page, configuration = {}) {
           default_owner: 11,
         },
       });
+    if (path.endsWith('/clients/form-options/')) return route.fulfill({ json: {
+      industries: [...new Set([...industries, 'mining'])].map(value => ({ value, label: value.replaceAll('_', ' ') })),
+      owners: owners.map(owner => ({ value: owner.id, label: owner.name })), default_owner: 11,
+    } });
     if (path.endsWith("/clients/") && method === "GET") {
       if (state.listStatus !== 200)
         return route.fulfill({
@@ -414,6 +421,12 @@ export async function prepareClients(page, configuration = {}) {
               : { detail: "This client is no longer available to you." },
         });
       }
+      if (method === 'DELETE') {
+        state.mutations.push({ action: 'delete', path });
+        if (state.deals.some(item => item.client === row.id) || row.contacts?.length) return route.fulfill({ status: 409, json: { detail: 'This client has linked records and cannot be deleted. Set its status to Inactive to retain its history.' } });
+        state.rows = state.rows.filter(item => item.id !== row.id);
+        return route.fulfill({ status: 204, body: '' });
+      }
       if (method === "PATCH") {
         state.mutations.push({ action: "edit", body, path });
         const status = responseStatus(state.patchStatuses, row.id);
@@ -425,6 +438,8 @@ export async function prepareClients(page, configuration = {}) {
             },
           });
         Object.assign(row, body);
+        if (body.account_manager) row.account_manager_details = owners.find(owner => String(owner.id) === String(body.account_manager));
+        if (body.currency) row.currency = body.currency.toUpperCase();
         return route.fulfill({ json: detailProjection(row) });
       }
     }

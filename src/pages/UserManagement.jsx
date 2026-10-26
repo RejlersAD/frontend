@@ -771,26 +771,26 @@ const UserManagement = () => {
       // Edit sends profile fields plus role assignments. Roles picked in
       // the modal come from the live list managed at Admin › Roles & Access
       // Management — backend safely no-ops if role_ids is omitted.
+      //
+      // Serializer contract (UserProfileSerializer):
+      // - email/first_name/last_name are write-only TOP-LEVEL fields. The
+      //   nested `user` object is read-only, so sending them under `user:`
+      //   is silently dropped and the edits never persist.
+      // - organization_id is a UUIDField; a present empty string fails UUID
+      //   validation with 400. The list payload carries no org id, so omit
+      //   the key when empty (PATCH: absent = unchanged).
+      // - is_superuser/is_staff have no writable serializer field; the toggles
+      //   are display-only here and are intentionally not sent.
       const payload = {
-        user: {
-          email: formData.email,
-          first_name: formData.first_name,
-          last_name: formData.last_name
-        },
-        organization_id: formData.organization_id,
+        email: formData.email,
+        first_name: formData.first_name,
+        last_name: formData.last_name,
         department: formData.department,
         job_title: formData.job_title,
         phone: formData.phone,
+        ...(formData.organization_id && { organization_id: formData.organization_id }),
         ...(Array.isArray(formData.role_ids) && { role_ids: formData.role_ids })
       };
-      
-      // If superuser or staff flags are present, include them
-      if (formData.is_superuser !== undefined) {
-        payload.user.is_superuser = formData.is_superuser;
-      }
-      if (formData.is_staff !== undefined) {
-        payload.user.is_staff = formData.is_staff;
-      }
       
       await rbacService.updateUser(selectedUser.id, payload);
       
@@ -812,7 +812,7 @@ const UserManagement = () => {
       setNotification({
         show: true,
         type: 'error',
-        message: error.response?.data?.message || 'Failed to update user. Please try again.'
+        message: parseBackendError(error)
       });
       throw error; // Re-throw so the modal can handle it
     } finally {

@@ -9,7 +9,7 @@ const views = [['all', 'All'], ['active', 'Active'], ['prospect', 'Prospects'], 
 const columnOptions = [['client', 'Client'], ['industry', 'Industry'], ['country', 'Country'], ['owner', 'Owner'], ['status', 'Status'], ['verification_status', 'Verification'], ['active_deals_count', 'Active opportunities']];
 const defaults = ['client', 'industry', 'country', 'owner', 'status'];
 
-export default function SalesClientRegister({ rows, loading, error, record, recordLoading, recordError, selectedId, onRefresh, onSelect, onRetryRecord, onOpenFullRecord, onEdit, onCreate }) {
+export default function SalesClientRegister({ rows, loading, error, record, recordLoading, recordError, selectedId, onRefresh, onSelect, onRetryRecord, onOpenFullRecord, onEdit, onCreate, onDelete }) {
   const [status, setStatus] = useState('all');
   const [query, setQuery] = useState('');
   const [country, setCountry] = useState('');
@@ -69,7 +69,7 @@ export default function SalesClientRegister({ rows, loading, error, record, reco
         </tbody></table></div>
         <footer className="scl-register-footer"><span>{sorted.length ? `${(currentPage - 1) * pageSize + 1} – ${Math.min(currentPage * pageSize, sorted.length)} of ${sorted.length}` : '0 clients'}</span><div className="scl-page-buttons"><button type="button" aria-label="Previous page" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}><ChevronLeft size={17} /></button><span aria-label={`Page ${currentPage} of ${pages}`}>{currentPage}</span><button type="button" aria-label="Next page" disabled={currentPage === pages} onClick={() => setPage(currentPage + 1)}><ChevronRight size={17} /></button></div><details className="scl-columns-menu" onKeyDown={event => { if (event.key === 'Escape') { event.currentTarget.open = false; event.currentTarget.querySelector('summary')?.focus(); } }}><summary className="scl-button"><SlidersHorizontal size={19} />Columns<ChevronDown size={15} /></summary><div className="scl-menu-popup">{columnOptions.map(([key, name]) => <label key={key}><input type="checkbox" checked={columns.includes(key)} disabled={key === 'client'} onChange={event => setColumns(previous => event.target.checked ? [...previous, key] : previous.filter(value => value !== key))} />{name}</label>)}<label>Rows per page<select aria-label="Rows per page" value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setPage(1); }}>{[5, 10, 25, 50].map(value => <option key={value}>{value}</option>)}</select></label><button type="button" onClick={onRefresh} disabled={loading}><RefreshCw size={16} />Refresh clients</button></div></details></footer>
       </section>
-      <SalesClientWorkspace record={record} loading={recordLoading} error={recordError} onRetry={onRetryRecord} onEdit={onEdit} onOpenFullRecord={() => onOpenFullRecord(record)} onRefresh={onRefresh} />
+      <SalesClientWorkspace record={record} loading={recordLoading} error={recordError} onRetry={onRetryRecord} onEdit={onEdit} onDelete={onDelete} onOpenFullRecord={() => onOpenFullRecord(record)} onRefresh={onRefresh} />
     </div>
   </div>;
 }
@@ -77,6 +77,6 @@ SalesClientRegister.propTypes = {
   rows: PropTypes.array.isRequired, loading: PropTypes.bool.isRequired, error: PropTypes.string,
   record: PropTypes.object, recordLoading: PropTypes.bool.isRequired, recordError: PropTypes.string, selectedId: PropTypes.string,
   onRefresh: PropTypes.func.isRequired, onSelect: PropTypes.func.isRequired, onRetryRecord: PropTypes.func.isRequired,
-  onOpenFullRecord: PropTypes.func.isRequired, onEdit: PropTypes.func.isRequired, onCreate: PropTypes.func.isRequired,
+  onOpenFullRecord: PropTypes.func.isRequired, onEdit: PropTypes.func.isRequired, onCreate: PropTypes.func.isRequired, onDelete: PropTypes.func.isRequired,
 };
 

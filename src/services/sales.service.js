@@ -127,6 +127,11 @@ class SalesService {
    * Delete a client
    * @param {string} clientId - Client UUID
    */
+  async getClientFormOptions() {
+    const response = await apiClient.get(`${BASE_URL}/clients/form-options/`);
+    return response.data;
+  }
+
   async deleteClient(clientId) {
     const response = await apiClient.delete(`${BASE_URL}/clients/${clientId}/`);
     return response.data;
