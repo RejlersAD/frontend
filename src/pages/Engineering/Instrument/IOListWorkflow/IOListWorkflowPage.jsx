@@ -1,22 +1,22 @@
-import PlatformAIStatus from '../../../../components/ai/PlatformAIStatus'
+﻿import PlatformAIStatus from '../../../../components/ai/PlatformAIStatus'
 import { radaiConfirm } from '../../../../services/radaiDialog'
 import PidExtractionWorkspace from './PidExtractionWorkspace'
 /**
- * Instrument IO List Workflow — CRS-style multi-revision page.
+ * Instrument IO List Workflow â€” CRS-style multi-revision page.
  *
  * Replaces the default content at /engineering/instrument/datasheet/io-list.
  * The legacy "Generate from P&ID" wizard remains untouched and is reachable
- * via the "Legacy generator" link → /engineering/instrument/datasheet/io-list/generator
+ * via the "Legacy generator" link â†’ /engineering/instrument/datasheet/io-list/generator
  *
  * Architecture:
  *   - All copy, colours, columns, endpoints, status codes live in
  *     frontend/src/config/ioListWorkflow.config.js (soft-coded).
- *   - This file is pure composition: header banner → toolbar → grid/cards
- *     → detail tabs. No business strings hardcoded.
+ *   - This file is pure composition: header banner â†’ toolbar â†’ grid/cards
+ *     â†’ detail tabs. No business strings hardcoded.
  *
  * View modes:
- *   - list    → toolbar + card grid of uploaded I/O List documents
- *   - detail  → tabbed view: Overview · Comments · I/O Table · Metadata
+ *   - list    â†’ toolbar + card grid of uploaded I/O List documents
+ *   - detail  â†’ tabbed view: Overview Â· Comments Â· I/O Table Â· Metadata
  */
 
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
@@ -59,9 +59,9 @@ import {
   IO_LIST_WORKFLOW_PROJECT_FEATURES,
 } from '../../../../config/ioListWorkflowProjects.config'
 
-// ─────────────────────────────────────────────────────────────────────
-// Icon registry — drives soft-coded icon names from the config
-// ─────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Icon registry â€” drives soft-coded icon names from the config
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const ICONS = {
   FileText, MessageSquare, Table2, BarChart3, Info,
   MessagesSquare, List, Link2, BookOpen,
@@ -71,9 +71,9 @@ const Icon = ({ name, className }) => {
   return <C className={className} />
 }
 
-// ─────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Small presentational atoms
-// ─────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const Badge = ({ children, tone = 'slate', dot = false }) => {
   const t = TONE_CLASSES[tone] || TONE_CLASSES.slate
   return (
@@ -93,8 +93,8 @@ const RawBadge = ({ children, bg, fg, dot }) => (
 
 const StatusPill = ({ code }) => {
   const s = STATUS_BADGE_COLOURS[code]
-  if (!s) return <span className="text-xs text-slate-400">—</span>
-  return <RawBadge bg={s.bg} fg={s.fg} dot={s.dot}>{code} · {s.label}</RawBadge>
+  if (!s) return <span className="text-xs text-slate-400">â€”</span>
+  return <RawBadge bg={s.bg} fg={s.fg} dot={s.dot}>{code} Â· {s.label}</RawBadge>
 }
 
 const DocStatusPill = ({ status }) => {
@@ -130,7 +130,7 @@ const StatCard = ({ stat, value }) => {
       </div>
       <div className="min-w-0">
         <div className="text-xs text-slate-500 uppercase tracking-wide font-medium truncate">{stat.label}</div>
-        <div className="text-2xl font-bold text-slate-900 leading-tight">{value ?? '—'}</div>
+        <div className="text-2xl font-bold text-slate-900 leading-tight">{value ?? 'â€”'}</div>
         {stat.hint && <div className="text-[10px] text-slate-400 truncate">{stat.hint}</div>}
       </div>
     </div>
@@ -145,15 +145,15 @@ const Skeleton = ({ rows = 4 }) => (
   </div>
 )
 
-// ─────────────────────────────────────────────────────────────────────
-// Background processing progress — every number here is real, live
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Background processing progress â€” every number here is real, live
 // backend state (see each field's own comment below); no fake timers, no
 // simulated animation, no rotating cosmetic text. Two real percentage
 // sources, finer one preferred:
 //   - vision_calls_done/vision_calls_total (P&ID Vision path only): ticks
 //     on EVERY individual Vision API call finishing (tasks.py's
 //     process_pid_vision_page, via pid_vision_extractor's
-//     on_call_complete) — far more granular than whole-page completion,
+//     on_call_complete) â€” far more granular than whole-page completion,
 //     which is what made this sit visibly frozen at 0% for minutes on a
 //     small page count (a real, reported symptom).
 //   - pages_processed/pages_total: the fallback for a regular I/O List
@@ -164,17 +164,17 @@ const Skeleton = ({ rows = 4 }) => (
 // jumping straight to some number.
 //
 // UI FIX: this used to render at the very top of the page, above the
-// project header / legend section / everything — so on a scrolled-down
+// project header / legend section / everything â€” so on a scrolled-down
 // view it was completely out of sight from the "Upload & Extract" button
 // that started the very upload it's reporting on. Extracted into its own
 // component so ListView can render it immediately next to UploadCard, and
-// DetailView can render it next to its own "Re-extract" button — both
+// DetailView can render it next to its own "Re-extract" button â€” both
 // upload and re-extract now show the identical engaging panel.
 const ProcessingBanner = ({ processingDoc, processingMeta }) => {
   // Forces a re-render once a second while something is actively
   // extracting, purely so "Time elapsed" visibly counts up smoothly
-  // (2:30 → 2:31 → 2:32) instead of only refreshing on the ~2s poll
-  // cadence. NOT a fake progress timer — it doesn't invent or advance
+  // (2:30 â†’ 2:31 â†’ 2:32) instead of only refreshing on the ~2s poll
+  // cadence. NOT a fake progress timer â€” it doesn't invent or advance
   // any number itself; elapsedLabel below is still always computed fresh
   // from the real extraction_started_at server timestamp vs the real
   // current time. This tick just makes that real computation visible
@@ -194,7 +194,7 @@ const ProcessingBanner = ({ processingDoc, processingMeta }) => {
   const callsDone = Math.min(processingDoc.vision_calls_done || 0, callsTotal)
 
   // Finer P&ID-Vision-call percentage when it's actually available,
-  // otherwise the coarser whole-page one — never both, never guessed.
+  // otherwise the coarser whole-page one â€” never both, never guessed.
   let pct = null
   if (isDone) {
     pct = 100
@@ -204,11 +204,11 @@ const ProcessingBanner = ({ processingDoc, processingMeta }) => {
     pct = Math.round((pagesDone / pagesTotal) * 100)
   }
 
-  // Message driven ENTIRELY by real backend fields — current_phase (see
+  // Message driven ENTIRELY by real backend fields â€” current_phase (see
   // IOListDocument.PHASE_CHOICES), plus, when the finer per-call counter
   // is running, exactly which pass/tile that counter is on right now
   // (derived by real arithmetic on real counts, not invented). Falls
-  // back to a phase-agnostic "Processing…" only for a brand-new poll
+  // back to a phase-agnostic "Processingâ€¦" only for a brand-new poll
   // tick that hasn't returned a phase yet.
   const phase = processingDoc.current_phase || ''
   const callsPerPage = pagesTotal > 0 && callsTotal > 0 ? callsTotal / pagesTotal : 0
@@ -219,35 +219,35 @@ const ProcessingBanner = ({ processingDoc, processingMeta }) => {
       ? `Complete! ${found} tag${found === 1 ? '' : 's'} found!`
       : `Complete! ${found} row${found === 1 ? '' : 's'} found${processingDoc.current_comments ? ` and ${processingDoc.current_comments} comment${processingDoc.current_comments === 1 ? '' : 's'}` : ''}!`
   } else if (phase === 'detecting_type') {
-    label = processingMeta.usingVision ? 'Detecting document type and preparing AI Vision…' : 'Detecting document type…'
+    label = processingMeta.usingVision ? 'Detecting document type and preparing AI Visionâ€¦' : 'Detecting document typeâ€¦'
   } else if (phase === 'processing_pages') {
     if (callsPerPage > 0) {
-      // currentPageIdx: which page is actively being worked (0-indexed) —
+      // currentPageIdx: which page is actively being worked (0-indexed) â€”
       // real, from pagesDone (pages that have FULLY finished so far).
       const currentPageIdx = Math.min(pagesDone, Math.max(pagesTotal - 1, 0))
       const callsIntoCurrentPage = Math.max(0, callsDone - currentPageIdx * callsPerPage)
       const callIdx = Math.min(Math.floor(callsIntoCurrentPage), Math.max(callsPerPage - 1, 0))
       label = processingMeta.thorough
-        ? `Analyzing page ${currentPageIdx + 1} of ${pagesTotal} with AI Vision — tile scan ${callIdx + 1} of ${callsPerPage} (Thorough Scan)…`
-        : `Analyzing page ${currentPageIdx + 1} of ${pagesTotal} with AI Vision — pass ${callIdx + 1} of ${callsPerPage}…`
+        ? `Analyzing page ${currentPageIdx + 1} of ${pagesTotal} with AI Vision â€” tile scan ${callIdx + 1} of ${callsPerPage} (Thorough Scan)â€¦`
+        : `Analyzing page ${currentPageIdx + 1} of ${pagesTotal} with AI Vision â€” pass ${callIdx + 1} of ${callsPerPage}â€¦`
     } else if (pagesTotal > 0) {
       label = processingMeta.usingVision
-        ? `Analyzing page ${Math.min(pagesDone + 1, pagesTotal)} of ${pagesTotal} with AI Vision…`
-        : `Reading page ${Math.min(pagesDone + 1, pagesTotal)} of ${pagesTotal}…`
+        ? `Analyzing page ${Math.min(pagesDone + 1, pagesTotal)} of ${pagesTotal} with AI Visionâ€¦`
+        : `Reading page ${Math.min(pagesDone + 1, pagesTotal)} of ${pagesTotal}â€¦`
     } else {
-      label = 'Processing pages…'
+      label = 'Processing pagesâ€¦'
     }
   } else if (phase === 'linking_comments') {
-    label = 'Linking comments to instrument tags…'
+    label = 'Linking comments to instrument tagsâ€¦'
   } else if (phase === 'validating_legend') {
-    label = 'Validating tags against legend…'
+    label = 'Validating tags against legendâ€¦'
   } else {
-    label = 'Processing…'
+    label = 'Processingâ€¦'
   }
 
-  // Real elapsed time — a genuine wall-clock delta between now and
+  // Real elapsed time â€” a genuine wall-clock delta between now and
   // extraction_started_at (set once, server-side, at dispatch; never
-  // touched again during the run — see the model field's own comment).
+  // touched again during the run â€” see the model field's own comment).
   // No client-side fake timer: this recomputes fresh on every render,
   // and this component already re-renders every ~2s from the real poll
   // loop, so the clock advances from real ticks, not a simulated one.
@@ -259,7 +259,7 @@ const ProcessingBanner = ({ processingDoc, processingMeta }) => {
     const mm = Math.floor(elapsedS / 60)
     const ss = String(elapsedS % 60).padStart(2, '0')
     elapsedLabel = `${mm}:${ss}`
-    // ETA — a plain derived estimate (elapsed / fraction-done * fraction-
+    // ETA â€” a plain derived estimate (elapsed / fraction-done * fraction-
     // remaining), same idea any download manager uses. Only shown once
     // there's enough real progress to make it more than a guess, and
     // never once already done.
@@ -271,7 +271,7 @@ const ProcessingBanner = ({ processingDoc, processingMeta }) => {
         const rss = remainingS % 60
         etaLabel = rmm > 0 ? `~${rmm}m ${rss}s remaining` : `~${rss}s remaining`
       } else {
-        etaLabel = 'almost done…'
+        etaLabel = 'almost doneâ€¦'
       }
     }
   }
@@ -279,7 +279,7 @@ const ProcessingBanner = ({ processingDoc, processingMeta }) => {
   const tagsOrRowsLabel = processingMeta.usingVision ? 'Tags found' : 'I/O Rows found'
   const tokensTotal = processingDoc.tokens_used_total || 0
 
-  // Real stat cards — each one hidden until there's genuinely something
+  // Real stat cards â€” each one hidden until there's genuinely something
   // to show it (no card ever renders a fabricated 0/placeholder value).
   const cards = []
   if (pagesTotal > 0) {
@@ -339,7 +339,7 @@ const ProcessingBanner = ({ processingDoc, processingMeta }) => {
         )}
       </div>
 
-      {/* Live stats — real grid cards, not plain text. Each one is real,
+      {/* Live stats â€” real grid cards, not plain text. Each one is real,
           live backend state; the grid only ever shows cards that have
           something genuine to display (see `cards` above). */}
       {cards.length > 0 && (
@@ -358,10 +358,10 @@ const ProcessingBanner = ({ processingDoc, processingMeta }) => {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Projects Panel — Full-featured project management modal
-// ─────────────────────────────────────────────────────────────────────
-// Full-page project workspace — landing view of the module (not a modal).
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Projects Panel â€” Full-featured project management modal
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Full-page project workspace â€” landing view of the module (not a modal).
 // Reuses the exact same CRUD logic/service calls the old modal panel used;
 // only the wrapper markup and layout changed.
 const ProjectsPanel = ({ onProjectSelected, documents = [] }) => {
@@ -427,7 +427,7 @@ const ProjectsPanel = ({ onProjectSelected, documents = [] }) => {
         setProjects(prev => [created, ...prev])
         // BUG FIX: a newly created project was never auto-selected, so
         // activeProjectFilter stayed null and the next upload's UploadCard
-        // got no projectId — the document landed as Unassigned even though
+        // got no projectId â€” the document landed as Unassigned even though
         // the user had just created (and presumably meant to use) this
         // project. Land the user directly in the new project's workspace.
         if (onProjectSelected) onProjectSelected(created)
@@ -460,7 +460,7 @@ const ProjectsPanel = ({ onProjectSelected, documents = [] }) => {
   const ProjectCategoryBadge = ({ category }) => {
     const c = IO_LIST_WORKFLOW_PROJECT_CATEGORY_BADGE[category] || IO_LIST_WORKFLOW_PROJECT_CATEGORY_BADGE.other
     const catLabel = IO_LIST_WORKFLOW_PROJECT_CATEGORIES.find(x => x.value === category)?.label || category
-    const catIcon = IO_LIST_WORKFLOW_PROJECT_CATEGORIES.find(x => x.value === category)?.icon || '📦'
+    const catIcon = IO_LIST_WORKFLOW_PROJECT_CATEGORIES.find(x => x.value === category)?.icon || 'ðŸ“¦'
     return <RawBadge bg={c.bg} fg={c.fg}>{catIcon} {catLabel}</RawBadge>
   }
 
@@ -477,7 +477,7 @@ const ProjectsPanel = ({ onProjectSelected, documents = [] }) => {
 
   return (
     <div className="space-y-4">
-      {/* Section header — title + New Project (top right) */}
+      {/* Section header â€” title + New Project (top right) */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center flex-shrink-0">
@@ -676,15 +676,15 @@ const ProjectsPanel = ({ onProjectSelected, documents = [] }) => {
 
               {(project.client || project.location) && (
                 <div className="text-xs text-slate-600 space-y-0.5">
-                  {project.client && <div>🏢 {project.client}</div>}
-                  {project.location && <div>📍 {project.location}</div>}
+                  {project.client && <div>ðŸ¢ {project.client}</div>}
+                  {project.location && <div>ðŸ“ {project.location}</div>}
                 </div>
               )}
 
               {/* Created date */}
               <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
                 <Calendar className="w-3 h-3" />
-                {project.created_at ? new Date(project.created_at).toLocaleDateString() : '—'}
+                {project.created_at ? new Date(project.created_at).toLocaleDateString() : 'â€”'}
               </div>
 
               <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
@@ -697,7 +697,7 @@ const ProjectsPanel = ({ onProjectSelected, documents = [] }) => {
                     onClick={() => onProjectSelected(project)}
                     className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
                   >
-                    Open →
+                    Open â†’
                   </button>
                 )}
               </div>
@@ -709,12 +709,12 @@ const ProjectsPanel = ({ onProjectSelected, documents = [] }) => {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Stage-flow helpers (soft-coded) — mirrors the Instrument Index guided
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Stage-flow helpers (soft-coded) â€” mirrors the Instrument Index guided
 // 4-stage pattern. Config lives in IO_STAGE_FLOW / IO_AUTOSAVE
 // (ioListWorkflow.config.js). Purely presentational + draft persistence;
 // no upload/extraction logic is touched.
-// ─────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 // Minimal promise-wrapped IndexedDB helpers (module scope).
 const ioIdb = {
@@ -746,7 +746,7 @@ const ioIdb = {
   },
 }
 
-// Per-stage "User Instruction" panel — purely presentational.
+// Per-stage "User Instruction" panel â€” purely presentational.
 const IoStageInstruction = ({ stage }) => {
   const navigate = useNavigate()
   const { heading, bullets = [], note, action } = stage.instruction || {}
@@ -754,7 +754,7 @@ const IoStageInstruction = ({ stage }) => {
   return (
     <div className="rounded-lg border border-sky-200 bg-sky-50/60 p-3.5">
       <p className="text-[11px] font-bold uppercase tracking-wider text-sky-700 mb-1.5">
-        📘 User Instruction — {heading}
+        ðŸ“˜ User Instruction â€” {heading}
       </p>
       <ul className="list-disc list-inside space-y-0.5 text-xs text-slate-600">
         {bullets.map((b, i) => <li key={i}>{b}</li>)}
@@ -777,7 +777,7 @@ const IoStageInstruction = ({ stage }) => {
 const IoStageGate = ({ stage }) => (
   <div className="border border-dashed border-slate-200 rounded-lg p-3.5 bg-slate-50/60 flex items-center gap-3 opacity-80">
     <span className="flex items-center justify-center h-6 w-6 rounded-full bg-slate-100 text-slate-400 text-xs font-bold border border-slate-200 shrink-0">
-      🔒
+      ðŸ”’
     </span>
     <div>
       <p className="text-sm font-semibold text-slate-400">
@@ -789,10 +789,10 @@ const IoStageGate = ({ stage }) => (
   </div>
 )
 
-// ─────────────────────────────────────────────────────────────────────
-// Upload card — inline, always visible inside a project's workspace
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Upload card â€” inline, always visible inside a project's workspace
 // (not a modal). I/O List only: no engine/OCR picker, no API key.
-// ─────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const UploadCard = ({ onUploaded, projectId, projectName }) => {
   const navigate = useNavigate()
   const [file, setFile]         = useState(null)
@@ -802,10 +802,10 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
   const [error, setError]       = useState('')
 
   // Page count for the pre-extraction time/token ESTIMATE below the
-  // Quick/Thorough Scan toggle — a real number from the backend
-  // (getPdfPageCount, PyMuPDF-based — see its own comment for why a
+  // Quick/Thorough Scan toggle â€” a real number from the backend
+  // (getPdfPageCount, PyMuPDF-based â€” see its own comment for why a
   // client-side-only guess was tried and rejected as unreliable), not
-  // detected locally. null while the check is running or if it failed —
+  // detected locally. null while the check is running or if it failed â€”
   // the estimate simply doesn't render in that case rather than ever
   // showing a guess.
   const [pageCount, setPageCount] = useState(null)
@@ -817,25 +817,25 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
     return () => { cancelled = true }
   }, [file])
 
-  // P&ID drawing BYOK Vision options — collapsed by default (most uploads
+  // P&ID drawing BYOK Vision options â€” collapsed by default (most uploads
   // are plain I/O List PDFs, which never touch these). sessionStorage-
   // persisted under I/O List's own keys (PID_VISION_CONFIG), cleared when
-  // the tab closes — never sent anywhere except this one upload request.
+  // the tab closes â€” never sent anywhere except this one upload request.
   // BUG FIX: these were persisted under one GLOBAL key for the whole tab,
   // so a key entered for one project leaked into every other project
   // (including a brand-new one that had never seen a key) and showed up
   // pre-filled/"activated" before the user typed anything. Scoping the
   // storage key by project id gives each project its own independent
-  // key — a genuinely new project reads nothing and starts clean.
+  // key â€” a genuinely new project reads nothing and starts clean.
   const visionApiKeyStorageKey = `${PID_VISION_CONFIG.sessionStorageApiKeyKey}::${projectId || 'unassigned'}`
   const visionProviderStorageKey = `${PID_VISION_CONFIG.sessionStorageProviderKey}::${projectId || 'unassigned'}`
   // Quick Scan (1 Vision call/page, fast/cheap) vs Thorough Scan (2x2
-  // tiled, ~4 calls/page, more accurate on dense drawings) — same
+  // tiled, ~4 calls/page, more accurate on dense drawings) â€” same
   // project-scoped sessionStorage pattern as provider/key above, and same
   // UI convention as PIDVerification.jsx's own quick/thorough toggle.
   const thoroughScanStorageKey = `${PID_VISION_CONFIG.sessionStorageThoroughKey}::${projectId || 'unassigned'}`
   const visionModelStorageKey = `${PID_VISION_CONFIG.sessionStorageModelKey}::${projectId || 'unassigned'}`
-  // BYOK model picker (soft-coded; PID_VISION_CONFIG.models) — per-project,
+  // BYOK model picker (soft-coded; PID_VISION_CONFIG.models) â€” per-project,
   // session-scoped like the provider/key above.
   const [visionModel, setVisionModel] = useState(
     () => sessionStorage.getItem(visionModelStorageKey) || '',
@@ -846,7 +846,7 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
   )
   const [visionApiKey, setVisionApiKey] = useState(
     // BYOK: hydrate from the project-scoped session key (tab-scoped only,
-    // cleared when the tab closes — never persisted to disk/server).
+    // cleared when the tab closes â€” never persisted to disk/server).
     () => sessionStorage.getItem(visionApiKeyStorageKey) || '',
   )
   const [thoroughScan, setThoroughScan] = useState(
@@ -856,17 +856,17 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
   const [testResult, setTestResult] = useState(null)
   const apiKeyInputRef = useRef(null)
 
-  // A friendly, non-blocking nudge toward adding an API key — never a
+  // A friendly, non-blocking nudge toward adding an API key â€” never a
   // hard requirement (basic OCR must stay a real, working option; a
   // sweet suggestion, not a wall). Only relevant once the user has
   // opened the P&ID options panel themselves (the one real, honest
-  // signal available before upload that this is likely a P&ID drawing —
+  // signal available before upload that this is likely a P&ID drawing â€”
   // document_type itself isn't known until extraction finishes
   // server-side, so this can never be a hard "P&ID detected" check).
   // Gates the confirmation dialog below, not the button itself.
   const [showNoKeyConfirm, setShowNoKeyConfirm] = useState(false)
 
-  // ── Draft auto-save (soft-coded; IO_AUTOSAVE) ───────────────────────
+  // â”€â”€ Draft auto-save (soft-coded; IO_AUTOSAVE) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Per-project IndexedDB draft: selected file + document info survive
   // page reloads / browser restarts, so a user waiting on an ICT-issued
   // AI key can come back and continue. The vision API key is NEVER saved.
@@ -874,13 +874,13 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
   const [draftSavedAt, setDraftSavedAt] = useState(null)
   const draftKey = projectId || 'unassigned'
 
-  // ── Stage-flow chaining (soft-coded; IO_STAGE_FLOW) ────────────────
+  // â”€â”€ Stage-flow chaining (soft-coded; IO_STAGE_FLOW) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // legendAcked marks the optional legend stage as addressed (checked or
   // skipped) so Document Info unlocks; Vision unlocks once the required
   // Document Info fields are filled. Persisted with the draft.
   const [legendAcked, setLegendAcked] = useState(false)
 
-  // ── Submit gate (soft-coded; IO_SUBMIT_GATE) ───────────────────────
+  // â”€â”€ Submit gate (soft-coded; IO_SUBMIT_GATE) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Stage 4 is a required CHOICE: 'byok' (key must pass Test) or 'ocr'
   // (explicit opt-in to free basic OCR). Upload & Extract stays disabled
   // until all four stages are verified.
@@ -915,7 +915,7 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
           if (draft.keyChoice != null) setKeyChoice(draft.keyChoice)
           if (draft.savedAt) setDraftSavedAt(draft.savedAt)
         }
-      } catch (_) { /* IDB unavailable — upload still works normally */ }
+      } catch (_) { /* IDB unavailable â€” upload still works normally */ }
       hydratedDraftRef.current = draftKey
     })()
     return () => { cancelled = true }
@@ -933,7 +933,7 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
     return () => clearTimeout(t)
   }, [file, meta, thoroughScan, legendAcked, keyChoice, draftKey])
 
-  // Immediate (non-debounced) draft save — used right before navigating
+  // Immediate (non-debounced) draft save â€” used right before navigating
   // away (Legend Manager redirect), since unmount cancels the debounce.
   const persistDraftNow = (overrides = {}) => {
     if (!IO_AUTOSAVE.enabled) return
@@ -966,18 +966,18 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    // Project is required — there is no more "Unassigned" fallback.
+    // Project is required â€” there is no more "Unassigned" fallback.
     // Belt-and-suspenders alongside the disabled submit button below
     // (also covers a form submit triggered any other way, e.g. Enter key).
     if (!projectId) { setError('Please select or create a project first.'); return }
     if (!file) { setError('Please select a PDF file.'); return }
     // Submit gate (soft-coded; IO_SUBMIT_GATE): every stage must be
-    // explicitly verified — including the AI key choice — before upload.
+    // explicitly verified â€” including the AI key choice â€” before upload.
     if (IO_SUBMIT_GATE.enabled && !allStagesVerified) {
       setError('Please verify all steps above (including the AI key choice) before uploading.')
       return
     }
-    // Friendly speed bump, not a wall — see showNoKeyConfirm's own
+    // Friendly speed bump, not a wall â€” see showNoKeyConfirm's own
     // comment. Only asks once per click; "Continue with Basic OCR" in the
     // dialog calls doUpload() directly, bypassing this gate.
     doUpload()
@@ -986,14 +986,14 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
   const doUpload = async () => {
     setBusy(true); setError(''); setProgress(0)
     try {
-      // Scope the upload to the open project (if any) — the backend links
+      // Scope the upload to the open project (if any) â€” the backend links
       // it via IOListDocument.project, and project_name is auto-filled from
       // the active project rather than typed (no visible field for it).
       // uploadDocument() forwards every metadata entry as a form field, so
       // no service-layer or backend change needed.
       const uploadMeta = projectId ? { ...meta, project: projectId } : { ...meta }
       if (projectName) uploadMeta.project_name = projectName
-      // Only relevant if the backend detects a P&ID drawing PDF — ignored
+      // Only relevant if the backend detects a P&ID drawing PDF â€” ignored
       // otherwise. Sent whenever a key is present, whether or not the
       // "P&ID options" section is open, since detection happens server-side
       // after upload (the user may not know in advance which kind of PDF
@@ -1004,13 +1004,13 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
         uploadMeta.thorough = thoroughScan ? 'true' : 'false'
         sessionStorage.setItem(visionProviderStorageKey, visionProvider)
         sessionStorage.setItem(thoroughScanStorageKey, thoroughScan ? 'true' : 'false')
-        // BYOK: forward the user's own key when present — sent with this
+        // BYOK: forward the user's own key when present â€” sent with this
         // request only, never stored server-side (backend contract:
         // `vision_api_key` form field; ignored for plain I/O List PDFs).
         if (visionApiKey.trim()) {
           uploadMeta.vision_api_key = visionApiKey.trim()
           sessionStorage.setItem(visionApiKeyStorageKey, visionApiKey.trim())
-          // BYOK model picker — whitelisted server-side; omitted = default.
+          // BYOK model picker â€” whitelisted server-side; omitted = default.
           if (visionModel) uploadMeta.vision_model = visionModel
         }
       }
@@ -1020,13 +1020,13 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
           if (evt.total) setProgress(Math.round((evt.loaded * 100) / evt.total))
         },
       })
-      // Client-side-only hints (never from the server — underscore-
+      // Client-side-only hints (never from the server â€” underscore-
       // prefixed so they're visually distinct from the real API
       // response) so the processing banner can show accurate,
       // mode-aware text ("Analyzing with AI Vision" / "Thorough Scan")
       // while this document is still extracting, before its own
       // document_type is known (that's only decided once extraction
-      // finishes — see orchestrator._detect_document_type).
+      // finishes â€” see orchestrator._detect_document_type).
       onUploaded({ ...result, _usingVision: false, _thorough: thoroughScan })
       reset()
     } catch (err) {
@@ -1051,13 +1051,13 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
         {IO_AUTOSAVE.enabled && draftSavedAt && (
           <span className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold text-emerald-50 bg-emerald-500/20 border border-emerald-300/40"
             title={`Your selected file and document info are auto-saved on this device.\nLast saved: ${new Date(draftSavedAt).toLocaleString()}\nYou can safely leave and continue later (e.g. after receiving your AI key from ICT).`}>
-            {IO_AUTOSAVE.savedLabel} · {new Date(draftSavedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            {IO_AUTOSAVE.savedLabel} Â· {new Date(draftSavedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </span>
         )}
       </div>
 
       <form onSubmit={handleSubmit} className="p-6 space-y-5">
-        {/* Stage 1 · User Instruction (soft-coded) */}
+        {/* Stage 1 Â· User Instruction (soft-coded) */}
         <IoStageInstruction stage={IO_STAGE_FLOW[0]} />
 
         {/* Drop zone */}
@@ -1070,7 +1070,7 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
               <div className="flex items-center justify-center gap-2 text-sm text-emerald-700">
                 <CheckCircle2 className="w-5 h-5" />
                 <span className="font-medium">{file.name}</span>
-                <span className="text-slate-400">·</span>
+                <span className="text-slate-400">Â·</span>
                 <span className="text-slate-500">{(file.size / 1024 / 1024).toFixed(1)} MB</span>
               </div>
             ) : (
@@ -1093,7 +1093,7 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
           </ul>
         </div>
 
-        {/* ── Stage 2 · Legend cross-check instruction (gated — soft-coded) ── */}
+        {/* â”€â”€ Stage 2 Â· Legend cross-check instruction (gated â€” soft-coded) â”€â”€ */}
         {!IO_STAGE_FLOW[1].isUnlocked(ioStageState) ? (
           <IoStageGate stage={IO_STAGE_FLOW[1]} />
         ) : (
@@ -1102,7 +1102,7 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
             {!IO_STAGE_FLOW[1].isComplete(ioStageState) && (
               <div className="flex items-center gap-2 -mt-2">
                 {/* Strict flow: completing this stage means VISITING the
-                    Legend Manager — the button marks it done and redirects;
+                    Legend Manager â€” the button marks it done and redirects;
                     the draft + workspace session restore everything on return. */}
                 <button
                   type="button"
@@ -1125,7 +1125,7 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
           </>
         )}
 
-        {/* ── Stage 3 · Document Info (gated — soft-coded) ── */}
+        {/* â”€â”€ Stage 3 Â· Document Info (gated â€” soft-coded) â”€â”€ */}
         {!IO_STAGE_FLOW[2].isUnlocked(ioStageState) ? (
           <IoStageGate stage={IO_STAGE_FLOW[2]} />
         ) : (
@@ -1152,15 +1152,15 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
         </>
         )}
 
-        {/* ── Stage 4 · AI Extraction Key — BYOK (gated — soft-coded) ── */}
+        {/* â”€â”€ Stage 4 Â· AI Extraction Key â€” BYOK (gated â€” soft-coded) â”€â”€ */}
         {!IO_STAGE_FLOW[3].isUnlocked(ioStageState) ? (
           <IoStageGate stage={IO_STAGE_FLOW[3]} />
         ) : (
         <>
         <IoStageInstruction stage={IO_STAGE_FLOW[3]} />
 
-        {/* ── Stage 4 · required key choice (soft-coded; IO_SUBMIT_GATE) ──
-            The user must explicitly choose BYOK (key tested) or Basic OCR —
+        {/* â”€â”€ Stage 4 Â· required key choice (soft-coded; IO_SUBMIT_GATE) â”€â”€
+            The user must explicitly choose BYOK (key tested) or Basic OCR â€”
             Upload & Extract stays disabled until this is decided. */}
         {IO_SUBMIT_GATE.enabled && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1202,7 +1202,7 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
           </div>
         )}
 
-        {/* P&ID Drawing options — collapsible, off by default */}
+        {/* P&ID Drawing options â€” collapsible, off by default */}
         <div className="border border-slate-200 rounded-lg overflow-hidden">
           <button
             type="button"
@@ -1213,12 +1213,12 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
               <Sparkles className="w-3.5 h-3.5 text-violet-500" /> P&ID Drawing options
 
             </span>
-            <span className="text-slate-400">{showPidOptions ? '▲' : '▼'}</span>
+            <span className="text-slate-400">{showPidOptions ? 'â–²' : 'â–¼'}</span>
           </button>
           {showPidOptions && (
             <div className="p-3 space-y-2.5 border-t border-slate-200">
               <p className="text-[11px] text-slate-500">{PID_VISION_CONFIG.hint}</p>
-              {/* Friendly, non-blocking nudge — API key stays genuinely
+              {/* Friendly, non-blocking nudge â€” API key stays genuinely
                   optional (basic OCR is a real, working fallback, not a
                   dead end), this just makes the trade-off pleasant to
                   understand up front rather than a surprise later. */}
@@ -1228,7 +1228,7 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
                   value={visionProvider}
                   onChange={(e) => {
                     // BUG FIX: this used to only reach sessionStorage inside
-                    // doUpload() — if the user entered/tested a key, then
+                    // doUpload() â€” if the user entered/tested a key, then
                     // navigated back to the project list before ever
                     // uploading a file, nothing had been saved yet, so
                     // reopening the project showed an empty field again.
@@ -1248,8 +1248,8 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
 
               </div>
 
-              {/* ── BYOK key input (soft-coded) — optional; never stored
-                  server-side, kept only in this tab's sessionStorage ── */}
+              {/* â”€â”€ BYOK key input (soft-coded) â€” optional; never stored
+                  server-side, kept only in this tab's sessionStorage â”€â”€ */}
               <div className="flex gap-2">
                 <input
                   ref={apiKeyInputRef}
@@ -1263,7 +1263,7 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
                     // session survives in-tab navigation.
                     sessionStorage.setItem(visionApiKeyStorageKey, e.target.value)
                   }}
-                  placeholder={visionProvider === 'claude' ? 'sk-ant-…  (optional)' : 'sk-…  (optional)'}
+                  placeholder={visionProvider === 'claude' ? 'sk-ant-â€¦  (optional)' : 'sk-â€¦  (optional)'}
                   className="flex-1 text-xs border border-slate-300 rounded-lg px-2.5 py-1.5 bg-white focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 outline-none font-mono"
                 />
                 <button
@@ -1276,7 +1276,7 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
                   Test
                 </button>
               </div>
-              {/* Model picker (soft-coded; PID_VISION_CONFIG.models) — per provider */}
+              {/* Model picker (soft-coded; PID_VISION_CONFIG.models) â€” per provider */}
               <div className="flex items-center gap-2">
                 <label className="text-[11px] font-semibold text-slate-600 whitespace-nowrap">Model</label>
                 <select
@@ -1298,7 +1298,7 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
                   Raise a ticket with ICT
                 </Link>
                 {IO_SUBMIT_GATE.byokOnly
-                  ? ' — a key is required for P&ID drawing extraction.'
+                  ? ' â€” a key is required for P&ID drawing extraction.'
                   : ' or leave blank to use basic OCR.'}
               </p>
 
@@ -1307,8 +1307,8 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
                   {testResult.message}
                 </p>
               )}
-              {/* Scan mode toggle — quick (1 call/page) vs thorough (2x2
-                  tiled, ~4 calls/page) — same segmented-button pattern
+              {/* Scan mode toggle â€” quick (1 call/page) vs thorough (2x2
+                  tiled, ~4 calls/page) â€” same segmented-button pattern
                   PIDVerification.jsx uses for its own quick/thorough
                   toggle. */}
               <div className="flex items-center gap-2 flex-wrap">
@@ -1330,14 +1330,14 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
                 </div>
                 <span className="text-[11px] text-slate-500">
                   {thoroughScan
-                    ? `~${SCAN_CALLS_PER_PAGE_THOROUGH} API calls · ~${VISION_ESTIMATE.thorough.tokensPerPage.toLocaleString()} tokens/page (tiled — more accurate on dense drawings)`
-                    : `~${SCAN_CALLS_PER_PAGE_QUICK} API calls · ~${VISION_ESTIMATE.quick.tokensPerPage.toLocaleString()} tokens/page (fast and cheap)`}
+                    ? `~${SCAN_CALLS_PER_PAGE_THOROUGH} API calls Â· ~${VISION_ESTIMATE.thorough.tokensPerPage.toLocaleString()} tokens/page (tiled â€” more accurate on dense drawings)`
+                    : `~${SCAN_CALLS_PER_PAGE_QUICK} API calls Â· ~${VISION_ESTIMATE.quick.tokensPerPage.toLocaleString()} tokens/page (fast and cheap)`}
                 </span>
               </div>
-              {/* Pre-extraction ESTIMATE — updates once the backend's real
+              {/* Pre-extraction ESTIMATE â€” updates once the backend's real
                   page count (getPdfPageCount) comes back for the selected
                   file, and again immediately on any scan-mode toggle. A
-                  clearly-labelled prediction, not measured data — the
+                  clearly-labelled prediction, not measured data â€” the
                   real, live numbers (ProcessingBanner) only exist once
                   extraction is actually running. Hidden entirely until a
                   page count is known, rather than ever showing a guess. */}
@@ -1348,12 +1348,12 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
                     const est = thoroughScan ? VISION_ESTIMATE.thorough : VISION_ESTIMATE.quick
                     const minutes = pageCount * est.minutesPerPage
                     const tokens = pageCount * est.tokensPerPage
-                    return `Estimated: ~${minutes} min · ~${tokens.toLocaleString()} tokens (${pageCount} page${pageCount === 1 ? '' : 's'} detected)`
+                    return `Estimated: ~${minutes} min Â· ~${tokens.toLocaleString()} tokens (${pageCount} page${pageCount === 1 ? '' : 's'} detected)`
                   })()}
                 </p>
               )}
-              {/* ── BYOK cost estimate (soft-coded; BYOK_COST_CONFIG) — up-front
-                  accountability before spending anything on your own key ── */}
+              {/* â”€â”€ BYOK cost estimate (soft-coded; BYOK_COST_CONFIG) â€” up-front
+                  accountability before spending anything on your own key â”€â”€ */}
               {BYOK_COST_CONFIG.enabled && pageCount != null && (() => {
                 const costEst = estimateByokCost(
                   pageCount,
@@ -1363,11 +1363,11 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
                 if (!costEst) return null
                 return (
                   <div className="rounded-lg border border-amber-200 bg-amber-50/70 px-2.5 py-1.5 flex items-start gap-1.5">
-                    <span className="text-xs leading-none mt-0.5">💰</span>
+                    <span className="text-xs leading-none mt-0.5">ðŸ’°</span>
                     <div className="text-[11px] text-amber-900">
                       <p>
                         <b>Estimated BYOK cost: {costEst.text}</b>
-                        {' '}· {BYOK_COST_CONFIG.pricing[visionProvider]?.label} · {thoroughScan ? 'Thorough' : 'Quick'} Scan
+                        {' '}Â· {BYOK_COST_CONFIG.pricing[visionProvider]?.label} Â· {thoroughScan ? 'Thorough' : 'Quick'} Scan
                       </p>
                       <p className="text-amber-700/80 mt-0.5">{BYOK_COST_CONFIG.disclaimer}</p>
                     </div>
@@ -1382,7 +1382,7 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
         )}
 
         {/* Progress / error. BUG FIX: `progress` only ever tracked the
-            FILE TRANSFER (axios onUploadProgress) — for a small PDF that
+            FILE TRANSFER (axios onUploadProgress) â€” for a small PDF that
             reaches 100% in under a second, then just sat there frozen at
             "100%" for however long server-side extraction actually took,
             reading as "jumped to 100% instantly" / done-but-not-done.
@@ -1392,8 +1392,8 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
             explicitly INDETERMINATE "server is still working" state
             instead of a bar frozen at a number that looks complete. A
             genuinely large/slow request (page-fanout or a Vision key)
-            goes through the async path instead — see UploadCard's own
-            note — which gets REAL per-page percentage via
+            goes through the async path instead â€” see UploadCard's own
+            note â€” which gets REAL per-page percentage via
             pages_processed/pages_total; this bar can never show that for
             the synchronous path because the whole response only arrives
             once everything is already done. */}
@@ -1402,7 +1402,7 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
             {progress < 100 ? (
               <>
                 <div className="flex items-center justify-between text-xs text-slate-600 mb-1">
-                  <span className="flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Uploading document…</span>
+                  <span className="flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Uploading documentâ€¦</span>
                   <span className="font-semibold tabular-nums">{progress}%</span>
                 </div>
                 <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
@@ -1412,14 +1412,14 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
             ) : (
               <>
                 <div className="flex items-center gap-1.5 text-xs text-slate-600 mb-1">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> Extracting & analyzing — this can take a few seconds…
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> Extracting & analyzing â€” this can take a few secondsâ€¦
                 </div>
                 <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
                   <div className="h-full w-1/3 bg-gradient-to-r from-indigo-500 to-blue-500 rounded-full animate-pulse" />
                 </div>
               </>
             )}
-            <div className="text-[11px] text-slate-400 mt-1">Server-side PyMuPDF extraction — no AI cost incurred.</div>
+            <div className="text-[11px] text-slate-400 mt-1">Server-side PyMuPDF extraction â€” no AI cost incurred.</div>
           </div>
         )}
 
@@ -1429,7 +1429,7 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
           </div>
         )}
 
-        {/* Project is required — no more "Unassigned" fallback. In normal
+        {/* Project is required â€” no more "Unassigned" fallback. In normal
             navigation UploadCard is only reached after selecting/creating
             a project (see the projectId prop / IOListWorkflowPage's own
             routing), so this is a defensive message for any other path
@@ -1441,12 +1441,12 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
           </div>
         )}
 
-        {/* Action — button stays enabled with no key (basic OCR is a
+        {/* Action â€” button stays enabled with no key (basic OCR is a
             real, working option, never blocked); its label just says so
             honestly once the P&ID options panel is open with no key
             entered, matching the friendly nudge above instead of quietly
             saying "Upload & Extract" and surprising the user later. */}
-        {/* ── Submit gate checklist (soft-coded; IO_SUBMIT_GATE) ── */}
+        {/* â”€â”€ Submit gate checklist (soft-coded; IO_SUBMIT_GATE) â”€â”€ */}
         <div className="pt-3 border-t border-slate-200 space-y-3">
           {IO_SUBMIT_GATE.enabled && !allStagesVerified && (
             <div className="rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2.5">
@@ -1468,14 +1468,14 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
                     title={IO_SUBMIT_GATE.enabled && !allStagesVerified ? IO_SUBMIT_GATE.checklistTitle : ''}
                     className="px-5 py-2 text-sm font-semibold bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-lg hover:from-indigo-700 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
               {busy
-                ? <><Loader2 className="w-4 h-4 animate-spin" /> Extracting…</>
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> Extractingâ€¦</>
                 : <><Upload className="w-4 h-4" /> {IO_SUBMIT_GATE.readyLabel}</>}
             </button>
           </div>
         </div>
       </form>
 
-      {/* Sweet, non-blocking confirmation — appears once, only when the
+      {/* Sweet, non-blocking confirmation â€” appears once, only when the
           user has opened P&ID options and left the key blank, right when
           they click the button. Never a hard stop: "Continue with Basic
           OCR" always works. */}
@@ -1484,9 +1484,9 @@ const UploadCard = ({ onUploaded, projectId, projectName }) => {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Toolbar (search + filters + sort)
-// ─────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const Toolbar = ({ search, setSearch, statusFilter, setStatusFilter, sortBy, setSortBy, onRefresh, totalCount }) => (
   <div className={`${THEME.card} p-3 flex flex-wrap items-center gap-2`}>
     <div className="relative flex-1 min-w-[240px]">
@@ -1495,7 +1495,7 @@ const Toolbar = ({ search, setSearch, statusFilter, setStatusFilter, sortBy, set
         type="text"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        placeholder="Search document number, project, plant, unit…"
+        placeholder="Search document number, project, plant, unitâ€¦"
         className="w-full text-sm border border-slate-300 rounded-lg pl-9 pr-3 py-2 focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 outline-none"
       />
     </div>
@@ -1516,10 +1516,10 @@ const Toolbar = ({ search, setSearch, statusFilter, setStatusFilter, sortBy, set
   </div>
 )
 
-// ─────────────────────────────────────────────────────────────────────
-// Assign-to-Project picker — small popover, no separate modal. Lists
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Assign-to-Project picker â€” small popover, no separate modal. Lists
 // existing projects (click to assign) plus an inline "create new" field.
-// ─────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const AssignProjectPicker = ({ onAssign, onClose }) => {
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(true)
@@ -1569,7 +1569,7 @@ const AssignProjectPicker = ({ onAssign, onClose }) => {
       {error && <div className="px-3 py-2 text-xs text-red-600 bg-red-50 border-b border-red-100">{error}</div>}
       <div className="max-h-48 overflow-y-auto">
         {loading ? (
-          <div className="px-3 py-3 text-xs text-slate-400">Loading projects…</div>
+          <div className="px-3 py-3 text-xs text-slate-400">Loading projectsâ€¦</div>
         ) : projects.length === 0 ? (
           <div className="px-3 py-3 text-xs text-slate-400">No existing projects yet.</div>
         ) : (
@@ -1591,7 +1591,7 @@ const AssignProjectPicker = ({ onAssign, onClose }) => {
           value={newName}
           onChange={e => setNewName(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') createAndAssign() }}
-          placeholder="New project name…"
+          placeholder="New project nameâ€¦"
           disabled={busy}
           className="flex-1 min-w-0 text-xs border border-slate-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-400"
         />
@@ -1607,9 +1607,9 @@ const AssignProjectPicker = ({ onAssign, onClose }) => {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Document Row — one row in the "Previous Uploads" list inside a project
-// ─────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Document Row â€” one row in the "Previous Uploads" list inside a project
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const DocumentRow = ({ doc, onOpen, busy, onReExtract, onForceFreshExtract, onDownload, onAssignProject }) => {
   const stats = doc.extraction_stats || {}
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -1621,8 +1621,8 @@ const DocumentRow = ({ doc, onOpen, busy, onReExtract, onForceFreshExtract, onDo
       <button onClick={() => onOpen(doc.id)} className="flex-1 min-w-0 text-left">
         <p className="text-sm font-medium text-slate-800 truncate">{doc.document_number || `#${doc.id}`}</p>
         <p className="text-xs text-slate-400">
-          {doc.created_at ? new Date(doc.created_at).toLocaleString() : '—'}
-          {' · '}{stats.io_rows_found ?? 0} I/O rows{' · '}{stats.comments_found ?? 0} comments
+          {doc.created_at ? new Date(doc.created_at).toLocaleString() : 'â€”'}
+          {' Â· '}{stats.io_rows_found ?? 0} I/O rows{' Â· '}{stats.comments_found ?? 0} comments
         </p>
       </button>
       <DocStatusPill status={doc.status} />
@@ -1657,16 +1657,16 @@ const DocumentRow = ({ doc, onOpen, busy, onReExtract, onForceFreshExtract, onDo
       <button
         onClick={() => onReExtract(doc.id)}
         disabled={busy}
-        title="Prefers a cached Vision result for this file — fast and consistent"
+        title="Prefers a cached Vision result for this file â€” fast and consistent"
         className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg border border-violet-200 bg-violet-50 text-violet-700 hover:-translate-y-px transition-all disabled:opacity-50 flex-shrink-0"
       >
         {busy
-          ? <><Loader2 className="w-3 h-3 animate-spin" /> Extracting…</>
+          ? <><Loader2 className="w-3 h-3 animate-spin" /> Extractingâ€¦</>
           : <><RefreshCw className="w-3 h-3" /> Re-extract</>}
       </button>
       {doc.document_type === 'pid_drawing' && (
         // Same condition as DetailView's own Force Fresh Analysis button
-        // — meaningless for a plain I/O List table document, which never
+        // â€” meaningless for a plain I/O List table document, which never
         // calls Vision or caches a result.
         <button
           onClick={() => onForceFreshExtract(doc.id)}
@@ -1675,7 +1675,7 @@ const DocumentRow = ({ doc, onOpen, busy, onReExtract, onForceFreshExtract, onDo
           className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg border border-violet-200 bg-violet-50 text-violet-700 hover:-translate-y-px transition-all disabled:opacity-50 flex-shrink-0"
         >
           {busy
-            ? <><Loader2 className="w-3 h-3 animate-spin" /> Extracting…</>
+            ? <><Loader2 className="w-3 h-3 animate-spin" /> Extractingâ€¦</>
             : <><Zap className="w-3 h-3" /> Force Fresh Analysis</>}
         </button>
       )}
@@ -1683,9 +1683,9 @@ const DocumentRow = ({ doc, onOpen, busy, onReExtract, onForceFreshExtract, onDo
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // List View
-// ─────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const ListView = ({ documents, loading, onOpen, onUploaded, onRefresh, onBackToProjects, activeProjectFilter,
                     search, setSearch, statusFilter, setStatusFilter, sortBy, setSortBy,
                     rowBusyId, onRowReExtract, onRowForceFreshExtract, onRowDownload, onAssignProject,
@@ -1714,12 +1714,12 @@ const ListView = ({ documents, loading, onOpen, onUploaded, onRefresh, onBackToP
     return rows
   }, [documents, search, statusFilter, sortBy, activeProjectFilter])
 
-  // Legend Sheets — isolated I/O List legend system (own backend table,
+  // Legend Sheets â€” isolated I/O List legend system (own backend table,
   // own copy of the modal, full 21-section parity with P&ID). Not
-  // project-scoped (same as its P&ID counterpart) — one active legend per
+  // project-scoped (same as its P&ID counterpart) â€” one active legend per
   // (user, section). The card summary shows the 'instrument_index' section
   // specifically, since that's the one services/legend_comparison.py
-  // actually reads at extraction time (IO_LEGEND_SECTION in models.py) —
+  // actually reads at extraction time (IO_LEGEND_SECTION in models.py) â€”
   // the other 20 sections exist for browsing/parity but aren't wired into
   // the automated check.
   const [legendModalOpen, setLegendModalOpen] = useState(false)
@@ -1736,7 +1736,7 @@ const ListView = ({ documents, loading, onOpen, onUploaded, onRefresh, onBackToP
 
   return (
     <div className="space-y-4">
-      {/* Header — back button, icon, project name (no P&ID-style feature badges) */}
+      {/* Header â€” back button, icon, project name (no P&ID-style feature badges) */}
       <div className="flex items-center gap-3">
         <button
           onClick={onBackToProjects}
@@ -1752,7 +1752,7 @@ const ListView = ({ documents, loading, onOpen, onUploaded, onRefresh, onBackToP
         </h2>
       </div>
 
-      {/* Project Legend Sheets — I/O List's own, independent legend system */}
+      {/* Project Legend Sheets â€” I/O List's own, independent legend system */}
       <div className={THEME.card}>
         <div className={`bg-gradient-to-r ${THEME.bannerFrom} ${THEME.bannerVia} ${THEME.bannerTo} px-5 py-4 rounded-t-2xl flex items-center justify-between text-white`}>
           <div className="flex items-center gap-3">
@@ -1776,17 +1776,17 @@ const ListView = ({ documents, loading, onOpen, onUploaded, onRefresh, onBackToP
           {activeLegend ? (
             <>
               <span className="font-medium text-slate-900">Custom Legend Active</span>
-              <span className="text-slate-400">—</span>
+              <span className="text-slate-400">â€”</span>
               <span className="text-slate-600">{activeLegend.name}</span>
               <span className="text-slate-400">
                 ({(activeLegend.definition?.fields?.length) || 0} custom field{(activeLegend.definition?.fields?.length) !== 1 ? 's' : ''})
               </span>
             </>
           ) : (
-            <span className="text-slate-500">No legend active — uploads won&apos;t be checked against a tag format</span>
+            <span className="text-slate-500">No legend active â€” uploads won&apos;t be checked against a tag format</span>
           )}
         </div>
-        {/* ICT help line (soft-coded — mirrors Instrument Index stage 2) */}
+        {/* ICT help line (soft-coded â€” mirrors Instrument Index stage 2) */}
         <div className="px-5 pb-3 -mt-1 text-[11px] text-slate-400">
           Facing any difficulty with legends?{' '}
           <Link to="/my-enquiries" className="font-semibold text-indigo-600 hover:underline">
@@ -1801,10 +1801,10 @@ const ListView = ({ documents, loading, onOpen, onUploaded, onRefresh, onBackToP
         onActiveChange={setActiveLegend}
       />
 
-      {/* Upload I/O List PDF — always visible inside a project */}
+      {/* Upload I/O List PDF â€” always visible inside a project */}
       <UploadCard onUploaded={onUploaded} projectId={activeProjectFilter?.id} projectName={activeProjectFilter?.project_name} />
 
-      {/* Live extraction progress — rendered right beneath the upload
+      {/* Live extraction progress â€” rendered right beneath the upload
           card (not at the very top of the page) so it's next to the
           "Upload & Extract" button that started it, visible without
           scrolling back up. */}
@@ -1855,15 +1855,15 @@ const ListView = ({ documents, loading, onOpen, onUploaded, onRefresh, onBackToP
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Detail — Overview tab
-// ─────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Detail â€” Overview tab
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const OverviewPanel = ({ doc }) => {
   const stats = doc.extraction_stats || {}
 
   // Primary: use the precomputed breakdown stored in extraction_stats by the orchestrator.
   // Fallback: compute dynamically from the embedded extracted_comments array.
-  // Both paths count ALL unique codes (not just the hard-coded 1–4) so the
+  // Both paths count ALL unique codes (not just the hard-coded 1â€“4) so the
   // chart always reflects what is actually in the data.
   const statusBreakdown = useMemo(() => {
     const precomputed = stats.status_code_breakdown
@@ -1887,7 +1887,7 @@ const OverviewPanel = ({ doc }) => {
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
         {STATS_CARDS.map(s => {
           // Some cards read a different stats key/label for a P&ID drawing
-          // document — e.g. io_table_pages is always 0 there (no page ever
+          // document â€” e.g. io_table_pages is always 0 there (no page ever
           // gets classified 'io_table'), so 'I/O Pages' would misleadingly
           // read 0 even though the document has real pages. See
           // STATS_CARDS' pidDrawing override in ioListWorkflow.config.js.
@@ -1908,7 +1908,7 @@ const OverviewPanel = ({ doc }) => {
           </div>
           <div className="p-5 space-y-3">
             {totalComments === 0 ? (
-              /* ── Empty state: no comments extracted ───────────────── */
+              /* â”€â”€ Empty state: no comments extracted â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
               <div className="flex flex-col items-center justify-center py-6 text-center gap-2">
                 <MessagesSquare className="w-8 h-8 text-slate-300" />
                 <p className="text-sm font-medium text-slate-600">No comments extracted</p>
@@ -1920,14 +1920,14 @@ const OverviewPanel = ({ doc }) => {
               </div>
             ) : (
               <>
-                {/* Known ADNOC status codes 1–4 */}
+                {/* Known ADNOC status codes 1â€“4 */}
                 {Object.entries(STATUS_BADGE_COLOURS).map(([code, s]) => {
                   const n = statusBreakdown[code] || 0
                   const pct = (n / totalComments) * 100
                   return (
                     <div key={code}>
                       <div className="flex items-center justify-between text-xs mb-1">
-                        <span className="font-medium text-slate-700">{code} · {s.label}</span>
+                        <span className="font-medium text-slate-700">{code} Â· {s.label}</span>
                         <span className="text-slate-500">{n} ({pct.toFixed(0)}%)</span>
                       </div>
                       <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
@@ -1970,9 +1970,9 @@ const OverviewPanel = ({ doc }) => {
             <h4 className="text-sm font-semibold text-slate-900">Extraction Details</h4>
           </div>
           <div className="p-5 space-y-2 text-sm">
-            <Row label="Time taken"       value={stats.elapsed_seconds != null ? formatMinSec(stats.elapsed_seconds) : '—'} />
+            <Row label="Time taken"       value={stats.elapsed_seconds != null ? formatMinSec(stats.elapsed_seconds) : 'â€”'} />
             {/* Only meaningful for a P&ID drawing extracted via AI Vision
-                (see tasks.py's finalize_io_document — scan_mode is only
+                (see tasks.py's finalize_io_document â€” scan_mode is only
                 ever added to extraction_stats for document_type
                 'pid_drawing'); absent entirely for a plain I/O List table
                 document, so this row doesn't render for one. */}
@@ -1981,16 +1981,16 @@ const OverviewPanel = ({ doc }) => {
             )}
             {/* Real, cumulative token count summed across every Vision API
                 call this run made (pid_vision_extractor's on_call_complete
-                -> IOListDocument.tokens_used_total) — 0/absent for a plain
+                -> IOListDocument.tokens_used_total) â€” 0/absent for a plain
                 I/O List table document, which never calls Vision. */}
             {stats.tokens_used_total > 0 && (
               <Row label="Total tokens used" value={<span className="tabular-nums">{stats.tokens_used_total.toLocaleString()}</span>} />
             )}
             <Row label="Cost profile"     value={<CostBadge profile={stats.cost_profile} />} />
-            <Row label="SHA-256"          value={<span className="font-mono text-[10px] text-slate-500 truncate">{doc.pdf_sha256 || '—'}</span>} />
+            <Row label="SHA-256"          value={<span className="font-mono text-[10px] text-slate-500 truncate">{doc.pdf_sha256 || 'â€”'}</span>} />
             <Row label="CRS chain"        value={doc.crs_chain_id || <span className="text-slate-400">Not linked</span>} />
-            <Row label="Uploaded by"      value={doc.uploaded_by_email || '—'} />
-            <Row label="Uploaded at"      value={doc.created_at ? new Date(doc.created_at).toLocaleString() : '—'} />
+            <Row label="Uploaded by"      value={doc.uploaded_by_email || 'â€”'} />
+            <Row label="Uploaded at"      value={doc.created_at ? new Date(doc.created_at).toLocaleString() : 'â€”'} />
             {doc.extraction_error && (
               <div className="mt-3 flex items-start gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2">
                 <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
@@ -2005,7 +2005,7 @@ const OverviewPanel = ({ doc }) => {
 }
 
 // Formats a real elapsed-seconds number (stats.elapsed_seconds, computed
-// server-side — see orchestrator.combine_and_finalize) as "m:ss", same
+// server-side â€” see orchestrator.combine_and_finalize) as "m:ss", same
 // convention ProcessingBanner's own live elapsed clock uses while
 // extraction is still running, so the metadata tab's final "Time taken"
 // reads consistently with what the user watched count up during the run.
@@ -2023,24 +2023,24 @@ const Row = ({ label, value }) => (
   </div>
 )
 
-// ─────────────────────────────────────────────────────────────────────
-// Detail — Legend Check tab
-// ─────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Detail â€” Legend Check tab
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const LegendFindingsPanel = ({ doc }) => {
   const findings = doc.legend_findings || []
   // Older extractions (persisted before typo-tolerant fuzzy matching was
-  // added) never wrote a 'severity' key — treat those as 'error', same as
+  // added) never wrote a 'severity' key â€” treat those as 'error', same as
   // every hard mismatch always was before this distinction existed.
   const warningCount = findings.filter(f => f.severity === 'warning').length
   // "+ Add to Legend" only makes sense for a lookup-code miss (a value
-  // genuinely absent from that section's lookup table) — every finding
+  // genuinely absent from that section's lookup table) â€” every finding
   // shaped that way shares this exact substring (see
   // legend_comparison._lookup_code_finding); a tag-FORMAT mismatch is a
   // different kind of problem (nothing to add a row for) and doesn't say
   // this, so the button naturally doesn't show for those.
   const [addToLegend, setAddToLegend] = useState(null)
 
-  // Detected symbols — informational only, NEVER flagged/validated (no
+  // Detected symbols â€” informational only, NEVER flagged/validated (no
   // legend section exists to check a free-text symbol name against).
   // Aggregates every extracted row carrying a symbol_type: untagged
   // valve/piping symbols (kind 'symbol', no tag_number/equipment_tag/
@@ -2071,7 +2071,7 @@ const LegendFindingsPanel = ({ doc }) => {
             <Tag className="w-4 h-4 text-violet-500" />
             <h3 className="text-sm font-semibold text-slate-900">Detected Symbols</h3>
             <span className="text-xs text-slate-400">
-              ({symbolTotal} found — informational only, not validated)
+              ({symbolTotal} found â€” informational only, not validated)
             </span>
           </div>
           <div className="divide-y divide-slate-100">
@@ -2083,11 +2083,11 @@ const LegendFindingsPanel = ({ doc }) => {
                   <p className="text-xs text-slate-500 mt-0.5 truncate">
                     {items.slice(0, 6).map((it, i) => (
                       <span key={i}>
-                        {i > 0 && ' · '}
-                        {it.tag || it.location || '—'}
+                        {i > 0 && ' Â· '}
+                        {it.tag || it.location || 'â€”'}
                       </span>
                     ))}
-                    {items.length > 6 && <> · +{items.length - 6} more</>}
+                    {items.length > 6 && <> Â· +{items.length - 6} more</>}
                   </p>
                 </div>
               </div>
@@ -2132,9 +2132,9 @@ const LegendFindingsPanel = ({ doc }) => {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-slate-800">{f.issue}</p>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      <span className="font-mono">{f.field}</span>: <span className="font-mono">{f.value || '—'}</span>
-                      {f.section && <> · <span className="text-slate-400">{f.section}</span></>}
-                      {f.expected && <> · expected <span className="font-mono">{f.expected}</span></>}
+                      <span className="font-mono">{f.field}</span>: <span className="font-mono">{f.value || 'â€”'}</span>
+                      {f.section && <> Â· <span className="text-slate-400">{f.section}</span></>}
+                      {f.expected && <> Â· expected <span className="font-mono">{f.expected}</span></>}
                     </p>
                   </div>
                   {canAddToLegend && (
@@ -2165,9 +2165,9 @@ const LegendFindingsPanel = ({ doc }) => {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Detail — Comments tab
-// ─────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Detail â€” Comments tab
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const CommentsPanel = ({ doc, filterTag, setFilterTag }) => {
   const filtered = useMemo(() => {
     if (!filterTag) return doc.extracted_comments || []
@@ -2191,7 +2191,7 @@ const CommentsPanel = ({ doc, filterTag, setFilterTag }) => {
         <div className="relative w-64">
           <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input value={filterTag} onChange={(e) => setFilterTag(e.target.value)}
-                 placeholder="Filter by tag or text…"
+                 placeholder="Filter by tag or textâ€¦"
                  className="w-full text-xs border border-slate-300 rounded-md pl-8 pr-2 py-1.5 outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400" />
         </div>
       </div>
@@ -2239,9 +2239,9 @@ const CommentsPanel = ({ doc, filterTag, setFilterTag }) => {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Editable cell — click-to-edit input used inside I/O List Table
-// ─────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Editable cell â€” click-to-edit input used inside I/O List Table
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const EditableCell = ({ value, onSave, cellKey, savingState, isSticky, editingCell, setEditingCell }) => {
   const isEditing = editingCell === cellKey
   const [draft, setDraft] = useState(String(value ?? ''))
@@ -2296,7 +2296,7 @@ const EditableCell = ({ value, onSave, cellKey, savingState, isSticky, editingCe
                   ${isSticky ? 'font-mono font-semibold text-indigo-700' : 'text-slate-700'}`}
     >
       <span className="flex-1 min-w-0 truncate">
-        {value != null && value !== '' ? String(value) : <span className="text-slate-300">—</span>}
+        {value != null && value !== '' ? String(value) : <span className="text-slate-300">â€”</span>}
       </span>
       {savingState === 'saving' && <Loader2 className="w-2.5 h-2.5 text-indigo-400 animate-spin flex-shrink-0" />}
       {savingState === 'saved'  && <CheckCircle2 className="w-2.5 h-2.5 text-emerald-500 flex-shrink-0" />}
@@ -2305,9 +2305,9 @@ const EditableCell = ({ value, onSave, cellKey, savingState, isSticky, editingCe
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Detail — I/O List tab
-// ─────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Detail â€” I/O List tab
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const IOListPanel = ({ doc, filterTag, setFilterTag, showAllColumns, setShowAllColumns }) => {
   const [editMode, setEditMode]       = useState(false)
   const [localRows, setLocalRows]     = useState(null)   // optimistic overrides
@@ -2315,7 +2315,7 @@ const IOListPanel = ({ doc, filterTag, setFilterTag, showAllColumns, setShowAllC
   const [savingCells, setSavingCells] = useState({})     // { 'rowId_field': 'saving'|'saved'|'error' }
 
   // Reset when the user navigates to a different document, AND whenever
-  // this document's own data is refreshed from the server (re-extract) —
+  // this document's own data is refreshed from the server (re-extract) â€”
   // doc.id alone isn't enough: re-extract keeps the same document id but
   // wipes and recreates every extracted row with new ids (see
   // orchestrator.persist_extraction), so a stale localRows optimistic
@@ -2331,7 +2331,7 @@ const IOListPanel = ({ doc, filterTag, setFilterTag, showAllColumns, setShowAllC
     setSavingCells({})
   }, [doc.id, doc.updated_at])
 
-  // Stable reference across renders — without this, `localRows ||
+  // Stable reference across renders â€” without this, `localRows ||
   // doc.extracted_rows || []` builds a new array (or at least a new `||`
   // result) every render, so the `rows` useMemo below never actually got
   // a stable dependency and recomputed on every render regardless
@@ -2341,15 +2341,15 @@ const IOListPanel = ({ doc, filterTag, setFilterTag, showAllColumns, setShowAllC
     () => localRows || doc.extracted_rows || [],
     [localRows, doc.extracted_rows],
   )
-  // Hide a row that identifies NOTHING at all — mirrors the backend's own
+  // Hide a row that identifies NOTHING at all â€” mirrors the backend's own
   // _drop_empty_rows filter (apps/instrument_io_workflow/services/
   // pid_vision_extractor.py) at persistence time, applied again here so a
   // document extracted BEFORE that backend fix (still holding old, truly
   // blank rows) doesn't keep showing white space until it's re-extracted.
-  // Checks the same 5 fields with OR — a row is real if ANY one of them
+  // Checks the same 5 fields with OR â€” a row is real if ANY one of them
   // has data (a genuine 'equipment' row has tag_number/line_tag blank by
   // design; a genuine untagged 'symbol' row often has no
-  // service_description at all but does have symbol_type) — never a
+  // service_description at all but does have symbol_type) â€” never a
   // narrower check that would hide real rows along with genuinely empty
   // ones.
   const rows = useMemo(() => allRows.filter(r => {
@@ -2359,7 +2359,7 @@ const IOListPanel = ({ doc, filterTag, setFilterTag, showAllColumns, setShowAllC
     )
   }), [allRows])
   // "Show relevant columns" (default) picks the right column set for THIS
-  // document's actual extraction path — was a fixed 16-column list shown
+  // document's actual extraction path â€” was a fixed 16-column list shown
   // for every document, and an io_list table document never populates
   // the 4 P&ID-only columns while a pid_drawing document never populates
   // the 8 io_list-only columns, so roughly half the visible columns were
@@ -2368,7 +2368,7 @@ const IOListPanel = ({ doc, filterTag, setFilterTag, showAllColumns, setShowAllC
   // every column regardless (e.g. checking a genuinely-blank field isn't
   // hiding something).
   // BUG FIX: this used to be local state, invisible outside this
-  // component — the "Download xlsx" button lives in DetailView's header,
+  // component â€” the "Download xlsx" button lives in DetailView's header,
   // a sibling, so it had no way to know which mode was selected and
   // always exported every column regardless. Lifted up to DetailView
   // (passed down as props) so both the on-screen toggle and the download
@@ -2418,9 +2418,9 @@ const IOListPanel = ({ doc, filterTag, setFilterTag, showAllColumns, setShowAllC
     )
   }, [rows, filterTag])
 
-  // ── Enterprise register layer (soft-coded; IO_REGISTER_UI) ──────────
+  // â”€â”€ Enterprise register layer (soft-coded; IO_REGISTER_UI) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // KPI strip, dropdown filters, pagination, detail drawer, DQ badges.
-  // Derived entirely from the already-loaded rows — no data/logic changes.
+  // Derived entirely from the already-loaded rows â€” no data/logic changes.
   const [regFilters, setRegFilters]   = useState({})
   const [regPage, setRegPage]         = useState(1)
   const [regPageSize, setRegPageSize] = useState(IO_REGISTER_UI.pageSize)
@@ -2469,14 +2469,14 @@ const IOListPanel = ({ doc, filterTag, setFilterTag, showAllColumns, setShowAllC
 
   return (
     <>
-    {/* ── Enterprise KPI strip (soft-coded; IO_REGISTER_UI) ── */}
+    {/* â”€â”€ Enterprise KPI strip (soft-coded; IO_REGISTER_UI) â”€â”€ */}
     {IO_REGISTER_UI.enabled && (
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
         {IO_REGISTER_UI.kpis.map(k => (
           <div key={k.id} className="rounded-xl bg-white border border-slate-200 px-4 py-3 flex items-center gap-3 shadow-sm">
             <span className="inline-flex items-center justify-center h-9 w-9 rounded-lg shrink-0 text-sm font-black"
               style={{ background: `${k.color}14`, color: k.color }}>
-              {k.id === 'total' ? 'Σ' : k.id === 'instruments' ? '⚙' : k.id === 'lines' ? '⤢' : k.id === 'signals' ? '∿' : '⚠'}
+              {k.id === 'total' ? 'Î£' : k.id === 'instruments' ? 'âš™' : k.id === 'lines' ? 'â¤¢' : k.id === 'signals' ? 'âˆ¿' : 'âš '}
             </span>
             <div className="min-w-0">
               <p className="text-xl font-extrabold tabular-nums leading-none" style={{ color: regKpiValues[k.id] > 0 ? k.color : '#94a3b8' }}>
@@ -2495,7 +2495,7 @@ const IOListPanel = ({ doc, filterTag, setFilterTag, showAllColumns, setShowAllC
           <Table2 className="w-4 h-4 text-indigo-600" />
           <h4 className="text-sm font-semibold text-slate-900">I/O List Table</h4>
           <Badge tone="emerald">{regFiltered.length} rows</Badge>
-          <span className="text-[11px] text-slate-400">Preview · full 40 columns in Excel export</span>
+          <span className="text-[11px] text-slate-400">Preview Â· full 40 columns in Excel export</span>
           {/* Enterprise filter dropdowns (soft-coded; IO_REGISTER_UI.filters) */}
           {IO_REGISTER_UI.enabled && IO_REGISTER_UI.filters.map(f => (
             <select
@@ -2508,9 +2508,9 @@ const IOListPanel = ({ doc, filterTag, setFilterTag, showAllColumns, setShowAllC
               {(filterOptions[f.key] || []).map(v => <option key={v} value={v}>{v}</option>)}
             </select>
           ))}
-          {/* Column toggle — "Show relevant columns" (default, adaptive to
+          {/* Column toggle â€” "Show relevant columns" (default, adaptive to
               this document's document_type) vs "Show all columns" (the
-              full fixed 16-column list) — same segmented-button pattern
+              full fixed 16-column list) â€” same segmented-button pattern
               as the P&ID options' own Quick/Thorough Scan toggle. */}
           <div className="inline-flex rounded-lg border border-slate-300 overflow-hidden">
             <button
@@ -2528,7 +2528,7 @@ const IOListPanel = ({ doc, filterTag, setFilterTag, showAllColumns, setShowAllC
               Show all columns
             </button>
           </div>
-          {/* Edit mode toggle — controlled by IO_LIST_EDIT_CONFIG.enabled */}
+          {/* Edit mode toggle â€” controlled by IO_LIST_EDIT_CONFIG.enabled */}
           {IO_LIST_EDIT_CONFIG.enabled && (
             <button
               onClick={() => { setEditMode(e => !e); setEditingCell(null) }}
@@ -2546,7 +2546,7 @@ const IOListPanel = ({ doc, filterTag, setFilterTag, showAllColumns, setShowAllC
         <div className="relative w-64">
           <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input value={filterTag} onChange={(e) => { setFilterTag(e.target.value); setRegPage(1) }}
-                 placeholder="Filter by tag, service, type…"
+                 placeholder="Filter by tag, service, typeâ€¦"
                  className="w-full text-xs border border-slate-300 rounded-md pl-8 pr-2 py-1.5 outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400" />
         </div>
       </div>
@@ -2556,14 +2556,14 @@ const IOListPanel = ({ doc, filterTag, setFilterTag, showAllColumns, setShowAllC
         <div className="px-5 py-2 bg-amber-50 border-b border-amber-100 flex items-center gap-2 text-xs text-amber-700">
           <Edit3 className="w-3.5 h-3.5 flex-shrink-0" />
           <span>
-            Click any cell to edit ·{' '}
+            Click any cell to edit Â·{' '}
             <kbd className="px-1 py-0.5 bg-amber-100 rounded font-mono">Enter</kbd> or{' '}
-            <kbd className="px-1 py-0.5 bg-amber-100 rounded font-mono">Tab</kbd> to confirm ·{' '}
+            <kbd className="px-1 py-0.5 bg-amber-100 rounded font-mono">Tab</kbd> to confirm Â·{' '}
             <kbd className="px-1 py-0.5 bg-amber-100 rounded font-mono">Esc</kbd> to cancel
           </span>
           {Object.keys(savingCells).length > 0 && (
             <span className="ml-auto flex items-center gap-1 text-indigo-600 font-medium">
-              <Loader2 className="w-3 h-3 animate-spin" /> Saving…
+              <Loader2 className="w-3 h-3 animate-spin" /> Savingâ€¦
             </span>
           )}
         </div>
@@ -2595,10 +2595,10 @@ const IOListPanel = ({ doc, filterTag, setFilterTag, showAllColumns, setShowAllC
                   const canEdit = editMode
                     && IO_LIST_EDIT_CONFIG.enabled
                     && !IO_LIST_EDIT_CONFIG.nonEditableColumns.includes(c.key)
-                  // BUG FIX: was 'val ?? <dash>' — the backend always fills
+                  // BUG FIX: was 'val ?? <dash>' â€” the backend always fills
                   // an unset field with '' (empty string), never null/
                   // undefined, and '' ?? x evaluates to '' (nullish
-                  // coalescing doesn't treat '' as nullish) — so the "—"
+                  // coalescing doesn't treat '' as nullish) â€” so the "â€”"
                   // placeholder never actually rendered; blank cells were
                   // genuinely empty <td>s with zero visual content.
                   const isBlank = val === null || val === undefined || val === ''
@@ -2616,7 +2616,7 @@ const IOListPanel = ({ doc, filterTag, setFilterTag, showAllColumns, setShowAllC
                             setEditingCell={setEditingCell}
                           />
                         : <span className={`${c.sticky ? 'font-mono font-semibold text-indigo-700' : 'text-slate-700'} ${c.key === 'kind' ? 'capitalize' : ''}`}>
-                            {isBlank ? <span className="text-slate-300">—</span> : val}
+                            {isBlank ? <span className="text-slate-300">â€”</span> : val}
                             {/* Data-quality badge (soft-coded; IO_REGISTER_UI.dq) */}
                             {c.key === 'tag_number' && rowHasDqIssue(r) && (
                               <span className="ml-1.5 inline-flex items-center px-1 py-0.5 rounded text-[9px] font-black bg-rose-100 text-rose-700 border border-rose-200 align-middle"
@@ -2642,13 +2642,13 @@ const IOListPanel = ({ doc, filterTag, setFilterTag, showAllColumns, setShowAllC
         </table>
       </div>
 
-      {/* ── Enterprise pagination footer (soft-coded; IO_REGISTER_UI) ── */}
+      {/* â”€â”€ Enterprise pagination footer (soft-coded; IO_REGISTER_UI) â”€â”€ */}
       {IO_REGISTER_UI.enabled && (
         <div className="px-5 py-2.5 bg-white border-t border-slate-200 flex flex-wrap items-center gap-x-3 gap-y-2 text-[11px] text-slate-500 rounded-b-2xl">
           <span className="tabular-nums">
-            {regFiltered.length === 0 ? '0' : `${(regSafePage - 1) * regPageSize + 1}–${Math.min(regSafePage * regPageSize, regFiltered.length)}`} of {regFiltered.length}
+            {regFiltered.length === 0 ? '0' : `${(regSafePage - 1) * regPageSize + 1}â€“${Math.min(regSafePage * regPageSize, regFiltered.length)}`} of {regFiltered.length}
           </span>
-          {Object.values(regFilters).some(Boolean) && <span>· filtered</span>}
+          {Object.values(regFilters).some(Boolean) && <span>Â· filtered</span>}
           <div className="ml-auto flex items-center gap-1.5">
             <select
               value={regPageSize}
@@ -2658,12 +2658,12 @@ const IOListPanel = ({ doc, filterTag, setFilterTag, showAllColumns, setShowAllC
               {IO_REGISTER_UI.pageSizeOptions.map(n => <option key={n} value={n}>{n} / page</option>)}
             </select>
             <button onClick={() => setRegPage(p => Math.max(1, p - 1))} disabled={regSafePage <= 1}
-              className="h-6 w-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">‹</button>
+              className="h-6 w-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">â€¹</button>
             {Array.from({ length: regPageCount }, (_, i) => i + 1)
               .filter(p => p === 1 || p === regPageCount || Math.abs(p - regSafePage) <= 2)
-              .reduce((acc, p, i, arr) => { if (i > 0 && p - arr[i - 1] > 1) acc.push('…'); acc.push(p); return acc }, [])
-              .map((p, i) => p === '…'
-                ? <span key={`gap-${i}`} className="px-1 text-slate-300">…</span>
+              .reduce((acc, p, i, arr) => { if (i > 0 && p - arr[i - 1] > 1) acc.push('â€¦'); acc.push(p); return acc }, [])
+              .map((p, i) => p === 'â€¦'
+                ? <span key={`gap-${i}`} className="px-1 text-slate-300">â€¦</span>
                 : (
                   <button key={p} onClick={() => setRegPage(p)}
                     className={`h-6 min-w-[1.5rem] px-1 rounded-md text-[11px] font-semibold tabular-nums transition-colors ${p === regSafePage ? 'text-white' : 'text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
@@ -2672,13 +2672,13 @@ const IOListPanel = ({ doc, filterTag, setFilterTag, showAllColumns, setShowAllC
                   </button>
                 ))}
             <button onClick={() => setRegPage(p => Math.min(regPageCount, p + 1))} disabled={regSafePage >= regPageCount}
-              className="h-6 w-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">›</button>
+              className="h-6 w-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">â€º</button>
           </div>
         </div>
       )}
     </div>
 
-    {/* ── Row detail drawer (soft-coded; IO_REGISTER_UI.drawer) ──
+    {/* â”€â”€ Row detail drawer (soft-coded; IO_REGISTER_UI.drawer) â”€â”€
         Enterprise "specifications" side panel for the selected row. */}
     {IO_REGISTER_UI.drawer.enabled && selectedRow && !editMode && (
       <div className="fixed inset-y-0 right-0 z-40 w-full max-w-md bg-white border-l border-slate-200 shadow-2xl flex flex-col"
@@ -2705,16 +2705,16 @@ const IOListPanel = ({ doc, filterTag, setFilterTag, showAllColumns, setShowAllC
               <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {IO_REGISTER_UI.dq.tooltip}
             </div>
           )}
-          <Row label="Page" value={selectedRow.page_number ?? '—'} />
+          <Row label="Page" value={selectedRow.page_number ?? 'â€”'} />
           {previewColumns
             .filter(c => !['tag_number', 'page_number'].includes(c.key))
             .map(c => (
               <Row key={c.key} label={c.label}
-                value={(selectedRow.data || {})[c.key] || <span className="text-slate-300">—</span>} />
+                value={(selectedRow.data || {})[c.key] || <span className="text-slate-300">â€”</span>} />
             ))}
         </div>
         <div className="px-5 py-3 border-t border-slate-200 text-[11px] text-slate-400 flex items-center justify-between">
-          <span>Doc: {doc.document_number || `#${doc.id}`} · Rev {doc.revision_label || '—'}</span>
+          <span>Doc: {doc.document_number || `#${doc.id}`} Â· Rev {doc.revision_label || 'â€”'}</span>
           {IO_LIST_EDIT_CONFIG.enabled && (
             <button onClick={() => { setEditMode(true) }}
               className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800">
@@ -2728,9 +2728,9 @@ const IOListPanel = ({ doc, filterTag, setFilterTag, showAllColumns, setShowAllC
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Detail — Metadata tab
-// ─────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Detail â€” Metadata tab
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const MetadataPanel = ({ doc, onPreviewPdf }) => (
   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
     <div className={THEME.card}>
@@ -2740,11 +2740,11 @@ const MetadataPanel = ({ doc, onPreviewPdf }) => (
       </div>
       <div className="p-5 space-y-2 text-sm">
         <Row label="ID"             value={doc.id} />
-        <Row label="Document No"    value={doc.document_number || '—'} />
-        <Row label="Revision"       value={doc.revision_label  || '—'} />
-        <Row label="Project"        value={doc.project_name    || '—'} />
-        <Row label="Plant"          value={doc.plant           || '—'} />
-        <Row label="Unit"           value={doc.unit            || '—'} />
+        <Row label="Document No"    value={doc.document_number || 'â€”'} />
+        <Row label="Revision"       value={doc.revision_label  || 'â€”'} />
+        <Row label="Project"        value={doc.project_name    || 'â€”'} />
+        <Row label="Plant"          value={doc.plant           || 'â€”'} />
+        <Row label="Unit"           value={doc.unit            || 'â€”'} />
         <Row label="Status"         value={<DocStatusPill status={doc.status} />} />
       </div>
     </div>
@@ -2754,14 +2754,14 @@ const MetadataPanel = ({ doc, onPreviewPdf }) => (
         <h4 className="text-sm font-semibold text-slate-900">File & Audit</h4>
       </div>
       <div className="p-5 space-y-2 text-sm">
-        <Row label="SHA-256"        value={<span className="font-mono text-[10px]">{doc.pdf_sha256 || '—'}</span>} />
+        <Row label="SHA-256"        value={<span className="font-mono text-[10px]">{doc.pdf_sha256 || 'â€”'}</span>} />
         <Row label="CRS chain"      value={doc.crs_chain_id    || <span className="text-slate-400">Not linked</span>} />
-        <Row label="Uploaded by"    value={doc.uploaded_by_email || '—'} />
-        <Row label="Uploaded at"    value={doc.created_at ? new Date(doc.created_at).toLocaleString() : '—'} />
-        <Row label="Updated at"     value={doc.updated_at ? new Date(doc.updated_at).toLocaleString() : '—'} />
-        {/* ── BYOK cost estimate (soft-coded; BYOK_COST_CONFIG) ─────────
+        <Row label="Uploaded by"    value={doc.uploaded_by_email || 'â€”'} />
+        <Row label="Uploaded at"    value={doc.created_at ? new Date(doc.created_at).toLocaleString() : 'â€”'} />
+        <Row label="Updated at"     value={doc.updated_at ? new Date(doc.updated_at).toLocaleString() : 'â€”'} />
+        {/* â”€â”€ BYOK cost estimate (soft-coded; BYOK_COST_CONFIG) â”€â”€â”€â”€â”€â”€â”€â”€â”€
             Accountability view: what this extraction would cost / cost on
-            the user's own key, per provider. P&ID drawings only — plain
+            the user's own key, per provider. P&ID drawings only â€” plain
             I/O List PDFs use free PyMuPDF extraction ($0). */}
         {BYOK_COST_CONFIG.enabled && doc.document_type === 'pid_drawing' && (() => {
           const pages = doc.extraction_stats?.total_pages ?? doc.total_pages ?? null
@@ -2775,17 +2775,17 @@ const MetadataPanel = ({ doc, onPreviewPdf }) => (
           return (
             <Row label="BYOK cost (est.)" value={
               <span title={BYOK_COST_CONFIG.disclaimer}>
-                💰 {per.map(p => `${p.label.split(' ')[0]} ~${BYOK_COST_CONFIG.currencySymbol}${p.quick.cost.toFixed(2)}`).join(' · ')}
+                ðŸ’° {per.map(p => `${p.label.split(' ')[0]} ~${BYOK_COST_CONFIG.currencySymbol}${p.quick.cost.toFixed(2)}`).join(' Â· ')}
                 <span className="text-slate-400"> ({pages} page{pages === 1 ? '' : 's'}, Quick scan)</span>
                 <span className="block text-[10px] text-slate-400">
-                  Thorough scan: {per.map(p => `${p.label.split(' ')[0]} ~${BYOK_COST_CONFIG.currencySymbol}${p.thorough.cost.toFixed(2)}`).join(' · ')} — billed by the provider to your own key
+                  Thorough scan: {per.map(p => `${p.label.split(' ')[0]} ~${BYOK_COST_CONFIG.currencySymbol}${p.thorough.cost.toFixed(2)}`).join(' Â· ')} â€” billed by the provider to your own key
                 </span>
               </span>
             } />
           )
         })()}
         {BYOK_COST_CONFIG.enabled && doc.document_type !== 'pid_drawing' && (
-          <Row label="BYOK cost" value={<span className="text-emerald-600 font-medium">$0 — free PyMuPDF extraction (no AI key used)</span>} />
+          <Row label="BYOK cost" value={<span className="text-emerald-600 font-medium">$0 â€” free PyMuPDF extraction (no AI key used)</span>} />
         )}
         {doc.pdf_url && (
           <div className="pt-2">
@@ -2800,15 +2800,15 @@ const MetadataPanel = ({ doc, onPreviewPdf }) => (
   </div>
 )
 
-// ─────────────────────────────────────────────────────────────────────
-// Detail View — tabbed
-// ─────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Detail View â€” tabbed
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const DetailView = ({ doc, onBack, onBackToProjects, onReExtract, onForceFreshExtract, onDownload, onDelete, busyAction, processingDoc, processingMeta, initialTab, onInitialTabConsumed }) => {
   const [activeTab, setActiveTab] = useState('overview')
   const [filterTag, setFilterTag] = useState('')
   // Re-extract's auto-open (see handleReExtract's own comment) wants this
   // view to land directly on "I/O List Table", not the default Overview
-  // — DetailView doesn't remount when `doc` merely swaps to a different
+  // â€” DetailView doesn't remount when `doc` merely swaps to a different
   // document (same position in the tree), so activeTab has no other way
   // to know a fresh completion just landed. "Consume once" (clearing via
   // onInitialTabConsumed right after) so a later, unrelated re-render of
@@ -2818,7 +2818,7 @@ const DetailView = ({ doc, onBack, onBackToProjects, onReExtract, onForceFreshEx
     setActiveTab(initialTab)
     onInitialTabConsumed?.()
   }, [initialTab, onInitialTabConsumed])
-  // Lifted up from IOListPanel — see its own comment on this same state
+  // Lifted up from IOListPanel â€” see its own comment on this same state
   // for why (the "Download xlsx" button below needs to read it too).
   const [showAllColumns, setShowAllColumns] = useState(false)
   const [showPdfPreview, setShowPdfPreview] = useState(false)
@@ -2888,25 +2888,25 @@ const DetailView = ({ doc, onBack, onBackToProjects, onReExtract, onForceFreshEx
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-2xl font-bold truncate">{doc.document_number || `Document #${doc.id}`}</h2>
                 <RawBadge bg="bg-white/15" fg="text-white" dot="bg-emerald-300">
-                  Rev {doc.revision_label || '—'}
+                  Rev {doc.revision_label || 'â€”'}
                 </RawBadge>
                 <DocStatusPill status={doc.status} />
                 <DocTypePill documentType={doc.document_type} />
                 {doc.extraction_stats?.cost_profile && <CostBadge profile={doc.extraction_stats.cost_profile} />}
               </div>
               <p className="text-sm text-indigo-100 mt-1 truncate">
-                {[doc.project_name, doc.plant, doc.unit].filter(Boolean).join(' · ') || '—'}
+                {[doc.project_name, doc.plant, doc.unit].filter(Boolean).join(' Â· ') || 'â€”'}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
               <button onClick={onReExtract} disabled={!!busyAction}
-                      title="Prefers a cached Vision result for this file — fast and consistent"
+                      title="Prefers a cached Vision result for this file â€” fast and consistent"
                       className="px-3 py-2 text-sm bg-white/10 hover:bg-white/20 text-white rounded-lg flex items-center gap-1.5 disabled:opacity-50">
                 {busyAction === 're' ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
                 Re-extract
               </button>
               {doc.document_type === 'pid_drawing' && (
-                // Only meaningful for a Vision-extracted P&ID drawing — a
+                // Only meaningful for a Vision-extracted P&ID drawing â€” a
                 // plain I/O List table document never calls Vision or
                 // caches a result, so this button would do nothing
                 // different from Re-extract for that document type.
@@ -2929,7 +2929,7 @@ const DetailView = ({ doc, onBack, onBackToProjects, onReExtract, onForceFreshEx
           </div>
         </div>
 
-        {/* Tabs — a P&ID drawing has no Comments Resolution Sheet, so that
+        {/* Tabs â€” a P&ID drawing has no Comments Resolution Sheet, so that
             tab is hidden for that document type only. */}
         <div className="px-6 border-t border-white/10 flex gap-1">
           {DETAIL_TABS
@@ -2947,7 +2947,7 @@ const DetailView = ({ doc, onBack, onBackToProjects, onReExtract, onForceFreshEx
         </div>
       </div>
 
-      {/* Live re-extract progress — same engaging panel UploadCard's
+      {/* Live re-extract progress â€” same engaging panel UploadCard's
           "Upload & Extract" shows, right next to this view's own
           "Re-extract" button up in the header, so both entry points give
           identical real-time feedback. Only shown when it's genuinely
@@ -2957,12 +2957,12 @@ const DetailView = ({ doc, onBack, onBackToProjects, onReExtract, onForceFreshEx
       )}
 
       {/* Extraction warnings (e.g. "Add an API key for better accuracy"
-          for a P&ID drawing extracted via basic OCR) — additive, never
+          for a P&ID drawing extracted via basic OCR) â€” additive, never
           blocks viewing the extracted data. */}
       {doc.extraction_stats?.warnings?.length > 0 && (
         <div className="flex items-start gap-2 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">
           <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-          <span className="flex-1">{doc.extraction_stats.warnings.join(' · ')}</span>
+          <span className="flex-1">{doc.extraction_stats.warnings.join(' Â· ')}</span>
         </div>
       )}
 
@@ -2983,7 +2983,7 @@ const DetailView = ({ doc, onBack, onBackToProjects, onReExtract, onForceFreshEx
             <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <h3 className="text-sm font-semibold text-slate-900 truncate">
-                  {doc.document_number || `Document #${doc.id}`} · Original PDF
+                  {doc.document_number || `Document #${doc.id}`} Â· Original PDF
                 </h3>
                 <p className="text-xs text-slate-500 truncate">{doc.pdf_url.split('/').pop()}</p>
               </div>
@@ -2997,7 +2997,7 @@ const DetailView = ({ doc, onBack, onBackToProjects, onReExtract, onForceFreshEx
               {pdfPreviewLoading && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-600">
                   <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
-                  <span className="text-sm">Loading original PDF…</span>
+                  <span className="text-sm">Loading original PDFâ€¦</span>
                 </div>
               )}
               {!pdfPreviewLoading && pdfPreviewError && (
@@ -3026,9 +3026,9 @@ const DetailView = ({ doc, onBack, onBackToProjects, onReExtract, onForceFreshEx
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Page root
-// ─────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function IOListWorkflowPage() {
   const [documents, setDocuments]     = useState([])
   const [loading, setLoading]         = useState(false)
@@ -3042,7 +3042,7 @@ export default function IOListWorkflowPage() {
   const [statusFilter, setStatusFilter] = useState('')
   const [sortBy, setSortBy]           = useState(SORT_OPTIONS[0].value)
   
-  // Project workspace state — no project selected = show the project card
+  // Project workspace state â€” no project selected = show the project card
   // grid (the module's landing view); a selected project scopes the
   // document list and new uploads to it.
   // Persisted to sessionStorage (soft-coded; IO_WORKSPACE_SESSION) so the
@@ -3054,9 +3054,6 @@ export default function IOListWorkflowPage() {
       return raw ? JSON.parse(raw) : null
     } catch { return null }
   })
-  // Tabs inside a project workspace: the staged P&ID extraction flow vs the
-  // document list (Previous uploads).
-  const [projectTab, setProjectTab] = useState('new')
   useEffect(() => {
     if (!IO_WORKSPACE_SESSION.enabled) return
     try {
@@ -3079,18 +3076,18 @@ export default function IOListWorkflowPage() {
 
   useEffect(() => { loadDocuments() }, [loadDocuments])
 
-  // Large-PDF background processing (services/tasks.py's Celery fan-out —
+  // Large-PDF background processing (services/tasks.py's Celery fan-out â€”
   // backend dispatches this instead of extracting inline when a PDF has
   // more than PAGE_FANOUT_THRESHOLD pages, per instrument_io_workflow's
   // services/config.py). Poll until the document leaves 'extracting'.
   const [processingDoc, setProcessingDoc] = useState(null)
 
   // Merges one document into `documents` state synchronously (add or
-  // update by id) — used so the list is correct the INSTANT a screen that
+  // update by id) â€” used so the list is correct the INSTANT a screen that
   // reads it renders, rather than only after loadDocuments()'s background
   // GET resolves. Without this, clicking "back" right after an upload
   // could briefly (or, on a first-ever upload, indefinitely until a full
-  // reload) show the pre-upload — possibly empty — list, since
+  // reload) show the pre-upload â€” possibly empty â€” list, since
   // loadDocuments() below is fire-and-forget, not awaited.
   const upsertDocument = (doc) => {
     if (!doc?.id) return
@@ -3104,10 +3101,10 @@ export default function IOListWorkflowPage() {
   }
 
   // BUG FIX: a fresh upload that goes through the async/background path
-  // (over PAGE_FANOUT_THRESHOLD pages — see the uploadDocument()
+  // (over PAGE_FANOUT_THRESHOLD pages â€” see the uploadDocument()
   // processing-flag fix this pairs with) correctly showed the "Processing
-  // large PDF…" banner, but never actually opened the document once
-  // finished — the user had to go back to the list and click in
+  // large PDFâ€¦" banner, but never actually opened the document once
+  // finished â€” the user had to go back to the list and click in
   // manually. Tracks which document (if any) should auto-open its detail
   // view the instant background processing completes; set ONLY by a
   // fresh upload (the user is actively waiting on this specific result),
@@ -3116,7 +3113,7 @@ export default function IOListWorkflowPage() {
   const [autoOpenDocId, setAutoOpenDocId] = useState(null)
   // BUG FIX: Re-extract (from an already-open DetailView) relied ONLY on
   // "setActiveDoc(prev => prev?.id === docId ? doc : prev)" in the poll
-  // loop below to refresh the page in place — real, confirmed symptom:
+  // loop below to refresh the page in place â€” real, confirmed symptom:
   // if the user navigated away while it ran (or a cache hit resolved
   // near-instantly), that condition was false by completion time and the
   // document silently never (re)opened at all, even though the toast
@@ -3124,14 +3121,14 @@ export default function IOListWorkflowPage() {
   // autoOpenDocId too, same as a fresh upload, so completion reliably
   // opens the document regardless of what the user was doing meanwhile.
   // autoOpenTab additionally requests which tab DetailView should land
-  // on once opened this way — 'iolist' for Re-extract specifically (see
+  // on once opened this way â€” 'iolist' for Re-extract specifically (see
   // handleReExtract), consumed once by DetailView's own effect.
   const [autoOpenTab, setAutoOpenTab] = useState(null)
 
-  // Client-side hints for the processing banner's mode-aware text —
+  // Client-side hints for the processing banner's mode-aware text â€”
   // see handleSubmit's own comment (_usingVision/_thorough on `result`).
   // Not authoritative (the server hasn't decided document_type yet while
-  // this is still 'extracting') — purely cosmetic wording.
+  // this is still 'extracting') â€” purely cosmetic wording.
   const [processingMeta, setProcessingMeta] = useState({ usingVision: false, thorough: false })
 
   const handleUploaded = (result) => {
@@ -3150,7 +3147,7 @@ export default function IOListWorkflowPage() {
 
   useEffect(() => {
     if (!processingDoc?.id) return
-    // 2s — real requirement: "poll every 2 seconds" for live progress.
+    // 2s â€” real requirement: "poll every 2 seconds" for live progress.
     // status_view (views.py) is deliberately lightweight (no nested
     // rows/comments serialization) specifically so polling this
     // frequently is cheap.
@@ -3163,11 +3160,11 @@ export default function IOListWorkflowPage() {
       if (Date.now() - startTs > POLL_MAX_DURATION_MS) {
         clearInterval(interval)
         setProcessingDoc(null)
-        setPageError('Processing is taking longer than expected — it may still be running on the server. Refresh to check later.')
+        setPageError('Processing is taking longer than expected â€” it may still be running on the server. Refresh to check later.')
         return
       }
       try {
-        // Lightweight poll every tick — real numbers straight off the DB
+        // Lightweight poll every tick â€” real numbers straight off the DB
         // (pages_processed/pages_total/current_rows/current_comments),
         // nothing estimated or animated. Merged onto the existing
         // processingDoc rather than replacing it outright, since the
@@ -3177,19 +3174,19 @@ export default function IOListWorkflowPage() {
 
         if (stats.status === 'completed' || stats.status === 'failed') {
           clearInterval(interval)
-          // Only NOW fetch the full document (rows/comments included) —
+          // Only NOW fetch the full document (rows/comments included) â€”
           // once, on the transition out of 'extracting', not on every
           // 2s tick.
           const doc = await ioListWorkflowService.getDocument(docId)
           upsertDocument(doc)
           // If this document is also the one open in DetailView (e.g. a
-          // re-extract triggered from there), keep it in sync too —
+          // re-extract triggered from there), keep it in sync too â€”
           // swaps in the final result automatically, no manual re-open.
           setActiveDoc(prev => (prev?.id === docId ? doc : prev))
           if (stats.status === 'completed') {
             // Real final counts straight from the completed document's
             // own extraction_stats (already computed server-side after
-            // dedup/backfill — see orchestrator.combine_and_finalize) —
+            // dedup/backfill â€” see orchestrator.combine_and_finalize) â€”
             // not the mid-run provisional current_rows/current_comments
             // this same banner showed a moment ago.
             const rowsFound = doc.extraction_stats?.io_rows_found ?? doc.extracted_rows?.length ?? 0
@@ -3197,7 +3194,7 @@ export default function IOListWorkflowPage() {
             toast.success(`Complete! Found ${rowsFound} row${rowsFound === 1 ? '' : 's'} and ${commentsFound} comment${commentsFound === 1 ? '' : 's'}`)
             // "Force Fresh Analysis" specifically (see tasks.py's
             // finalize_io_document compare_best param) surfaces which
-            // result won as its own warning string — real information a
+            // result won as its own warning string â€” real information a
             // plain row-count toast above doesn't convey, so it gets its
             // own separate, more visible toast rather than being buried
             // in the Overview tab's general warnings banner.
@@ -3206,10 +3203,10 @@ export default function IOListWorkflowPage() {
             )
             if (compareMsg) toast.info(compareMsg)
             // Real, brief "Complete!" state in the ProcessingBanner itself
-            // (not just the toast) — the same panel the user was watching
+            // (not just the toast) â€” the same panel the user was watching
             // switches to its done state with the final real counts,
             // then clears after a couple of real seconds so it doesn't
-            // linger forever. Not a fake progress tick — the numbers
+            // linger forever. Not a fake progress tick â€” the numbers
             // shown are the genuine final ones, this is only a dismissal
             // delay.
             setProcessingDoc(prev => (prev ? {
@@ -3217,7 +3214,7 @@ export default function IOListWorkflowPage() {
             } : prev))
             setTimeout(() => setProcessingDoc(prev => (prev?.id === docId ? null : prev)), 2500)
             // Auto-open only for the document a fresh upload is waiting
-            // on — see autoOpenDocId's own comment above.
+            // on â€” see autoOpenDocId's own comment above.
             if (autoOpenDocId === docId) {
               setActiveDoc(doc)
               setAutoOpenDocId(null)
@@ -3233,7 +3230,7 @@ export default function IOListWorkflowPage() {
           loadDocuments()
         }
       } catch {
-        // transient network/error — next tick retries
+        // transient network/error â€” next tick retries
       }
     }, POLL_INTERVAL_MS)
 
@@ -3258,12 +3255,12 @@ export default function IOListWorkflowPage() {
   }
 
   // reExtract() always returns {processing, document} now (see views.py's
-  // re_extract — both its sync and async branches wrap the same way, same
+  // re_extract â€” both its sync and async branches wrap the same way, same
   // envelope create()/uploadDocument() already use). A large document
   // (> PAGE_FANOUT_THRESHOLD pages) re-extracts asynchronously, same as a
-  // large upload — hand it to the same processingDoc polling flow rather
+  // large upload â€” hand it to the same processingDoc polling flow rather
   // than treating the 202 response as if it were the finished document.
-  // Re-extract had no way to ever supply a BYOK Vision key — it was a
+  // Re-extract had no way to ever supply a BYOK Vision key â€” it was a
   // bare POST with no body, so a P&ID drawing document always fell back
   // to local OCR on re-extract even when the user had already typed a
   // working key in during upload. Reuses the SAME sessionStorage entry
@@ -3272,21 +3269,21 @@ export default function IOListWorkflowPage() {
   // its own separate key-entry UI on this page.
   // Reads the SAME project-scoped sessionStorage keys UploadCard writes to
   // (see its BUG FIX comment).
-  // BUG FIX: this used to scope by activeProjectFilter?.id — wrong for
+  // BUG FIX: this used to scope by activeProjectFilter?.id â€” wrong for
   // Re-extract/Force Fresh Analysis on a document opened outside its own
   // project filter (e.g. from a global/unfiltered list, or after switching
   // filters after opening it): activeProjectFilter no longer matches the
   // project the key was actually saved under, so the lookup silently found
   // nothing and these actions fell back to no-key OCR even with a valid,
   // tested key on file. The document's OWN `project` field is the correct,
-  // stable scope — pass it in explicitly rather than relying on whatever
+  // stable scope â€” pass it in explicitly rather than relying on whatever
   // filter happens to be active right now.
   const getPersistedVisionMeta = (projectId) => {
     const scope = projectId || 'unassigned'
     const provider = sessionStorage.getItem(`${PID_VISION_CONFIG.sessionStorageProviderKey}::${scope}`) || PID_VISION_CONFIG.defaultProvider
     const thorough = sessionStorage.getItem(`${PID_VISION_CONFIG.sessionStorageThoroughKey}::${scope}`) === 'true'
     const meta = { vision_provider: provider, thorough: thorough ? 'true' : 'false' }
-    // BYOK: include the project-scoped key when one was entered — without it,
+    // BYOK: include the project-scoped key when one was entered â€” without it,
     // re-extract / force-fresh silently fell back to no-key OCR.
     const apiKey = sessionStorage.getItem(`${PID_VISION_CONFIG.sessionStorageApiKeyKey}::${scope}`) || ''
     if (apiKey.trim()) meta.vision_api_key = apiKey.trim()
@@ -3305,7 +3302,7 @@ export default function IOListWorkflowPage() {
       upsertDocument(result.document)
       // BUG FIX: Re-extract from an already-open DetailView must reliably
       // reopen it (and land on the I/O List Table tab) on completion,
-      // exactly like a fresh upload — see autoOpenDocId/autoOpenTab's own
+      // exactly like a fresh upload â€” see autoOpenDocId/autoOpenTab's own
       // comment above for why the old "setActiveDoc(prev => ...)" re-sync
       // alone wasn't enough.
       if (result.processing) {
@@ -3325,10 +3322,10 @@ export default function IOListWorkflowPage() {
     }
   }
 
-  // "Force Fresh Analysis" — always pays for a new Vision run (never the
+  // "Force Fresh Analysis" â€” always pays for a new Vision run (never the
   // cache); the backend keeps whichever result (this run vs whatever was
   // already cached) actually has more rows and says which one won via
-  // extraction_stats.warnings — surfaced here as a toast so it's not
+  // extraction_stats.warnings â€” surfaced here as a toast so it's not
   // easy to miss, on top of whatever the Overview tab's own warnings
   // banner already shows once the document reloads.
   const handleForceFreshExtract = async () => {
@@ -3356,12 +3353,12 @@ export default function IOListWorkflowPage() {
     }
   }
 
-  // Row-level actions for the document list inside a project — same service
+  // Row-level actions for the document list inside a project â€” same service
   // calls as above, callable per-row without first opening the document.
   const handleRowReExtract = async (id) => {
     setRowBusyId(id)
     try {
-      // Same project-scoping fix as handleReExtract above — look up the
+      // Same project-scoping fix as handleReExtract above â€” look up the
       // row's OWN project, not whatever filter is currently active.
       const visionMeta = getPersistedVisionMeta(documents.find(d => d.id === id)?.project)
       const result = await ioListWorkflowService.reExtract(id, visionMeta)
@@ -3369,14 +3366,14 @@ export default function IOListWorkflowPage() {
       if (result.processing) {
         setProcessingDoc(result.document)
         // BUG FIX: this used to leave processingMeta at whatever a
-        // PREVIOUS upload/re-extract had set it to — a stale
+        // PREVIOUS upload/re-extract had set it to â€” a stale
         // usingVision/thorough flag now visibly wrong in ProcessingBanner's
         // labeling (e.g. showing "Analyzing with AI Vision" for a plain
         // I/O List table re-extract, or vice versa). Same fix
         // handleReExtract already applies for the DetailView button.
         setProcessingMeta({ usingVision: Boolean(visionMeta.vision_api_key), thorough: visionMeta.thorough === 'true' })
         // BUG FIX: row-level Re-extract (from the list, not an already-open
-        // DetailView) never auto-opened the document on completion at all —
+        // DetailView) never auto-opened the document on completion at all â€”
         // this was an earlier, incorrect assumption that auto-opening here
         // would "hijack" the list view; the user explicitly wants the SAME
         // behavior as a fresh upload regardless of which button triggered
@@ -3393,13 +3390,13 @@ export default function IOListWorkflowPage() {
     }
   }
 
-  // Row-level "Force Fresh Analysis" — same relationship to
+  // Row-level "Force Fresh Analysis" â€” same relationship to
   // handleRowReExtract as handleForceFreshExtract has to handleReExtract
   // above (always runs fresh, keeps whichever result is better). The
   // compare-result toast is skipped here deliberately: this action
   // always dispatches async (result.processing is always true in
-  // practice), so the real completion — and the one place that toast
-  // fires — is the shared status-polling loop above, not this handler.
+  // practice), so the real completion â€” and the one place that toast
+  // fires â€” is the shared status-polling loop above, not this handler.
   const handleRowForceFreshExtract = async (id) => {
     setRowBusyId(id)
     try {
@@ -3437,7 +3434,7 @@ export default function IOListWorkflowPage() {
     ioListWorkflowService.downloadXlsx(doc.id, name)
   }
 
-  // columns: 'relevant' | 'all' — forwarded from DetailView's own
+  // columns: 'relevant' | 'all' â€” forwarded from DetailView's own
   // "Show relevant/all columns" toggle so the download matches whatever
   // the I/O List Table preview currently shows. Defaults to 'all' (the
   // service's own default) when called without an argument.
@@ -3456,7 +3453,7 @@ export default function IOListWorkflowPage() {
   }
 
   return (
-    /* SOFT-CODED: page shell aligned with P&ID Verification V1 — same page
+    /* SOFT-CODED: page shell aligned with P&ID Verification V1 â€” same page
        gradient (T.bg in PIDVerification.jsx) and full-width canvas. */
     <div className="min-h-screen" style={{ background: 'linear-gradient(135deg, #f8faff 0%, #eef2ff 45%, #f0f9ff 75%, #fffbeb 100%)' }}>
       <div className="w-full px-2 sm:px-4 lg:px-6 py-6 space-y-4 relative">
@@ -3475,7 +3472,7 @@ export default function IOListWorkflowPage() {
                 </div>
                 <div className="min-w-0">
                   <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full border border-blue-200 bg-white/70 text-xs font-semibold text-blue-700 mb-1">
-                    <Sparkles className="w-3 h-3" /> Engineering · Instrument
+                    <Sparkles className="w-3 h-3" /> Engineering Â· Instrument
                   </div>
                   <h1 className="text-2xl font-bold truncate">
                     <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 bg-clip-text text-transparent">
@@ -3526,34 +3523,12 @@ export default function IOListWorkflowPage() {
           /* Landing view: project workspace (cards, New Project, Edit/Delete) */
           <ProjectsPanel onProjectSelected={handleProjectSelected} documents={documents} />
         ) : activeProjectFilter ? (
-          /* Inside a project: New extraction (staged P&ID → IO list flow)
-             or the Previous uploads document list */
-          <ProjectWorkspaceTabs
+          /* Inside a project: the staged P&ID â†’ IO list extraction flow.
+             The Previous uploads list remains available on the no-project
+             route only (ListView below is untouched). */
+          <PidExtractionWorkspace
             project={activeProjectFilter}
-            tab={projectTab}
-            setTab={setProjectTab}
-            onBackToProjects={() => setActiveProjectFilter(null)}
-            listView={
-              <ListView
-                documents={documents}
-                loading={loading}
-                onOpen={handleOpen}
-                onUploaded={handleUploaded}
-                onRefresh={loadDocuments}
-                onBackToProjects={() => setActiveProjectFilter(null)}
-                activeProjectFilter={activeProjectFilter}
-                search={search} setSearch={setSearch}
-                statusFilter={statusFilter} setStatusFilter={setStatusFilter}
-                sortBy={sortBy} setSortBy={setSortBy}
-                rowBusyId={rowBusyId}
-                onRowReExtract={handleRowReExtract}
-                onRowForceFreshExtract={handleRowForceFreshExtract}
-                onRowDownload={handleRowDownload}
-                onAssignProject={handleAssignProject}
-                processingDoc={processingDoc}
-                processingMeta={processingMeta}
-              />
-            }
+            onBack={() => setActiveProjectFilter(null)}
           />
         ) : (
           /* Inside a project (or project management disabled): document list */
@@ -3578,35 +3553,6 @@ export default function IOListWorkflowPage() {
           />
         )}
       </div>
-    </div>
-  )
-}
-
-
-/** Tab shell inside a project: the staged P&ID → IO List extraction
- * workspace (alignment spec §1–§7) alongside the existing document list. */
-function ProjectWorkspaceTabs({ project, tab, setTab, onBackToProjects, listView }) {
-  return (
-    <div className="space-y-3">
-      <div className="flex gap-1 border-b border-slate-200 dark:border-slate-700">
-        <button
-          className={`px-3 py-2 text-sm ${tab === 'new' ? 'border-b-2 border-blue-600 text-blue-600 font-medium' : 'text-slate-500'}`}
-          onClick={() => setTab('new')}
-        >
-          New extraction
-        </button>
-        <button
-          className={`px-3 py-2 text-sm ${tab === 'previous' ? 'border-b-2 border-blue-600 text-blue-600 font-medium' : 'text-slate-500'}`}
-          onClick={() => setTab('previous')}
-        >
-          Previous uploads
-        </button>
-      </div>
-      {tab === 'new' ? (
-        <PidExtractionWorkspace project={project} onBack={onBackToProjects} />
-      ) : (
-        listView
-      )}
     </div>
   )
 }
