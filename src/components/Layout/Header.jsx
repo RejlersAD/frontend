@@ -53,7 +53,7 @@ const Header = ({ sidebarOpen, setSidebarOpen, showSidebar, profilePhotoUrl }) =
   const email = USER_DISPLAY_CONFIG.formatting.getEmailDisplay(user)
   const userData = user?.user || user
   const profilePhoto = profilePhotoUrl || user?.profile_photo || userData?.profile_photo || user?.employee?.profile_photo
-  const roleLabel = user?.roles?.[0]?.name || userData?.job_title || 'Team member'
+  const roleLabel = USER_DISPLAY_CONFIG.formatting.getRoleDisplay(user, rbacData)
 
   useEffect(() => {
     setUserMenuOpen(false)

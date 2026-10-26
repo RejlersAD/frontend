@@ -77,8 +77,6 @@ const S3DDataExtractionHub = ({ jobId, onUploadAnother, onHistory }) => {
   const [exporting, setExporting] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
-  const [sheetsCount, setSheetsCount] = useState(null);
-  const [rowsCount, setRowsCount] = useState(null);
   const exportMenuRef = useRef(null);
   const reviewRef = useRef(null);
   const [workspaceStatus, setWorkspaceStatus] = useState({});
@@ -148,22 +146,6 @@ const S3DDataExtractionHub = ({ jobId, onUploadAnother, onHistory }) => {
     } finally { setMatching(false); }
   };
 
-  // Workbook totals for the document info card (SPEC template).
-  useEffect(() => {
-    if (!jobId) return undefined;
-    let cancelled = false;
-    (async () => {
-      try {
-        const json = await specCustomizationAPI.getWorkbookPreview(jobId, 'spec');
-        if (cancelled) return;
-        setSheetsCount(json?.sheets?.length ?? null);
-        setRowsCount(json?.sheets?.reduce((acc, s) => acc + (s.row_count || 0), 0) ?? null);
-      } catch {
-        /* counts stay null → rendered as "—" */
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [jobId]);
 
   // Close the export menu on outside click / Escape.
   useEffect(() => {
@@ -304,7 +286,7 @@ const S3DDataExtractionHub = ({ jobId, onUploadAnother, onHistory }) => {
             <div className="s3d-pdf-file-icon" aria-hidden="true">pdf</div>
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-slate-900">{documentMeta?.original_filename || 'Document'}</p>
-              <p className="s3d-document-counts"><span>{documentMeta?.total_pages ?? '—'} pages</span><span>{workspaceStatus.sheets ?? sheetsCount ?? '—'} sheets</span><span>{workspaceStatus.records ?? rowsCount ?? '—'} records</span></p>
+              <p className="s3d-document-counts"><span>{documentMeta?.total_pages ?? '—'} pages</span><span>{workspaceStatus.sheets ?? '—'} sheets</span><span>{workspaceStatus.records ?? '—'} records</span></p>
             </div>
           </div>
           <span className={`s3d-badge s3d-badge--${extractionStatus === 'completed' && !emptyExtraction ? 'success' : 'warning'}`}>{emptyExtraction ? <ExclamationTriangleIcon /> : <CheckCircle2 />}{emptyExtraction ? 'No components extracted' : extractionStatus === 'completed' ? 'Extraction complete' : `Extraction ${extractionStatus}`}</span>

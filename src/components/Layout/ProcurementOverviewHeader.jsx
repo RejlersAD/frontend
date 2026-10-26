@@ -21,6 +21,7 @@ export default function ProcurementOverviewHeader({ sidebarOpen, setSidebarOpen,
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const user = useSelector((state) => state.auth.user)
+  const rbacData = useSelector((state) => state.rbac?.currentUser)
   const mode = useSelector((state) => state.theme.mode)
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef(null)
@@ -29,7 +30,7 @@ export default function ProcurementOverviewHeader({ sidebarOpen, setSidebarOpen,
   const initials = USER_DISPLAY_CONFIG.formatting.getUserInitials(user)
   const email = USER_DISPLAY_CONFIG.formatting.getEmailDisplay(user)
   const userData = user?.user || user
-  const role = user?.roles?.[0]?.name || userData?.job_title || 'Team member'
+  const role = USER_DISPLAY_CONFIG.formatting.getRoleDisplay(user, rbacData)
   const photo = profilePhotoUrl || user?.profile_photo || userData?.profile_photo || user?.employee?.profile_photo
 
   useEffect(() => {

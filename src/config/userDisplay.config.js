@@ -76,30 +76,38 @@ export const USER_DISPLAY_CONFIG = {
     },
 
     // Get role display
-    getRoleDisplay: (user) => {
-      if (!user) return USER_DISPLAY_CONFIG.fallbacks.role
+    getRoleDisplay: (user, profile = null) => {
+      if (!user && !profile) return USER_DISPLAY_CONFIG.fallbacks.role
 
       // Handle nested user object from API response
-      const userData = user.user || user
+      const userData = user?.user || user || {}
+      const profileUser = profile?.user || profile || {}
+
+      if (userData.is_superuser === true || profileUser.is_superuser === true) return 'SUPER ADMIN'
+      const roles = [profile?.roles, user?.roles, userData.roles]
+        .find(value => Array.isArray(value) && value.length > 0) || []
 
       // Check roles array from RBAC profile first (most accurate)
-      if (user.roles && Array.isArray(user.roles) && user.roles.length > 0) {
+      if (roles.length > 0) {
         // Check for Super Administrator role
-        const superAdminRole = user.roles.find(role => 
+        const superAdminRole = roles.find(role =>
           role.code === 'super_admin' || role.name === 'Super Administrator'
         )
         if (superAdminRole) return 'SUPER ADMINISTRATOR'
         
-        // Return first role name
-        return user.roles[0].name.toUpperCase()
+        // Prefer the primary assigned role.
+        const primaryRole = roles.find(role => role.is_primary && role.name) || roles.find(role => role.name)
+        if (primaryRole) return primaryRole.name.toUpperCase()
       }
 
       // Check admin status from Django User flags
-      if (userData.is_superuser) return 'SUPER ADMIN'
-      if (userData.is_staff) return 'ADMIN'
+      if (userData.is_staff === true || profileUser.is_staff === true) return 'ADMIN'
+
+      const primaryRole = profile?.primary_role || user?.primary_role
+      if (primaryRole?.name) return primaryRole.name.toUpperCase()
       
       // Check legacy role field
-      if (user.role) {
+      if (user?.role) {
         return user.role.toUpperCase()
       }
 

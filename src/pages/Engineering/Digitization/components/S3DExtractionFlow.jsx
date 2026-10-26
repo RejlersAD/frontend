@@ -6,6 +6,7 @@ import specAPI, {
 import S3DDatabaseBuilder from "./S3DDatabaseBuilder";
 import S3DDataExtractionHub from "./S3DDataExtractionHub";
 import S3DHistory from "./S3DHistory";
+import { findAcceptedS3DUpload } from '../../../../utils/s3dUploadRecovery';
 
 const root = "/engineering/digitization/smart-plant-3d";
 const terminal = new Set(["completed", "failed", "cancelled"]);
@@ -115,6 +116,7 @@ export default function S3DExtractionFlow() {
   const extract = async (file) => {
     if (submitting.current || busy) return;
     submitting.current = true;
+    const startedAt = Date.now();
     setUploading(true);
     setUploadProgress(0);
     setError("");
@@ -150,7 +152,22 @@ export default function S3DExtractionFlow() {
           { replace: true },
         );
     } catch (error) {
-      if (mounted.current) setError(message(error));
+      if (!mounted.current) return;
+      if (error.isTimeout || error.isNetworkError || error.code === 'ECONNABORTED') {
+        try {
+          const jobs = await specAPI.listJobs({ mine: 1 });
+          if (!mounted.current) return;
+          const accepted = findAcceptedS3DUpload(jobs, file, startedAt);
+          if (accepted) {
+            setJob(accepted);
+            setError('');
+            navigate(`${root}?screen=${accepted.status === 'completed' ? 'preview' : 'upload'}&job=${encodeURIComponent(accepted.id)}`,
+              { replace: true });
+            return;
+          }
+        } catch { /* Keep the selected source; an uncertain POST is never replayed automatically. */ }
+        if (mounted.current) setError(`${message(error)}. The upload may already be running. Check History logs before retrying.`);
+      } else setError(message(error));
     } finally {
       submitting.current = false;
       if (mounted.current) {
