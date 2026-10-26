@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { Buffer } from 'node:buffer';
+import process from 'node:process';
 
 test.setTimeout(Number(process.env.S3D_TEST_TIMEOUT_MS || 90000));
 const project = { project_id: '00000000-0000-4000-8000-000000000123', name: 'Synthetic S3D project', status: 'active' };
@@ -18,6 +19,7 @@ async function prepare(page, options = {}) {
       if (request.method() === 'POST') { state.creates.push(request.postDataJSON()); return route.fulfill({ status: 201, json: project }); }
       return route.fulfill({ json: { items: state.noProject ? [] : [{ ...project, metadata: { creation_source: 's3d_document_upload', original_filename: source.name } }] } });
     }
+    if (path.endsWith('/spec-customization/config/')) return route.fulfill({ status: state.configStatus || 200, json: { local_extraction: state.localCapabilities } });
     if (path.endsWith('/paper-spec/upload/')) { state.uploads.push(request.postData()); return route.fulfill({ status: state.uploadStatus, json: state.uploadStatus === 200 ? { job: job(), document: job().document_meta } : { error: state.uploadStatus === 403 ? 'Project creation is not allowed.' : 'Upload unavailable. Try again.' } }); }
     if (path.endsWith(`/paper-spec/jobs/${jobId}/save/`)) {
       if (state.saveStatus !== 200) return route.fulfill({ status: state.saveStatus, json: { error: 'Extraction could not be saved.' } });
@@ -32,8 +34,8 @@ async function prepare(page, options = {}) {
     if (path.endsWith('/push/config/')) return route.fulfill({ json: { available: false, public_key: '' } });
     return route.fulfill({ json: { count: 0, results: [], items: [] } });
   });
-  await page.goto(`/tests/fixtures/s3d-builder-shell.html${state.entry ? `?entry=${encodeURIComponent(state.entry)}` : ''}`, { waitUntil: 'domcontentloaded' });
-  await expect(page.getByRole('heading', { name: 'S3D Database Builder' })).toBeVisible({ timeout: 60000 });
+  await page.goto(`/tests/fixtures/${state.componentOnly ? 's3d-local-capabilities' : 's3d-builder-shell'}.html${state.entry ? `?entry=${encodeURIComponent(state.entry)}` : ''}`, { waitUntil: 'domcontentloaded' });
+  await expect(page.getByRole('heading', { name: /(?:Smart Plant 3D|S3D) Database Builder/ })).toBeVisible({ timeout: 60000 });
   return state;
 }
 
@@ -65,7 +67,7 @@ test('one action extracts on upload and automatically opens preview after comple
   await page.locator('input[type=file]').setInputFiles(source);
   await page.getByRole('button', { name: 'Extract database', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Cancel extraction' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'S3D Database Builder' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /(?:Smart Plant 3D|S3D) Database Builder/ })).toBeVisible();
   expect(state.uploads).toHaveLength(1);
   expect(state.uploads[0]).toContain('auto_project');
   state.jobStatus = 'completed';
@@ -78,7 +80,7 @@ test('one action extracts on upload and automatically opens preview after comple
   expect(await page.locator('header').first().boundingBox()).toEqual(headerBefore);
   await page.screenshot({ path: testInfo.outputPath('s3d-extracted-data-preview.png'), fullPage: true });
   await page.getByRole('button', { name: 'Upload document' }).click();
-  await expect(page.getByRole('heading', { name: 'S3D Database Builder' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /(?:Smart Plant 3D|S3D) Database Builder/ })).toBeVisible();
   expect(state.uploads).toHaveLength(1);
   expect(state.errors).toEqual([]);
 });
@@ -115,7 +117,7 @@ test('failed extraction stays on upload and preview errors support retry', async
   await expect(page.getByRole('button', { name: 'Cancel extraction' })).toBeVisible();
   state.jobStatus = 'failed';
   await expect(page.getByRole('alert')).toContainText('could not read', { timeout: 15000 });
-  await expect(page.getByRole('heading', { name: 'S3D Database Builder' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /(?:Smart Plant 3D|S3D) Database Builder/ })).toBeVisible();
   state.jobStatus = 'completed';
   state.detailStatus = 503;
   await page.getByRole('button', { name: 'Extract database', exact: true }).click();
@@ -133,7 +135,7 @@ test('mobile upload preserves the original application shell', async ({ page }) 
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await expect(page.locator('header').first()).toBeVisible();
   await expect(page.locator('.s3db-sidebar, .s3db-topbar')).toHaveCount(0);
-  expect(await page.getByRole('heading', { name: 'S3D Database Builder' }).evaluate(element => getComputedStyle(element).fontSize)).toBe('24px');
+  expect(await page.getByRole('heading', { name: /(?:Smart Plant 3D|S3D) Database Builder/ }).evaluate(element => getComputedStyle(element).fontSize)).toBe('24px');
   expect(await page.getByRole('heading', { name: /Source documents/ }).evaluate(element => getComputedStyle(element).fontSize)).toBe('18px');
   expect(await page.getByRole('button', { name: 'Extract database', exact: true }).evaluate(element => getComputedStyle(element).fontSize)).toBe('14px');
   expect(state.errors).toEqual([]);
@@ -194,4 +196,24 @@ test('save failure remains retryable and never reports success', async ({ page }
   await page.getByRole('button', { name: 'Save extracted data' }).click();
   await expect(page.getByRole('button', { name: 'Saved to project' })).toBeVisible();
   expect(state.errors).toEqual([]);
+});
+
+
+test('capability message reflects server checks without promising offline success', async ({ page }) => {
+  await prepare(page, { componentOnly: true, localCapabilities: { engines: [
+    { id: 'pymupdf_text', label: 'PDF text tables', available: true },
+    { id: 'rapidocr', label: 'RapidOCR', available: false },
+  ] } });
+  const banner = page.locator('.s3db-offline-banner');
+  await expect(banner).toContainText('PDF text tables');
+  await expect(banner).not.toContainText('RapidOCR');
+  await expect(banner).toContainText('Configured AI providers');
+  await expect(banner).not.toContainText('No AI API key');
+});
+
+test('failed capability check leaves upload usable and availability unverified', async ({ page }) => {
+  await prepare(page, { componentOnly: true, configStatus: 503 });
+  await expect(page.locator('.s3db-offline-banner')).toContainText('availability has not been verified');
+  await page.locator('input[type=file]').setInputFiles(source);
+  await expect(page.getByRole('button', { name: 'Extract database', exact: true })).toBeEnabled();
 });

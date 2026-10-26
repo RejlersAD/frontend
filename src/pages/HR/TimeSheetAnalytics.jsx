@@ -135,12 +135,12 @@ const LIVE_FILTER_LABELS = {
 // ─────────────────────────────────────────────────────────────────────────────
 const LiveKpis = ({ summary, asOf, activeFilter, onFilterChange }) => {
   const tiles = [
-    { id: 'in',      label: 'Currently IN',      value: summary?.currently_in    ?? 0, accent: 'from-emerald-500 to-teal-600',   icon: 'ArrowRightOnRectangleIcon' },
-    { id: 'out',     label: 'Currently OUT',     value: summary?.currently_out   ?? 0, accent: 'from-slate-500 to-slate-700',    icon: 'ArrowLeftOnRectangleIcon' },
-    { id: 'no_punch', label: 'No Punch',          value: summary?.no_punch         ?? 0, accent: 'from-slate-400 to-slate-600',    icon: 'QuestionMarkCircleIcon' },
-    { id: 'late',    label: 'Late Today',        value: summary?.late_today      ?? 0, accent: 'from-amber-500 to-orange-600',   icon: 'ClockIcon' },
-    { id: 'total',   label: 'Seen Today',        value: summary?.total_seen_today ?? 0, accent: 'from-blue-500 to-indigo-600',    icon: 'UsersIcon' },
-    { id: 'matched', label: 'Matched to RAD AI', value: summary?.matched_to_radai ?? 0, accent: 'from-purple-500 to-fuchsia-600', icon: 'LinkIcon' },
+    { id: 'in',      label: 'Currently IN',      value: summary?.currently_in    ?? 0, accent: 'from-emerald-700 to-teal-800',   icon: 'ArrowRightOnRectangleIcon' },
+    { id: 'out',     label: 'Currently OUT',     value: summary?.currently_out   ?? 0, accent: 'from-slate-700 to-slate-800',    icon: 'ArrowLeftOnRectangleIcon' },
+    { id: 'no_punch', label: 'No Punch',          value: summary?.no_punch         ?? 0, accent: 'from-slate-600 to-slate-800',    icon: 'QuestionMarkCircleIcon' },
+    { id: 'late',    label: 'Late Today',        value: summary?.late_today      ?? 0, accent: 'from-amber-800 to-orange-900',   icon: 'ClockIcon' },
+    { id: 'total',   label: 'Seen Today',        value: summary?.total_seen_today ?? 0, accent: 'from-blue-700 to-indigo-800',    icon: 'UsersIcon' },
+    { id: 'matched', label: 'Matched to RAD AI', value: summary?.matched_to_radai ?? 0, accent: 'from-purple-700 to-fuchsia-800', icon: 'LinkIcon' },
   ]
   return (
     <div className="space-y-1">
@@ -152,20 +152,20 @@ const LiveKpis = ({ summary, asOf, activeFilter, onFilterChange }) => {
               key={t.id}
               type="button"
               onClick={() => onFilterChange(isActive ? null : t.id)}
+              aria-pressed={isActive}
               title={isActive ? `Clear "${t.label}" filter` : `Filter by ${t.label}`}
               className={[
                 'relative overflow-hidden rounded-xl bg-gradient-to-br text-white p-4 shadow-md text-left w-full',
                 t.accent,
-                'transition-all duration-150',
+                'transition-all duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700',
                 isActive
-                  ? 'ring-4 ring-white/60 scale-[1.04] shadow-xl'
+                  ? 'ring-2 ring-blue-700 ring-offset-2 shadow-lg'
                   : 'hover:scale-[1.02] hover:shadow-lg',
-                activeFilter && !isActive ? 'opacity-40' : 'opacity-100',
               ].join(' ')}
             >
               <div className="flex items-start justify-between gap-1">
-                <Icon name={t.icon} className="w-6 h-6 opacity-80 flex-shrink-0" />
-                <span className="text-[10px] uppercase tracking-wider opacity-80 text-right leading-tight">{t.label}</span>
+                <Icon name={t.icon} className="w-6 h-6 flex-shrink-0" />
+                <span className="text-xs font-semibold text-right leading-tight">{t.label}</span>
               </div>
               <div className="mt-2 text-3xl font-bold leading-tight">{t.value}</div>
               {isActive && (

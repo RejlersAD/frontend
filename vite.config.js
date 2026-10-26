@@ -19,6 +19,10 @@ const PROXY_UPSTREAM_TIMEOUT_MS = Number(process.env.VITE_PROXY_UPSTREAM_TIMEOUT
 export default defineConfig(({ mode }) => {
   // Load environment variables for this mode
   const env = loadEnv(mode, process.cwd(), '')
+  const requestedPrecacheMB = Number(env.VITE_PWA_MAX_PRECACHE_MB)
+  const precacheMB = Number.isFinite(requestedPrecacheMB) && requestedPrecacheMB > 0
+    ? requestedPrecacheMB
+    : 32
   const requestedWatchInterval = Number(env.VITE_WATCH_INTERVAL_MS)
   const watchInterval = Number.isFinite(requestedWatchInterval) && requestedWatchInterval > 0
     ? requestedWatchInterval
@@ -129,10 +133,10 @@ export default defineConfig(({ mode }) => {
           cleanupOutdatedCaches: true,
           // CRITICAL: Increase file size limit for precaching large bundles
           // Default 2 MB is too small for production builds with all features
-          // The current full-feature bundle is ~14 MB before gzip (~2.6 MB
-          // transferred). Keep enough headroom for Workbox to complete the
-          // production build while retaining offline startup support.
-          maximumFileSizeToCacheInBytes: 20 * 1024 * 1024, // 20 MB
+          // The aligned full-feature bundle exceeds the former 20 MB limit.
+          // Keep offline startup assets precached; operators can set an explicit
+          // VITE_PWA_MAX_PRECACHE_MB budget without editing this configuration.
+          maximumFileSizeToCacheInBytes: precacheMB * 1024 * 1024,
           // SOFT-CODED: Allow navigation to all routes (not just /)
           navigateFallback: 'index.html',
           navigateFallbackAllowlist: [/.*/], // Allow all paths for SPA routing

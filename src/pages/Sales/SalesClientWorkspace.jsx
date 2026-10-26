@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 import { useSelector } from 'react-redux';
 import { Link, useNavigate } from 'react-router-dom';
-import { AlertCircle, ArrowDown, ArrowUp, Building2, ChevronsUpDown, ExternalLink, FileText, Mail, MoreHorizontal, Pencil, Plus, RefreshCw, User } from 'lucide-react';
+import { AlertCircle, ArrowDown, ArrowUp, Building2, ChevronsUpDown, ExternalLink, FileText, Mail, MoreHorizontal, Pencil, Trash2, Plus, RefreshCw, User } from 'lucide-react';
 import salesService from '../../services/sales.service';
 import SalesActionDialog from './SalesActionDialog';
 import SalesOpportunityRegistrationDialog from './SalesOpportunityRegistrationDialog';
@@ -80,7 +80,7 @@ function ClientStatus({ status }) {
 }
 ClientStatus.propTypes = { status: PropTypes.string };
 
-function ClientMenu({ onEdit, onOpenFullRecord, onRefresh }) {
+function ClientMenu({ onEdit, onDelete, onOpenFullRecord, onRefresh }) {
   const ref = useRef(null);
   useEffect(() => {
     const close = event => { if (ref.current && !ref.current.contains(event.target)) ref.current.open = false; };
@@ -95,10 +95,11 @@ function ClientMenu({ onEdit, onOpenFullRecord, onRefresh }) {
       <button type="button" onClick={onOpenFullRecord}><FileText size={16} />Open full client record</button>
       <button type="button" onClick={onEdit}><Pencil size={16} />Edit client</button>
       <button type="button" onClick={onRefresh}><RefreshCw size={16} />Refresh client</button>
+      <button type="button" onClick={onDelete}><Trash2 size={16} />Delete client</button>
     </div>
   </details>;
 }
-ClientMenu.propTypes = { onEdit: PropTypes.func.isRequired, onOpenFullRecord: PropTypes.func.isRequired, onRefresh: PropTypes.func.isRequired };
+ClientMenu.propTypes = { onEdit: PropTypes.func.isRequired, onDelete: PropTypes.func.isRequired, onOpenFullRecord: PropTypes.func.isRequired, onRefresh: PropTypes.func.isRequired };
 
 function useClientRelated(clientId, revision) {
   const empty = () => Object.fromEntries(Object.keys(RELATED_SOURCES).map(key => [key, { records: [], loading: true, error: '' }]));
@@ -171,7 +172,7 @@ function Frameworks({ records }) {
 }
 Frameworks.propTypes = { records: PropTypes.array.isRequired };
 
-function SelectedClient({ record, onEdit, onOpenFullRecord, onRefresh }) {
+function SelectedClient({ record, onEdit, onDelete, onOpenFullRecord, onRefresh }) {
   const navigate = useNavigate();
   const authUser = useSelector(state => state.auth?.user);
   const actorId = authUser?.user?.id ?? authUser?.id;
@@ -224,14 +225,14 @@ function SelectedClient({ record, onEdit, onOpenFullRecord, onRefresh }) {
     <header className="scl-workspace-header">
       <div className="scl-client-avatar"><Building2 size={34} strokeWidth={1.65} aria-hidden="true" /></div>
       <div className="scl-client-identity"><div className="scl-client-title"><h2>{missing(record.company_name)}</h2><ClientStatus status={record.status} /></div><p className="scl-client-meta"><span>{missing(record.client_code)}</span><span aria-hidden="true"> · </span><span>{clientIndustry(record.industry_type)}</span><span aria-hidden="true"> · </span><span>{missing(record.country)}</span></p></div>
-      <div className="scl-workspace-actions"><button type="button" className="scl-button" onClick={onEdit}><Pencil size={18} />Edit client</button><ClientMenu onEdit={onEdit} onOpenFullRecord={onOpenFullRecord} onRefresh={onRefresh} /></div>
+      <div className="scl-workspace-actions"><button type="button" className="scl-button" onClick={onEdit}><Pencil size={18} />Edit client</button><ClientMenu onEdit={onEdit} onDelete={onDelete} onOpenFullRecord={onOpenFullRecord} onRefresh={onRefresh} /></div>
     </header>
     <div className="scl-workspace-tabs" role="tablist" aria-label="Client workspace sections">{TABS.map(name => <button key={name} type="button" role="tab" id={`scl-tab-${name.toLowerCase()}`} aria-controls="scl-client-panel" aria-selected={tab === name} tabIndex={tab === name ? 0 : -1} onClick={() => setTab(name)} onKeyDown={keyTab}>{name}</button>)}</div>
     <div className="scl-workspace-content" role="tabpanel" id="scl-client-panel" aria-labelledby={`scl-tab-${tab.toLowerCase()}`} tabIndex={0}>
       {notice && <p className="scl-notice" role="status">{notice}</p>}
       {tab === 'Overview' && <section className="scl-section scl-company-section"><div className="scl-section-heading"><h3>Company information</h3></div><div className="scl-company-grid">
         <dl><dt>Legal name</dt><dd>{missing(record.legal_name)}</dd><dt>Industry</dt><dd>{clientIndustry(record.industry_type)}</dd><dt>City</dt><dd>{missing(record.city)}</dd><dt>Website</dt><dd>{website ? <a href={website} target="_blank" rel="noopener noreferrer">{website.replace(/^https?:\/\//, '').replace(/\/$/, '')}<ExternalLink size={16} aria-label="Opens in a new tab" /></a> : missing(record.website)}</dd></dl>
-        <dl><dt>Account owner</dt><dd>{ownerName(record)}</dd><dt>Country</dt><dd>{missing(record.country)}</dd><dt>Currency</dt><dd>—</dd><dt>Client ID</dt><dd>{missing(record.client_code)}</dd></dl>
+        <dl><dt>Account owner</dt><dd>{ownerName(record)}</dd><dt>Country</dt><dd>{missing(record.country)}</dd><dt>Currency</dt><dd>{missing(record.currency)}</dd><dt>Client ID</dt><dd>{missing(record.client_code)}</dd></dl>
       </div></section>}
       {['Overview', 'Contacts'].includes(tab) && <Contacts contacts={contacts} overview={tab === 'Overview'} onAdd={() => openAction('contact')} onViewAll={() => setTab('Contacts')} />}
       {['Overview', 'Opportunities'].includes(tab) && <section className="scl-section scl-opportunities-section"><div className="scl-section-heading"><h3>Linked opportunities</h3>{tab === 'Overview' && <button type="button" className="scl-link" onClick={() => setTab('Opportunities')}>View all</button>}</div><RelatedState source={sources.opportunities} name="opportunities" onRetry={() => reloadSource('opportunities')}><Opportunities records={sources.opportunities.records} compact={tab === 'Overview'} /></RelatedState>{tab === 'Overview' && <div className="scl-related-counts">{relationCount('opportunities', 'Opportunities', 'opportunity', 'opportunities')}<span>·</span>{relationCount('proposals', 'Proposals', 'proposal', 'proposals')}<span>·</span>{relationCount('frameworks', 'Frameworks', 'framework', 'frameworks')}</div>}</section>}
@@ -244,12 +245,12 @@ function SelectedClient({ record, onEdit, onOpenFullRecord, onRefresh }) {
     {registering && <SalesOpportunityRegistrationDialog onClose={() => setRegistering(false)} onCreated={created => { if (alive.current) { setRegistering(false); navigate(`/sales/opportunities?record=${encodeURIComponent(created.id)}`); } }} />}
   </>;
 }
-SelectedClient.propTypes = { record: PropTypes.object.isRequired, onEdit: PropTypes.func.isRequired, onOpenFullRecord: PropTypes.func.isRequired, onRefresh: PropTypes.func.isRequired };
+SelectedClient.propTypes = { record: PropTypes.object.isRequired, onEdit: PropTypes.func.isRequired, onDelete: PropTypes.func.isRequired, onOpenFullRecord: PropTypes.func.isRequired, onRefresh: PropTypes.func.isRequired };
 
-export default function SalesClientWorkspace({ record, loading, error, onRetry, onEdit, onOpenFullRecord, onRefresh }) {
+export default function SalesClientWorkspace({ record, loading, error, onRetry, onEdit, onDelete, onOpenFullRecord, onRefresh }) {
   return <section className="scl-workspace" aria-label="Selected client" aria-busy={loading || undefined}>
-    {loading ? <div className="scl-workspace-state" role="status"><RefreshCw size={24} /><p>Loading client…</p></div> : error ? <div className="scl-workspace-state" role="alert"><AlertCircle size={26} /><p>{error}</p><button type="button" className="scl-button" onClick={onRetry}>Retry</button></div> : record ? <SelectedClient key={record.id} record={record} onEdit={onEdit} onOpenFullRecord={onOpenFullRecord} onRefresh={onRefresh} /> : <div className="scl-workspace-state"><Building2 size={30} /><h2>Select a client</h2><p>Choose a client to view its information and linked records.</p></div>}
+    {loading ? <div className="scl-workspace-state" role="status"><RefreshCw size={24} /><p>Loading client…</p></div> : error ? <div className="scl-workspace-state" role="alert"><AlertCircle size={26} /><p>{error}</p><button type="button" className="scl-button" onClick={onRetry}>Retry</button></div> : record ? <SelectedClient key={record.id} record={record} onEdit={onEdit} onDelete={onDelete} onOpenFullRecord={onOpenFullRecord} onRefresh={onRefresh} /> : <div className="scl-workspace-state"><Building2 size={30} /><h2>Select a client</h2><p>Choose a client to view its information and linked records.</p></div>}
   </section>;
 }
-SalesClientWorkspace.propTypes = { record: PropTypes.object, loading: PropTypes.bool, error: PropTypes.string, onRetry: PropTypes.func.isRequired, onEdit: PropTypes.func.isRequired, onOpenFullRecord: PropTypes.func.isRequired, onRefresh: PropTypes.func.isRequired };
+SalesClientWorkspace.propTypes = { record: PropTypes.object, loading: PropTypes.bool, error: PropTypes.string, onRetry: PropTypes.func.isRequired, onEdit: PropTypes.func.isRequired, onDelete: PropTypes.func.isRequired, onOpenFullRecord: PropTypes.func.isRequired, onRefresh: PropTypes.func.isRequired };
 

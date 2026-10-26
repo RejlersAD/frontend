@@ -15,6 +15,69 @@ async function ready(page) {
   await expect(selected(page)).toContainText('Engineering Services Framework');
 }
 
+test('client edit saves every requested company field and refreshes the overview', async ({ page }) => {
+  const state = await prepareClients(page);
+  await ready(page);
+  await selected(page).getByRole('button', { name: 'Edit client', exact: true }).click();
+  const form = page.locator('#sales-record-form');
+  await expect(form.getByLabel('Legal name', { exact: true })).toHaveValue('Demo Client A LLC');
+  await form.getByLabel('Legal name', { exact: true }).fill('Revised Legal LLC');
+  await form.getByRole('combobox', { name: 'Industry', exact: true }).selectOption('mining');
+  await form.getByLabel('City', { exact: true }).fill('Dubai');
+  await form.getByLabel('Website', { exact: true }).fill('https://revised.example.test');
+  await form.getByRole('combobox', { name: 'Account owner', exact: true }).selectOption('12');
+  await form.getByLabel('Country', { exact: true }).fill('Oman');
+  await form.getByLabel('Currency', { exact: true }).fill('USD');
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await expect(form).toHaveCount(0);
+  const payload = state.mutations.find(item => item.action === 'edit').body;
+  expect(payload).toMatchObject({ legal_name: 'Revised Legal LLC', industry_type: 'mining', city: 'Dubai', website: 'https://revised.example.test', account_manager: '12', country: 'Oman', currency: 'USD' });
+  await page.getByRole('button', { name: 'Close record', exact: true }).click();
+  await expect(selected(page)).toContainText('Revised Legal LLC');
+  await expect(selected(page)).toContainText('Regional team');
+  await expect(selected(page)).toContainText('USD');
+});
+
+test('client creation includes all company fields and selects the new record', async ({ page }) => {
+  const state = await prepareClients(page);
+  await ready(page);
+  await page.getByRole('button', { name: 'New client', exact: true }).click();
+  const form = dialog(page, 'Register client');
+  for (const [name, value] of [['Company name', 'New account'], ['Legal name', 'New account LLC'], ['City', 'Muscat'], ['Website', 'https://new.example.test'], ['Country', 'Oman'], ['Currency', 'OMR']]) await form.getByLabel(name, { exact: false }).fill(value);
+  await form.getByLabel('Industry', { exact: false }).selectOption('construction');
+  await form.getByLabel('Account owner', { exact: false }).selectOption('12');
+  await form.getByRole('button', { name: 'Create client', exact: true }).click();
+  await expect(selected(page).getByRole('heading', { name: 'New account', exact: true })).toBeVisible();
+  expect(state.mutations.find(item => item.action === 'create').body).toMatchObject({ city: 'Muscat', currency: 'OMR', country: 'Oman', account_manager: '12', website: 'https://new.example.test' });
+});
+
+test('client deletion requires confirmation and preserves linked records on conflict', async ({ page }) => {
+  const state = await prepareClients(page);
+  await ready(page);
+  await selected(page).getByLabel('More client actions').click();
+  await selected(page).getByRole('button', { name: 'Delete client', exact: true }).click();
+  const confirmation = dialog(page, 'Delete client');
+  await expect(confirmation).toContainText('Demo Client A');
+  expect(state.mutations).toEqual([]);
+  await confirmation.getByRole('button', { name: 'Delete client', exact: true }).click();
+  await expect(confirmation.getByRole('alert')).toContainText('linked records');
+  await confirmation.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(selected(page).getByRole('heading', { name: 'Demo Client A', exact: true })).toBeVisible();
+});
+
+test('unlinked client can be deleted and is removed from the register', async ({ page }) => {
+  const state = await prepareClients(page);
+  await ready(page);
+  state.rows.find(item => item.id === clientId(5)).contacts = [];
+  await selectRow(page, 5).click();
+  await expect(selected(page).getByRole('heading', { name: 'Demo Client F', exact: true })).toBeVisible();
+  await selected(page).getByLabel('More client actions').click();
+  await selected(page).getByRole('button', { name: 'Delete client', exact: true }).click();
+  await dialog(page, 'Delete client').getByRole('button', { name: 'Delete client', exact: true }).click();
+  await expect(dialog(page, 'Delete client')).toHaveCount(0);
+  await expect(selectRow(page, 5)).toHaveCount(0);
+});
+
 test('reference layout uses six real-shaped clients and the unchanged application shell', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1586, height: 992 });
   const state = await prepareClients(page);

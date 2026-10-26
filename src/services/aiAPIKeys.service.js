@@ -44,8 +44,18 @@ const testReasons = {
   provider_permission: 'This provider account does not have permission for the selected model.',
   provider_rate_limit: 'The provider is limiting requests. Retry after the limit resets.',
   provider_timeout: 'The provider did not respond in time. Retry the connection test.',
+  provider_request: 'The provider rejected the connection-test request. Check the selected model and its supported request settings.',
+  request_configuration_error: 'The provider rejected the connection-test settings. The server integration needs a compatibility update for this model.',
+  provider_incomplete: 'The model stopped before completing the connection test. Its output budget or thinking settings may need adjustment.',
+  provider_refused: 'The model declined the synthetic connection test.',
+  invalid_response: 'The provider response did not match the expected connection-test result.',
+  provider_unavailable: 'The server could not complete the provider connection. Retry, or ask the server administrator to check provider availability and connectivity.',
+  provider_dependency_missing: 'The server is missing the provider integration dependency. Ask the server administrator to check it.',
   dependency_missing: 'The server is missing the provider integration dependency. Ask the server administrator to check it.',
 }
+export const aiTestReason = reason => Object.hasOwn(testReasons, reason)
+  ? testReasons[reason]
+  : 'The connection test failed. Check the key, provider account and model access.'
 export const aiTestMessage = result => result?.success
   ? 'Connection verified for the tested model. This does not verify document extraction results.'
-  : `${testReasons[result?.reason] || 'The connection test failed. Check the key, provider account and model access.'} The saved credential was retained.`
+  : `${aiTestReason(result?.reason)} The saved credential was retained.`

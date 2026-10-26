@@ -102,6 +102,8 @@ export const SPEC_API_CONFIG = {
     "csv",
     "log",
   ],
+  // Local extraction capabilities come from GET /config/. Availability and
+  // optional cloud fallback depend on the backend and its worker installation.
   // Soft-coded — large engineering PDFs/scans can reach ~1 GB.
   // Override via VITE_SPEC_MAX_FILE_MB env var without redeploy.
   maxFileSizeMB: SPEC_MAX_FILE_MB,

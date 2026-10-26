@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import {
   FileText,
@@ -7,7 +7,6 @@ import {
   FileCheck,
   Plus,
   History,
-  HelpCircle,
   ChevronDown,
   ChevronRight,
   Database,
@@ -22,7 +21,7 @@ import {
 } from "lucide-react";
 import { CloudArrowUpIcon } from "@heroicons/react/24/outline";
 import { useHelpContext } from "../../../../components/help/HelpContext";
-import { SPEC_API_CONFIG } from "../../../../services/specCustomizationAPI";
+import specAPI, { SPEC_API_CONFIG } from "../../../../services/specCustomizationAPI";
 import "./S3DDatabaseBuilder.css";
 const guide = [
   ["Upload documents", "Add PDF, Excel or Word files.", FileInput],
@@ -48,6 +47,15 @@ export default function S3DDatabaseBuilder({
   const input = useRef(null);
   const details = useRef(null);
   const { openHelp } = useHelpContext();
+  const [capabilities, setCapabilities] = useState(null);
+  useEffect(() => {
+    let active = true;
+    specAPI.getConfig().then(config => {
+      if (active) setCapabilities(config?.local_extraction || null);
+    }).catch(() => { if (active) setCapabilities(null); });
+    return () => { active = false; };
+  }, []);
+  const availableEngines = capabilities?.engines?.filter(engine => engine.available) || [];
   const [file, setFile] = useState(null);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState("");
@@ -92,7 +100,7 @@ export default function S3DDatabaseBuilder({
       <section className="s3db-content" aria-label="S3D Database Builder">
        <div className="s3db-heading">
           <div>
-            <h1>S3D Database Builder</h1>
+            <h2>Smart Plant 3D Database Builder</h2>
             <p>Build SPEC and CAT workbooks from engineering documents.</p>
           </div>
           <div className="s3db-heading-actions">
@@ -119,6 +127,20 @@ export default function S3DDatabaseBuilder({
             ),
           )}
         </ol>
+        <div className="s3db-offline-banner" role="status" aria-live="polite">
+          <Info size={17} />
+          <div>
+            <strong>Document extraction</strong>
+            <span>
+              {capabilities
+                ? `Local engines detected: ${availableEngines.map(engine => engine.label).join(", ") || "none reported"}. `
+                : "Local engine availability has not been verified. "}
+              Supported tables can be processed locally. Configured AI providers
+              may be used when local extraction cannot read the table. Review
+              extracted records against the source before release.
+            </span>
+          </div>
+        </div>
         <div className="s3db-grid">
           <div className="s3db-main-column">
             <section
