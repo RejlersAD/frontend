@@ -57,6 +57,19 @@ export function mapLocalRowToServer(row) {
     confidence: row.confidence || '',
     location_hint: row.location_hint || '',
     tab: allocationTab(row),
+    // §7 staged-flow fields — round-tripped so extraction metadata survives edits.
+    page: row.page ?? null,
+    pos_x: row.pos_x ?? null,
+    pos_y: row.pos_y ?? null,
+    variant: row.variant || '',
+    category: row.category || '',
+    type_basis: row.type_basis || '',
+    symbol_group_id: row.symbol_group_id || '',
+    scope_status: row.scope_status || '',
+    piping_class_source: row.piping_class_source || '',
+    material_source: row.material_source || '',
+    pid_rev: row.pid_rev || '',
+    confidence_score: row.confidence_score ?? null,
   }
 }
 
@@ -148,11 +161,122 @@ const valveMtoService = {
    * ioListWorkflowService.testVisionApiKey's contract exactly. One
    * minimal, cheap call, no PDF/image involved.
    */
-  async testApiKey(provider, apiKey) {
-    const { data } = await apiClient.post(TEST_KEY_URL, { provider, api_key: apiKey }, {
+  async testApiKey(provider, apiKey, model = '') {
+    const { data } = await apiClient.post(TEST_KEY_URL, {
+      provider, api_key: apiKey, ...(model ? { model } : {}),
+    }, {
       sensitiveRequest: true, timeout: 30000,
     })
     return data
+  },
+
+  // ── Staged extraction flow (§8) ─────────────────────────────────────
+
+  /** Stage 1 — upload + parse a P&ID PDF. */
+  async uploadDrawing(projectId, file) {
+    const form = new FormData()
+    form.append('file', file)
+    const { data } = await apiClient.post(`${BASE}${projectId}/drawings/`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 300000,
+    })
+    return data
+  },
+
+  async listDrawings(projectId) {
+    const { data } = await apiClient.get(`${BASE}${projectId}/drawings/list/`)
+    return data
+  },
+
+  async confirmDrawing(projectId, drawingId, { drawingNumber, rev, patternPreset, patternRegex }) {
+    const { data } = await apiClient.post(
+      `${BASE}${projectId}/drawings/${drawingId}/confirm/`,
+      {
+        drawing_number: drawingNumber,
+        rev,
+        pattern_preset: patternPreset,
+        pattern_regex: patternRegex,
+      },
+    )
+    return data
+  },
+
+  /** Project settings (Stages 2–4 persist). */
+  async getSettings(projectId) {
+    const { data } = await apiClient.get(`${BASE}${projectId}/settings/`)
+    return data
+  },
+
+  async saveSettings(projectId, patch) {
+    const { data } = await apiClient.put(`${BASE}${projectId}/settings/`, patch)
+    return data
+  },
+
+  /** Stage 2 — PMS workbook upload. */
+  async uploadPms(projectId, file) {
+    const form = new FormData()
+    form.append('file', file)
+    const { data } = await apiClient.post(`${BASE}${projectId}/pms/`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 120000,
+    })
+    return data
+  },
+
+  /** Stage 3 — server-configured engine health check. */
+  async testEngine(projectId) {
+    const { data } = await apiClient.post(`${BASE}${projectId}/engine/test/`, {}, { timeout: 30000 })
+    return data
+  },
+
+  /** Stage 4 — legend ↔ drawing match check. */
+  async checkLegend(projectId, { legendId, drawingId }) {
+    const { data } = await apiClient.post(`${BASE}${projectId}/legend/check/`, {
+      legend_id: legendId, drawing_id: drawingId,
+    }, { timeout: 120000 })
+    return data
+  },
+
+  /** Start Extraction → job. Optional BYOK { provider, apiKey } is sent
+   * with this request only — never persisted server-side. */
+  async startExtraction(projectId, byok = {}) {
+    const body = {}
+    if (byok.apiKey) {
+      body.vision_provider = byok.provider || 'openai'
+      body.vision_api_key = byok.apiKey
+    }
+    if (byok.model) body.vision_model = byok.model
+    const { data } = await apiClient.post(`${BASE}${projectId}/extract/`, body, {
+      timeout: 30000,
+      ...(byok.apiKey ? { sensitiveRequest: true } : {}),
+    })
+    return data
+  },
+
+  async getJob(projectId, jobId) {
+    const { data } = await apiClient.get(`${BASE}${projectId}/jobs/${jobId}/`)
+    return data
+  },
+
+  /** Register view: island|field|combined|order|review. */
+  async getRegister(projectId, view = 'combined') {
+    const { data } = await apiClient.get(`${BASE}${projectId}/register/`, { params: { view } })
+    return data
+  },
+
+  /** Export Center: format mto|full|order → downloads the workbook. */
+  async exportFormat(projectId, format = 'mto', filename = `ValveMTO_${format}.xlsx`) {
+    const resp = await apiClient.get(`${BASE}${projectId}/export/`, {
+      params: { format }, responseType: 'blob',
+    })
+    const url = window.URL.createObjectURL(new Blob([resp.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', filename)
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
   },
 }
 

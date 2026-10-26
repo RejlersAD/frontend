@@ -180,7 +180,7 @@ export const ENGINEERING_DISCIPLINES = {
         name: 'Valve MTO',
         fullName: 'Valve Material Take-Off',
         icon: TableCellsIcon,
-        path: '/engineering/piping/pms',
+        path: '/engineering/piping/valve-mto',
         description: 'Valve material take-off list — quantities, specs and project rollup',
         moduleCode: 'piping_pms',
         badge: ''

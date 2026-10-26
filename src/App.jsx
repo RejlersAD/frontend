@@ -175,7 +175,7 @@ import ElectricalDocumentsHub from "./pages/Engineering/Electrical/ElectricalDoc
 import ElectricalDatasheetPage from "./pages/Engineering/Electrical/ElectricalDatasheetPage";
 import ElectricalEquipmentDatasheet from "./pages/Engineering/Electrical/ElectricalEquipmentDatasheet";
 import ElectricalDatasheetFormPage from "./pages/Engineering/Electrical/ElectricalDatasheetFormPage";
-import SingleLineDiagram from "./pages/Engineering/Electrical/SingleLineDiagram";
+import SingleLineDiagram from "./pages/Engineering/Electrical/SLDComparison";
 import ElectricalCheckList from "./pages/Engineering/Electrical/ElectricalCheckList";
 import ExcelQualityCheckerPage from "./pages/Engineering/Electrical/ExcelQualityCheckerPage";
 import UnifiedElectricalQualityChecker from "./pages/Engineering/Electrical/UnifiedElectricalQualityChecker";
@@ -1376,8 +1376,11 @@ function App() {
                 </ProtectedRoute>
               }
             />
-            {/* Valve MTO (PMS) — rebuilt on the Line List pattern */}
-            <Route path="engineering/piping/pms" element={<ModuleProtectedRoute moduleCode="piping_pms"><ValveMTO /></ModuleProtectedRoute>} />
+            {/* Valve MTO — canonical route /engineering/piping/valve-mto;
+                legacy /engineering/piping/pms redirects client-side. */}
+            <Route path="engineering/piping/valve-mto" element={<ModuleProtectedRoute moduleCode="piping_pms"><ValveMTO /></ModuleProtectedRoute>} />
+            <Route path="engineering/piping/valve-mto/register" element={<ModuleProtectedRoute moduleCode="piping_pms"><ValveMTO view="register" /></ModuleProtectedRoute>} />
+            <Route path="engineering/piping/pms" element={<ModuleProtectedRoute moduleCode="piping_pms"><Navigate to="/engineering/piping/valve-mto" replace /></ModuleProtectedRoute>} />
             {/* Piping Data Sheet - Main Page */}
             <Route
               path="engineering/piping/datasheet"

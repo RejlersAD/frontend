@@ -162,6 +162,14 @@
 .rd-input:focus, .rd-select:focus { outline: none; border-color: var(--rd-accent); box-shadow: var(--rd-focus); }
 .rd-input-error { border-color: var(--rd-danger); }
 
+/* Once a select has an author background, its native popup drops dark-theme
+   colors and option text inherits the light foreground — invisible on the
+   white popup. Pin the control to light color-scheme AND explicit option
+   colors so every rd-select popup stays readable in both themes. */
+.rd-select { color-scheme: light; }
+.rd-select option, .rd-select optgroup { background: #ffffff !important; color: #0f172a !important; }
+.dark .rd-select option, .dark .rd-select optgroup { background: #ffffff !important; color: #0f172a !important; }
+
 .rd-table { width: 100%; border-collapse: collapse; font-size: var(--rd-text-table); }
 .rd-table th {
   position: sticky; top: 0; z-index: 1; text-align: left;
