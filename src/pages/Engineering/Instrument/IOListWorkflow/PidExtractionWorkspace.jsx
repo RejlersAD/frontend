@@ -71,7 +71,7 @@ export default function PidExtractionWorkspace({ project, onBack, onManageLegend
   const pollRef = useRef(null)
 
   const { keyInfo, modal, setModal, testState, onTestKey, onSaveKey, onRemoveKey } =
-    useAIDocumentStatus()
+    useAiKeyStatus()
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 5000) }
 
