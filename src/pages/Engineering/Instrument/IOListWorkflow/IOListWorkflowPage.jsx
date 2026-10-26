@@ -1,5 +1,6 @@
 import PlatformAIStatus from '../../../../components/ai/PlatformAIStatus'
 import { radaiConfirm } from '../../../../services/radaiDialog'
+import PidExtractionWorkspace from './PidExtractionWorkspace'
 /**
  * Instrument IO List Workflow — CRS-style multi-revision page.
  *
@@ -3053,6 +3054,9 @@ export default function IOListWorkflowPage() {
       return raw ? JSON.parse(raw) : null
     } catch { return null }
   })
+  // Tabs inside a project workspace: the staged P&ID extraction flow vs the
+  // document list (Previous uploads).
+  const [projectTab, setProjectTab] = useState('new')
   useEffect(() => {
     if (!IO_WORKSPACE_SESSION.enabled) return
     try {
@@ -3521,6 +3525,36 @@ export default function IOListWorkflowPage() {
         ) : !activeProjectFilter && IO_LIST_WORKFLOW_PROJECT_FEATURES.enableProjectManagement ? (
           /* Landing view: project workspace (cards, New Project, Edit/Delete) */
           <ProjectsPanel onProjectSelected={handleProjectSelected} documents={documents} />
+        ) : activeProjectFilter ? (
+          /* Inside a project: New extraction (staged P&ID → IO list flow)
+             or the Previous uploads document list */
+          <ProjectWorkspaceTabs
+            project={activeProjectFilter}
+            tab={projectTab}
+            setTab={setProjectTab}
+            onBackToProjects={() => setActiveProjectFilter(null)}
+            listView={
+              <ListView
+                documents={documents}
+                loading={loading}
+                onOpen={handleOpen}
+                onUploaded={handleUploaded}
+                onRefresh={loadDocuments}
+                onBackToProjects={() => setActiveProjectFilter(null)}
+                activeProjectFilter={activeProjectFilter}
+                search={search} setSearch={setSearch}
+                statusFilter={statusFilter} setStatusFilter={setStatusFilter}
+                sortBy={sortBy} setSortBy={setSortBy}
+                rowBusyId={rowBusyId}
+                onRowReExtract={handleRowReExtract}
+                onRowForceFreshExtract={handleRowForceFreshExtract}
+                onRowDownload={handleRowDownload}
+                onAssignProject={handleAssignProject}
+                processingDoc={processingDoc}
+                processingMeta={processingMeta}
+              />
+            }
+          />
         ) : (
           /* Inside a project (or project management disabled): document list */
           <ListView
@@ -3548,3 +3582,31 @@ export default function IOListWorkflowPage() {
   )
 }
 
+
+/** Tab shell inside a project: the staged P&ID → IO List extraction
+ * workspace (alignment spec §1–§7) alongside the existing document list. */
+function ProjectWorkspaceTabs({ project, tab, setTab, onBackToProjects, listView }) {
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-1 border-b border-slate-200 dark:border-slate-700">
+        <button
+          className={`px-3 py-2 text-sm ${tab === 'new' ? 'border-b-2 border-blue-600 text-blue-600 font-medium' : 'text-slate-500'}`}
+          onClick={() => setTab('new')}
+        >
+          New extraction
+        </button>
+        <button
+          className={`px-3 py-2 text-sm ${tab === 'previous' ? 'border-b-2 border-blue-600 text-blue-600 font-medium' : 'text-slate-500'}`}
+          onClick={() => setTab('previous')}
+        >
+          Previous uploads
+        </button>
+      </div>
+      {tab === 'new' ? (
+        <PidExtractionWorkspace project={project} onBack={onBackToProjects} />
+      ) : (
+        listView
+      )}
+    </div>
+  )
+}
