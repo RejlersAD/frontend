@@ -217,3 +217,11 @@ test('failed capability check leaves upload usable and availability unverified',
   await page.locator('input[type=file]').setInputFiles(source);
   await expect(page.getByRole('button', { name: 'Extract database', exact: true })).toBeEnabled();
 });
+
+test('local-only capability explains extraction without API keys', async ({ page }) => {
+  await prepare(page, { componentOnly: true, localCapabilities: { mode: 'local_only', engines: [
+    { id: 'pymupdf_text', label: 'PDF text tables', available: true },
+  ] } });
+  await expect(page.locator('.s3db-offline-banner')).toContainText('without AI API keys');
+  await expect(page.locator('.s3db-offline-banner')).not.toContainText('Configured AI providers');
+});

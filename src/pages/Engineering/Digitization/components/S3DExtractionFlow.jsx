@@ -230,7 +230,9 @@ export default function S3DExtractionFlow() {
                 {uploading
                     ? `Uploading document… ${uploadProgress}%`
                     : running
-                      ? job.current_phase || "Extracting database…"
+                      ? job.status === 'queued'
+                        ? "Queued — waiting for an extraction worker…"
+                        : job.current_phase || "Reading document and extracting tables…"
                       : `Extraction ${job.status}`}
               </p>
               {busy && (
