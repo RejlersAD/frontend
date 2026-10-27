@@ -1,5 +1,16 @@
 # EXEC-ACCESS-01 — Executive tab permissions
 
+## EXEC-ACCESS-03 - company-wide viewing, 27 October 2026
+
+Assigning an Executive tab now includes company-wide dashboard data, matching
+administrator reports for identical filters and source versions. The assignment
+and role editors explain that viewing is separate from department-register,
+upload, edit and approval authority. Backend report scope includes unmatched
+Portfolio identities while can_upload remains independent. Explicit Executive
+denials still apply. This supersedes the earlier source-filtered viewing notes.
+14 browser checks passed. No frontend layout or source-command capability changes.
+
+
 ## EXEC-ACCESS-02 - assignment repair, 27 October 2026
 
 All six tabs appear in the role/user editors and simple assignment screen. A tab
