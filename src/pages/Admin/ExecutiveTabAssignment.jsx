@@ -7,6 +7,9 @@ const TABS = [
   ['executive_dashboard.view_overview', 'Overview'],
   ['executive_dashboard.view_financial', 'Financial performance'],
   ['executive_dashboard.view_portfolio', 'Project portfolio'],
+  ['executive_dashboard.view_commercial', 'Commercial pipeline'],
+  ['executive_dashboard.view_workforce', 'Workforce'],
+  ['executive_dashboard.view_risk', 'Risk & Compliance'],
 ];
 const userLabel = user => [user.user?.first_name, user.user?.last_name].filter(Boolean).join(' ') || user.user?.email || user.email;
 const initials = user => userLabel(user).split(/[\s.@]+/).filter(Boolean).slice(0, 2).map(word => word[0]).join('').toUpperCase();
@@ -14,6 +17,9 @@ const TAB_DESCRIPTIONS = {
   'executive_dashboard.view_overview': 'Company performance and priorities',
   'executive_dashboard.view_financial': 'Invoicing, collections and financial outlook',
   'executive_dashboard.view_portfolio': 'Project delivery and portfolio performance',
+  'executive_dashboard.view_commercial': 'Sales pipeline and client exposure',
+  'executive_dashboard.view_workforce': 'Capacity, utilization and workforce risk',
+  'executive_dashboard.view_risk': 'Enterprise risk, QHSE and assurance',
 };
 
 export default function ExecutiveTabAssignment({ canAssign }) {
@@ -60,11 +66,14 @@ export default function ExecutiveTabAssignment({ canAssign }) {
   const rows = TABS.map(([code, label]) => ({ code, label, permission: access?.permissions.find(p => p.code === code) }));
   const unavailable = rows.some(row => !row.permission);
   const locked = !canAssign || access?.locked;
+  const readDenied = rows.some(row => checked[row.code]) && access?.permissions.some(
+    permission => permission.code === 'executive_dashboard.read' && permission.effect === 'deny',
+  );
   const changes = rows.filter(row => row.permission && row.permission.effect !== (checked[row.code] ? 'allow' : 'deny'))
     .map(row => ({ permission_id: row.permission.id, effect: checked[row.code] ? 'allow' : 'deny' }));
   const assign = async event => {
     event.preventDefault();
-    if (!access || locked || saving || unavailable) return;
+    if (!access || locked || saving || unavailable || readDenied) return;
     if (!changes.length) { setMessage('This user already has the selected tab access.'); return; }
     setSaving(true); setError(''); setMessage('');
     try {
@@ -111,10 +120,11 @@ export default function ExecutiveTabAssignment({ canAssign }) {
           <div className="ra-executive-choices"><h3>Tabs this user can see</h3><p>Tick a tab to allow access. Leave it unticked to hide it.</p>
             {rows.map(row => <label className={`ra-executive-tab-choice${checked[row.code] ? ' is-selected' : ''}`} key={row.code}><input type="checkbox" aria-label={row.label} checked={Boolean(checked[row.code])} disabled={locked || saving || !row.permission} onChange={event => { setChecked(previous => ({ ...previous, [row.code]: event.target.checked })); setMessage(''); }} /><span><strong>{row.label}</strong><small>{TAB_DESCRIPTIONS[row.code]}</small></span></label>)}
             {unavailable && <p role="alert">Executive tab permissions are not available on this server yet.</p>}
+            {readDenied && <p role="alert">This user has an explicit denial for Executive View. Remove that denial in their individual permissions before assigning tab access.</p>}
             {locked && <p>{access.lock_reason || 'Only a Super Administrator can assign access.'}</p>}
           </div>
-          <div className="ra-executive-assignment-footer"><p><ShieldCheck size={16} aria-hidden="true" />Changes apply to this user only.</p><button className="ra-primary" type="submit" disabled={locked || saving || unavailable}>{saving ? 'Assigning…' : 'Assign'}</button></div>
-          <p className="ra-executive-access-note">Existing Executive and department access still apply.</p>
+          <div className="ra-executive-assignment-footer"><p><ShieldCheck size={16} aria-hidden="true" />Changes apply to this user only.</p><button className="ra-primary" type="submit" disabled={locked || saving || unavailable || readDenied}>{saving ? 'Assigning…' : 'Assign'}</button></div>
+          <p className="ra-executive-access-note">A selected tab includes access to the Executive page. Department data restrictions and explicit access denials still apply.</p>
         </>}
         {error && <p className="ra-executive-feedback" role="alert">{error}</p>}
         {message && <p className="ra-executive-feedback" role="status">{message}</p>}
