@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 const permissions = [
   { id: 'read', action: 'read', code: 'executive_dashboard.read', name: 'Executive View' },
-  ...['overview', 'financial', 'portfolio'].map(tab => ({ id: tab, action: `view_${tab}`, code: `executive_dashboard.view_${tab}`, name: `Executive ${tab}` })),
+  ...['overview', 'financial', 'portfolio', 'commercial', 'workforce', 'risk'].map(tab => ({ id: tab, action: `view_${tab}`, code: `executive_dashboard.view_${tab}`, name: `Executive ${tab}` })),
 ].map(p => ({ ...p, module: 'executive', is_active: true, inherited: p.id === 'read', effect: 'inherit' }));
 
 async function editor(page, user = false) {
@@ -17,6 +17,49 @@ async function editor(page, user = false) {
   await page.goto(`/tests/fixtures/executive-access-editor.html${user ? '?user=1' : ''}`);
   return writes;
 }
+
+test('every Executive tab can be assigned individually to a user without inherited grants', async ({ page }) => {
+  let state = permissions.map(p => ({ ...p, inherited: false, effective: false }));
+  let saved;
+  await page.route('**/api/**', async route => {
+    let data;
+    if (route.request().url().includes('/permission-overrides/')) {
+      if (route.request().method() === 'PATCH') {
+        saved = route.request().postDataJSON();
+        state = state.map(p => {
+          const change = saved.changes.find(c => c.permission_id === p.id);
+          return change ? { ...p, effect: change.effect, effective: change.effect === 'allow' } : p;
+        });
+      }
+      data = { permissions: state, snapshot: 'current', locked: false };
+    } else data = { results: [{ id: 'target', user: { email: 'target@example.test' } }] };
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
+  });
+  await page.goto('/tests/fixtures/executive-access-editor.html?assign=1');
+  await page.getByRole('button', { name: /target@example.test/ }).click();
+  for (const label of ['Overview', 'Financial performance', 'Project portfolio', 'Commercial pipeline', 'Workforce', 'Risk & Compliance']) {
+    for (const box of await page.getByRole('checkbox').all()) await box.uncheck();
+    await page.getByRole('checkbox', { name: label, exact: true }).check();
+    await page.getByRole('button', { name: 'Assign', exact: true }).click();
+    await expect(page.getByRole('status')).toContainText('Tab access assigned');
+    expect(state.filter(p => p.effective)).toHaveLength(1);
+    expect(saved.changes.some(c => c.permission_id === 'read')).toBe(false);
+  }
+});
+
+test('explicit Executive read denial is explained before assignment', async ({ page }) => {
+  await page.route('**/api/**', async route => {
+    const data = route.request().url().includes('/permission-overrides/')
+      ? { permissions: permissions.map(p => ({ ...p, effect: p.id === 'read' ? 'deny' : 'inherit', effective: false })), snapshot: 'current', locked: false }
+      : { results: [{ id: 'target', user: { email: 'target@example.test' } }] };
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
+  });
+  await page.goto('/tests/fixtures/executive-access-editor.html?assign=1');
+  await page.getByRole('button', { name: /target@example.test/ }).click();
+  await page.getByRole('checkbox', { name: 'Project portfolio', exact: true }).check();
+  await expect(page.getByRole('alert')).toContainText('explicit denial');
+  await expect(page.getByRole('button', { name: 'Assign', exact: true })).toBeDisabled();
+});
 
 test('existing role review adds one tab permission and retains application/read grants', async ({ page }) => {
   const writes = await editor(page);
@@ -79,6 +122,9 @@ test('simple assignment selects a user and tabs then saves only their Executive 
     { permission_id: 'overview', effect: 'allow' },
     { permission_id: 'financial', effect: 'deny' },
     { permission_id: 'portfolio', effect: 'allow' },
+    { permission_id: 'commercial', effect: 'deny' },
+    { permission_id: 'workforce', effect: 'deny' },
+    { permission_id: 'risk', effect: 'deny' },
   ]);
   expect(writes[0].reason).toContain('Overview, Project portfolio');
   expect(writes[0].snapshot).toBe('original');

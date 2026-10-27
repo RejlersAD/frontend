@@ -5,6 +5,9 @@ const TAB_CODES = [
   ['executive_dashboard.view_overview', 'Overview'],
   ['executive_dashboard.view_financial', 'Financial performance'],
   ['executive_dashboard.view_portfolio', 'Project portfolio'],
+  ['executive_dashboard.view_commercial', 'Commercial pipeline'],
+  ['executive_dashboard.view_workforce', 'Workforce'],
+  ['executive_dashboard.view_risk', 'Risk & Compliance'],
 ];
 
 export const isExecutiveTabPermission = permission => TAB_CODES.some(([code]) => permission.code === code);
@@ -13,7 +16,7 @@ export default function ExecutiveTabPermissions({ permissions, disabled, value, 
   const rows = TAB_CODES.map(([code, label]) => ({ permission: permissions.find(p => p.code === code), label }));
   return <section aria-label="Executive tab access">
     <h3>Executive tab access</h3>
-    <p>Executive application access and View permission are also required. Source data follows existing department permissions.</p>
+    <p>A tab grant includes access to the Executive page. Source data follows existing department permissions; explicit access denials still apply.</p>
     <div className="ra-table-scroll"><table className="ra-matrix"><thead><tr><th>Executive tab</th><th>Access</th></tr></thead><tbody>
       {rows.map(({ permission, label }) => <tr key={label}><th scope="row">{label}</th><td>
         {!permission ? <span>Permission unavailable</span> : individual

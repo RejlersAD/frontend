@@ -1,5 +1,16 @@
 # EXEC-ACCESS-01 — Executive tab permissions
 
+## EXEC-ACCESS-02 - assignment repair, 27 October 2026
+
+All six tabs appear in the role/user editors and simple assignment screen. A tab
+grant includes Executive page entry with matching backend code; source/record
+restrictions and explicit Executive read denies still apply. Read denial is
+explained before a conflicting assignment. Backend rbac.0070 adds the Commercial,
+Workforce and Risk actions. Existing snapshots, audit and self-edit protection
+remain. Nine browser checks passed, including each tab assigned individually and
+blocked-read feedback. This supersedes the older separate read prerequisite below.
+
+
 ## Local runtime repair — 23 October 2026
 
 Older reports missing allowed_tabs now show Executive update required and remain
