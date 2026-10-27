@@ -477,30 +477,34 @@ const specCustomizationAPI = {
   },
 
   /** SmartPlant 3D — SPEC workbook (piping spec rules). Returns a Blob. */
-  async exportSmartplantSpec(jobId, { draft = true, releaseId } = {}) {
+  async exportSmartplantSpec(jobId, { draft = true, review = false, releaseId } = {}) {
     const { data } = await apiClient.get(
       path(SPEC_API_CONFIG.jobExportSpecPath(jobId)),
       {
         params: {
           ...(draft ? { draft: 1 } : {}),
+          ...(review ? { review: 1 } : {}),
           ...(releaseId ? { release_id: releaseId } : {}),
         },
         responseType: "blob",
+        timeout: SPEC_UPLOAD_TIMEOUT_MS,
       },
     );
     return data;
   },
 
   /** SmartPlant 3D — CAT workbook (component catalog). Returns a Blob. */
-  async exportSmartplantCat(jobId, { draft = true, releaseId } = {}) {
+  async exportSmartplantCat(jobId, { draft = true, review = false, releaseId } = {}) {
     const { data } = await apiClient.get(
       path(SPEC_API_CONFIG.jobExportCatPath(jobId)),
       {
         params: {
           ...(draft ? { draft: 1 } : {}),
+          ...(review ? { review: 1 } : {}),
           ...(releaseId ? { release_id: releaseId } : {}),
         },
         responseType: "blob",
+        timeout: SPEC_UPLOAD_TIMEOUT_MS,
       },
     );
     return data;
