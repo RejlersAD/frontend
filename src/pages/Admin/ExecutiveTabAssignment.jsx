@@ -124,7 +124,7 @@ export default function ExecutiveTabAssignment({ canAssign }) {
             {locked && <p>{access.lock_reason || 'Only a Super Administrator can assign access.'}</p>}
           </div>
           <div className="ra-executive-assignment-footer"><p><ShieldCheck size={16} aria-hidden="true" />Changes apply to this user only.</p><button className="ra-primary" type="submit" disabled={locked || saving || unavailable || readDenied}>{saving ? 'Assigning…' : 'Assign'}</button></div>
-          <p className="ra-executive-access-note">A selected tab includes access to the Executive page. Department data restrictions and explicit access denials still apply.</p>
+          <p className="ra-executive-access-note">Selected tabs show company-wide dashboard data with viewing access. Uploads, edits and approvals require separate permissions. Explicit Executive access denials still apply.</p>
         </>}
         {error && <p className="ra-executive-feedback" role="alert">{error}</p>}
         {message && <p className="ra-executive-feedback" role="status">{message}</p>}
