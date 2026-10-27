@@ -28,6 +28,7 @@ import {
 } from '@heroicons/react/24/outline';
 import PropTypes from 'prop-types';
 import specCustomizationAPI from '../../../../services/specCustomizationAPI';
+import { validateWorkbookBlob, workbookDownloadError } from '../../../../utils/workbookDownload';
 import { radaiAlert } from '../../../../services/radaiDialog';
 import PaperSpecExtractor from './PaperSpecExtractor';
 import S3DReviewWorkspace from './S3DReviewWorkspace';
@@ -44,14 +45,14 @@ const downloadBlob = (blob, filename) => {
   document.body.appendChild(a);
   a.click();
   a.remove();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 
 const EXPORT_ITEMS = [
-  { key: 'spec', label: 'Draft SPEC.xlsx', description: 'SmartPlant 3D — Piping Spec Rules workbook', icon: DocumentTextIcon, iconClass: 'text-slate-500' },
-  { key: 'cat', label: 'Draft CAT.xlsx', description: 'SmartPlant 3D — Component Catalog workbook', icon: DocumentTextIcon, iconClass: 'text-slate-500' },
-  { key: 'xlsx', label: 'Extracted rows (review XLSX)', description: 'Review data: one sheet per piping class. Use Draft SPEC for the standard template.', icon: TableCellsIcon, iconClass: 'text-emerald-600' },
-  { key: 'json', label: 'JSON', description: 'Raw extracted data', icon: CodeBracketIcon, iconClass: 'text-slate-600' },
+  { key: 'spec', label: 'SPEC workbook.xlsx (review)', description: 'Standard SPEC sheet layout, with coverage and review notice.', group: 'Template workbooks — review only', icon: DocumentTextIcon, iconClass: 'text-slate-500' },
+  { key: 'cat', label: 'CAT workbook.xlsx (review)', description: 'Catalog sheets with a visible review notice.', group: 'Template workbooks — review only', icon: DocumentTextIcon, iconClass: 'text-slate-500' },
+  { key: 'xlsx', label: 'Raw source rows.xlsx', description: 'One sheet per class; does not use the SPEC template.', group: 'Raw source data', icon: TableCellsIcon, iconClass: 'text-emerald-600' },
+  { key: 'json', label: 'Source data.json', description: 'Raw extracted values and source evidence.', group: 'Raw source data', icon: CodeBracketIcon, iconClass: 'text-slate-600' },
 ];
 
 const HUB_TABS = [
@@ -170,18 +171,18 @@ const S3DDataExtractionHub = ({ jobId, onUploadAnother, onHistory }) => {
     try {
       await reviewRef.current?.saveChanges();
       if (kind === 'spec') {
-        downloadBlob(await specCustomizationAPI.exportSmartplantSpec(jobId), `DRAFT_spec_customisation_${jobId}_SPEC.xlsx`);
+        downloadBlob(await validateWorkbookBlob(await specCustomizationAPI.exportSmartplantSpec(jobId, { draft: true, review: true })), `REVIEW_spec_customisation_${jobId}_SPEC.xlsx`);
       } else if (kind === 'cat') {
-        downloadBlob(await specCustomizationAPI.exportSmartplantCat(jobId), `DRAFT_spec_customisation_${jobId}_CAT.xlsx`);
+        downloadBlob(await validateWorkbookBlob(await specCustomizationAPI.exportSmartplantCat(jobId, { draft: true, review: true })), `REVIEW_spec_customisation_${jobId}_CAT.xlsx`);
       } else if (kind === 'xlsx') {
-        downloadBlob(await specCustomizationAPI.exportJob(jobId, 'xlsx'), `extracted_rows_review_${jobId}.xlsx`);
+        downloadBlob(await validateWorkbookBlob(await specCustomizationAPI.exportJob(jobId, 'xlsx')), `source_rows_${jobId}.xlsx`);
       } else if (kind === 'json') {
         const data = await specCustomizationAPI.exportJob(jobId, 'json');
         downloadBlob(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), `paper_spec_${jobId}.json`);
       }
       setExportOpen(false);
     } catch (err) {
-      await radaiAlert(`Export failed: ${err?.response?.data?.error || err?.message || 'Unexpected error'}`);
+      await radaiAlert(`Export failed: ${await workbookDownloadError(err)}`);
     } finally {
       setExporting('');
     }
@@ -243,10 +244,14 @@ const S3DDataExtractionHub = ({ jobId, onUploadAnother, onHistory }) => {
                 <div className="absolute right-0 z-50 mt-2 w-80 rounded-lg border border-slate-200 bg-white shadow-lg" role="menu">
                   <p className="px-4 pb-1 pt-3 text-xs font-medium text-slate-500">Export workbooks (download)</p>
                   <div className="py-1">
-                    {EXPORT_ITEMS.map((item) => {
+                    {EXPORT_ITEMS.map((item, index) => {
                       const ItemIcon = item.icon;
                       const busy = exporting === item.key;
                       return (
+                        <React.Fragment key={item.key}>
+                        {(index === 0 || EXPORT_ITEMS[index - 1].group !== item.group) && (
+                          <p className="px-4 py-2 text-xs font-medium text-slate-500">{item.group}</p>
+                        )}
                         <button
                           key={item.key}
                           type="button"
@@ -261,8 +266,9 @@ const S3DDataExtractionHub = ({ jobId, onUploadAnother, onHistory }) => {
                           ) : (
                             <ItemIcon className={`h-4 w-4 ${item.iconClass}`} />
                           )}
-                          {item.label}
+                          <span><span className="block">{item.label}</span><span className="block text-xs text-slate-500">{item.description}</span></span>
                         </button>
+                        </React.Fragment>
                       );
                     })}
                   </div>
