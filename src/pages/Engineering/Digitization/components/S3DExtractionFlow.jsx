@@ -20,8 +20,9 @@ export default function S3DExtractionFlow() {
   const navigate = useNavigate();
   const location = useLocation();
   const params = new URLSearchParams(location.search);
+  const currentScreen = params.get("screen");
   const jobId = params.get("job");
-  const preview = params.get("screen") === "preview" && jobId;
+  const preview = currentScreen === "preview" && jobId;
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [job, setJob] = useState(null);
@@ -41,7 +42,7 @@ export default function S3DExtractionFlow() {
   }, []);
 
   useEffect(() => {
-    if (!jobId || preview || job?.id === jobId) {
+    if (!jobId || preview || currentScreen === "history" || job?.id === jobId) {
       setResuming(false);
       return;
     }
@@ -73,7 +74,7 @@ export default function S3DExtractionFlow() {
     return () => {
       active = false;
     };
-  }, [jobId, preview, job?.id, resumeRetry, navigate]);
+  }, [jobId, preview, currentScreen, job?.id, resumeRetry, navigate]);
 
   useEffect(() => {
     if (!running || preview) return;
@@ -176,7 +177,7 @@ export default function S3DExtractionFlow() {
     }
   };
 
-  if (params.get("screen") === "history")
+  if (currentScreen === "history")
     return (
       <S3DHistory
         onBack={() => navigate(root)}
@@ -203,6 +204,9 @@ export default function S3DExtractionFlow() {
     <S3DDatabaseBuilder
       onExtract={extract}
       onHistory={() => navigate(`${root}?screen=history`)}
+      onOpenJob={(selectedJobId) => navigate(
+        `${root}?screen=preview&job=${encodeURIComponent(selectedJobId)}`,
+      )}
       busy={busy}
       requestError={error}
       uploading={uploading}
