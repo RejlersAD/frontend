@@ -135,8 +135,10 @@ export default function S3DDatabaseBuilder({
               {capabilities
                 ? `Local engines detected: ${availableEngines.map(engine => engine.label).join(", ") || "none reported"}. `
                 : "Local engine availability has not been verified. "}
-              Supported tables can be processed locally. Configured AI providers
-              may be used when local extraction cannot read the table. Review
+              {capabilities?.mode === 'local_only'
+                ? 'Extraction uses local PDF and OCR engines without AI API keys. '
+                : 'Supported tables can be processed locally. Configured AI providers may be used for difficult tables. '}
+              Review
               extracted records against the source before release.
             </span>
           </div>
@@ -357,7 +359,7 @@ export default function S3DDatabaseBuilder({
                     onClick={extract}
                   >
                     <Database size={18} />
-                    {busy ? "Extracting�" : "Extract database"}
+                    {busy ? uploading ? "Uploading…" : jobStatus === 'queued' ? "Queued…" : "Extracting…" : "Extract database"}
                   </button>
                 </div>
               </div>
@@ -408,7 +410,7 @@ export default function S3DDatabaseBuilder({
                             : "Upload error"
                           : uploading
                             ? "Uploading document"
-                            : "Extracting data"}
+                            : jobStatus === 'queued' ? "Waiting for extraction" : "Extracting data"}
                       </strong>
                       <p>
                         {failed
