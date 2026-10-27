@@ -50,7 +50,7 @@ const downloadBlob = (blob, filename) => {
 const EXPORT_ITEMS = [
   { key: 'spec', label: 'Draft SPEC.xlsx', description: 'SmartPlant 3D — Piping Spec Rules workbook', icon: DocumentTextIcon, iconClass: 'text-slate-500' },
   { key: 'cat', label: 'Draft CAT.xlsx', description: 'SmartPlant 3D — Component Catalog workbook', icon: DocumentTextIcon, iconClass: 'text-slate-500' },
-  { key: 'xlsx', label: 'XLSX (combined)', description: 'One sheet per Piping Class', icon: TableCellsIcon, iconClass: 'text-emerald-600' },
+  { key: 'xlsx', label: 'Extracted rows (review XLSX)', description: 'Review data: one sheet per piping class. Use Draft SPEC for the standard template.', icon: TableCellsIcon, iconClass: 'text-emerald-600' },
   { key: 'json', label: 'JSON', description: 'Raw extracted data', icon: CodeBracketIcon, iconClass: 'text-slate-600' },
 ];
 
@@ -174,7 +174,7 @@ const S3DDataExtractionHub = ({ jobId, onUploadAnother, onHistory }) => {
       } else if (kind === 'cat') {
         downloadBlob(await specCustomizationAPI.exportSmartplantCat(jobId), `DRAFT_spec_customisation_${jobId}_CAT.xlsx`);
       } else if (kind === 'xlsx') {
-        downloadBlob(await specCustomizationAPI.exportJob(jobId, 'xlsx'), `paper_spec_${jobId}.xlsx`);
+        downloadBlob(await specCustomizationAPI.exportJob(jobId, 'xlsx'), `extracted_rows_review_${jobId}.xlsx`);
       } else if (kind === 'json') {
         const data = await specCustomizationAPI.exportJob(jobId, 'json');
         downloadBlob(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), `paper_spec_${jobId}.json`);
