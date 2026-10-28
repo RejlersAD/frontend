@@ -56,7 +56,7 @@ export const PFD_DOCS_CONFIG = {
     badge:         'Cross-Tool',
     description:   'The same proven pipeline that powers P&ID Verification V1 — PFD quality runs through an identical Upload → AI Analysis → Quality Report journey.',
     linkLabel:     'Open P&ID Verification',
-    linkRoute:     '/engineering/process/pid-verification-v1',
+    linkRoute:     '/engineering/process/pid-verification',
     collapsible:   true,
     defaultCollapsed: false,
     maxZoomPct:    200,

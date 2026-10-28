@@ -79,7 +79,7 @@ export const INSIGHT_STYLES = {
 // Module to icon + route + category + accent colour
 // Categories: 'engineering' | 'ai' | 'operations' | 'business'
 export const MODULE_META = {
-  pid_analysis:          { icon: '🔬', label: 'P&ID QC',           route: '/engineering/process/pid-quality-checker', category: 'engineering', accent: 'from-cyan-500 to-blue-600' },
+  pid_analysis:          { icon: '🔬', label: 'P&ID QC',           route: '/engineering/process/pid-verification',    category: 'engineering', accent: 'from-cyan-500 to-blue-600' },
   pid_verification:      { icon: '✅', label: 'P&ID Verify',        route: ROUTES.PID_VERIFICATION,    category: 'engineering', accent: 'from-emerald-500 to-teal-600' },
   pfd_to_pid:            { icon: '📐', label: 'PFD Digitisation',   route: '/pfd-upload',                              category: 'engineering', accent: 'from-blue-500 to-indigo-600' },
   pfd_quality:           { icon: '📊', label: 'PFD Quality',        route: '/engineering/process/pfd-quality-checker', category: 'engineering', accent: 'from-sky-500 to-cyan-600' },

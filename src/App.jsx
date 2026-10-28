@@ -155,7 +155,7 @@ import SmartDatasheetPage from "./pages/ProcessDatasheet/SmartDatasheetPage";
 import ProcessEquipmentDatasheet from "./pages/Engineering/Process/ProcessEquipmentDatasheet";
 import LineList from "./pages/Engineering/Process/LineList";
 import EquipmentList from "./pages/Engineering/Process/EquipmentList";
-import PIDVerification from "./pages/Engineering/Process/PIDVerification";
+import PlaceholderPidVerification from "./pages/Engineering/Process/PlaceholderPidVerification";
 import PIDVerificationV2 from "./pages/Engineering/Process/PIDVerificationV2";
 import PIDVerificationV2Report from "./pages/Engineering/Process/PIDVerificationV2Report";
 import PIDCheckerV2 from "./pages/Engineering/Process/PIDCheckerV2";
@@ -1244,12 +1244,12 @@ function App() {
                 </ModuleProtectedRoute>
               }
             />
-            {/* P&ID Verification V1 (Legacy) */}
+            {/* P&ID Verification V1 (removed — being redesigned; placeholder keeps the route and data) */}
             <Route
               path="engineering/process/pid-verification-v1"
               element={
                 <ModuleProtectedRoute moduleCode="pid_analysis">
-                  <PIDVerification />
+                  <PlaceholderPidVerification />
                 </ModuleProtectedRoute>
               }
             />

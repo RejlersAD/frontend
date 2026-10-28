@@ -320,44 +320,6 @@ const LINE_LIST_CONTEXT = {
   selectedArticleId: 'line-list-workflow',
 }
 
-const PID_VERIFICATION_V1_CONTEXT = {
-  ...context({
-    id: 'engineering.pid-verification-v1',
-    moduleCode: 'engineering',
-    moduleLabel: 'Engineering',
-    featureLabel: 'P&ID Verification V1',
-    summary: 'Upload P&ID drawings, run AI quality-rule analysis, review findings and export a report.',
-    articles: [
-      article('pid-v1-workflow', 'Verification workflow', 'Create a project, upload drawings, run AI analysis, review and export.', [
-        { heading: 'Workflow diagram', image: { src: '/assets/images/PIDVerification_Workflow.png', alt: 'P&ID Verification Workflow — Create project, upload P&ID, AI analysis, review results, export report' } },
-        { heading: '1. Create project', steps: ['Click "New Project" in the Project Workspace section.', 'Use a descriptive name — client, area/unit and revision (e.g. "Unit 300 Process Area - Q4 2026").', 'One project holds all sheets of a multi-page P&ID for cross-sheet validation.', 'Projects are saved automatically.'] },
-        { heading: '2. Upload P&ID(s)', steps: ['PDF, DWG, PNG, JPG or TIFF drawings are accepted.', 'Use 300+ DPI, upright, high-contrast scans for best OCR accuracy.', 'Include symbol legend sheets so the AI identifies equipment types and symbols accurately.'] },
-        { heading: '3. AI analysis', steps: ['The engine validates the drawing against 20+ engineering quality rules.', 'Analysis typically takes 2–5 minutes with real-time progress updates.', 'All processing runs inside your RADAI deployment — drawings are never shared with third parties.'] },
-        { heading: '4. Review results', steps: ['Click any finding to mark it resolved, add comments, or adjust severity.', 'AI detects patterns but needs human validation — review each finding critically before accepting.'] },
-        { heading: '5. Export report', steps: ['Export findings to PDF report, Excel spreadsheet, or JSON for integration with other tools.', 'Archive generated reports for compliance audits and project documentation.'] },
-      ]),
-      article('pid-v1-rules', 'Quality rules', 'The AI engine validates P&IDs against 20+ engineering quality rules.', [
-        { heading: 'Tag Validation (4 checks)', steps: ['Tag format compliance', 'Duplicate tag detection', 'Missing tag identification', 'Tag naming conventions'] },
-        { heading: 'Connectivity (4 checks)', steps: ['Orphaned equipment', 'Open-ended lines', 'Missing connections', 'Valve placement'] },
-        { heading: 'Line Sizing (3 checks)', steps: ['Consistent line sizing', 'Size change notation', 'Branch sizing logic'] },
-        { heading: 'Compliance (3 checks)', steps: ['Industry standards (API, ASME)', 'Symbol consistency', 'Legend alignment'] },
-      ]),
-      article('pid-v1-best-practices', 'Best practices', 'Get the most accurate analysis from every run.', [
-        { heading: 'Recommendations', steps: ['Upload high-quality scans — 300+ DPI, clear, high-contrast images yield better AI results.', 'Include legend sheets — they help the AI identify equipment types and symbols accurately.', 'Use consistent naming — consistent tag patterns help the AI detect anomalies.', 'Review AI findings — AI detects patterns but needs human validation.', 'Export PDF reports — archive quality reports for compliance audits and documentation.', 'Incremental updates — create new project versions when drawings change to maintain an audit trail.'] },
-      ]),
-      article('pid-v1-faq', 'FAQ', 'Common questions about P&ID verification.', [
-        { heading: 'Questions', steps: ['What file formats are supported? PDF, DWG, PNG, JPG, TIFF — PDF and DWG are recommended for best OCR accuracy.', 'How long does AI analysis take? Typically 2–5 minutes depending on drawing complexity, with real-time progress updates.', 'Can I edit findings after analysis? Yes — click any finding to mark it resolved, add comments, or adjust severity levels.', 'How accurate is the AI? 92–97% on clear scans; always review findings — AI assists but does not replace engineering judgment.', 'What happens to my drawings? All data is encrypted at rest and in transit, stored securely and never shared with third parties.', 'Can I export findings? Yes — PDF report, Excel spreadsheet, or JSON data format.'] },
-      ]),
-      article('pid-v1-formats', 'File formats', 'Supported inputs and report outputs.', [
-        { heading: 'Supported inputs', steps: ['PDF — recommended; best OCR accuracy.', 'DWG — recommended; native CAD drawings.', 'PNG / JPG / TIFF — accepted; use 300+ DPI upright scans.'] },
-        { heading: 'Report outputs', steps: ['PDF report — formatted quality report for audits.', 'Excel spreadsheet — findings for filtering and tracking.', 'JSON — raw data for integration with other tools.'] },
-      ]),
-    ],
-  }),
-  searchableArticles: true,
-  selectedArticleId: 'pid-v1-workflow',
-}
-
 const PID_CHECKER_V2_CONTEXT = {
   ...context({
     id: 'engineering.pid-checker-v2',
@@ -907,7 +869,6 @@ export const HELP_ROUTE_RULES = [
   { id: 'hmb-stream-table-consolidator', test: path => path === '/engineering/process/hmb-stream-table-consolidator', resolve: () => HMB_STREAM_CONSOLIDATOR_CONTEXT },
   { id: 'equipment-list', test: path => path === '/engineering/process/equipment-list', resolve: () => EQUIPMENT_LIST_CONTEXT },
   { id: 'line-list', test: path => path === '/engineering/process/line-list', resolve: () => LINE_LIST_CONTEXT },
-  { id: 'pid-verification-v1', test: path => path === '/engineering/process/pid-verification-v1', resolve: () => PID_VERIFICATION_V1_CONTEXT },
   { id: 'pid-checker-v2', test: path => path === '/engineering/process/pid-checker-v2', resolve: () => PID_CHECKER_V2_CONTEXT },
   { id: 'critical-line-list', test: path => path === '/engineering/piping/critical-line-list', resolve: () => CRITICAL_LINE_LIST_CONTEXT },
   { id: 'pms-valve-mto', test: path => path === '/engineering/piping/pms' || path.startsWith('/engineering/piping/valve-mto'), resolve: () => PMS_VALVE_MTO_CONTEXT },
