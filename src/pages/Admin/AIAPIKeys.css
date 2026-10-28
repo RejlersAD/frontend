@@ -84,6 +84,7 @@
 .aim-check { display: flex; align-items: center; gap: 0.6rem; font-size: var(--rd-text-body); color: var(--rd-text); min-height: 32px; }
 .aim-check input { width: 16px; height: 16px; accent-color: var(--aim-primary); }
 .aim-row-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+.aim-row-actions .aim-danger:not(:disabled) { color: var(--rd-danger, #b42318); }
 .aim-inline-error { color: var(--rd-danger); font-size: var(--rd-text-caption); margin-top: 0.25rem; display: block; }
 .aim-note { display: flex; gap: 0.6rem; align-items: flex-start; margin-top: 1rem; color: var(--rd-text-muted); font-size: var(--rd-text-caption); line-height: 1.65; }
 .aim-note svg { flex-shrink: 0; margin-top: 2px; }

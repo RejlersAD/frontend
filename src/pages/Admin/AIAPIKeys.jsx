@@ -389,7 +389,7 @@ function ModelsTab({ data, filters, setFilters, onToggle }) {
   </>
 }
 
-function CredentialsTab({ data, storageConfigured, onTest, onRotate, onRevoke }) {
+function CredentialsTab({ data, storageConfigured, onTest, onRotate, onRevoke, onDelete }) {
   const credentials = data?.credentials || []
   const testLabel = row => row.last_test_ok === true ? ['Passed', 'rd-pill-success'] : row.last_test_ok === false ? ['Failed', 'rd-pill-danger'] : ['Not tested', 'rd-pill-neutral']
   return <div className="aim-stack">
@@ -414,6 +414,7 @@ function CredentialsTab({ data, storageConfigured, onTest, onRotate, onRevoke })
                 <button type="button" className="rd-btn rd-btn-ghost rd-btn-sm" disabled={!storageConfigured} onClick={() => onTest(row)}>Test<span className="aim-sr"> {row.name}</span></button>
                 <button type="button" className="rd-btn rd-btn-ghost rd-btn-sm" disabled={!storageConfigured} onClick={() => onRotate(row)}>Rotate<span className="aim-sr"> {row.name}</span></button>
                 <button type="button" className="rd-btn rd-btn-ghost rd-btn-sm" disabled={!storageConfigured} onClick={() => onRevoke(row)}>Revoke<span className="aim-sr"> {row.name}</span></button>
+                <button type="button" className="rd-btn rd-btn-ghost rd-btn-sm aim-danger" onClick={() => onDelete(row)}>Delete<span className="aim-sr"> {row.name}</span></button>
               </div></td>
             </tr>
           })}
@@ -747,6 +748,11 @@ function ModelHub() {
     toast.success(`Credential revoked for ${dialog.credential.name}.`)
     setDialog(null); refreshAfterChange()
   })
+  const deleteCredential = () => credentialAction(async () => {
+    await Hub.deleteCredential(dialog.credential.id)
+    toast.success(`Credential deleted for ${dialog.credential.name}.`)
+    setDialog(null); refreshAfterChange()
+  })
   const saveSchedule = async form => {
     setSavingSchedule(true)
     try {
@@ -833,7 +839,8 @@ function ModelHub() {
       {tab === 'credentials' && <CredentialsTab data={creds} storageConfigured={storageConfigured}
         onTest={testCredential}
         onRotate={credential => { setDialog({ type: 'rotate', credential }); setRotateSecret('') }}
-        onRevoke={credential => setDialog({ type: 'revoke', credential })} />}
+        onRevoke={credential => setDialog({ type: 'revoke', credential })}
+        onDelete={credential => setDialog({ type: 'delete', credential })} />}
       {tab === 'routing' && <RoutingTab tasks={tasks} byKey={byKey} models={models} onSaved={onRouteSaved} />}
       {tab === 'sync' && <SyncTab schedule={schedule} lastRun={lastRun} onSaveSchedule={saveSchedule} savingSchedule={savingSchedule} />}
     </>}
@@ -858,6 +865,11 @@ function ModelHub() {
     {dialog?.type === 'revoke' && <ConfirmDialog title={`Revoke ${dialog.credential.name}`} confirmLabel="Revoke credential" danger busy={dialogBusy}
       onClose={() => setDialog(null)} onConfirm={revokeCredential}>
       <p>Revoke <strong>{dialog.credential.name}</strong> ({dialog.credential.provider_name})? Tasks that resolve to this credential fall back to the next key in the resolution order. No central credential selected. Existing server configuration applies.</p>
+    </ConfirmDialog>}
+
+    {dialog?.type === 'delete' && <ConfirmDialog title={`Delete ${dialog.credential.name}`} confirmLabel="Delete permanently" danger busy={dialogBusy}
+      onClose={() => setDialog(null)} onConfirm={deleteCredential}>
+      <p>Permanently delete <strong>{dialog.credential.name}</strong> ({dialog.credential.provider_name})? Unlike revoke, this removes the credential and its stored secret completely. This cannot be undone. Tasks that used it fall back to the next key in the resolution order.</p>
     </ConfirmDialog>}
   </section>
 }

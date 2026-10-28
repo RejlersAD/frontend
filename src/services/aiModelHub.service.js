@@ -17,6 +17,7 @@ export const createCredential = body => unwrap(apiClient.post(`${ROOT}credential
 export const testSavedCredential = id => unwrap(apiClient.post(`${ROOT}credentials/${id}/test`, {}, options))
 export const rotateCredential = (id, secret) => unwrap(apiClient.post(`${ROOT}credentials/${id}/rotate`, { secret }, options))
 export const revokeCredential = id => unwrap(apiClient.delete(`${ROOT}credentials/${id}`, options))
+export const deleteCredential = id => unwrap(apiClient.delete(`${ROOT}credentials/${id}`, { ...options, params: { hard: 1 } }))
 
 export const listRoutes = signal => unwrap(apiClient.get(`${ROOT}routes`, { ...options, signal }))
 export const saveRoute = (taskId, chain) => unwrap(apiClient.put(`${ROOT}routes/${encodeURIComponent(taskId)}`, { chain }, options))
