@@ -34,6 +34,7 @@ const unwrapArray = data => {
   if (Array.isArray(data?.projects)) return data.projects
   if (Array.isArray(data?.documents)) return data.documents
   if (Array.isArray(data?.items)) return data.items
+  if (Array.isArray(data?.reference_data)) return data.reference_data
   return []
 }
 
@@ -154,6 +155,46 @@ export function drawingImageUrl(documentId, page = 0) {
   return `${V2}/drawing-image/${documentId}/${page}/`
 }
 
+export async function getStatus(documentId) {
+  const res = await axios.get(`${V2}/status/${documentId}/`, { headers: authHeader() })
+  return res.data
+}
+
+// ── findings (engineer review) ──────────────────────────────────────────
+// PATCH findings/<id>/ accepts { severity?, status? } — status is one of
+// open | reviewed | resolved (PIDVFinding.FindingStatus). Reject comments
+// have no backend field, so callers keep them in a local store.
+export async function patchFinding(findingId, patch) {
+  const res = await axios.patch(`${V2}/findings/${findingId}/`, patch, {
+    headers: authHeader(),
+  })
+  return res.data
+}
+
+// ── exports ─────────────────────────────────────────────────────────────
+// Export endpoints require the Authorization header, so a plain <a href>
+// cannot be used — fetch as blob and trigger a download client-side.
+export async function downloadExport(documentId, kind /* 'excel' | 'pdf' */, view = 'all') {
+  const res = await axios.get(`${V2}/export/${kind}/${documentId}/`, {
+    headers: authHeader(),
+    params: { view },
+    responseType: 'blob',
+    timeout: 120000,
+  })
+  const disposition = res.headers?.['content-disposition'] || ''
+  const match = /filename="?([^";]+)"?/i.exec(disposition)
+  const filename = match?.[1] || `pidv_${kind}_${documentId}.${kind === 'excel' ? 'xlsx' : 'pdf'}`
+  const url = URL.createObjectURL(res.data)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+  return filename
+}
+
 // ── reference data ──────────────────────────────────────────────────────
 
 export async function listReferenceData(projectId) {
@@ -228,6 +269,7 @@ export const removeUserKey = () => sldService.removeKey()
 export default {
   listProjects, getProject, createProject,
   listDrawings, uploadDrawing, getResults, reprocess, updateDrawing, drawingImageUrl,
+  getStatus, patchFinding, downloadExport,
   listReferenceData, uploadReferenceData, deleteReferenceData,
   getProjectApiKeys, saveProjectApiKey, deleteProjectApiKey,
   getAiProviderStatus, runAiChecks,
