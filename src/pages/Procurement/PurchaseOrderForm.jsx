@@ -32,12 +32,11 @@ import { PurchaseOrderNumberCorrection } from "./PurchaseOrderNumberEditor";
 import "./PurchaseOrderForm.css";
 import {
   Save as SaveIcon,
-  ArrowRight,
-  ArrowLeft,
   AlertCircle,
   FolderOpen,
   RefreshCw,
   X,
+  ChevronDown,
 } from "lucide-react";
 import PurchaseOrderPriceSpreadsheet from "./PurchaseOrderPriceSpreadsheet";
 import { employeeDisplayName } from "../../utils/employeeDisplayName";
@@ -522,6 +521,7 @@ const PurchaseOrderForm = ({
   const [autoSaving, setAutoSaving] = useState(false);
   const [draftId, setDraftId] = useState(editData?.id || null);
   const [currentSection, setCurrentSection] = useState(1);
+  const [expandedSections, setExpandedSections] = useState(() => new Set([1, 2]));
   const formScrollRef = useRef(null);
   const workspaceRef = useRef(null);
   const [modalBounds, setModalBounds] = useState(null);
@@ -636,7 +636,7 @@ const PurchaseOrderForm = ({
           setPricingConfirmed(Boolean(saved.pricingConfirmed));
           setPricingEdited(Boolean(saved.pricingEdited));
           setCurrentSection(
-            Math.max(1, Math.min(4, saved.currentSection || 1)),
+            Math.max(1, Math.min(6, saved.currentSection || 1)),
           );
           if (
             !editData ||
@@ -1975,21 +1975,55 @@ const PurchaseOrderForm = ({
         ?.scrollIntoView({ block: "start" });
     }
     setCurrentSection(section);
+    setExpandedSections((current) => new Set([...current, section]));
     formScrollRef.current?.scrollTo({ top: 0 });
+  };
+
+  const toggleSection = (section) => {
+    setCurrentSection(section);
+    setExpandedSections((current) => {
+      const next = new Set(current);
+      if (next.has(section)) next.delete(section);
+      else next.add(section);
+      return next;
+    });
   };
 
   const sectionForField = (field) =>
     field === "total_amount"
-      ? 2
-      : ["attachments", "approval_log"].includes(field)
-        ? 4
+      ? 3
+      : field === "attachments"
+        ? 5
+        : field === "approval_log"
+          ? 6
+          : [
+                "currency",
+                "buyer_reference_pm",
+                "buyer_reference_email",
+                "buyer_reference_pe",
+                "payment_terms",
+                "payment_method",
+                "vat_basis",
+                "vat_percentage",
+                "tax_amount",
+              ].includes(field)
+            ? 2
         : [
               "project_number",
+                "title",
+                "summary",
+                "contractor",
+                "subcontractor",
+                "rad_project_number",
+                "agreement_number",
+                "end_client",
+                "project_manager",
+                "delivery_terms",
               "start_date",
               "end_date",
               "expected_delivery",
             ].includes(field)
-          ? 3
+          ? 4
           : 1;
   const openValidationIssue = (issue) => {
     const field = issue.field || issue.id;
@@ -2313,12 +2347,28 @@ const PurchaseOrderForm = ({
 
   const buyerReferences = formData.contact_persons?.buyer_references || [];
 
-  const sections = [
-    { id: 1, name: "Order & parties" },
-    { id: 2, name: "Scope & pricing" },
-    { id: 3, name: "Projects & delivery" },
-    { id: 4, name: "Approval" },
-  ];
+  const accordionHeading = (section, title, summary = "") => (
+    (() => {
+      const sectionHasError = Object.keys(errors || {}).some(
+        (field) => errors[field] && sectionForField(field) === section,
+      );
+      return (
+    <button
+      type="button"
+      className="pof-accordion-toggle"
+      aria-expanded={expandedSections.has(section)}
+      aria-controls={`po-accordion-content-${section}`}
+      onClick={() => toggleSection(section)}
+    >
+      <span className="pof-accordion-number">{section}</span>
+      <span className="pof-accordion-title">{title}</span>
+      {sectionHasError && <span className="pof-accordion-error">Needs attention</span>}
+      {summary && <span className="pof-accordion-summary">{summary}</span>}
+      <ChevronDown aria-hidden="true" />
+    </button>
+      );
+    })()
+  );
 
   const validationErrors = editData
     ? getValidationErrors(false)
@@ -2328,11 +2378,8 @@ const PurchaseOrderForm = ({
           pr_reference:
             "Select an existing purchase recommendation to continue.",
         };
-  // Draft creation is allowed without an eligible final signatory. API errors
-  // about approval eligibility must not turn into required-field blockers.
-  if (errors.approval_log && !approvalRouteEditable) {
-    validationErrors.approval_log = errors.approval_log;
-  }
+  // Approval-route eligibility is evaluated when the assigned employee acts;
+  // it must not block saving or creating a PO draft.
   const validationIssues = Object.entries(validationErrors).map(
     ([field, message]) => ({ id: field, field, message, title: message }),
   );
@@ -3366,7 +3413,7 @@ const PurchaseOrderForm = ({
             />
           </div>
         </div>
-        {currentSection === 3 && (
+        {expandedSections.has(4) && (
           <div className="pof-field-row">
             <label className="block text-sm font-medium text-gray-700">
               Delivery Terms
@@ -3525,7 +3572,6 @@ const PurchaseOrderForm = ({
         <div className="pof-card-body">
           {formData.approval_log.length > 0 ? formData.approval_log.map((entry, index) => (
             <div key={[entry.stage, index].join('-')} className="pof-signatory-fields">
-              <div className="pof-field-row"><label>Approval Stage</label><span className="pof-recorded-value">{entry.stage || entry.role || 'Recorded approval'}</span></div>
               <div className="pof-field-row"><label>Approver</label><select
                               id={index === 0 ? 'po-approval_log' : undefined}
                               value={entry.user_id || ''}
@@ -3536,15 +3582,14 @@ const PurchaseOrderForm = ({
 
                               className="block w-full rounded-md border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
                             >
-                              <option value="">{approversLoading ? 'Loading employees...' : '-- Select an employee (optional) --'}</option>
-                              {entry.user_id && !finalApprovers.some(employee => String(employee.id) === String(entry.user_id)) && <option value={entry.user_id} disabled={approvalRouteEditable}>{entry.approver || entry.user_name || 'Recorded approver'} — eligibility not confirmed</option>}
+                              <option value="">{approversLoading ? 'Loading employees...' : '-- Select approver (optional) --'}</option>
+                              {entry.user_id && !approvalEmployees.some(employee => String(employee.id) === String(entry.user_id)) && <option value={entry.user_id}>{entry.approver || entry.user_name || 'Recorded approver'}</option>}
                               {approvalEmployees.map((employee) => (
                                 <option key={employee.id} value={employee.id}>
                                   {employee.full_name || employee.username || 'Active employee'}{employee.job_title ? ` — ${employee.job_title}` : ''}{employee.email ? ` — ${employee.email}` : ''}{employee.department ? ` (${employee.department})` : ''}
                                 </option>
                               ))}
                             </select></div>
-              <div className="pof-field-row"><label>Approved By</label><span className="pof-recorded-value">{[entry.approver || entry.user_name, entry.status].filter(Boolean).join(' · ') || 'Not recorded'}</span></div>
               <div className="pof-field-row"><label>Routing Comments</label><input
                               type="text"
                               value={entry.comments || ''}
@@ -3562,7 +3607,6 @@ const PurchaseOrderForm = ({
             : employeeLoadError || (unavailableSignatory
               ? 'You can save this draft with the selected approver. Eligibility is checked when final approval is attempted.'
               : 'Choose any active employee or leave the approver blank. Eligibility is checked when final approval is attempted.')}</p>}
-          {!approvalRouteEditable && errors.approval_log && <p className="pof-field-error">{errors.approval_log}</p>}
         </div>
       </section>
     </div>
@@ -3611,72 +3655,6 @@ const PurchaseOrderForm = ({
                   : formData.po_number ||
                     "Draft · select a recommendation to start"}
               </span>
-              <div className="pof-header-actions">
-                <button
-                  type="button"
-                  className="pof-button"
-                  onClick={(event) => handleSubmit(event, false)}
-                  disabled={busy || !hasRequiredRequisition || poNumberLoading}
-                >
-                  <SaveIcon />
-                  {submitLoading
-                    ? "Saving…"
-                    : editData
-                      ? "Save changes"
-                      : "Save draft"}
-                </button>
-              </div>
-            </div>
-            <div
-              className="pof-tabs"
-              role="tablist"
-              aria-label="Purchase order sections"
-            >
-              {sections.map((section) => (
-                <button
-                  type="button"
-                  role="tab"
-                  id={`po-tab-${section.id}`}
-                  aria-controls="po-section-panel"
-                  aria-selected={currentSection === section.id}
-                  tabIndex={currentSection === section.id ? 0 : -1}
-                  key={section.id}
-                  onClick={() => openSection(section.id)}
-                  onKeyDown={(event) => {
-                    if (
-                      !["ArrowLeft", "ArrowRight", "Home", "End"].includes(
-                        event.key,
-                      )
-                    )
-                      return;
-                    event.preventDefault();
-                    const last = hasRequiredRequisition ? 4 : 1;
-                    const next =
-                      event.key === "Home"
-                        ? 1
-                        : event.key === "End"
-                          ? last
-                          : ((currentSection -
-                              1 +
-                              (event.key === "ArrowRight" ? 1 : -1) +
-                              last) %
-                              last) +
-                            1;
-                    openSection(next);
-                    event.currentTarget.parentElement
-                      .querySelector(`#po-tab-${next}`)
-                      ?.focus();
-                  }}
-                  disabled={
-                    isNewOrder && !hasRequiredRequisition && section.id !== 1
-                  }
-                >
-                  <span className="pof-step-number" aria-hidden="true">
-                    {section.id}
-                  </span>
-                  <span>{section.name}</span>
-                </button>
-              ))}
             </div>
           </header>
           <form
@@ -3707,7 +3685,7 @@ const PurchaseOrderForm = ({
                   {purchaseOrderCommercialLockReason(editData)}
                 </p>
               )}
-              {currentSection === 4 &&
+              {currentSection === 6 &&
                 (!editData || editData.status === "draft") &&
                 editData?.can_send_to_vendor !== true && (
                   <p
@@ -3717,68 +3695,31 @@ const PurchaseOrderForm = ({
                   >
                     {editData
                       ? purchaseOrderLifecycleBlockReason(editData)
-                      : "Save this purchase order as a draft, then complete its approvals before sending it to the vendor."}
+                      : "Save the PO draft to notify its assigned final signatory."}
                   </p>
                 )}
               <div
                 id="po-section-panel"
-                role="tabpanel"
-                aria-labelledby={`po-tab-${currentSection}`}
+                aria-label="Purchase order sections"
                 className="pof-section-panel"
               >
-                {currentSection === 1 && (
-                  <div className="pof-overview-grid">
+                <section className="pof-accordion pof-accordion-order">
+                  {accordionHeading(1, "Order & supplier", formData.po_number || "Supplier and buyer details")}
+                  <div id="po-accordion-content-1" className="pof-accordion-content" hidden={!expandedSections.has(1)}>
                     {orderSellerCard}
-                    {buyerCommercialCard}
-                    {scopeProjectsCard}
-                    {approvalCards}
                   </div>
-                )}
-                {currentSection === 3 && (
-                  <>
-                    {scopeProjectsCard}
-                    <section
-                      className="pof-card"
-                      aria-labelledby="po-invoicing-heading"
-                    >
-                      <div className="pof-card-heading">
-                        <span className="pof-card-icon">
-                          <DocumentTextIcon />
-                        </span>
-                        <h3 id="po-invoicing-heading">Invoicing</h3>
-                      </div>
-                      <div className="pof-card-body pof-field-grid">
-                        <div className="pof-field-row">
-                          <label htmlFor="po-invoicing-attn">
-                            Invoicing Attention
-                          </label>
-                          <input
-                            id="po-invoicing-attn"
-                            type="text"
-                            name="invoicing_attn"
-                            aria-label="Invoicing Attn"
-                            value={formData.invoicing_attn}
-                            readOnly
-                          />
-                        </div>
-                        <div className="pof-field-row">
-                          <label htmlFor="po-company-fax">Company Fax</label>
-                          <input
-                            id="po-company-fax"
-                            type="text"
-                            name="company_fax"
-                            aria-label="Company Fax"
-                            value={formData.company_fax}
-                            onChange={handleChange}
-                          />
-                        </div>
-                      </div>
-                    </section>
-                  </>
-                )}
-
+                </section>
+                <section className="pof-accordion pof-accordion-buyer">
+                  {accordionHeading(2, "Buyer & payment", formData.currency || "Buyer and payment details")}
+                  <div id="po-accordion-content-2" className="pof-accordion-content" hidden={!expandedSections.has(2)}>
+                    {buyerCommercialCard}
+                  </div>
+                </section>
+                <section className="pof-accordion pof-accordion-scope">
+                  {accordionHeading(3, "Scope & pricing", `${(formData.items || []).length} items · ${formData.currency} ${Number(formData.total_amount || 0).toFixed(2)}`)}
+                  <div id="po-accordion-content-3" className="pof-accordion-content" hidden={!expandedSections.has(3)}>
                 {/* Section 2: PO Description and Scope */}
-                {currentSection === 2 && (
+                {expandedSections.has(3) && (
                   <div className="space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-2">
                       <h3 className="text-lg font-semibold text-gray-900">
@@ -3920,7 +3861,7 @@ const PurchaseOrderForm = ({
                 )}
 
                 {/* Pricing shares the scope step. */}
-                {currentSection === 2 && (
+                {expandedSections.has(3) && (
                   <div
                     className="space-y-4"
                     data-po-price-summary
@@ -4156,7 +4097,7 @@ const PurchaseOrderForm = ({
                       onRemoveColumn={removeItemsTableColumn}
                     />
 
-                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                    <div className="pof-price-totals grid grid-cols-1 gap-4 lg:grid-cols-3">
                       <div className="lg:col-span-2 rounded-2xl border border-gray-200 bg-gray-50 p-4">
                         <div className="text-sm text-gray-600">
                           Pricing details are calculated automatically as you
@@ -4230,7 +4171,7 @@ const PurchaseOrderForm = ({
                 )}
 
                 {/* Section 6: Contract Terms */}
-                {currentSection === 6 && (
+                {expandedSections.has(3) && (
                   <div className="space-y-6">
                     <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
                       <div>
@@ -4365,10 +4306,57 @@ const PurchaseOrderForm = ({
                   </div>
                 )}
 
-                {currentSection === 4 && approvalCards}
+                  </div>
+                </section>
+                <section className="pof-accordion pof-accordion-project">
+                  {accordionHeading(4, "Project & delivery", formData.project_number || "Project and delivery details")}
+                  <div id="po-accordion-content-4" className="pof-accordion-content" hidden={!expandedSections.has(4)}>
+                    {scopeProjectsCard}
+                    <section
+                      className="pof-card"
+                      aria-labelledby="po-invoicing-heading"
+                    >
+                      <div className="pof-card-heading">
+                        <span className="pof-card-icon">
+                          <DocumentTextIcon />
+                        </span>
+                        <h3 id="po-invoicing-heading">Invoicing</h3>
+                      </div>
+                      <div className="pof-card-body pof-field-grid">
+                        <div className="pof-field-row">
+                          <label htmlFor="po-invoicing-attn">
+                            Invoicing Attention
+                          </label>
+                          <input
+                            id="po-invoicing-attn"
+                            type="text"
+                            name="invoicing_attn"
+                            aria-label="Invoicing Attn"
+                            value={formData.invoicing_attn}
+                            readOnly
+                          />
+                        </div>
+                        <div className="pof-field-row">
+                          <label htmlFor="po-company-fax">Company Fax</label>
+                          <input
+                            id="po-company-fax"
+                            type="text"
+                            name="company_fax"
+                            aria-label="Company Fax"
+                            value={formData.company_fax}
+                            onChange={handleChange}
+                          />
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </section>
 
-                {/* Section 4: all PO attachments are managed in this tab only. */}
-                {currentSection === 4 && (
+                <section className="pof-accordion pof-accordion-attachments">
+                  {accordionHeading(5, "Attachments", `${attachmentSlots.length} file${attachmentSlots.length === 1 ? "" : "s"}`)}
+                  <div id="po-accordion-content-5" className="pof-accordion-content" hidden={!expandedSections.has(5)}>
+                {/* PO attachments are managed in this section. */}
+                {expandedSections.has(5) && (
                   <div className="space-y-4">
                     <div>
                       <h3 className="border-b pb-2 text-lg font-semibold text-gray-900">
@@ -4485,98 +4473,46 @@ const PurchaseOrderForm = ({
                     </section>
                   </div>
                 )}
+                  </div>
+                </section>
+                <section className="pof-accordion pof-accordion-approval">
+                  {accordionHeading(6, "Approval & review", formData.approval_log?.[0]?.approver || "Approver not selected")}
+                  <div id="po-accordion-content-6" className="pof-accordion-content" hidden={!expandedSections.has(6)}>
+                    <div className="pof-approval-summary" aria-label="Approval ownership">
+                      <div className="pof-approval-summary-head"><span>Approver</span><span>Role</span><span>Status</span></div>
+                      {(formData.approval_log || []).map((entry, index) => {
+                        const employee = approvalEmployees.find((candidate) => String(candidate.id) === String(entry.user_id));
+                        return <div className="pof-approval-summary-row" key={`approval-summary-${index}`}>
+                          <span>{entry.approver || entry.user_name || "Unassigned"}</span>
+                          <span>{employee ? employeeDesignation(employee) || entry.stage || "Final management approver" : entry.stage || "Final management approver"}</span>
+                          <span>{String(formData.status || "draft").toLowerCase() === "draft" ? "Not requested" : entry.status || "Not recorded"}</span>
+                        </div>;
+                      })}
+                    </div>
+                    {approvalCards}
+                  </div>
+                </section>
               </div>
             </div>
             <footer className="pof-actionbar">
-              <button
-                type="button"
-                className="pof-button pof-cancel"
-                onClick={handleCancel}
-                disabled={busy}
-              >
-                Cancel
-              </button>
-              <span
-                className={`pof-validation-state ${validationIssues.length ? "has-issues" : ""}`}
-                role="status"
-              >
-                {validationIssues.length ? (
-                  <AlertCircle />
-                ) : (
-                  <CheckCircleIcon />
-                )}
+              <button type="button" className="pof-button pof-cancel" onClick={handleCancel} disabled={busy}>Cancel</button>
+              <div className={`pof-validation-state ${validationIssues.length ? "has-issues" : ""}`} role="status">
+                {validationIssues.length ? <AlertCircle /> : <CheckCircleIcon />}
                 {validationIssues.length
-                  ? `${validationIssues.length} required item${validationIssues.length === 1 ? "" : "s"} remaining`
+                  ? <><span>{validationIssues.length} field{validationIssues.length === 1 ? "" : "s"} need attention</span><button type="button" className="pof-validation-link" onClick={() => openValidationIssue(validationIssues[0])}>Go to field</button></>
                   : "Required fields complete"}
-              </span>
+              </div>
               <div className="pof-footer-actions">
-                {currentSection > 1 && (
-                  <button
-                    type="button"
-                    className="pof-button"
-                    onClick={() => openSection(currentSection - 1)}
-                  >
-                    <ArrowLeft />
-                    Previous
-                  </button>
-                )}
-                <button
-                  type="submit"
-                  className="pof-button"
-                  disabled={busy || !hasRequiredRequisition || poNumberLoading}
-                >
-                  <SaveIcon />
-                  {submitLoading
-                    ? uploadProgress
-                      ? `Uploading ${uploadProgress}%`
-                      : "Saving…"
-                    : editData
-                      ? "Save changes"
-                      : "Save draft"}
+                <button type="button" className="pof-button" onClick={(event) => handleSubmit(event, false)} disabled={busy || !hasRequiredRequisition || poNumberLoading}>
+                  <SaveIcon /> {submitLoading ? (uploadProgress ? `Uploading ${uploadProgress}%` : "Saving...") : editData ? "Save changes" : "Save draft"}
                 </button>
-                {currentSection < 4 ? (
-                  <button
-                    type="button"
-                    className="pof-button pof-primary"
-                    disabled={!hasRequiredRequisition}
-                    onClick={() => openSection(currentSection + 1)}
-                  >
-                    Continue <ArrowRight />
-                  </button>
-                ) : (
-                  (!editData || editData.status === "draft") && (
-                    <button
-                      type="button"
-                      className="pof-button pof-primary"
-                      disabled={
-                        busy ||
-                        !hasRequiredRequisition ||
-                        poNumberLoading ||
-                        editData?.can_send_to_vendor !== true
-                      }
-                      aria-describedby={
-                        editData?.can_send_to_vendor !== true
-                          ? "po-form-send-block-reason"
-                          : undefined
-                      }
-                      onClick={(event) => handleSubmit(event, true)}
-                    >
-                      {submitLoading ? "Sending…" : "SAVE"}
-                      <ArrowRight />
-                    </button>
-                  )
-                )}
               </div>
             </footer>
           </form>
         </section>
-        <PurchaseOrderPreviewPane
-          formData={formData}
-          files={previewFiles}
-          issues={validationIssues}
-          onIssueClick={openValidationIssue}
-          orderId={editData?.id || draftId}
-        />
+        <aside className="pof-preview-column" aria-label="Purchase order preview">
+          <PurchaseOrderPreviewPane formData={formData} files={previewFiles} issues={validationIssues} onIssueClick={openValidationIssue} orderId={editData?.id || draftId} />
+        </aside>
       </div>
     </div>
   );
