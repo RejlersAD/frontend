@@ -1,4 +1,5 @@
 import apiClient from './api.service'
+import { deleteUserAiKey } from './sldService'
 
 // AI model hub endpoints (contract: ai-model-hub-contract.md).
 // Base path maps to /api/v1/rbac/admin/ai/ on the server.
@@ -17,7 +18,10 @@ export const createCredential = body => unwrap(apiClient.post(`${ROOT}credential
 export const testSavedCredential = id => unwrap(apiClient.post(`${ROOT}credentials/${id}/test`, {}, options))
 export const rotateCredential = (id, secret) => unwrap(apiClient.post(`${ROOT}credentials/${id}/rotate`, { secret }, options))
 export const revokeCredential = id => unwrap(apiClient.delete(`${ROOT}credentials/${id}`, options))
-export const deleteCredential = id => unwrap(apiClient.delete(`${ROOT}credentials/${id}`, { ...options, params: { hard: 1 } }))
+// Personal (BYOK) rows live in the legacy per-user key store, not the hub table.
+export const deleteCredential = (id, row) => row?.scope === 'personal'
+  ? deleteUserAiKey()
+  : unwrap(apiClient.delete(`${ROOT}credentials/${id}`, { ...options, params: { hard: 1 } }))
 
 export const listRoutes = signal => unwrap(apiClient.get(`${ROOT}routes`, { ...options, signal }))
 export const saveRoute = (taskId, chain) => unwrap(apiClient.put(`${ROOT}routes/${encodeURIComponent(taskId)}`, { chain }, options))

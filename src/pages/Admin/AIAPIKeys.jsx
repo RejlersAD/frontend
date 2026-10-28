@@ -411,9 +411,11 @@ function CredentialsTab({ data, storageConfigured, onTest, onRotate, onRevoke, o
               <td><span className={`rd-pill ${tone}`}>{label}</span>{row.last_test_model && <div className="rd-mono rd-text-muted" style={{ fontSize: 'var(--rd-text-caption)' }}>{row.last_test_model}</div>}</td>
               <td>{row.rotate_days ? `Every ${row.rotate_days} days` : 'Never'}</td>
               <td><div className="aim-row-actions">
-                <button type="button" className="rd-btn rd-btn-ghost rd-btn-sm" disabled={!storageConfigured} onClick={() => onTest(row)}>Test<span className="aim-sr"> {row.name}</span></button>
-                <button type="button" className="rd-btn rd-btn-ghost rd-btn-sm" disabled={!storageConfigured} onClick={() => onRotate(row)}>Rotate<span className="aim-sr"> {row.name}</span></button>
-                <button type="button" className="rd-btn rd-btn-ghost rd-btn-sm" disabled={!storageConfigured} onClick={() => onRevoke(row)}>Revoke<span className="aim-sr"> {row.name}</span></button>
+                {row.scope !== 'personal' && <>
+                  <button type="button" className="rd-btn rd-btn-ghost rd-btn-sm" disabled={!storageConfigured} onClick={() => onTest(row)}>Test<span className="aim-sr"> {row.name}</span></button>
+                  <button type="button" className="rd-btn rd-btn-ghost rd-btn-sm" disabled={!storageConfigured} onClick={() => onRotate(row)}>Rotate<span className="aim-sr"> {row.name}</span></button>
+                  <button type="button" className="rd-btn rd-btn-ghost rd-btn-sm" disabled={!storageConfigured} onClick={() => onRevoke(row)}>Revoke<span className="aim-sr"> {row.name}</span></button>
+                </>}
                 <button type="button" className="rd-btn rd-btn-ghost rd-btn-sm aim-danger" onClick={() => onDelete(row)}>Delete<span className="aim-sr"> {row.name}</span></button>
               </div></td>
             </tr>
@@ -749,7 +751,7 @@ function ModelHub() {
     setDialog(null); refreshAfterChange()
   })
   const deleteCredential = () => credentialAction(async () => {
-    await Hub.deleteCredential(dialog.credential.id)
+    await Hub.deleteCredential(dialog.credential.id, dialog.credential)
     toast.success(`Credential deleted for ${dialog.credential.name}.`)
     setDialog(null); refreshAfterChange()
   })
