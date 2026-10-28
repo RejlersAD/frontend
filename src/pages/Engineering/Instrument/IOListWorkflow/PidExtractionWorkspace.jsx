@@ -14,7 +14,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle, Check, CheckCircle2, ChevronLeft, Download, FileText,
-  Loader2, Lock, Sparkles, Trash2, Upload, X,
+  Loader2, Lock, Search, Sparkles, Trash2, Upload, X,
 } from 'lucide-react'
 import ioExtractionService from '../../../../services/ioExtractionService'
 import ioListWorkflowService from '../../../../services/ioListWorkflowService'
@@ -658,6 +658,7 @@ function ConnectKeyModal({ onClose, onTest, onSave, testState }) {
 
 /* Results */
 function ResultsView({ summary, activeTab, setActiveTab, tabData, sheetFilter, setSheetFilter, onDecide, onAskAi, onEditRow, exportWorkbook }) {
+  const [search, setSearch] = useState('')
   const kpis = [
     ['Tags read', summary.tags, `${summary.confirmed || 0} confirmed by smart tags · ${summary.sheets || 0} sheets`],
     ['Field I/O rows', summary.fieldIO, summary.derived ? `+${summary.derived} derived from valve typical` : ''],
@@ -703,6 +704,16 @@ function ResultsView({ summary, activeTab, setActiveTab, tabData, sheetFilter, s
           ))}
         </div>
         <div className="flex items-center gap-2 pb-1">
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              className="rd-input text-xs pl-7 w-48"
+              placeholder="Search records…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
           <select className="rd-input text-xs" value={sheetFilter} onChange={(e) => setSheetFilter(e.target.value)}>
             <option value="">All sheets</option>
             {[...Array(summary.sheets || 0)].map((_, i) => <option key={i + 1} value={i + 1}>Sheet {i + 1}</option>)}
@@ -716,7 +727,7 @@ function ResultsView({ summary, activeTab, setActiveTab, tabData, sheetFilter, s
       {!tabData ? (
         <div className="p-6 text-center text-slate-400 text-sm"><Loader2 className="w-5 h-5 animate-spin inline" /></div>
       ) : (
-        <ResultTable tab={activeTab} data={tabData} onDecide={onDecide} onAskAi={onAskAi} onEditRow={onEditRow} />
+        <ResultTable tab={activeTab} data={tabData} search={search} onDecide={onDecide} onAskAi={onAskAi} onEditRow={onEditRow} />
       )}
     </div>
   )
@@ -743,8 +754,14 @@ function EditableCell({ value, onSave }) {
   )
 }
 
-function ResultTable({ tab, data, onDecide, onAskAi, onEditRow }) {
-  const rows = data.rows || []
+/* Case-insensitive client-side search across all values of a record */
+const recordMatches = (rec, q) =>
+  JSON.stringify(rec ?? '').toLowerCase().includes(q)
+
+function ResultTable({ tab, data, onDecide, onAskAi, onEditRow, search = '' }) {
+  const q = search.trim().toLowerCase()
+  const allRows = data.rows || []
+  const rows = q ? allRows.filter((r) => recordMatches(r, q)) : allRows
   if (tab === 'io') {
     return (
       <DataTable
@@ -838,7 +855,7 @@ function ResultTable({ tab, data, onDecide, onAskAi, onEditRow }) {
         </div>
         <DataTable
           cols={['Tag (no vendor record)']}
-          rows={(data.noRecord || []).map((t) => [t])}
+          rows={(data.noRecord || []).filter((t) => !q || recordMatches(t, q)).map((t) => [t])}
           empty="Every row matched a vendor record."
         />
       </div>
