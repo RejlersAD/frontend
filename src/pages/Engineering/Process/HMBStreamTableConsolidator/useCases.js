@@ -88,7 +88,7 @@ export function useCases() {
     }))
   }, [])
 
-  const setCellValue = useCallback((caseId, streamName, propertyName, raw) => {
+  const setCellValue = useCallback((caseId, streamName, propertyName, raw, section, unit) => {
     setCases((current) => current.map((item) => {
       if (item.id !== caseId) return item
       return {
@@ -98,7 +98,11 @@ export function useCases() {
           return {
             ...stream,
             properties: stream.properties.map((property) => {
-              if (property.name !== propertyName) return property
+              if (
+                property.name !== propertyName ||
+                (section !== undefined && (property.section || '') !== section) ||
+                (unit !== undefined && (property.unit || '') !== unit)
+              ) return property
               const trimmed = raw.trim()
               const numeric = trimmed === '' ? null : Number(trimmed)
               const value = trimmed === '' ? null : Number.isFinite(numeric) ? numeric : trimmed

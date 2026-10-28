@@ -48,7 +48,7 @@ test('linked PR retains an independent pending final PO signer and sends no PR c
   await selectRecommendation(page)
   await expect(selector(page)).toBeEnabled()
   await expect(selector(page)).toHaveValue('11')
-  await expect(selector(page).locator('option')).toHaveCount(2)
+  await expect(selector(page).locator('option')).toHaveCount(4)
   await expect(selector(page)).toContainText('CEO, Rejlers Abu Dhabi / Senior VP, Middle East Region')
   await expect(page.locator('#buyer-reference-options-1 option[value="Richa Hannah Thomas"]')).toHaveCount(1)
   expect(state.requests.filter(request => request.path.endsWith('/get_approvers/')).map(request => request.query.role).sort()).toEqual(['any_active', 'po_final_signoff'])
@@ -84,8 +84,10 @@ test('linked PR retains an independent pending final PO signer and sends no PR c
 test('new PO saves without an approver when no eligible signatory is available', async ({ page }) => {
   const state = await orderFormHarness(page, { prepare: fixture => { fixture.finalSignatories = [] } })
   await selectRecommendation(page)
-  await expect(selector(page)).toBeDisabled()
-  await expect(page.locator('#po-signatory-status')).toContainText('You can save the PO without an approver.')
+  await expect(selector(page)).toBeEnabled()
+  await expect(selector(page)).toHaveValue('11')
+  await expect(page.locator('#po-signatory-status')).toContainText('This draft can be saved.')
+  await selector(page).selectOption('')
   await save(page)
   await expectSavedEditor(page, state)
   expect(savedWrites(state)).toHaveLength(1)
@@ -107,19 +109,20 @@ test('draft save is allowed when a previously selected signatory is no longer el
   isolate(state)
 })
 
-test('approver selector uses the dynamic eligible signatory directory', async ({ page }) => {
-  const employee = { id: 12, full_name: 'Dynamic CEO', email: 'dynamic@example.test', job_title: 'CEO', is_active: true }
+test('PO creator can change the default approver to any active employee', async ({ page }) => {
+  const employee = { id: 12, full_name: 'Dynamic Employee', email: 'dynamic@example.test', job_title: 'Project Engineer', is_active: true }
   const state = await orderFormHarness(page, { handleRequest: async (route, _fixture, url) => {
-    if (url.pathname !== '/api/v1/procurement/requisitions/get_approvers/' || url.searchParams.get('role') !== 'po_final_signoff') return false
+    if (url.pathname !== '/api/v1/procurement/requisitions/get_approvers/' || url.searchParams.get('role') !== 'any_active') return false
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ users: [employee] }) })
     return true
   } })
   await selectRecommendation(page)
   await expect(selector(page)).toBeEnabled()
   await selector(page).selectOption('12')
+  await expect(page.locator('#po-signatory-status')).toContainText('This draft can be saved.')
   await save(page)
   await expectSavedEditor(page, state)
-  expect(savedWrites(state)[0].body.approval_log[0]).toMatchObject({ user_id: 12, approver: 'Dynamic CEO' })
+  expect(savedWrites(state)[0].body.approval_log[0]).toMatchObject({ user_id: 12, approver: 'Dynamic Employee' })
   isolate(state)
 })
 

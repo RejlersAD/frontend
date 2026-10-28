@@ -1,12 +1,16 @@
 export interface StreamProperty {
   name: string
   unit: string
+  section?: string
+  phase?: string
   value: number | string | null
   edited: boolean
 }
 
 export interface Stream {
   name: string
+  description?: string
+  pfdNo?: string
   included: boolean
   properties: StreamProperty[]
 }
@@ -16,6 +20,8 @@ export interface CaseData {
   name: string
   fileName: string
   sheetName: string
+  sheetNames?: string[]
+  templateTitle?: string
   streams: Stream[]
   color: string
 }

@@ -311,7 +311,11 @@ const NotificationDropdown = forwardRef(({
                                     onNavigate?.(notification)
                                   }}
                                 >
-                                  {actionTarget.isRecordPreview ? 'Preview' : notification.action_label || 'View details'}<ArrowRightIcon aria-hidden="true" />
+                                  {actionTarget.isRecordPreview
+                                    ? notification.metadata?.requires_action === true
+                                      ? notification.action_label || 'Review and approve'
+                                      : 'Preview'
+                                    : notification.action_label || 'View details'}<ArrowRightIcon aria-hidden="true" />
                                 </Link>
                               )}
                               {busy && <span className="notification-drawer__row-status" role="status">Updating notification…</span>}
