@@ -81,7 +81,7 @@ function sheetToGrid(ws: XLSX.WorkSheet): Grid {
     header: 1,
     raw: true,
     defval: null,
-    blankrows: false,
+    blankrows: true,
   }) as Grid
   let maxCol = 0
   for (const row of aoa) {
@@ -261,7 +261,8 @@ function mergeTransposed(tables: TransposedTable[]): Stream[] {
 
 function findHeuristicAnchor(grid: Grid): { headerRow: number; labelCol: number } | null {
   let best: { col: number; firstRow: number; score: number } | null = null
-  const maxCols = Math.min(6, ...grid.map((r) => r.length))
+  const populatedRows = grid.filter((row) => row.length > 0)
+  const maxCols = populatedRows.length ? Math.min(6, Math.max(...populatedRows.map((row) => row.length))) : 0
   for (let c = 0; c < maxCols; c++) {
     let score = 0
     let firstRow = -1
@@ -278,36 +279,66 @@ function findHeuristicAnchor(grid: Grid): { headerRow: number; labelCol: number 
   return { headerRow: Math.max(0, best.firstRow - 1), labelCol: best.col }
 }
 
+function findMasterTemplateAnchor(grid: Grid): { headerRow: number; labelCol: number } | null {
+  for (let row = 0; row < Math.min(grid.length - 1, 12); row++) {
+    if (
+      norm(grid[row]?.[0]) === 'phase' &&
+      norm(grid[row]?.[1]) === 'property' &&
+      norm(grid[row + 1]?.[2]).includes('pfd')
+    ) return { headerRow: row + 1, labelCol: 1 }
+  }
+  return null
+}
+
 function extractClassic(
   grid: Grid,
   headerRow: number,
   labelCol: number,
+  isMasterTemplate = false,
 ): Stream[] {
   let unitCol: number | null = null
   let streamStart = labelCol + 1
-  if (norm(grid[headerRow][streamStart]) === 'unit' || norm(grid[headerRow][streamStart]) === 'units') {
+  if (isMasterTemplate) {
+    unitCol = labelCol + 1
+    streamStart = labelCol + 2
+  } else if (norm(grid[headerRow][streamStart]) === 'unit' || norm(grid[headerRow][streamStart]) === 'units') {
     unitCol = streamStart
     streamStart = labelCol + 2
   }
 
-  const streamCols: { col: number; name: string }[] = []
+  const streamCols: { col: number; name: string; description?: string; pfdNo?: string }[] = []
   for (let c = streamStart; c < (grid[headerRow]?.length ?? 0); c++) {
     const v = grid[headerRow][c]
-    if (v !== null && String(v).trim() !== '') {
-      streamCols.push({ col: c, name: String(v).trim() })
+    const streamName = isMasterTemplate ? grid[0]?.[c] : v
+    if (streamName !== null && streamName !== undefined && String(streamName).trim() !== '') {
+      streamCols.push({
+        col: c,
+        name: String(streamName).trim(),
+        ...(isMasterTemplate ? {
+          description: String(grid[1]?.[c] ?? '').trim(),
+          pfdNo: String(v ?? '').trim(),
+        } : {}),
+      })
     }
   }
   if (streamCols.length === 0) return []
 
-  const streams: Stream[] = streamCols.map(({ name }) => ({
+  const streams: Stream[] = streamCols.map(({ name, description, pfdNo }) => ({
     name,
+    ...(description ? { description } : {}),
+    ...(pfdNo ? { pfdNo } : {}),
     included: true,
     properties: [],
   }))
 
+  let activeSection = ''
+  const sectionCol = isMasterTemplate ? labelCol - 1 : null
   for (let r = headerRow + 1; r < grid.length; r++) {
     const rawLabel = grid[r][labelCol]
     if (typeof rawLabel !== 'string' || !rawLabel.trim()) continue
+    if (sectionCol !== null && typeof grid[r][sectionCol] === 'string' && String(grid[r][sectionCol]).trim()) {
+      activeSection = String(grid[r][sectionCol]).trim()
+    }
     // stop only at a genuine second table header: stream alias + stream names to the right
     if (
       STREAM_HEADER_ALIASES.includes(norm(rawLabel)) &&
@@ -316,16 +347,17 @@ function extractClassic(
       break
     const { name, unit: inlineUnit } = splitUnit(rawLabel)
     const unit = inlineUnit || (unitCol !== null ? String(grid[r][unitCol] ?? '').trim() : '')
+    const propertySection = /^\*+/.test(name) ? '__template-divider__' : activeSection
 
     const values = streamCols.map(({ col }) => coerceValue(grid[r][col]))
-    if (values.every((v) => v === null)) continue // section header row (CONDITIONS, PROPERTIES…)
+    if (values.every((v) => v === null) && !isMasterTemplate) continue // section header row (CONDITIONS, PROPERTIES…)
 
     values.forEach((value, i) => {
-      streams[i].properties.push({ name, unit, value, edited: false })
+      streams[i].properties.push({ name, unit, ...(propertySection ? { section: propertySection } : {}), value, edited: false })
     })
   }
 
-  return streams.filter((s) => s.properties.some((p) => p.value !== null))
+  return isMasterTemplate ? streams : streams.filter((s) => s.properties.some((p) => p.value !== null))
 }
 
 /* ------------------------------------------------------------------ */
@@ -333,12 +365,104 @@ function extractClassic(
 export interface ParseResult {
   streams: Stream[]
   sheetName: string
+  sheetNames?: string[]
+  templateTitle?: string
 }
 
 const SHEET_NAME_HINT = /stream|balance|hmb|material|overall|summary|condition|properties/i
 
 /** Core HMB conditions — a sheet holding these is the main stream table, not a composition dump */
 const CORE_PROPS = ['temperature', 'pressure', 'molar flow', 'mass flow', 'heat flow', 'enthalpy']
+
+const normalizedKey = (value: unknown): string =>
+  String(value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+
+function mergeSheetRows(target: Stream[], source: Stream[]): void {
+  const byName = new Map(target.map((stream) => [stream.name, stream]))
+  for (const sourceStream of source) {
+    const stream = byName.get(sourceStream.name)
+    if (!stream) continue
+    for (const property of sourceStream.properties) {
+      const key = `${normalizedKey(property.section)}|${normalizedKey(property.name)}|${normalizedKey(property.unit)}`
+      const existing = stream.properties.find((item) =>
+        `${normalizedKey(item.section)}|${normalizedKey(item.name)}|${normalizedKey(item.unit)}` === key,
+      )
+      if (!existing) stream.properties.push(property)
+      else if (existing.value === null && property.value !== null) Object.assign(existing, property)
+    }
+  }
+}
+
+function extractLongPhaseRows(grid: Grid): Stream[] | null {
+  const headerRow = grid.slice(0, 8).findIndex((row) => norm(row[0]) === 'stream' && norm(row[1]) === 'phase')
+  if (headerRow < 0) return null
+  const headers = grid[headerRow].map((value) => String(value ?? '').trim())
+  const units = grid[headerRow + 1] || []
+  const streamCol = headers.findIndex((value) => norm(value) === 'stream')
+  const phaseCol = headers.findIndex((value) => norm(value) === 'phase')
+  const streams = new Map<string, Stream>()
+  for (let rowIndex = headerRow + 2; rowIndex < grid.length; rowIndex++) {
+    const row = grid[rowIndex]
+    const streamName = String(row[streamCol] ?? '').trim()
+    const phase = String(row[phaseCol] ?? '').trim()
+    if (!streamName || !phase) continue
+    let stream = streams.get(streamName)
+    if (!stream) {
+      stream = { name: streamName, included: true, properties: [] }
+      streams.set(streamName, stream)
+    }
+    const section = /vapou?r/i.test(phase) ? 'Vapour' : /aqueous/i.test(phase) ? 'Heavy Liquid' : /liquid/i.test(phase) ? 'Light Liquid' : ''
+    for (let col = 0; col < headers.length; col++) {
+      const name = headers[col]
+      if (!name || col === streamCol || col === phaseCol || row[col] === null || row[col] === undefined || row[col] === '') continue
+      const propertyName = name === 'Std Ideal Liq Vol Flow' ? 'Standard Ideal Liquid Volume Flow' : name
+      stream.properties.push({
+        name: propertyName,
+        unit: stripParens(String(units[col] ?? '')),
+        ...(section ? { section } : {}),
+        phase,
+        value: coerceValue(row[col]),
+        edited: false,
+      })
+    }
+  }
+  return streams.size ? [...streams.values()] : null
+}
+
+function extractCompositions(grid: Grid): Stream[] | null {
+  const headerRow = grid.slice(0, 8).findIndex((row) =>
+    norm(row[0]) === 'stream' && norm(row[1]) === 'phase' && row.some((value) => norm(value) === 'component'),
+  )
+  if (headerRow < 0) return null
+  const headers = grid[headerRow].map((value) => String(value ?? '').trim())
+  const units = grid[headerRow + 1] || []
+  const streamCol = headers.findIndex((value) => norm(value) === 'stream')
+  const phaseCol = headers.findIndex((value) => norm(value) === 'phase')
+  const componentCol = headers.findIndex((value) => norm(value) === 'component')
+  const fractionCol = headers.findIndex((value) => norm(value) === 'mole fraction')
+  if (fractionCol < 0) return null
+  const streams = new Map<string, Stream>()
+  for (let rowIndex = headerRow + 2; rowIndex < grid.length; rowIndex++) {
+    const row = grid[rowIndex]
+    const streamName = String(row[streamCol] ?? '').trim()
+    const phase = String(row[phaseCol] ?? '').trim()
+    const component = String(row[componentCol] ?? '').trim()
+    if (!streamName || !component || !/overall/i.test(phase)) continue
+    let stream = streams.get(streamName)
+    if (!stream) {
+      stream = { name: streamName, included: true, properties: [] }
+      streams.set(streamName, stream)
+    }
+    stream.properties.push({
+      name: component,
+      unit: stripParens(String(units[fractionCol] ?? 'mol frac.')) || 'mol frac.',
+      section: 'Composition',
+      value: coerceValue(row[fractionCol]),
+      edited: false,
+    })
+  }
+  return streams.size ? [...streams.values()] : null
+}
 
 function coreCount(streams: Stream[]): number {
   const names = new Set<string>()
@@ -364,13 +488,37 @@ export function parseWorkbook(buffer: ArrayBuffer, fileName: string): ParseResul
   const wb = XLSX.read(buffer, { type: 'array' })
 
   const transposedTables: TransposedTable[] = []
-  const classicCandidates: { streams: Stream[]; sheetName: string; score: number }[] = []
+  const classicCandidates: { streams: Stream[]; sheetName: string; score: number; templateTitle?: string }[] = []
+  const companionSheets: { sheetName: string; streams: Stream[] }[] = []
 
   for (const sheetName of wb.SheetNames) {
     const ws = wb.Sheets[sheetName]
     if (!ws) continue
     const grid = sheetToGrid(ws)
     if (grid.length < 3) continue
+
+    if (/^phase properties$/i.test(sheetName)) {
+      const streams = extractLongPhaseRows(grid)
+      if (streams) companionSheets.push({ sheetName, streams })
+      continue
+    }
+    if (/^compositions?$/i.test(sheetName)) {
+      const streams = extractCompositions(grid)
+      if (streams) companionSheets.push({ sheetName, streams })
+      continue
+    }
+
+    const masterAnchor = findMasterTemplateAnchor(grid)
+    if (masterAnchor) {
+      const streams = extractClassic(grid, masterAnchor.headerRow, masterAnchor.labelCol, true)
+      if (valueCount(streams) > 0) classicCandidates.push({
+        streams,
+        sheetName,
+        score: scoreCandidate(streams, sheetName),
+        templateTitle: String(grid[0]?.[0] ?? '').trim() || undefined,
+      })
+      continue
+    }
 
     const anchor = findAnchor(grid)
     if (anchor?.kind === 'stream') {
@@ -416,7 +564,13 @@ export function parseWorkbook(buffer: ArrayBuffer, fileName: string): ParseResul
       `No stream table found in "${fileName}". Expected stream names in a header row or column, with properties such as Temperature, Pressure or flows.`,
     )
   }
-  return { streams: best.streams, sheetName: best.sheetName }
+  for (const companion of companionSheets) mergeSheetRows(best.streams, companion.streams)
+  return {
+    streams: best.streams,
+    sheetName: best.sheetName,
+    sheetNames: [best.sheetName, ...companionSheets.map((sheet) => sheet.sheetName)],
+    templateTitle: best.templateTitle,
+  }
 }
 
 let caseSeq = 0
@@ -431,6 +585,7 @@ export function makeCase(parsed: ParseResult, fileName: string): CaseData {
     name: base,
     fileName,
     sheetName: parsed.sheetName,
+    ...(parsed.templateTitle ? { templateTitle: parsed.templateTitle } : {}),
     streams: parsed.streams,
     color: CASE_COLORS[caseSeq % CASE_COLORS.length],
   }

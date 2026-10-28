@@ -5,11 +5,15 @@ import {
   AlertTriangle,
   ArrowDownUp,
   CheckCircle2,
+  Database,
   Download,
   FileSpreadsheet,
-  FlaskConical,
+  Maximize2,
+  MoreHorizontal,
   PencilLine,
+  Plus,
   RotateCcw,
+  Save,
   Search,
   ShieldCheck,
   Table2,
@@ -137,12 +141,183 @@ const MAX_RATE_COLUMNS = [
   },
 ];
 
-function Dropzone({ importing, onImport, compact = false }) {
+const MASTER_REVIEW_ROWS = [
+  { section: "", name: "Temperature", unit: "F" },
+  { section: "", name: "Pressure", unit: "psig" },
+  { section: "", name: "Molecular Weight", unit: "<none>" },
+  { section: "", name: "Mass Flow", unit: "lb/hr" },
+  { section: "", name: "Vapour Fraction", unit: "<none>" },
+  { section: "Vapour", name: "Mass Flow", unit: "lb/hr" },
+  { section: "Vapour", name: "Std Gas Flow", unit: "MMSCFD" },
+  { section: "Vapour", name: "Actual Volume Flow", unit: "ft3/hr" },
+  { section: "Vapour", name: "Molecular Weight", unit: "<none>" },
+  { section: "Vapour", name: "Mass Density", unit: "lb/ft3" },
+  { section: "Vapour", name: "Viscosity", unit: "cP" },
+  { section: "Vapour", name: "Compressibility", unit: "<none>" },
+  { section: "Vapour", name: "Thermal Conductivity", unit: "Btu/hr-ft-F" },
+  { section: "Vapour", name: "Mass Heat Capacity", unit: "Btu/lb-F" },
+  { section: "Vapour", name: "Cp/Cv (Gamma)", unit: "<none>" },
+  { section: "Light Liquid", name: "Mass Flow", unit: "lb/hr" },
+  {
+    section: "Light Liquid",
+    name: "Standard Ideal Liquid Volume Flow",
+    unit: "barrel/day",
+  },
+  { section: "Light Liquid", name: "Actual Volume Flow", unit: "ft3/hr" },
+  { section: "Light Liquid", name: "Actual Volume Flow", unit: "barrel/day" },
+  { section: "Light Liquid", name: "Molecular Weight", unit: "<none>" },
+  { section: "Light Liquid", name: "Mass Density", unit: "lb/ft3" },
+  { section: "Light Liquid", name: "Viscosity", unit: "cP" },
+  {
+    section: "Light Liquid",
+    name: "Thermal Conductivity",
+    unit: "Btu/hr-ft-F",
+  },
+  { section: "Light Liquid", name: "Mass Heat Capacity", unit: "Btu/lb-F" },
+  { section: "Heavy Liquid", name: "Mass Flow", unit: "lb/hr" },
+  {
+    section: "Heavy Liquid",
+    name: "Standard Ideal Liquid Volume Flow",
+    unit: "barrel/day",
+  },
+  { section: "Heavy Liquid", name: "Actual Volume Flow", unit: "ft3/hr" },
+  { section: "Heavy Liquid", name: "Actual Volume Flow", unit: "barrel/day" },
+  { section: "Heavy Liquid", name: "Molecular Weight", unit: "<none>" },
+  { section: "Heavy Liquid", name: "Mass Density", unit: "lb/ft3" },
+  { section: "Heavy Liquid", name: "Viscosity", unit: "cP" },
+  {
+    section: "Heavy Liquid",
+    name: "Thermal Conductivity",
+    unit: "Btu/hr-ft-F",
+  },
+  { section: "Heavy Liquid", name: "Mass Heat Capacity", unit: "Btu/lb-F" },
+  ...[
+    "H2S",
+    "CO2",
+    "Nitrogen",
+    "Methane",
+    "Ethane",
+    "Propane",
+    "i-Butane",
+    "n-Butane",
+    "i-Pentane",
+    "n-Pentane",
+    "n-Hexane",
+    "Mcyclopentan",
+    "Benzene",
+    "Cyclohexane",
+    "n-Heptane",
+    "n-Octane",
+    "n-Nonane",
+    "n-Decane",
+    "Mubarraz-C7+_1*",
+    "HAIL-C7-C10_1*",
+    "HAIL-C11-C14_1*",
+    "HAIL-C15-C19_1*",
+    "HAIL-C20-C25_1*",
+    "HAIL-C26-C29_1*",
+    "HAIL-C30+_1*",
+    "ARGA-Undecane+*",
+    "ARGA-C7+*",
+    "ARGA-C10+*",
+    "ARGA-C12+*",
+    "ARGA-C20+*",
+    "ARGA-C30+*",
+    "ARGA-C36+*",
+    "H2O",
+    "TEGlycol",
+    "MDEAmine",
+  ].map((name) => ({ section: "Composition", name, unit: "mol frac." })),
+];
+
+function normalizeReviewValue(value) {
+  return String(value || "")
+    .replace(/\s*\[(Vapour|Light Liquid|Heavy Liquid)\]$/i, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function findMasterRowProperty(stream, row) {
+  if (row.section === "__template-divider__") return null;
+  const rowName = normalizeReviewValue(row.name);
+  const rowUnit = normalizeReviewValue(row.unit);
+  const sectionName = normalizeReviewValue(row.section);
+  const properties = stream.properties || [];
+  const exact = properties.find(
+    (property) =>
+      normalizeReviewValue(property.name) === rowName &&
+      normalizeReviewValue(property.unit) === rowUnit &&
+      (normalizeReviewValue(property.section) === sectionName ||
+        (!property.section && !sectionName)),
+  );
+  if (exact) return exact;
+
+  const aliasNames = {
+    "|vapour fraction|none": [
+      "Vapour / Phase Fraction",
+      "Vapor / Phase Fraction",
+    ],
+    "vapour|std gas flow": ["Std. Gas Flow", "Standard Gas Flow"],
+    "light liquid|standard ideal liquid volume flow": [
+      "Std Ideal Liq Vol Flow",
+      "Std. Ideal Liq Vol Flow",
+    ],
+    "light liquid|actual volume flow|ft3 hr": [
+      "Act. Liq. Flow",
+      "Act Liq Flow",
+    ],
+    "light liquid|actual volume flow|barrel day": ["Act. Volume Flow"],
+  };
+  const aliasKey = `${sectionName}|${rowName}${rowUnit ? `|${rowUnit}` : ""}`;
+  const aliases = aliasNames[aliasKey] || [];
+  const aliased = properties.find(
+    (property) =>
+      normalizeReviewValue(property.section) === sectionName &&
+      aliases.includes(property.name.replace(/\s*\[[^\]]+\]$/, "")) &&
+      (!rowUnit ||
+        rowUnit === "none" ||
+        normalizeReviewValue(property.unit) === rowUnit),
+  );
+  if (aliased) return aliased;
+
+  if (row.section === "Composition") {
+    return (
+      properties.find((property) => {
+        const normalizedName = normalizeReviewValue(property.name);
+        const propertyName = normalizedName.replace(/ mole fraction$/, "");
+        const isFraction =
+          /frac/.test(normalizeReviewValue(property.unit)) ||
+          / mole fraction$/.test(normalizedName);
+        return propertyName === rowName && isFraction;
+      }) || null
+    );
+  }
+  if (["Vapour", "Light Liquid", "Heavy Liquid"].includes(row.section)) {
+    return (
+      properties.find(
+        (property) =>
+          property.section === row.section &&
+          normalizeReviewValue(property.name) === rowName &&
+          normalizeReviewValue(property.unit) === rowUnit,
+      ) || null
+    );
+  }
+  return null;
+}
+
+function Dropzone({
+  importing,
+  onImport,
+  compact = false,
+  pickerRef: externalPickerRef,
+}) {
   const inputRef = useRef(null);
+  const activeInputRef = externalPickerRef || inputRef;
   const [dragging, setDragging] = useState(false);
 
   const openPicker = () => {
-    if (!importing) inputRef.current?.click();
+    if (!importing) activeInputRef.current?.click();
   };
 
   return (
@@ -171,7 +346,7 @@ function Dropzone({ importing, onImport, compact = false }) {
       }}
     >
       <input
-        ref={inputRef}
+        ref={activeInputRef}
         type="file"
         multiple
         accept={ACCEPTED_FILES}
@@ -187,12 +362,12 @@ function Dropzone({ importing, onImport, compact = false }) {
           {importing
             ? "Parsing workbooks…"
             : compact
-              ? "Add case workbooks"
+              ? "Drop files or browse"
               : "Drop HMB workbooks here"}
         </strong>
         <span>
           {compact
-            ? "XLSX, XLSM, XLS or CSV"
+            ? "XLSX · XLSM · XLS · CSV"
             : "or select files — one workbook per case"}
         </span>
       </div>
@@ -208,19 +383,50 @@ function CasePanel({
   onRemove,
   onRename,
   onImport,
+  onDemo,
 }) {
   const [editingId, setEditingId] = useState(null);
   const [draft, setDraft] = useState("");
+  const [query, setQuery] = useState("");
+  const pickerRef = useRef(null);
+  const visibleCases = cases.filter((item) =>
+    String(item.name || "")
+      .toLowerCase()
+      .includes(query.trim().toLowerCase()),
+  );
 
   return (
     <aside className="hmbc-case-panel" aria-label="Imported cases">
       <div className="hmbc-case-panel-title">
         <span>Cases</span>
-        <strong>{cases.length}</strong>
+        <div>
+          <strong>{cases.length}</strong>
+          <button
+            type="button"
+            className="hmbc-add-case"
+            onClick={() => pickerRef.current?.click()}
+            aria-label="Add case workbooks"
+          >
+            <Plus /> Add
+          </button>
+        </div>
       </div>
-      <Dropzone importing={importing} onImport={onImport} compact />
+      <Dropzone
+        importing={importing}
+        onImport={onImport}
+        compact
+        pickerRef={pickerRef}
+      />
+      <label className="hmbc-case-search">
+        <Search />
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search cases..."
+        />
+      </label>
       <div className="hmbc-case-list">
-        {cases.map((item) => {
+        {visibleCases.map((item) => {
           const valueCount = item.streams.reduce(
             (total, stream) =>
               total +
@@ -307,18 +513,20 @@ function CasePanel({
           );
         })}
       </div>
+      <button className="hmbc-load-demo" type="button" onClick={onDemo}>
+        <Database /> Load demo cases
+      </button>
       <div className="hmbc-privacy-note">
         <ShieldCheck aria-hidden="true" />
         <span>
-          <strong>Browser-only processing</strong>Files are not uploaded and
-          remain only for this session.
+          Source files: session only <i aria-label="Information">ⓘ</i>
         </span>
       </div>
     </aside>
   );
 }
 
-function CellEditor({ value, edited, onCommit }) {
+function CellEditor({ value, edited, onCommit, blankNull = false }) {
   const [editing, setEditing] = useState(false);
   if (!editing) {
     return (
@@ -328,7 +536,7 @@ function CellEditor({ value, edited, onCommit }) {
         onClick={() => setEditing(true)}
         title="Edit extracted value"
       >
-        {formatValue(value)}
+        {blankNull && value === null ? "" : formatValue(value)}
       </button>
     );
   }
@@ -354,28 +562,81 @@ function CellEditor({ value, edited, onCommit }) {
 }
 
 function ReviewView({ caseData, onToggleStream, onSetCell }) {
-  const properties = useMemo(() => {
-    const rows = [];
-    const seen = new Set();
-    for (const stream of caseData.streams) {
-      for (const property of stream.properties) {
-        const key = property.name.toLowerCase();
-        if (!seen.has(key)) {
-          seen.add(key);
-          rows.push({ name: property.name, unit: property.unit });
-        }
-      }
-    }
-    return rows;
-  }, [caseData]);
+  const [query, setQuery] = useState("");
+  const [showUnits, setShowUnits] = useState(true);
+  const [expanded, setExpanded] = useState(false);
+  const properties = MASTER_REVIEW_ROWS;
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleProperties = properties;
+  const visibleStreams = caseData.streams.filter((stream) =>
+    stream.name.toLowerCase().includes(normalizedQuery),
+  );
+  const sectionRowSpans = new Map();
+  for (const row of visibleProperties)
+    sectionRowSpans.set(
+      row.section,
+      (sectionRowSpans.get(row.section) || 0) + 1,
+    );
 
   return (
-    <section className="hmbc-view" aria-labelledby="hmbc-review-title">
+    <section
+      className={`hmbc-view${expanded ? " is-expanded" : ""}`}
+      aria-labelledby="hmbc-review-title"
+    >
+      <div className="hmbc-review-toolbar">
+        <strong>Review extracted values</strong>
+        <label className="hmbc-sheet-select">
+          <span>Sheets</span>
+          <select
+            value={
+              caseData.sheetNames?.join(", ") || caseData.sheetName || "Streams"
+            }
+            onChange={() => {}}
+            aria-label="Workbook sheets"
+          >
+            <option>
+              {caseData.sheetNames?.join(", ") ||
+                caseData.sheetName ||
+                "Streams"}
+            </option>
+          </select>
+        </label>
+        <label className="hmbc-review-search">
+          <Search />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search streams..."
+          />
+        </label>
+        <label className="hmbc-units-select">
+          <span>Units</span>
+          <select value="source" onChange={() => {}} aria-label="Units">
+            <option value="source">Source</option>
+          </select>
+        </label>
+        <button
+          className="hmbc-columns-button"
+          type="button"
+          aria-pressed={showUnits}
+          onClick={() => setShowUnits((value) => !value)}
+        >
+          <Table2 /> Columns
+        </button>
+        <button
+          className="hmbc-expand-button"
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+          aria-label={expanded ? "Exit expanded table" : "Expand table"}
+        >
+          <Maximize2 />
+        </button>
+      </div>
       <div className="hmbc-view-heading">
         <div>
           <h2 id="hmbc-review-title">{caseData.name}</h2>
           <p>
-            Sheet “{caseData.sheetName}” ·{" "}
+            Sheets “{caseData.sheetNames?.join(", ") || caseData.sheetName}” ·{" "}
             {caseData.streams.filter((stream) => stream.included).length} of{" "}
             {caseData.streams.length} streams included
           </p>
@@ -394,10 +655,12 @@ function ReviewView({ caseData, onToggleStream, onSetCell }) {
         <table className="hmbc-table hmbc-review-table">
           <thead>
             <tr>
-              <th className="is-sticky">Property</th>
-              <th>Unit</th>
-              {caseData.streams.map((stream) => (
-                <th key={stream.name}>
+              <th className="hmbc-case-template-title" colSpan={2} rowSpan={2}>
+                {caseData.templateTitle || caseData.name}
+              </th>
+              <th>Stream</th>
+              {visibleStreams.map((stream) => (
+                <th className="hmbc-stream-id" key={stream.name}>
                   <label className="hmbc-stream-toggle">
                     <span className={!stream.included ? "is-disabled" : ""}>
                       {stream.name}
@@ -411,50 +674,124 @@ function ReviewView({ caseData, onToggleStream, onSetCell }) {
                 </th>
               ))}
             </tr>
+            <tr>
+              <th>Description</th>
+              {visibleStreams.map((stream) => (
+                <th className="hmbc-stream-description" key={stream.name}>
+                  {stream.description || "—"}
+                </th>
+              ))}
+            </tr>
+            <tr>
+              <th className="hmbc-phase-heading" rowSpan={2}>
+                Phase
+              </th>
+              <th className="hmbc-property-heading" rowSpan={2}>
+                Property
+              </th>
+              <th className="hmbc-unit-heading">&nbsp;</th>
+              {visibleStreams.map((stream) => (
+                <th className="hmbc-template-spacer-cell" key={stream.name} />
+              ))}
+            </tr>
+            <tr>
+              <th className="hmbc-unit-heading">
+                PFD No.
+                <br />
+                Unit
+              </th>
+              {visibleStreams.map((stream) => (
+                <th className="hmbc-pfd-number" key={stream.name}>
+                  {stream.pfdNo || "—"}
+                </th>
+              ))}
+            </tr>
           </thead>
           <tbody>
-            {properties.map((row) => (
-              <tr
-                key={row.name}
-                style={{
-                  contentVisibility: "auto",
-                  containIntrinsicSize: "0 40px",
-                }}
-              >
-                <th className="is-sticky" scope="row">
-                  {row.name}
-                </th>
-                <td className="hmbc-unit">{row.unit || "—"}</td>
-                {caseData.streams.map((stream) => {
-                  const property = stream.properties.find(
-                    (candidate) => candidate.name === row.name,
-                  );
-                  return (
-                    <td key={stream.name}>
-                      {property ? (
-                        stream.included ? (
-                          <CellEditor
-                            value={property.value}
-                            edited={property.edited}
-                            onCommit={(raw) =>
-                              onSetCell(stream.name, property.name, raw)
-                            }
-                          />
+            <tr className="hmbc-template-row-spacer">
+              <td colSpan={visibleStreams.length + 3} />
+            </tr>
+            {visibleProperties.map((row, rowIndex) => {
+              const firstInSection =
+                rowIndex === 0 ||
+                visibleProperties[rowIndex - 1].section !== row.section;
+              const sectionDivider = false;
+              return (
+                <tr
+                  key={`${row.section}-${row.name}-${row.unit}-${rowIndex}`}
+                  className={`${firstInSection && rowIndex > 0 ? "hmbc-section-start" : ""}${sectionDivider ? " hmbc-composition-divider" : ""}`}
+                >
+                  {firstInSection && (
+                    <th
+                      className="hmbc-phase-cell"
+                      rowSpan={sectionRowSpans.get(row.section)}
+                      scope="rowgroup"
+                    >
+                      {row.section === "__template-divider__"
+                        ? ""
+                        : row.section}
+                    </th>
+                  )}
+                  <th className="hmbc-property-cell" scope="row">
+                    {row.name}
+                  </th>
+                  <td className="hmbc-unit">
+                    {showUnits && !sectionDivider ? row.unit || "—" : ""}
+                  </td>
+                  {visibleStreams.map((stream) => {
+                    const property = findMasterRowProperty(stream, row);
+                    return (
+                      <td className="hmbc-review-value" key={stream.name}>
+                        {property ? (
+                          stream.included ? (
+                            <CellEditor
+                              value={property.value}
+                              edited={property.edited}
+                              blankNull
+                              onCommit={(raw) =>
+                                onSetCell(
+                                  stream.name,
+                                  property.name,
+                                  raw,
+                                  property.section || "",
+                                  property.unit || "",
+                                )
+                              }
+                            />
+                          ) : (
+                            <span className="hmbc-excluded-value">
+                              {property.value === null
+                                ? ""
+                                : formatValue(property.value)}
+                            </span>
+                          )
                         ) : (
-                          <span className="hmbc-excluded-value">
-                            {formatValue(property.value)}
-                          </span>
-                        )
-                      ) : (
-                        <span className="hmbc-missing-value">—</span>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
+                          <span className="hmbc-missing-value">&nbsp;</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
+      </div>
+      <div className="hmbc-review-footer">
+        <span>
+          {caseData.streams.filter((stream) => stream.included).length} /{" "}
+          {caseData.streams.length} streams <i />{" "}
+          {caseData.streams.reduce(
+            (total, stream) =>
+              total +
+              stream.properties.filter((property) => property.edited).length,
+            0,
+          )}{" "}
+          reviewed cells
+        </span>
+        <span>
+          <ShieldCheck /> Source files: session only
+        </span>
       </div>
     </section>
   );
@@ -469,12 +806,16 @@ function ComparisonView({ cases }) {
   const scrollRef = useRef(null);
   const sentinelRef = useRef(null);
   const comparison = useMemo(() => buildComparison(cases), [cases]);
-  const governingColumns = useMemo(() => buildGoverningCaseColumns(cases), [cases]);
+  const governingColumns = useMemo(
+    () => buildGoverningCaseColumns(cases),
+    [cases],
+  );
   const caseIds = useMemo(() => cases.map((item) => item.id), [cases]);
   const propertyNames = useMemo(
     () =>
       [...new Set(comparison.rows.map((row) => row.propertyName))].sort(
-        (left, right) => left.localeCompare(right, undefined, { numeric: true }),
+        (left, right) =>
+          left.localeCompare(right, undefined, { numeric: true }),
       ),
     [comparison.rows],
   );
@@ -577,7 +918,9 @@ function ComparisonView({ cases }) {
                   <select
                     aria-label="Filter by stream or property"
                     value={firstColumnFilter}
-                    onChange={(event) => setFirstColumnFilter(event.target.value)}
+                    onChange={(event) =>
+                      setFirstColumnFilter(event.target.value)
+                    }
                   >
                     <option value="all">All streams / properties</option>
                     <optgroup label="Streams">
@@ -610,7 +953,11 @@ function ComparisonView({ cases }) {
                 </th>
               ))}
               {MAX_RATE_COLUMNS.map((column) => (
-                <th key={column.kind} className="hmbc-max-col" title={column.hint}>
+                <th
+                  key={column.kind}
+                  className="hmbc-max-col"
+                  title={column.hint}
+                >
                   {column.label}
                 </th>
               ))}
@@ -654,9 +1001,11 @@ function ComparisonView({ cases }) {
                       const governing = governingColumns.get(row.streamName)?.[
                         column.kind
                       ];
-                      const value = governing?.values[
-                        row.propertyName.trim().toLowerCase()
-                      ];
+                      const valueKey =
+                        column.kind === "water"
+                          ? `${row.propertyName.trim().toLowerCase()} [aqueous phase]`
+                          : row.propertyName.trim().toLowerCase();
+                      const value = governing?.values[valueKey];
                       return (
                         <td
                           key={column.kind}
@@ -889,88 +1238,192 @@ function ConfirmResetDialog({ open, onCancel, onConfirm }) {
   );
 }
 
-function EmptyState({ importing, onImport, onDemo, errors, onClearErrors }) {
+function EmptyState({
+  importing,
+  onImport,
+  onDemo,
+  errors,
+  onClearErrors,
+  view,
+  setView,
+  archiveRecords,
+  archiveBusy,
+  archiveError,
+  onRefreshArchive,
+  onOpenWorkbook,
+  openingArchiveId,
+}) {
+  const pickerRef = useRef(null);
   return (
-    <main className="hmbc-empty">
-      <div className="hmbc-empty-intro">
-         <h2>Consolidate stream tables across every case</h2>
-        <p>
-          Upload one HYSYS workbook per case. Stream tables are detected,
-          aligned by stream name, reviewed, and exported as one formatted
-          comparison workbook.
-        </p>
-      </div>
-      {errors.length > 0 && (
-        <div className="hmbc-import-errors" role="alert">
-          <AlertTriangle />
-          <div>
-            <strong>
-              {errors.length} workbook{errors.length === 1 ? "" : "s"} could not
-              be imported
-            </strong>
-            {errors.map((error, index) => (
-              <span key={`${error.fileName}-${index}`}>
-                {error.fileName}: {error.message}
-              </span>
-            ))}
-          </div>
+    <main className="hmbc-empty-workspace">
+      <div
+        className="hmbc-empty-tabs"
+        role="tablist"
+        aria-label="HMB Workspace views"
+      >
+        {[
+          [Table2, "review", "Review"],
+          [ArrowDownUp, "compare", "Compare"],
+          [Archive, "saved", "Saved"],
+        ].map(([Icon, key, label]) => (
           <button
+            key={key}
             type="button"
-            onClick={onClearErrors}
-            aria-label="Dismiss import errors"
+            role="tab"
+            aria-selected={view === key}
+            onClick={() => setView(key)}
           >
-            <X />
+            <Icon />
+            {label}
           </button>
+        ))}
+        <div className="hmbc-empty-summary">
+          0 cases · 0 streams{" "}
+          <span>
+            <CheckCircle2 /> Session only
+          </span>
         </div>
-      )}
-      <div className="hmbc-empty-drop">
-        <Dropzone importing={importing} onImport={onImport} />
-        <div className="hmbc-demo-row">
-          <span>No files available?</span>
+      </div>
+      {view !== "saved" && (
+        <aside className="hmbc-empty-cases">
+          <div className="hmbc-empty-cases-title">
+            <strong>Cases</strong>
+            <span>0</span>
+            <button
+              type="button"
+              onClick={() => pickerRef.current?.click()}
+              disabled={importing}
+            >
+              <Plus /> Add
+            </button>
+          </div>
+          <Dropzone
+            importing={importing}
+            onImport={onImport}
+            compact
+            pickerRef={pickerRef}
+          />
+          <label className="hmbc-case-search">
+            <Search />
+            <input placeholder="Search cases..." disabled />
+          </label>
           <button
-            className="hmbc-button is-secondary"
+            className="hmbc-load-demo"
             type="button"
             onClick={onDemo}
             disabled={importing}
           >
-            Load three real demo cases
+            <Database /> Load demo cases
           </button>
-        </div>
-      </div>
-      <div className="hmbc-flow-cards">
-        {[
-          [
-            Table2,
-            "Extract",
-            "Detect transposed, classic, and multi-sheet HYSYS stream-table layouts.",
-          ],
-          [
-            FlaskConical,
-            "Review",
-            "Include or exclude streams and explicitly override extracted cells when required.",
-          ],
-          [
-            Download,
-            "Compare and export",
-            "Match streams across cases, highlight differences, and generate a formatted workbook.",
-          ],
-        ].map(([Icon, title, body], index) => (
-          <article key={title}>
-            <span>0{index + 1}</span>
-            <Icon />
-            <h3>{title}</h3>
-            <p>{body}</p>
-          </article>
-        ))}
-      </div>
-      <div className="hmbc-session-banner">
-        <ShieldCheck />
-        <span>
-          <strong>Your source workbooks stay in this browser session.</strong>
-          RADAI stores only the generated comparison workbook when you explicitly
-          choose Save project workbook.
-        </span>
-      </div>
+          <div className="hmbc-privacy-note">
+            <ShieldCheck />
+            <span>
+              Source files: session only <i>ⓘ</i>
+            </span>
+          </div>
+        </aside>
+      )}
+      <section
+        className={`hmbc-empty-main${view === "saved" ? " is-saved-view" : ""}`}
+      >
+        {view === "saved" ? (
+          <ArchiveHistoryPanel
+            records={archiveRecords}
+            busy={archiveBusy}
+            error={archiveError}
+            onRefresh={onRefreshArchive}
+            onOpenWorkbook={onOpenWorkbook}
+            openingRecordId={openingArchiveId}
+          />
+        ) : (
+          <>
+            <div className="hmbc-empty-review-toolbar">
+              <h2>
+                {view === "compare"
+                  ? "Cross-case comparison"
+                  : "Review extracted values"}
+              </h2>
+              <label>
+                <span>Sheet</span>
+                <select disabled>
+                  <option>Streams</option>
+                </select>
+              </label>
+              <label className="hmbc-review-search">
+                <Search />
+                <input placeholder="Search streams..." disabled />
+              </label>
+              <label>
+                <span>Units</span>
+                <select disabled>
+                  <option>Source</option>
+                </select>
+              </label>
+              <button type="button" disabled>
+                <Table2 /> Columns
+              </button>
+              <button
+                className="hmbc-empty-expand"
+                type="button"
+                disabled
+                aria-label="Expand table"
+              >
+                <Maximize2 />
+              </button>
+            </div>
+            {errors.length > 0 && (
+              <div className="hmbc-import-errors" role="alert">
+                <AlertTriangle />
+                <div>
+                  <strong>
+                    {errors.length} workbook{errors.length === 1 ? "" : "s"}{" "}
+                    could not be imported
+                  </strong>
+                  {errors.map((error, index) => (
+                    <span key={`${error.fileName}-${index}`}>
+                      {error.fileName}: {error.message}
+                    </span>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={onClearErrors}
+                  aria-label="Dismiss import errors"
+                >
+                  <X />
+                </button>
+              </div>
+            )}
+            <div className="hmbc-empty-table-scroll">
+              <table className="hmbc-table">
+                <thead>
+                  <tr>
+                    <th>Property</th>
+                    <th>Unit</th>
+                    <th>Stream</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td colSpan="3">
+                      Drop HMB workbooks or load demo cases to populate the
+                      review table.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div className="hmbc-review-footer">
+              <span>
+                0 / 0 streams <i /> 0 reviewed cells
+              </span>
+              <span>
+                <ShieldCheck /> Source files: session only
+              </span>
+            </div>
+          </>
+        )}
+      </section>
     </main>
   );
 }
@@ -1002,16 +1455,24 @@ function ArchiveHistoryPanel({
       </div>
       {error ? <p className="hmbc-archive-error">{error}</p> : null}
       {!error && !records.length ? (
-        <p className="hmbc-archive-empty">No workbook has been saved for the selected project yet.</p>
+        <p className="hmbc-archive-empty">
+          No workbook has been saved for the selected project yet.
+        </p>
       ) : null}
       {!!records.length && (
         <div className="hmbc-archive-list" role="list">
           {records.map((record) => (
-            <article className="hmbc-archive-item" role="listitem" key={record.id}>
+            <article
+              className="hmbc-archive-item"
+              role="listitem"
+              key={record.id}
+            >
               <strong title={record.filename}>{record.filename}</strong>
               <span>Saved {formatArchiveDate(record.created_at)}</span>
               <small>
-                {formatBytes(record.size_bytes)} · {record.case_count} cases · {record.included_stream_count} streams · {record.edited_value_count} overrides
+                {formatBytes(record.size_bytes)} · {record.case_count} cases ·{" "}
+                {record.included_stream_count} streams ·{" "}
+                {record.edited_value_count} overrides
               </small>
               <div className="hmbc-archive-actions">
                 <button
@@ -1021,7 +1482,9 @@ function ArchiveHistoryPanel({
                   disabled={openingRecordId === record.id}
                 >
                   <FileSpreadsheet />
-                  {openingRecordId === record.id ? "Opening..." : "Open workbook"}
+                  {openingRecordId === record.id
+                    ? "Opening..."
+                    : "Open workbook"}
                 </button>
               </div>
             </article>
@@ -1037,6 +1500,7 @@ export default function HMBStreamTableConsolidator() {
   const [view, setView] = useState("review");
   const [exportOpen, setExportOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [savingArchive, setSavingArchive] = useState(false);
   const [creatingProject, setCreatingProject] = useState(false);
   const [projectModalError, setProjectModalError] = useState("");
@@ -1067,7 +1531,7 @@ export default function HMBStreamTableConsolidator() {
             stream: stream.name,
             property: prop.name,
             value: prop.value,
-            unit: prop.unit || '',
+            unit: prop.unit || "",
             edited: Boolean(prop.edited),
             included: stream.included !== false,
           })),
@@ -1075,26 +1539,31 @@ export default function HMBStreamTableConsolidator() {
       ),
     [casesState.cases],
   );
-  useRadaiChatPage('hmb_consolidator', {
+  useRadaiChatPage("hmb_consolidator", {
     document: casesState.cases.length
-      ? { name: casesState.cases.map((c) => c.fileName || c.name).join(', '), type: 'HYSYS stream table workbook' }
+      ? {
+          name: casesState.cases.map((c) => c.fileName || c.name).join(", "),
+          type: "HYSYS stream table workbook",
+        }
       : null,
     columns: [
-      { key: 'case', label: 'Case' },
-      { key: 'stream', label: 'Stream' },
-      { key: 'property', label: 'Property' },
-      { key: 'value', label: 'Value' },
-      { key: 'unit', label: 'Unit' },
-      { key: 'edited', label: 'Edited' },
+      { key: "case", label: "Case" },
+      { key: "stream", label: "Stream" },
+      { key: "property", label: "Property" },
+      { key: "value", label: "Value" },
+      { key: "unit", label: "Unit" },
+      { key: "edited", label: "Edited" },
     ],
     rows: chatRows,
     rowCount: chatRows.length,
-    summary: casesState.cases.length ? {
-      cases: casesState.cases.length,
-      case_names: casesState.cases.map((c) => c.name),
-      streams_included: includedStreamCount,
-      edited_values: casesState.editedCount,
-    } : null,
+    summary: casesState.cases.length
+      ? {
+          cases: casesState.cases.length,
+          case_names: casesState.cases.map((c) => c.name),
+          streams_included: includedStreamCount,
+          edited_values: casesState.editedCount,
+        }
+      : null,
   });
 
   const reset = () => {
@@ -1201,7 +1670,8 @@ export default function HMBStreamTableConsolidator() {
 
   const saveArchive = async (projectIdOverride = "") => {
     if (!casesState.cases.length || savingArchive) return;
-    const projectId = normalizeProjectId(projectIdOverride) || readActiveProjectId();
+    const projectId =
+      normalizeProjectId(projectIdOverride) || readActiveProjectId();
     if (!projectId) {
       setProjectModalError("");
       setShowProjectModal(true);
@@ -1209,15 +1679,17 @@ export default function HMBStreamTableConsolidator() {
     }
     setSavingArchive(true);
     try {
-      const { buildComparisonWorkbookBlob, buildComparisonFilename } = await import(
-        "./export.ts"
-      );
+      const { buildComparisonWorkbookBlob, buildComparisonFilename } =
+        await import("./export.ts");
       const exportOptions = {
         includeSummary: true,
         highlightVariation: true,
         flagEdited: true,
       };
-      const blob = await buildComparisonWorkbookBlob(casesState.cases, exportOptions);
+      const blob = await buildComparisonWorkbookBlob(
+        casesState.cases,
+        exportOptions,
+      );
       const filename = buildComparisonFilename();
       const archiveFile = new File([blob], filename, {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1259,13 +1731,9 @@ export default function HMBStreamTableConsolidator() {
   return (
     <div className="hmbc-page">
       <header className="hmbc-page-header">
-          <div className="hmbc-title-row">
+        <div className="hmbc-title-row">
           <div>
-           <h1>HMB Stream Table Consolidator</h1>
-            <p>
-              Consolidate Aspen HYSYS stream tables and export a formatted
-              cross-case comparison.
-            </p>
+            <h1>HMB Workspace</h1>
           </div>
           <div className="hmbc-title-side">
             <section className="hmbc-header-archive" aria-live="polite">
@@ -1289,40 +1757,70 @@ export default function HMBStreamTableConsolidator() {
                 onClick={() => setView("saved")}
               >
                 <Archive />
-                Open
+                Saved
               </button>
             </section>
             <div className="hmbc-header-actions">
-            {casesState.cases.length > 0 && (
               <button
-                className="hmbc-button is-secondary"
+                className="hmbc-button is-secondary hmbc-save-action"
                 type="button"
                 onClick={() => saveArchive()}
-                disabled={savingArchive}
+                disabled={savingArchive || !casesState.cases.length}
               >
-                <Archive />
-                {savingArchive ? "Saving..." : "Save project workbook"}
+                <Save />
+                {savingArchive ? "Saving..." : "Save"}
               </button>
-            )}
-            {casesState.cases.length > 0 && (
               <button
-                className="hmbc-button is-secondary"
+                className="hmbc-button is-secondary hmbc-reset-action"
                 type="button"
                 onClick={() => setResetOpen(true)}
+                disabled={!casesState.cases.length}
               >
                 <RotateCcw />
-                Reset session
+                Reset
               </button>
-            )}
-            <button
-              className="hmbc-button is-primary"
-              type="button"
-              onClick={() => setExportOpen(true)}
-              disabled={!casesState.cases.length}
-            >
-              <Download />
-              Export Excel
-            </button>
+              <button
+                className="hmbc-button is-primary"
+                type="button"
+                onClick={() => setExportOpen(true)}
+                disabled={!casesState.cases.length}
+              >
+                <Download />
+                Export Excel
+              </button>
+              <div className="hmbc-more-wrap">
+                <button
+                  className="hmbc-button hmbc-more-button"
+                  type="button"
+                  aria-label="More actions"
+                  aria-expanded={moreOpen}
+                  onClick={() => setMoreOpen((open) => !open)}
+                >
+                  <MoreHorizontal />
+                </button>
+                {moreOpen && (
+                  <div className="hmbc-more-menu">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setView("saved");
+                        setMoreOpen(false);
+                      }}
+                    >
+                      <Archive /> Saved workbooks
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setResetOpen(true);
+                        setMoreOpen(false);
+                      }}
+                    >
+                      <RotateCcw /> Reset session
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -1356,13 +1854,21 @@ export default function HMBStreamTableConsolidator() {
           formError={projectModalError}
         />
       ) : null}
-      {casesState.cases.length === 0 && view !== "saved" ? (
+      {casesState.cases.length === 0 ? (
         <EmptyState
           importing={casesState.importing}
           onImport={casesState.importFiles}
           onDemo={casesState.loadDemo}
           errors={casesState.errors}
           onClearErrors={casesState.clearErrors}
+          view={view}
+          setView={setView}
+          archiveRecords={archiveRecords}
+          archiveBusy={archiveBusy}
+          archiveError={archiveError}
+          onRefreshArchive={loadArchiveHistory}
+          onOpenWorkbook={openSavedWorkbook}
+          openingArchiveId={openingArchiveId}
         />
       ) : (
         <div className="hmbc-workspace">
@@ -1378,6 +1884,7 @@ export default function HMBStreamTableConsolidator() {
               onRemove={casesState.removeCase}
               onRename={casesState.renameCase}
               onImport={casesState.importFiles}
+              onDemo={casesState.loadDemo}
             />
           ) : null}
           <main className="hmbc-main">
@@ -1395,7 +1902,7 @@ export default function HMBStreamTableConsolidator() {
                     onClick={() => setView("review")}
                   >
                     <Table2 />
-                    Review extracted values
+                    Review
                   </button>
                   <button
                     type="button"
@@ -1404,7 +1911,7 @@ export default function HMBStreamTableConsolidator() {
                     onClick={() => setView("compare")}
                   >
                     <ArrowDownUp />
-                    Comparison
+                    Compare
                   </button>
                   <button
                     type="button"
@@ -1413,7 +1920,7 @@ export default function HMBStreamTableConsolidator() {
                     onClick={() => setView("saved")}
                   >
                     <Archive />
-                    Saved project workbook lists
+                    Saved
                   </button>
                 </div>
                 <div className="hmbc-summary">
@@ -1426,6 +1933,12 @@ export default function HMBStreamTableConsolidator() {
                       {casesState.editedCount.toLocaleString()} overrides
                     </span>
                   )}
+                  <span
+                    className={`hmbc-saved-state${archiveRecords.length ? " is-saved" : ""}`}
+                  >
+                    <CheckCircle2 />{" "}
+                    {archiveRecords.length ? "Saved" : "Session only"}
+                  </span>
                 </div>
               </div>
             ) : null}
@@ -1442,12 +1955,14 @@ export default function HMBStreamTableConsolidator() {
                 onToggleStream={(stream) =>
                   casesState.toggleStream(casesState.activeCase.id, stream)
                 }
-                onSetCell={(stream, property, raw) =>
+                onSetCell={(stream, property, raw, section, unit) =>
                   casesState.setCellValue(
                     casesState.activeCase.id,
                     stream,
                     property,
                     raw,
+                    section,
+                    unit,
                   )
                 }
               />
@@ -1479,4 +1994,3 @@ export default function HMBStreamTableConsolidator() {
     </div>
   );
 }
-
