@@ -2328,7 +2328,11 @@ const PurchaseOrderForm = ({
           pr_reference:
             "Select an existing purchase recommendation to continue.",
         };
-  if (errors.approval_log) validationErrors.approval_log = errors.approval_log;
+  // Draft creation is allowed without an eligible final signatory. API errors
+  // about approval eligibility must not turn into required-field blockers.
+  if (errors.approval_log && !approvalRouteEditable) {
+    validationErrors.approval_log = errors.approval_log;
+  }
   const validationIssues = Object.entries(validationErrors).map(
     ([field, message]) => ({ id: field, field, message, title: message }),
   );
@@ -3556,8 +3560,8 @@ const PurchaseOrderForm = ({
           {approvalRouteEditable && <p id="po-signatory-status" role="status" className={'pof-helper ' + (approversLoading ? 'is-loading' : '')}>{approversLoading
             ? 'Loading employees. You can save this draft without an approver.'
             : employeeLoadError || (unavailableSignatory
-              ? 'This PO draft can be saved. The assigned employee must meet approval eligibility before approving it.'
-              : 'Choose any active employee or leave the approver blank. Final approval remains limited to eligible signatories.')}</p>}
+              ? 'You can save this draft with the selected approver. Eligibility is checked when final approval is attempted.'
+              : 'Choose any active employee or leave the approver blank. Eligibility is checked when final approval is attempted.')}</p>}
           {!approvalRouteEditable && errors.approval_log && <p className="pof-field-error">{errors.approval_log}</p>}
         </div>
       </section>
