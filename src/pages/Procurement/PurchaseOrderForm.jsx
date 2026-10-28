@@ -680,8 +680,8 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
       if (!Array.isArray(payload.users)) throw new Error('Employee list is unavailable.');
       return payload.users.filter(employee => employee.is_active !== false);
     };
-    // Buyer references use the employee directory; final signatories must pass
-    // the same server eligibility check as an approval assignment.
+    // Buyer references use the employee directory; approvers must be eligible
+    // for the final management stage when the assignment is created.
     const [directory, signatories] = await Promise.allSettled([
       apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'any_active' }, suppressErrorToast: true }).then(usersFrom),
       apiClient.get('/procurement/requisitions/get_approvers/', { params: { role: 'po_final_signoff' }, suppressErrorToast: true }).then(usersFrom),
@@ -1380,24 +1380,8 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     });
   }, [formData.items, formData.price_amount, formData.discount_amount, formData.vat_basis, pricingConfirmed]);
 
-  const approvalRouteChanged = JSON.stringify(formData.approval_log) !== JSON.stringify(initialFormData.current.approval_log);
-  const requiredApprovalStages = approvalRouteEditable && (!editData || approvalRouteChanged) ? ['Final Management Sign-off'] : [];
-  const assignedApprovalStages = new Set(
-    formData.approval_log.filter((entry) => entry.user_id).map((entry) => entry.stage)
-  );
-  const missingApprovalStages = requiredApprovalStages.filter((stage) => !assignedApprovalStages.has(stage));
-  const signatoryAvailabilityError = approversLoading
-    ? 'Checking authorized PO signatories...'
-    : approverLoadError || (!finalApprovers.length
-      ? 'No eligible final signatory is available. Check the CEO employee record and Purchase Order approval permission, then refresh signatories.'
-      : '');
-  const unavailableSignatory = formData.approval_log.some(entry => entry.user_id
+  const unavailableSignatory = approvalRouteEditable && formData.approval_log.some(entry => entry.user_id
     && !finalApprovers.some(employee => String(employee.id) === String(entry.user_id)));
-  const approvalEligibilityError = requiredApprovalStages.length
-    ? signatoryAvailabilityError || (unavailableSignatory
-      ? 'The selected final signatory is no longer eligible. Your selection is retained; check their CEO position and Purchase Order approval permission, then refresh signatories.'
-      : missingApprovalStages.length ? `Select an authorized signatory for: ${missingApprovalStages.join(', ')}` : '')
-    : '';
 
   const getValidationErrors = (requireSummary = false) => {
     const newErrors = {};
@@ -1423,9 +1407,6 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
       newErrors.end_date = 'End date is mandatory when Start Date is selected';
     }
     if (requireSummary && !formData.summary?.trim()) newErrors.summary = 'Summary is required before sending to vendor';
-    if (approvalEligibilityError) {
-      newErrors.approval_log = approvalEligibilityError;
-    }
     if (editData && !requireSummary) {
       // A partial metadata correction must not require repairing unrelated
       // missing fields on an older imported order before it can be saved.
@@ -1478,9 +1459,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
     }
 
     if (!validateForm(sendToVendor)) {
-      const validationMessage = approvalEligibilityError
-        ? approvalEligibilityError
-        : !formData.pr_reference
+      const validationMessage = !formData.pr_reference
         ? 'Please select an existing Purchase Requisition.'
         : !/^RAD-(GEN|PRJ)-PUR-\d{4,}_(?:(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)?\d{4})$/.test(formData.po_number?.trim() || '')
           ? 'Please use a valid RAD Purchase Order number.'
@@ -1494,9 +1473,7 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
               ? 'Please enter the payment terms.'
               : String(formData.project_number || '').length > 100
                 ? 'The selected project numbers exceed the 100-character limit.'
-              : missingApprovalStages.length
-                ? `Please select: ${missingApprovalStages.join(', ')}.`
-                : 'Please add a short summary before sending to the vendor.';
+              : 'Please add a short summary before sending to the vendor.';
       setPopupError((!editData || pricingEdited) && !pricingConfirmed ? 'Confirm whether these prices include VAT, exclude VAT, or have no VAT before saving.' : validationMessage);
       openSection(sectionForField(Object.keys(getValidationErrors(sendToVendor))[0]));
       setTimeout(() => setPopupError(''), 6000);
@@ -2364,8 +2341,8 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
 
                               className="block w-full rounded-md border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
                             >
-                              <option value="">{approversLoading ? 'Loading authorized signatories...' : '-- Select authorized signatory --'}</option>
-                              {entry.user_id && !(approvalRouteEditable ? finalApprovers : approvalEmployees).some(employee => String(employee.id) === String(entry.user_id)) && <option value={entry.user_id} disabled={approvalRouteEditable}>{entry.approver || entry.user_name || 'Recorded approver'}{approvalRouteEditable ? ' — eligibility not confirmed' : ''}</option>}
+                              <option value="">{approversLoading ? 'Loading authorized signatories...' : '-- Select authorized signatory (optional) --'}</option>
+                              {entry.user_id && !finalApprovers.some(employee => String(employee.id) === String(entry.user_id)) && <option value={entry.user_id} disabled={approvalRouteEditable}>{entry.approver || entry.user_name || 'Recorded approver'} — eligibility not confirmed</option>}
                               {(approvalRouteEditable ? finalApprovers : approvalEmployees).map((employee) => (
                                 <option key={employee.id} value={employee.id}>
                                   {employee.full_name || employee.username || 'Active employee'}{employee.job_title ? ` — ${employee.job_title}` : ''}{employee.email ? ` — ${employee.email}` : ''}{employee.department ? ` (${employee.department})` : ''}
@@ -2385,7 +2362,13 @@ const PurchaseOrderForm = ({ isOpen, pageMode = false, onClose, onSuccess, editD
               {entry.external && <p className="pof-source-history">{['purchase_requisition', 'signed_purchase_requisition_pdf'].includes(entry.source) ? 'Source recommendation history' : 'Source document history'}</p>}
             </div>
           )) : <p className="pof-helper">No separate PO approval route is recorded.</p>}
-          {approvalRouteEditable && <p id="po-signatory-status" role="status" className={'pof-field-error ' + (approversLoading ? 'is-loading' : '')}>{signatoryAvailabilityError || errors.approval_log || (unavailableSignatory ? approvalEligibilityError : '')}</p>}
+          {approvalRouteEditable && <p id="po-signatory-status" role="status" className={'pof-helper ' + (approversLoading ? 'is-loading' : '')}>{approversLoading
+            ? 'Loading authorized signatories. You can save without assigning an approver.'
+            : approverLoadError || (unavailableSignatory
+              ? 'This PO draft can be saved. The assigned employee must meet approval eligibility before approving it.'
+              : !finalApprovers.length
+                ? 'No eligible final signatory is available. You can save the PO without an approver.'
+                : 'Approver assignment is optional. You can create the PO without assigning one.')}</p>}
           {!approvalRouteEditable && errors.approval_log && <p className="pof-field-error">{errors.approval_log}</p>}
         </div>
       </section>

@@ -81,45 +81,25 @@ test('linked PR retains an independent pending final PO signer and sends no PR c
   isolate(state)
 })
 
-const directoryApprover = (id, full_name, email) => ({ id, full_name, email, job_title: 'CEO', is_active: true })
-for (const scenario of [
-  { name: 'missing default identity', employees: [directoryApprover(12, 'Authorized PO Signatory', 'authorized@example.test')], selection: '12' },
-  { name: 'ambiguous default identity', employees: [directoryApprover(11, 'Jarmo Suominen', 'jarmo@example.test'), directoryApprover(12, 'Jarmo Suominen', 'other-jarmo@example.test')], selection: '12' },
-]) {
-  test(`${scenario.name} requires an explicit employee selection before creating the PO`, async ({ page }) => {
-    const state = await orderFormHarness(page, { handleRequest: async (route, fixture, url) => {
-      if (url.pathname !== '/api/v1/procurement/requisitions/get_approvers/') return false
-      if (url.searchParams.get('role') !== 'po_final_signoff') return false
-      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ users: scenario.employees }) })
-      return true
-    } })
-    await selectRecommendation(page)
-    await expect(selector(page)).toBeEnabled()
-    await expect(selector(page)).toHaveValue('')
-    await save(page)
-    await expect(workspace(page)).toContainText('Select an authorized signatory for: Final Management Sign-off')
-    expect(savedWrites(state)).toEqual([])
-    await selector(page).selectOption(scenario.selection)
-    await save(page)
-    await expectSavedEditor(page, state)
-    expect(savedWrites(state)).toHaveLength(1)
-    expect(String(savedWrites(state)[0].body.approval_log[0].user_id)).toBe(scenario.selection)
-    expect(savedWrites(state)[0].body.approval_log[0].status).toBe('Pending')
-    isolate(state)
-  })
-}
-
-test('backend approver eligibility rejection preserves the selection and permits an explicit retry', async ({ page }) => {
-  const message = 'Final Management Sign-off requires the configured business position with Purchase Order approval permission.'
-  const state = await orderFormHarness(page, { prepare: fixture => { fixture.saveError = { approval_log: [message] } } })
+test('new PO saves without an approver when no eligible signatory is available', async ({ page }) => {
+  const state = await orderFormHarness(page, { prepare: fixture => { fixture.finalSignatories = [] } })
   await selectRecommendation(page)
+  await expect(selector(page)).toBeDisabled()
+  await expect(page.locator('#po-signatory-status')).toContainText('You can save the PO without an approver.')
   await save(page)
-  await expect(workspace(page)).toContainText(message)
-  await expect(page).toHaveURL(/\/procurement\/orders\/new$/)
+  await expectSavedEditor(page, state)
+  expect(savedWrites(state)).toHaveLength(1)
+  expect(savedWrites(state)[0].body.approval_log.every(entry => !entry.user_id)).toBe(true)
+  isolate(state)
+})
+
+test('draft save is allowed when a previously selected signatory is no longer eligible', async ({ page }) => {
+  const state = await orderFormHarness(page)
+  await selectRecommendation(page)
   await expect(selector(page)).toHaveValue('11')
-  await expect(workspace(page).getByText('Required fields complete', { exact: true })).toHaveCount(0)
-  expect(savedWrites(state)).toEqual([])
-  state.saveError = null
+  state.finalSignatories = []
+  await workspace(page).getByRole('button', { name: 'Refresh signatories', exact: true }).click()
+  await expect(page.locator('#po-signatory-status')).toContainText('This PO draft can be saved.')
   await save(page)
   await expectSavedEditor(page, state)
   expect(savedWrites(state)).toHaveLength(1)
@@ -127,115 +107,19 @@ test('backend approver eligibility rejection preserves the selection and permits
   isolate(state)
 })
 
-test('loading eligible signatories blocks assignment and retains form input', async ({ page }) => {
-  let release
-  const pending = new Promise(resolve => { release = resolve })
-  try {
-    const state = await orderFormHarness(page, { handleRequest: async (route, _fixture, url) => {
-      if (!url.pathname.endsWith('/get_approvers/') || url.searchParams.get('role') !== 'po_final_signoff') return false
-      await pending
-      await route.fulfill({ json: { users: [directoryApprover(11, 'Jarmo Suominen', 'jarmo@example.test')] } })
-      return true
-    } })
-    await selectRecommendation(page)
-    await page.locator('[name="title"]').fill('Keep this scope while signatories load')
-    await expect(selector(page)).toBeDisabled()
-    await save(page)
-    await expect(page.locator('#po-signatory-status')).toContainText('Checking authorized PO signatories')
-    expect(savedWrites(state)).toEqual([])
-    release()
-    await expect(selector(page)).toHaveValue('11')
-    await expect(selector(page)).toBeEnabled()
-    await workspace(page).getByRole('tab', { name: 'Order & parties', exact: true }).click()
-    await expect(page.locator('[name="title"]')).toHaveValue('Keep this scope while signatories load')
-    await save(page)
-    await expectSavedEditor(page, state)
-    expect(savedWrites(state)).toHaveLength(1)
-    isolate(state)
-  } finally { release() }
-})
-
-for (const status of [403, 503]) {
-  test(`signatory list ${status} failure retains input and recovers on refresh`, async ({ page }) => {
-    const state = await orderFormHarness(page, { prepare: fixture => {
-      fixture.finalSignatoriesError = { detail: 'Synthetic signatory directory failure.' }
-      fixture.finalSignatoriesErrorStatus = status
-    } })
-    await selectRecommendation(page)
-    await page.locator('[name="title"]').fill('Scope retained after directory failure')
-    await expect(selector(page)).toBeDisabled()
-    await save(page)
-    await expect(page.locator('#po-signatory-status')).toContainText(status === 403
-      ? 'You do not have access to load authorized PO signatories.'
-      : 'Authorized PO signatories could not be loaded. Please retry.')
-    expect(savedWrites(state)).toEqual([])
-    await workspace(page).getByRole('tab', { name: 'Order & parties', exact: true }).click()
-    await expect(page.locator('#buyer-reference-options-1 option[value="Richa Hannah Thomas"]')).toHaveCount(1)
-    state.finalSignatoriesError = null
-    await workspace(page).getByRole('button', { name: 'Refresh signatories', exact: true }).click()
-    await expect(selector(page)).toHaveValue('11')
-    await expect(selector(page)).toBeEnabled()
-    await expect(page.locator('[name="title"]')).toHaveValue('Scope retained after directory failure')
-    await save(page)
-    await expectSavedEditor(page, state)
-    expect(savedWrites(state)).toHaveLength(1)
-    isolate(state)
-  })
-}
-
-test('empty eligible list does not fall back to the active employee directory', async ({ page }) => {
-  const state = await orderFormHarness(page, { prepare: fixture => { fixture.finalSignatories = [] } })
+test('approver selector uses the dynamic eligible signatory directory', async ({ page }) => {
+  const employee = { id: 12, full_name: 'Dynamic CEO', email: 'dynamic@example.test', job_title: 'CEO', is_active: true }
+  const state = await orderFormHarness(page, { handleRequest: async (route, _fixture, url) => {
+    if (url.pathname !== '/api/v1/procurement/requisitions/get_approvers/' || url.searchParams.get('role') !== 'po_final_signoff') return false
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ users: [employee] }) })
+    return true
+  } })
   await selectRecommendation(page)
-  await expect(selector(page)).toBeDisabled()
-  await expect(selector(page)).toHaveValue('')
-  await expect(selector(page).locator('option')).toHaveCount(1)
-  await expect(page.locator('#po-signatory-status')).toContainText('No eligible final signatory is available.')
-  await save(page)
-  expect(savedWrites(state)).toEqual([])
-  await workspace(page).getByRole('tab', { name: 'Order & parties', exact: true }).click()
-  await expect(page.locator('#buyer-reference-options-1 option[value="Richa Hannah Thomas"]')).toHaveCount(1)
-  isolate(state)
-})
-
-test('recovered signer who loses eligibility stays visible and cannot be saved until revalidated', async ({ page }) => {
-  const state = await orderFormHarness(page)
-  await selectRecommendation(page)
-  await expect(selector(page)).toHaveValue('11')
-  await page.locator('[name="title"]').fill('Recovered signatory scope')
-  await workspace(page).getByRole('textbox', { name: 'Final Management Sign-off routing comments', exact: true }).fill('Retain this routing note')
-  await expect.poll(() => state.requests.filter(request => request.path.endsWith('/preview-document/')).at(-1)?.body?.snapshot?.approval_log?.[0]?.comments).toBe('Retain this routing note')
-  const original = state.finalSignatories
-  state.finalSignatories = [directoryApprover(12, 'Authorized PO Signatory', 'authorized@example.test')]
-  await page.reload({ waitUntil: 'domcontentloaded' })
-  await expect(selector(page)).toBeEnabled({ timeout: 90000 })
-  await expect(selector(page)).toHaveValue('11')
-  await expect(selector(page).locator('option[value="11"]')).toBeDisabled()
-  await expect(page.locator('#po-signatory-status')).toContainText('The selected final signatory is no longer eligible.')
-  await expect(page.locator('[name="title"]')).toHaveValue('Recovered signatory scope')
-  await save(page)
-  expect(savedWrites(state)).toEqual([])
-  state.finalSignatories = original
-  await workspace(page).getByRole('button', { name: 'Refresh signatories', exact: true }).click()
-  await expect(selector(page).locator('option[value="11"]')).toBeEnabled()
-  await expect(page.locator('#po-signatory-status')).toBeEmpty()
+  await expect(selector(page)).toBeEnabled()
+  await selector(page).selectOption('12')
   await save(page)
   await expectSavedEditor(page, state)
-  expect(savedWrites(state)).toHaveLength(1)
-  expect(savedWrites(state)[0].body.approval_log[0]).toMatchObject({ user_id: 11, comments: 'Retain this routing note', status: 'Pending' })
-  isolate(state)
-})
-
-test('new PO cannot save without an assigned directory approver', async ({ page }) => {
-  const state = await orderFormHarness(page)
-  await selectRecommendation(page)
-  await selector(page).selectOption('')
-  await save(page)
-  await expect(workspace(page)).toContainText('Select an authorized signatory for: Final Management Sign-off')
-  expect(savedWrites(state)).toEqual([])
-  await selector(page).selectOption('11')
-  await save(page)
-  await expectSavedEditor(page, state)
-  expect(savedWrites(state)).toHaveLength(1)
+  expect(savedWrites(state)[0].body.approval_log[0]).toMatchObject({ user_id: 12, approver: 'Dynamic CEO' })
   isolate(state)
 })
 
@@ -278,9 +162,9 @@ test('signed source Draft with empty routing does not gain a new pending signer'
   isolate(state)
 })
 
-test('metadata edits preserve a recorded signer absent from current eligible and employee lists', async ({ page }) => {
+test('metadata edits preserve a recorded signer absent from the active employee list', async ({ page }) => {
   const history = [{ level: 0, stage: 'Final Management Sign-off', user_id: 99, approver: 'Recorded Former Signer', status: 'Pending' }]
-  const state = await edit(page, oldDraft({ approval_log: history }), fixture => { fixture.finalSignatories = [] })
+  const state = await edit(page, oldDraft({ approval_log: history }))
   await expect(selector(page)).toBeDisabled()
   await expect(selector(page)).toHaveValue('99')
   await expect(selector(page)).toContainText('Recorded Former Signer')
