@@ -39,9 +39,10 @@ export const ioExtractionService = {
     return data
   },
 
-  async getExtraction(projectId, extractionId, { tab = 'io', sheet } = {}) {
+  async getExtraction(projectId, extractionId, { tab = 'io', sheet, scope } = {}) {
     const params = { tab }
     if (sheet) params.sheet = sheet
+    if (scope) params.scope = scope
     const { data } = await apiClient.get(
       `${BASE}/projects/${projectId}/extractions/${extractionId}/`, { params })
     return data
@@ -73,12 +74,13 @@ export const ioExtractionService = {
 
   /** Authenticated workbook download (a plain <a href> carries no JWT). */
   async exportWorkbook(projectId, extractionId, format) {
+    const params = format ? { fmt: format } : {}
     const { data, headers } = await apiClient.get(
       `${BASE}/projects/${projectId}/extractions/${extractionId}/export/`,
-      { params: { fmt: format }, responseType: 'blob', timeout: 120000 })
+      { params, responseType: 'blob', timeout: 120000 })
     const disposition = headers?.['content-disposition'] || ''
     const m = disposition.match(/filename="?([^";]+)"?/)
-    const filename = m ? m[1] : `io-list-${format}.xlsx`
+    const filename = m ? m[1] : `io-list-${format || 'workbook'}.xlsx`
     const url = URL.createObjectURL(data)
     const a = document.createElement('a')
     a.href = url
@@ -87,6 +89,7 @@ export const ioExtractionService = {
     a.click()
     a.remove()
     URL.revokeObjectURL(url)
+    return filename
   },
 }
 
