@@ -52,7 +52,11 @@ import {
 } from "../utils/notificationCenter";
 import NotificationPurchaseOrderPreview from "../components/notifications/NotificationPurchaseOrderPreview";
 import PurchaseRequisitionDocumentPreview from "./Procurement/PurchaseRequisitionDocumentPreview";
-import { canDecideProcurement } from "../utils/procurementApproval";
+import {
+  activeApprovalStages,
+  canDecideProcurement,
+  isAssignedApprover,
+} from "../utils/procurementApproval";
 import "../components/notifications/NotificationRecordPreview.css";
 import "./NotificationPanel.css";
 
@@ -225,6 +229,13 @@ const NotificationPanel = () => {
     user,
     previewType,
   );
+  const assignedToActivePOStage =
+    previewType === "po" &&
+    activeApprovalStages(recordPreview.data?.approval_log).some((stage) =>
+      isAssignedApprover(stage, user),
+    );
+  const showPreviewDecisionActions =
+    canDecidePreview || assignedToActivePOStage;
   const previewNeedsReload =
     previewType === "pr" &&
     (previewDecision.stale ||
@@ -427,7 +438,7 @@ const NotificationPanel = () => {
 
   const handlePreviewDecision = async (decision) => {
     if (
-      !canDecidePreview ||
+      !showPreviewDecisionActions ||
       previewDecision.loading ||
       previewDecision.reloading ||
       previewNeedsReload ||
@@ -817,7 +828,10 @@ const NotificationPanel = () => {
 
   const openLabel = (notification) => {
     const target = resolveNotificationTarget(notification);
-    if (target?.href.includes("preview=po")) return "Open purchase order";
+    if (target?.href.includes("preview=po"))
+      return notification.metadata?.requires_action === true
+        ? notification.action_label || "Review and approve"
+        : notification.action_label || "Open purchase order";
     if (target?.href.includes("preview=pr"))
       return "Open purchase recommendation";
     return notification.action_label || "Open notification";
@@ -1525,7 +1539,7 @@ const NotificationPanel = () => {
                 !recordPreview.loading &&
                 !recordPreview.error && (
                   <footer className="notification-record-preview__footer">
-                    {canDecidePreview &&
+                    {showPreviewDecisionActions &&
                       previewDecision.mode === "reject" &&
                       !previewDecision.message && (
                         <div className="mb-3">
@@ -1567,6 +1581,11 @@ const NotificationPanel = () => {
                         {previewDecision.error}
                       </div>
                     )}
+                    {assignedToActivePOStage && !canDecidePreview && (
+                      <p className="mb-3 text-xs text-slate-600" role="status">
+                        This PO is assigned to you. Approval permissions are verified when you submit a decision.
+                      </p>
+                    )}
                     {previewNeedsReload && (
                       <div className="mb-3 text-sm text-amber-900">
                         <p>
@@ -1593,7 +1612,7 @@ const NotificationPanel = () => {
                       </div>
                     )}
 
-                    {canDecidePreview && !previewDecision.message && (
+                    {showPreviewDecisionActions && !previewDecision.message && (
                       <div className="flex flex-wrap items-center justify-end gap-2">
                         {previewDecision.mode === "reject" && (
                           <button
