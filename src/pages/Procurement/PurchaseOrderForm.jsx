@@ -770,8 +770,8 @@ const PurchaseOrderForm = ({
     // Master-data defaults belong to creation. Opening an existing PO must not
     // rewrite its buyer references or recorded approval evidence.
     if (!recoveryReady || editData) return;
-    if (!approvalEmployees.length && !finalApprovers.length) return;
-    const defaultCandidates = finalApprovers.filter((employee) =>
+    if (!approvalEmployees.length) return;
+    const defaultCandidates = approvalEmployees.filter((employee) =>
       employee.is_active !== false
       && String(employee.full_name || '').trim().toLowerCase() === PROJECT_FINAL_APPROVER.toLowerCase()
     );
@@ -1577,7 +1577,7 @@ const PurchaseOrderForm = ({
   const handleApprovalSelection = (index, userId) => {
     if (!approvalRouteEditable) return;
     approvalSelectionEditedRef.current = true;
-    const employee = finalApprovers.find((candidate) => String(candidate.id) === String(userId));
+    const employee = approvalEmployees.find((candidate) => String(candidate.id) === String(userId));
     const assigneeName = employee ? employeeDisplayName(employee) : '';
     setFormData((previous) => {
       const approvalLog = [...previous.approval_log];
@@ -2328,7 +2328,11 @@ const PurchaseOrderForm = ({
           pr_reference:
             "Select an existing purchase recommendation to continue.",
         };
-  if (errors.approval_log) validationErrors.approval_log = errors.approval_log;
+  // Draft creation is allowed without an eligible final signatory. API errors
+  // about approval eligibility must not turn into required-field blockers.
+  if (errors.approval_log && !approvalRouteEditable) {
+    validationErrors.approval_log = errors.approval_log;
+  }
   const validationIssues = Object.entries(validationErrors).map(
     ([field, message]) => ({ id: field, field, message, title: message }),
   );
@@ -3554,12 +3558,10 @@ const PurchaseOrderForm = ({
             </div>
           )) : <p className="pof-helper">No separate PO approval route is recorded.</p>}
           {approvalRouteEditable && <p id="po-signatory-status" role="status" className={'pof-helper ' + (approversLoading ? 'is-loading' : '')}>{approversLoading
-            ? 'Loading authorized signatories. You can save without assigning an approver.'
-            : approverLoadError || (unavailableSignatory
-              ? 'This PO draft can be saved. The assigned employee must meet approval eligibility before approving it.'
-              : !finalApprovers.length
-                ? 'No eligible final signatory is available. You can save the PO without an approver.'
-                : 'Approver assignment is optional. You can create the PO without assigning one.')}</p>}
+            ? 'Loading employees. You can save this draft without an approver.'
+            : employeeLoadError || (unavailableSignatory
+              ? 'You can save this draft with the selected approver. Eligibility is checked when final approval is attempted.'
+              : 'Choose any active employee or leave the approver blank. Eligibility is checked when final approval is attempted.')}</p>}
           {!approvalRouteEditable && errors.approval_log && <p className="pof-field-error">{errors.approval_log}</p>}
         </div>
       </section>
