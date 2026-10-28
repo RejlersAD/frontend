@@ -234,8 +234,10 @@ const NotificationPanel = () => {
     activeApprovalStages(recordPreview.data?.approval_log).some((stage) =>
       isAssignedApprover(stage, user),
     );
-  const showPreviewDecisionActions =
-    canDecidePreview || assignedToActivePOStage;
+  // The API's can_approve flag includes current assignment, stage, employee
+  // status, business position, and module permission. Assignment alone must
+  // never expose buttons that the decision endpoint will reject.
+  const showPreviewDecisionActions = canDecidePreview;
   const previewNeedsReload =
     previewType === "pr" &&
     (previewDecision.stale ||
@@ -507,6 +509,24 @@ const NotificationPanel = () => {
       void fetchNotifications({ quiet: true });
     } catch (requestError) {
       if (previewContextRef.current !== context) return;
+      let refreshedRecord = null;
+      if (previewType === "po") {
+        try {
+          const refreshResponse = await apiClient.get(
+            `/procurement/orders/${previewId}/`,
+          );
+          refreshedRecord = refreshResponse.data;
+        } catch {
+          // Keep the decision error visible if the order cannot be refreshed.
+        }
+      }
+      if (previewContextRef.current !== context) return;
+      if (refreshedRecord) {
+        setRecordPreview((current) => ({
+          ...current,
+          data: { ...current.data, ...refreshedRecord },
+        }));
+      }
       setPreviewDecision((current) => ({
         ...current,
         loading: false,
@@ -1583,7 +1603,7 @@ const NotificationPanel = () => {
                     )}
                     {assignedToActivePOStage && !canDecidePreview && (
                       <p className="mb-3 text-xs text-slate-600" role="status">
-                        This PO is assigned to you. Approval permissions are verified when you submit a decision.
+                        This PO is routed to you, but your account is not currently authorized to approve it. Ask an administrator to check your active employee record, business position, and Purchase Order approval permission.
                       </p>
                     )}
                     {previewNeedsReload && (
