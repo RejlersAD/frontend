@@ -770,8 +770,8 @@ const PurchaseOrderForm = ({
     // Master-data defaults belong to creation. Opening an existing PO must not
     // rewrite its buyer references or recorded approval evidence.
     if (!recoveryReady || editData) return;
-    if (!approvalEmployees.length && !finalApprovers.length) return;
-    const defaultCandidates = finalApprovers.filter((employee) =>
+    if (!approvalEmployees.length) return;
+    const defaultCandidates = approvalEmployees.filter((employee) =>
       employee.is_active !== false
       && String(employee.full_name || '').trim().toLowerCase() === PROJECT_FINAL_APPROVER.toLowerCase()
     );
@@ -1577,7 +1577,7 @@ const PurchaseOrderForm = ({
   const handleApprovalSelection = (index, userId) => {
     if (!approvalRouteEditable) return;
     approvalSelectionEditedRef.current = true;
-    const employee = finalApprovers.find((candidate) => String(candidate.id) === String(userId));
+    const employee = approvalEmployees.find((candidate) => String(candidate.id) === String(userId));
     const assigneeName = employee ? employeeDisplayName(employee) : '';
     setFormData((previous) => {
       const approvalLog = [...previous.approval_log];
@@ -3528,13 +3528,13 @@ const PurchaseOrderForm = ({
                               onChange={(e) => handleApprovalSelection(index, e.target.value)}
                               aria-label={`${entry.stage || entry.role || 'Recorded approval'} approver`}
                               aria-describedby={approvalRouteEditable ? 'po-signatory-status' : undefined}
-                              disabled={!approvalRouteEditable || approversLoading || Boolean(approverLoadError) || !finalApprovers.length}
+                              disabled={!approvalRouteEditable || approversLoading || Boolean(employeeLoadError) || !approvalEmployees.length}
 
                               className="block w-full rounded-md border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
                             >
-                              <option value="">{approversLoading ? 'Loading authorized signatories...' : '-- Select authorized signatory (optional) --'}</option>
+                              <option value="">{approversLoading ? 'Loading employees...' : '-- Select an employee (optional) --'}</option>
                               {entry.user_id && !finalApprovers.some(employee => String(employee.id) === String(entry.user_id)) && <option value={entry.user_id} disabled={approvalRouteEditable}>{entry.approver || entry.user_name || 'Recorded approver'} — eligibility not confirmed</option>}
-                              {(approvalRouteEditable ? finalApprovers : approvalEmployees).map((employee) => (
+                              {approvalEmployees.map((employee) => (
                                 <option key={employee.id} value={employee.id}>
                                   {employee.full_name || employee.username || 'Active employee'}{employee.job_title ? ` — ${employee.job_title}` : ''}{employee.email ? ` — ${employee.email}` : ''}{employee.department ? ` (${employee.department})` : ''}
                                 </option>
@@ -3554,12 +3554,10 @@ const PurchaseOrderForm = ({
             </div>
           )) : <p className="pof-helper">No separate PO approval route is recorded.</p>}
           {approvalRouteEditable && <p id="po-signatory-status" role="status" className={'pof-helper ' + (approversLoading ? 'is-loading' : '')}>{approversLoading
-            ? 'Loading authorized signatories. You can save without assigning an approver.'
-            : approverLoadError || (unavailableSignatory
+            ? 'Loading employees. You can save this draft without an approver.'
+            : employeeLoadError || (unavailableSignatory
               ? 'This PO draft can be saved. The assigned employee must meet approval eligibility before approving it.'
-              : !finalApprovers.length
-                ? 'No eligible final signatory is available. You can save the PO without an approver.'
-                : 'Approver assignment is optional. You can create the PO without assigning one.')}</p>}
+              : 'Choose any active employee or leave the approver blank. Final approval remains limited to eligible signatories.')}</p>}
           {!approvalRouteEditable && errors.approval_log && <p className="pof-field-error">{errors.approval_log}</p>}
         </div>
       </section>
