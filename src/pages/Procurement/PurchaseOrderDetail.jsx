@@ -701,7 +701,7 @@ const PurchaseOrderDetail = () => {
                     className="inline-flex h-9 items-center rounded-lg bg-indigo-600 px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-50"
                 >
                   <PaperAirplaneIcon className="h-4 w-4 mr-2" />
-                  {actionLoading ? 'Sending...' : 'Send to Vendor'}
+                  {actionLoading ? 'Sending...' : 'SAVE'}
                 </button>
               )}
               

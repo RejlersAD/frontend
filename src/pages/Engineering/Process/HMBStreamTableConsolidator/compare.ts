@@ -112,6 +112,7 @@ export const RATE_KINDS: RateKind[] = ['liquid', 'gas', 'water']
 
 const normalizeRateName = (name: string): string =>
   name
+    .replace(/\s*\[(Vapour|Light Liquid|Heavy Liquid)\]$/i, ' $1')
     .toLowerCase()
     .replace(/\s*[\(\[][^\)\]]*[\)\]]/g, ' ')
     .replace(/[^a-z0-9]+/g, ' ')
@@ -196,7 +197,9 @@ export function buildGoverningCaseColumns(
           (s) => s.included && s.name.trim().toLowerCase() === key,
         )
         if (!stream) continue
-        const match = bestRateProperty(stream, kind)
+        const match = kind === 'water'
+          ? bestRateProperty(stream, kind) || bestAqueousRateProperty(stream)
+          : bestRateProperty(stream, kind)
         if (!match || typeof match.value !== 'number' || !Number.isFinite(match.value))
           continue
         if (maxValue === null || match.value > maxValue) {
@@ -209,11 +212,26 @@ export function buildGoverningCaseColumns(
       const values: StreamGoverningColumns['liquid']['values'] = {}
       for (const p of governing.properties) {
         const pk = p.name.trim().toLowerCase()
-        if (!(pk in values)) values[pk] = p.value
+        const phaseKey = p.phase ? `${pk} [${p.phase.toLowerCase()}]` : pk
+        if (!(phaseKey in values)) values[phaseKey] = p.value
       }
       entry[kind] = { caseName: governingCaseName, values }
     }
     columns.set(name, entry)
   }
   return columns
+}
+
+function bestAqueousRateProperty(stream: CaseData['streams'][number]) {
+  let best: { value: number | string | null; unit: string; score: number } | null = null
+  for (const property of stream.properties) {
+    if (!/aqueous/i.test(property.phase || '')) continue
+    const name = normalizeRateName(property.name)
+    let score = 0
+    if (name === 'mass flow') score = 100
+    else if (name === 'std ideal liq vol flow') score = 90
+    else if (name === 'liq vol flow std cond' || name === 'actual volume flow' || name === 'liquid volume flow') score = 80
+    if (score && (!best || score > best.score)) best = { value: property.value, unit: property.unit, score }
+  }
+  return best
 }
