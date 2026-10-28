@@ -33,8 +33,14 @@ function markerClass(status = '') {
   return 'pc-marker-minor'
 }
 
-export default function DrawingViewer({ imageUrl, imageSize = null, findings = [], selectedId = null, onSelect }) {
-  const [zoom, setZoom] = useState('fit')
+export default function DrawingViewer({ imageUrl, imageSize = null, findings = [], selectedId = null, onSelect, zoom: controlledZoom = null, onZoomChange = null }) {
+  const [internalZoom, setInternalZoom] = useState('fit')
+  // Optionally controlled by the caller (zoom deep link, spec §5).
+  const zoom = controlledZoom ?? internalZoom
+  const setZoom = z => {
+    if (onZoomChange) onZoomChange(z)
+    else setInternalZoom(z)
+  }
 
   const markers = useMemo(() => {
     const out = []
@@ -84,7 +90,7 @@ export default function DrawingViewer({ imageUrl, imageSize = null, findings = [
                 type="button"
                 className={`pc-marker ${markerClass(finding.status)}${finding.id === selectedId ? ' pc-marker-selected' : ''}`}
                 style={{ left: `${x * 100}%`, top: `${y * 100}%` }}
-                aria-label={`Finding F${finding.number}`}
+                aria-label={`Finding ${finding.displayId ?? `F${finding.number}`}`}
                 onClick={() => onSelect?.(finding.id)}
               >
                 {finding.number}

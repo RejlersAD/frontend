@@ -159,7 +159,7 @@ import PlaceholderPidVerification from "./pages/Engineering/Process/PlaceholderP
 import PIDVerificationV2 from "./pages/Engineering/Process/PIDVerificationV2";
 import PidCheckerProjectsPage from "./pages/Engineering/Process/PidChecker/ProjectsPage";
 import PidCheckerWorkspacePage from "./pages/Engineering/Process/PidChecker/ProjectWorkspacePage";
-import PidCheckerStubPage from "./pages/Engineering/Process/PidChecker/StubPage";
+import PidCheckerDrawingSetPage from "./pages/Engineering/Process/PidChecker/DrawingSetPage";
 import PidCheckerDrawingPage from "./pages/Engineering/Process/PidChecker/DrawingPage";
 import PIDVerificationV2Report from "./pages/Engineering/Process/PIDVerificationV2Report";
 import PIDCheckerV2 from "./pages/Engineering/Process/PIDCheckerV2";
@@ -1266,12 +1266,12 @@ function App() {
                 </ModuleProtectedRoute>
               }
             />
-            {/* Screen 3 — stub until the next build step */}
+            {/* Screen 3 — drawing set (PFD + P&ID set compare) */}
             <Route
               path="engineering/process/pid-verification/projects/:projectId/sets/:setId"
               element={
                 <ModuleProtectedRoute moduleCode="pid_analysis">
-                  <PidCheckerStubPage kind="set" />
+                  <PidCheckerDrawingSetPage />
                 </ModuleProtectedRoute>
               }
             />
