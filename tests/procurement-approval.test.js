@@ -107,17 +107,19 @@ test('converted PR history never becomes the active PO stage or its final signat
   assert.equal(purchaseOrderSignatureEvidence({ approval_log: [source, signed] }).signature, signed.signature)
 })
 
-test('only new or empty native Draft routes are configurable without replacing saved evidence', () => {
+test('pending native Draft routes are configurable until approval evidence is recorded', () => {
   assert.equal(canConfigurePurchaseOrderRoute(null), true)
   const draft = { status: 'draft', approval_log: [], pr_reference: 'pr-1' }
   assert.equal(canConfigurePurchaseOrderRoute(draft), true)
   for (const evidence of [
-    { status: 'sent' }, { approval_log: [assigned] }, { approved_by: 12 },
+    { status: 'sent' }, { approval_log: [signed] }, { approved_by: 12 },
     { approved_by_name: 'Historical signer' }, { approved_at: '2026-09-23T08:00:00Z' },
     { approved_date: '2026-09-23' }, { approval_signature: '/signed.png' },
+    { approval_log: [{ ...assigned, external: true }] },
     { attachments: [{ type: 'signed_purchase_order_pdf' }] },
     { attachments: [{ type: 'po_excel_import_source' }] },
   ]) assert.equal(canConfigurePurchaseOrderRoute({ ...draft, ...evidence }), false)
+  assert.equal(canConfigurePurchaseOrderRoute({ ...draft, approval_log: [assigned] }), true)
 })
 test('PO final signature requires complete prior levels and no review conflicts', () => {
   const final = { ...signed, stage: 'Final Management Sign-off' }

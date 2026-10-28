@@ -134,7 +134,7 @@ export default function PurchaseOrderNarrativeEditor({ value = '', onChange, dis
 
   const control = (label, Icon, action) => <button type="button" aria-label={label} title={label} onMouseDown={event => event.preventDefault()} onClick={action} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded text-slate-600 hover:bg-slate-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-40"><Icon size={16} aria-hidden="true" /></button>;
 
-  return <div className="mt-1 min-w-0 overflow-hidden rounded-md border border-slate-300 bg-white focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500">
+  return <div className="mt-1 w-full min-w-0 max-w-full overflow-hidden rounded-md border border-slate-300 bg-white focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500">
     <fieldset disabled={disabled} className="m-0 min-w-0 border-0 p-0">
       <div role="toolbar" aria-label="Narrative formatting" className="flex flex-wrap items-center gap-0.5 border-b border-slate-200 bg-slate-50 p-1">
         {control('Undo', Undo2, () => command('undo'))}{control('Redo', Redo2, () => command('redo'))}
