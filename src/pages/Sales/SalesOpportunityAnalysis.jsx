@@ -1,5 +1,5 @@
 import { decisionText } from '../../utils/salesDecisionTerminology.js';
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import {
   AlertCircle,
@@ -28,18 +28,10 @@ import {
   analysisSourceError,
   validateAnalysis,
 } from "./salesOpportunityAnalysis";
-import {
-  RadaiActions,
-  RadaiConfidence,
-  RadaiScore,
-  riskSeverity,
-  scoreColor,
-  SCORE_RING,
-} from "./salesOpportunityRadai";
 import "./SalesOpportunityAnalysis.css";
 
 const views = [
-  "Radai",
+  "Manager review",
   "Brief",
   "Submissions",
   "Risks",
@@ -47,36 +39,33 @@ const views = [
   "Timeline",
   "Sources",
 ];
-const sectionsFor = {
-  Radai: ["brief", "client_need", "risk", "next_step"],
-  Brief: ["brief", "client_need", "next_step"],
-  Submissions: ["submission"],
-  Risks: ["risk"],
-  Actions: ["action", "next_step"],
-  Timeline: ["deadline"],
-  Sources: [],
-};
+const reviewDimensions = [
+  ["capability_fit", "Scope vs capabilities"],
+  ["strategic_fit", "Strategic fit"],
+  ["resources", "Resources"],
+  ["execution_risk", "Execution risk"],
+  ["commercial", "Commercial attractiveness"],
+  ["schedule", "Schedule"],
+];
 const message = (error) =>
   typeof error?.response?.data?.detail === "string"
     ? error.response.data.detail
     : error.message || "Analysis could not be loaded. Please retry.";
 
-export default function SalesOpportunityAnalysis({ record }) {
+export default function SalesOpportunityAnalysis({ record, onAction }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
-  const [view, setView] = useState("Radai");
+  const [view, setView] = useState("Manager review");
   const [busy, setBusy] = useState(false);
   const [dark, setDark] = useState(false);
   const [openSections, setOpenSections] = useState({
     brief: true,
     client_need: true,
-    risk: true,
     next_step: true,
     submission: true,
     action: true,
     deadline: true,
   });
-  const [showAllActions, setShowAllActions] = useState(false);
   const [sources, setSources] = useState([]);
   const [nextOffset, setNextOffset] = useState(null);
   const [sourceError, setSourceError] = useState("");
@@ -86,18 +75,10 @@ export default function SalesOpportunityAnalysis({ record }) {
   const operation = useRef(null);
   const [reload, setReload] = useState(0);
   const reportId = data?.id;
+  const managerReview = data?.result?.manager_review;
   const sourceStale = data?.stale;
   const sourceUpdatedAt = data?.updated_at;
 
-  const score = useMemo(() => RadaiScore(record, data), [record, data]);
-  const confidence = useMemo(() => RadaiConfidence(data), [data]);
-  const nextActions = useMemo(() => RadaiActions(record, data), [record, data]);
-  const visibleActions = showAllActions ? nextActions : nextActions.slice(0, 3);
-  const ringSize = SCORE_RING.size;
-  const ringRadius = SCORE_RING.radius;
-  const ringCirc = 2 * Math.PI * ringRadius;
-  const ringOffset = ringCirc - (score.score / 100) * ringCirc;
-  const ringColor = scoreColor(score.band);
   const toggleSection = (key) => setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
   const fmtDate = (value) => {
     if (!value) return "Unconfirmed date";
@@ -108,8 +89,6 @@ export default function SalesOpportunityAnalysis({ record }) {
     if (Number.isNaN(date.getTime())) return "Unconfirmed date";
     return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Dubai" }).format(date);
   };
-  const severityOf = (text) => riskSeverity(text);
-
   const sectionBlock = (key, title, Icon, deadline = false) => {
     const items = data?.result?.sections?.[key] || [];
     const open = openSections[key] !== false;
@@ -127,13 +106,7 @@ export default function SalesOpportunityAnalysis({ record }) {
           items.length ? (
             <ul className="cp-findings">
               {items.map((item, index) => (
-                <li key={`${item.source_id || "s"}-${index}`} className={`cp-finding ${key === "risk" ? `cp-risk-${severityOf(item.text)}` : ""}`}>
-                  {key === "risk" && (
-                    <span className={`cp-sev cp-sev-${severityOf(item.text)}`}>
-                      <ShieldAlert size={11} aria-hidden="true" />
-                      {severityOf(item.text)} risk
-                    </span>
-                  )}
+                <li key={`${item.source_id || "s"}-${index}`} className="cp-finding">
                   <p className="cp-finding-text">{decisionText(item.text)}</p>
                   {deadline && item.date && (
                     <span className="cp-chip">
@@ -279,6 +252,7 @@ export default function SalesOpportunityAnalysis({ record }) {
   };
 
   const counts = data?.counts || {};
+  const sourcesNeedingReview = (counts.partial || 0) + (counts.failed || 0);
   const fullResult = data?.result || {};
   const result =
     view === "Brief"
@@ -294,27 +268,40 @@ export default function SalesOpportunityAnalysis({ record }) {
             : undefined,
         }
       : fullResult;
-  const progress = counts.chunks_total
-    ? Math.min(100, Math.round((((counts.chunks_done || 0) + (counts.chunks_failed || 0)) / counts.chunks_total) * 100))
-    : 0;
   const processing = ["queued", "running"].includes(data?.status);
   const hasResult =
     !data?.stale &&
-    ["ready", "partial"].includes(data?.status) &&
-    Object.values(result.sections || {}).some(
-      (items) => Array.isArray(items) && items.length > 0,
-    );
+    (managerReview?.status === "ready" ||
+      (["ready", "partial"].includes(data?.status) && Object.values(result.sections || {}).some(
+        (items) => Array.isArray(items) && items.length > 0,
+      )));
 
   return (
-    <section className={`soa soa-Radai ${dark ? "soa-dark" : ""}`} aria-label="Opportunity analysis Radai">
+    <section className={`soa soa-Radai ${dark ? "soa-dark" : ""}`} aria-label="Opportunity Intelligence Sales review">
       <header className="soa-hero glass">
         <div className="soa-title">
           <span className="soa-mark" aria-hidden="true">
-            <Sparkles size={20} />
+            <Sparkles size={18} />
           </span>
-          <div>
-             <h2>Opportunity Intelligence</h2>
-            <p>Qualify, decide and act — grounded in your tender documents.</p>
+          <div className="soa-heading">
+            <h2>Opportunity Intelligence</h2>
+            {data && <div className="soa-hero-meta" role="status">
+              <span className={`soa-analysis-state ${data.status === "failed" || data.status === "blocked" ? "soa-analysis-state-error" : ""}`}>
+                {processing ? <Loader2 className="soa-spin" size={13} aria-hidden="true" />
+                  : data.status === "ready" ? <CheckCircle2 size={13} aria-hidden="true" />
+                    : <AlertCircle size={13} aria-hidden="true" />}
+                {processing
+                  ? `Analyzing ${counts.chunks_done || 0} of ${counts.chunks_total || 0} sections`
+                  : data.status === "ready"
+                    ? `${counts.chunks_done || 0} sections analyzed`
+                    : data.status === "partial"
+                      ? `${counts.chunks_done || 0} sections analyzed`
+                      : "Analysis needs attention"}
+              </span>
+              {sourcesNeedingReview > 0 && <button type="button" className="soa-coverage-link" onClick={() => setView("Sources")}>
+                {sourcesNeedingReview} {sourcesNeedingReview === 1 ? "source" : "sources"} need review <ArrowRight size={12} aria-hidden="true" />
+              </button>}
+            </div>}
           </div>
         </div>
         <div className="soa-hero-actions">
@@ -370,49 +357,13 @@ export default function SalesOpportunityAnalysis({ record }) {
       )}
       {data && (
         <>
-          <div
-            className={`cp-status glass ${data.status === "partial" || data.status === "failed" || data.status === "blocked" ? "cp-warn" : ""}`}
-            role="status"
-          >
-            {processing ? (
-              <Loader2 className="soa-spin" size={17} aria-hidden="true" />
-            ) : data.status === "ready" ? (
-              <CheckCircle2 size={17} aria-hidden="true" />
-            ) : (
-              <AlertCircle size={17} aria-hidden="true" />
-            )}
-            <div>
-              <strong>
-                {processing
-                  ? data.stale
-                    ? "Updating for the latest documents"
-                    : "Analysis in progress"
-                  : data.status === "ready"
-                    ? "Analysis ready for review"
-                    : data.status === "partial"
-                      ? "Partial analysis — review coverage gaps"
-                      : "Analysis needs attention"}
-              </strong>
-              <p>
-                {processing
-                  ? `${counts.chunks_done || 0} of ${counts.chunks_total || 0} text sections analyzed.`
-                  : data.status === "failed" || data.status === "blocked"
-                    ? analysisFailureMessage(data)
-                    : "AI findings are advisory. Confirm dates and requirements before acting."}
-              </p>
-            </div>
-            <span className={`cp-conf cp-conf-${confidence.level}`}>
-              <span className="cp-conf-dot" aria-hidden="true" />
-              {confidence.label} · {confidence.detail}
-            </span>
-          </div>
           <nav className="soa-nav cp-nav" aria-label="Analysis sections">
             {views.map((item) => (
               <button type="button" key={item} onClick={() => setView(item)} aria-current={view === item ? "page" : undefined}>
-                {item === "Radai" ? (
+                {item === "Manager review" ? (
                   <>
                     <Sparkles size={13} aria-hidden="true" />
-                    Radai
+                    Sales review
                   </>
                 ) : (
                   item
@@ -420,6 +371,73 @@ export default function SalesOpportunityAnalysis({ record }) {
               </button>
             ))}
           </nav>
+          {view === "Manager review" && managerReview?.status === "ready" && (
+            <div className="soa-manager-review">
+              <section className="soa-review-conclusion glass">
+                <p className="soa-review-kicker">Advisory recommendation</p>
+                <h3 className={`soa-verdict soa-verdict-${managerReview.recommendation}`}>
+                  {({ go: "Go", conditional_go: "Conditional Go", no_go: "No-Go", insufficient_evidence: "More information needed" })[managerReview.recommendation] || "Review unavailable"}
+                </h3>
+                <p>{managerReview.rationale}</p>
+                {managerReview.rationale_evidence?.map((source, index) => <details className="cp-evidence" key={`${source.source_id}-${index}`}>
+                  <summary><FileText size={13} aria-hidden="true" />{source.name} · {source.location}</summary>
+                  <blockquote>{source.excerpt}</blockquote>
+                </details>)}
+                <p className="soa-review-note">{managerReview.review_note}</p>
+                {record.bid_decision === "pending" && record.stage === "qualified" && managerReview.recommendation !== "insufficient_evidence" &&
+                  <button type="button" className="soa-review-action" onClick={() => onAction?.("bid_decision")}>Open Go / No-Go decision</button>}
+                {record.bid_decision === "pending" && record.stage === "lead" && managerReview.recommendation !== "insufficient_evidence" &&
+                  <button type="button" className="soa-review-action" onClick={() => onAction?.("qualify")}>Continue qualification before recording a decision</button>}
+                {record.bid_decision !== "pending" &&
+                  <p className="soa-review-note">Recorded decision: {record.bid_decision === "no_bid" ? "No-Go" : record.bid_decision === "conditional_bid" ? "Conditional Go" : "Go"}. Review the advisory recommendation before preparing correspondence.</p>}
+                {(managerReview.recommendation === "go" || managerReview.recommendation === "conditional_go") &&
+                  record.stage === "proposal" && (record.bid_decision === "bid" || record.bid_decision === "conditional_bid") &&
+                  <button type="button" className="soa-review-action" onClick={() => onAction?.("prepare_letter_eoi")}>Prepare EOI from saved template</button>}
+                {record.stage === "no_bid" && record.bid_decision === "no_bid" && (
+                  managerReview.recommendation === "no_go" && managerReview.suggested_letter === "regret_expertise" ? (
+                    <button type="button" className="soa-review-action" onClick={() => onAction?.("prepare_letter_regret_expertise")}>Prepare expertise regret from saved template</button>
+                  ) : managerReview.recommendation === "no_go" && managerReview.suggested_letter === "regret_manpower" ? (
+                    <button type="button" className="soa-review-action" onClick={() => onAction?.("prepare_letter_regret_manpower")}>Prepare manpower regret from saved template</button>
+                  ) : (
+                    <div className="soa-letter-choice">
+                      <p>The recorded No-Go has no cited expertise or manpower reason. Choose the saved wording to review:</p>
+                      <button type="button" onClick={() => onAction?.("prepare_letter_regret_expertise")}>Expertise template</button>
+                      <button type="button" onClick={() => onAction?.("prepare_letter_regret_manpower")}>Manpower template</button>
+                    </div>
+                  )
+                )}
+              </section>
+              <div className="soa-review-grid">
+                {reviewDimensions.map(([key, title]) => {
+                  const item = managerReview.dimensions?.find((row) => row.dimension === key);
+                  return <section className="cp-insight glass soa-review-dimension" key={key} aria-label={title}>
+                    <h3>{title}<span className={`soa-assessment soa-assessment-${item?.assessment || "unknown"}`}>{item?.assessment || "unknown"}</span></h3>
+                    <p>{item?.summary || "No verified assessment available."}</p>
+                    {item?.evidence?.map((source, index) => <details className="cp-evidence" key={`${source.source_id}-${index}`}>
+                      <summary><FileText size={13} aria-hidden="true" />{source.name} · {source.location}</summary>
+                      <blockquote>{source.excerpt}</blockquote>
+                    </details>)}
+                  </section>;
+                })}
+              </div>
+              {managerReview.clarifications?.length > 0 && <section className="cp-insight glass soa-review-clarifications">
+                <h3>Clarifications to raise with the client</h3>
+                <ul>{managerReview.clarifications.map((item, index) => <li key={index}>
+                  <p>{item.text}</p>
+                  {item.evidence?.map((source, evidenceIndex) => <details className="cp-evidence" key={`${source.source_id}-${evidenceIndex}`}>
+                    <summary><FileText size={13} aria-hidden="true" />{source.name} · {source.location}</summary><blockquote>{source.excerpt}</blockquote>
+                  </details>)}
+                </li>)}</ul>
+              </section>}
+              <p className="soa-review-note">EOI and regret drafts use the saved company template. Only project-specific fields are populated; standard wording is preserved.</p>
+            </div>
+          )}
+          {view === "Manager review" && managerReview?.status !== "ready" && hasResult && (
+            <div className="cp-empty glass"><h3>Sales manager review is not ready</h3>
+              <p>{managerReview?.error_code ? "The recommendation could not be verified. Review source coverage and retry." : processing ? "The review will appear when source analysis completes." : "No manager recommendation is available in this report. Retry the analysis and review source coverage."}</p>
+              {!processing && <button type="button" onClick={() => setView("Sources")}>Review source coverage</button>}
+            </div>
+          )}
           {!hasResult && view !== "Sources" && (
             <div className="cp-empty glass">
               {processing ? <Sparkles size={26} aria-hidden="true" className="cp-pulse" /> : <BarChart3 size={28} aria-hidden="true" />}
@@ -434,11 +452,11 @@ export default function SalesOpportunityAnalysis({ record }) {
               </h3>
               <p>
                 {processing
-                  ? "Findings, risks and the qualification score appear here as processing completes."
+                  ? "Source findings and the Sales manager review appear here as processing completes."
                   : data.status === "failed" || data.status === "blocked"
                     ? analysisFailureMessage(data)
                     : counts.total === 0
-                      ? "Attach readable tender documents to unlock the Radai brief."
+                      ? "Attach readable tender documents to prepare the Sales manager review."
                       : "No findings were verified. Review source coverage or attach additional files."}
               </p>
               {!processing && counts.total > 0 && (
@@ -446,76 +464,6 @@ export default function SalesOpportunityAnalysis({ record }) {
                   Review source coverage
                 </button>
               )}
-            </div>
-          )}
-          {view === "Radai" && hasResult && (
-            <div className="cp-workspace">
-              <div className="cp-hero glass">
-                <div className="cp-hero-grid">
-                  <div className="cp-score-block">
-                    <div className="cp-ring-wrap" role="img" aria-label={`Qualification score ${score.score} of 100, ${score.band}`}>
-                      <svg width={ringSize} height={ringSize} viewBox={`0 0 ${ringSize} ${ringSize}`}>
-                        <circle cx={ringSize / 2} cy={ringSize / 2} r={ringRadius} fill="none" strokeWidth="11" className="cp-ring-track" />
-                        <circle
-                          cx={ringSize / 2}
-                          cy={ringSize / 2}
-                          r={ringRadius}
-                          fill="none"
-                          stroke={ringColor}
-                          strokeWidth="11"
-                          strokeLinecap="round"
-                          strokeDasharray={ringCirc}
-                          strokeDashoffset={ringOffset}
-                          transform={`rotate(-90 ${ringSize / 2} ${ringSize / 2})`}
-                          className="cp-ring-fill"
-                        />
-                      </svg>
-                      <div className="cp-ring-label">
-                        <strong style={{ color: ringColor }}>{score.score}</strong>
-                        <small>/ 100 · {score.band}</small>
-                      </div>
-                    </div>
-                    <div>
-                      <h3>Qualification score</h3>
-                      <p className="cp-muted">
-                        Evidence {score.coverage}% · {score.ready}/{score.total} sources verified · {score.risks} risks
-                      </p>
-                    </div>
-                  </div>
-                  <div className="cp-actions">
-                    <h3>
-                      <Target size={15} aria-hidden="true" />
-                      Next best actions
-                    </h3>
-                    <ul>
-                      {visibleActions.map((action) => (
-                        <li key={action.id} className={`cp-action cp-${action.priority}`}>
-                          <div>
-                            <strong>{action.title}</strong>
-                            <p>{action.detail}</p>
-                          </div>
-                          {action.view && (
-                            <button type="button" onClick={() => setView(action.view)}>
-                              Open
-                            </button>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                    {nextActions.length > 3 && (
-                      <button type="button" className="cp-more" onClick={() => setShowAllActions((v) => !v)}>
-                        {showAllActions ? "Show fewer" : `Show all ${nextActions.length} actions`}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-              <div className="cp-insights">
-                {sectionBlock("brief", "Opportunity brief", Sparkles)}
-                {sectionBlock("client_need", "Client needs", ListChecks)}
-                {sectionBlock("risk", "Risks to clear", ShieldAlert)}
-                {sectionBlock("next_step", "Suggested next steps", ArrowRight)}
-              </div>
             </div>
           )}
           {hasResult && view === "Brief" && (
@@ -539,7 +487,25 @@ export default function SalesOpportunityAnalysis({ record }) {
             <div className="cp-insights">{sectionBlock("submission", "What do we need to submit?", FileText)}</div>
           )}
           {hasResult && view === "Risks" && (
-            <div className="cp-insights">{sectionBlock("risk", "What risks need attention?", ShieldAlert)}</div>
+            <div className="cp-insights">
+              <section className="cp-insight glass" aria-label="Business decision risks">
+                <h3 className="soa-risk-heading"><ShieldAlert size={16} aria-hidden="true" />Business decision risks</h3>
+                <p className="cp-missing">Factors that may affect attractiveness, profitability, winnability or commercial exposure.</p>
+                {managerReview?.status === "ready" ? (
+                  managerReview.business_risks?.length ? <ul className="cp-findings">
+                    {managerReview.business_risks.map((item, index) => <li className="cp-finding" key={`${item.category}-${index}`}>
+                      <span className="soa-risk-category">{item.category.replaceAll("_", " ")}</span>
+                      <p className="cp-finding-text">{item.risk}</p>
+                      <p className="soa-risk-impact"><strong>Decision impact:</strong> {item.decision_impact}</p>
+                      {item.evidence?.map((source, evidenceIndex) => <details className="cp-evidence" key={`${source.source_id}-${evidenceIndex}`}>
+                        <summary><FileText size={13} aria-hidden="true" />{source.name} · {source.location}</summary>
+                        <blockquote>{source.excerpt}</blockquote>
+                      </details>)}
+                    </li>)}
+                  </ul> : <p className="cp-missing">No cited business decision risk was identified. Commercial terms and internal guardrails still need Sales review.</p>
+                ) : <p className="cp-missing">Business decision risks will appear when the Sales manager review is ready.</p>}
+              </section>
+            </div>
           )}
           {hasResult && view === "Actions" && (
             <div className="cp-insights">
@@ -627,7 +593,7 @@ export default function SalesOpportunityAnalysis({ record }) {
             <div>
               <button type="button" onClick={retry} disabled={busy || processing}>
                 <RefreshCw size={14} />
-                Retry incomplete sources
+                Retry incomplete analysis
               </button>
               <button type="button" onClick={download} disabled={!hasResult}>
                 <Download size={14} />
@@ -643,4 +609,5 @@ export default function SalesOpportunityAnalysis({ record }) {
 
 SalesOpportunityAnalysis.propTypes = {
   record: PropTypes.object.isRequired,
+  onAction: PropTypes.func,
 };
