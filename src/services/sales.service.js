@@ -806,11 +806,12 @@ class SalesService {
     ).data;
   }
 
-  async recordBidDecision(dealId, decision, reason = "") {
+  async recordBidDecision(dealId, decision, reason = "", expectedDecision) {
     return (
       await apiClient.post(`${BASE_URL}/deals/${dealId}/bid-decision/`, {
         decision,
         reason,
+        expected_decision: expectedDecision,
       })
     ).data;
   }
@@ -893,6 +894,13 @@ class SalesService {
         custom_data: customData,
       })
     ).data;
+  }
+
+  async getLetterPreparationContext(dealId, signal) {
+    return (await apiClient.get(`${BASE_URL}/deals/${dealId}/letter-preparation-context/`, {
+      ...EMAIL_REQUEST_OPTIONS,
+      signal,
+    })).data;
   }
 
   async getLetters(dealId) {

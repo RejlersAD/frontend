@@ -45,8 +45,8 @@ const directionLabels = { incoming: "Incoming", outgoing: "Outgoing", draft: "Dr
 const directionBadge = (record) => {
   const direction = record.is_draft ? "draft" : record.direction;
   return <span className={`sales-email-status sales-email-direction-${direction}`} title={
-    direction === "incoming" ? "Received by this shared mailbox"
-      : direction === "outgoing" ? "Sent from or by this shared mailbox"
+    direction === "incoming" ? "Received by this mailbox"
+      : direction === "outgoing" ? "Sent from or by this mailbox"
         : direction === "draft" ? "This message has not been sent"
           : "The available sender and recipient details do not establish the direction"
   }>{directionLabels[direction]}</span>;
@@ -160,13 +160,13 @@ export default function SalesSharedMailboxMessages({ preferredConnectionId = "",
         if (!Array.isArray(records)) throw new Error("Invalid connections.");
         for (const record of records) {
           if (!record || typeof record.auth_mode !== "string") throw new Error("Invalid connection.");
-          if (record.auth_mode !== "application") continue;
+          if (record.auth_mode !== "application" && !(record.auth_mode === "delegated" && record.delegated_connected === true)) continue;
           if (typeof record.id !== "string" || !record.id || !text(record.mailbox_address).trim() || ids.has(record.id)) {
             throw new Error("Invalid connection.");
           }
           ids.add(record.id);
           connections.push({
-            id: record.id, address: record.mailbox_address, name: text(record.name),
+            id: record.id, address: record.mailbox_address, name: text(record.name), auth_mode: record.auth_mode,
             setup: {
               id: record.id, name: text(record.name), mailbox_address: record.mailbox_address,
               auth_mode: record.auth_mode, tenant_id: text(record.tenant_id), client_id: text(record.client_id),
@@ -186,7 +186,7 @@ export default function SalesSharedMailboxMessages({ preferredConnectionId = "",
       setState({
         records: null,
         loading: false,
-        error: accessError(error?.response?.status) || "Shared mailboxes could not be loaded. Try again.",
+        error: accessError(error?.response?.status) || "Mailboxes could not be loaded. Try again.",
       });
     }
   }, [preferredConnectionId]);
@@ -204,7 +204,7 @@ export default function SalesSharedMailboxMessages({ preferredConnectionId = "",
   return (
     <div className="sales-email-view">
       {!connection && <SalesEmailPageHeader>{onAddMailbox && <button type="button" onClick={onAddMailbox} className="sales-email-button"><Plus aria-hidden="true" />Add shared mailbox</button>}</SalesEmailPageHeader>}
-      {state.loading && <p role="status" className="text-sm text-slate-600">Loading shared mailboxes…</p>}
+      {state.loading && <p role="status" className="text-sm text-slate-600">Loading mailboxes…</p>}
       {state.error && (
         <div className="space-y-3 rounded-md border border-amber-200 bg-amber-50 p-4">
           <p role="alert" className="text-sm text-amber-900">{state.error}</p>
@@ -213,7 +213,8 @@ export default function SalesSharedMailboxMessages({ preferredConnectionId = "",
       )}
       {!state.loading && !state.error && state.records?.length === 0 && (
         <div className="space-y-3 rounded-md border border-slate-200 bg-white p-5">
-          <p className="text-sm text-slate-600">No shared mailbox is available to your account.</p>
+          <p className="text-sm text-slate-600">No connected mailbox is available to your account.</p>
+          <Link to="/sales?outlook=connect" className={buttonClass}>Connect my Outlook</Link>
           <button type="button" onClick={loadConnections} className={buttonClass}>Refresh mailboxes</button>
         </div>
       )}
@@ -226,11 +227,11 @@ export default function SalesSharedMailboxMessages({ preferredConnectionId = "",
             className="mt-1 block w-full max-w-xl rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
           >
             <option value="">Choose a mailbox</option>
-            {state.records.map((record) => <option key={record.id} value={record.id}>{record.name ? `${record.name} · ` : ""}{record.address}</option>)}
+            {state.records.map((record) => <option key={record.id} value={record.id}>{record.auth_mode === "delegated" ? "My Outlook · " : record.name ? `${record.name} · ` : ""}{record.address}</option>)}
           </select>
         </label>
       )}
-      {connection && <MailboxEmails key={connection.id} connection={connection} onConfigure={onConfigure} onAddMailbox={onAddMailbox} />}
+      {connection && <MailboxEmails key={connection.id} connection={connection} onConfigure={connection.setup.auth_mode === "application" ? onConfigure : undefined} onAddMailbox={onAddMailbox} />}
     </div>
   );
 }
@@ -470,7 +471,7 @@ function MailboxEmails({ connection, onConfigure, onAddMailbox }) {
     ["drafts", "Drafts", page.records?.filter((record) => record.is_draft).length],
   ];
   return (
-    <section aria-label="Shared mailbox messages" className="sales-email-mailbox">
+    <section aria-label={connection.setup.auth_mode === "delegated" ? "My Outlook messages" : "Shared mailbox messages"} className="sales-email-mailbox">
       <SalesEmailPageHeader>
       <div className="sales-email-toolbar">
         <div className="flex min-w-0 flex-wrap items-center gap-2">

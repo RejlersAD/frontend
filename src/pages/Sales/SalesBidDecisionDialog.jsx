@@ -31,8 +31,11 @@ const AI_LIMIT = 4000;
 export default function SalesBidDecisionDialog({ record, busy, error, onClose, onSubmit, onReadyChange }) {
   const user = useSelector((state) => state.auth?.user);
   const summary = useMemo(() => summaryOf(record || {}), [record]);
-  const [decision, setDecision] = useState('');
-  const [justification, setJustification] = useState('');
+  const recordedDecision = record?.bid_decision;
+  const initialDecision = recordedDecision === 'no_bid' ? NO_GO
+    : ['bid', 'conditional_bid'].includes(recordedDecision) ? GO : '';
+  const [decision, setDecision] = useState(initialDecision);
+  const [justification, setJustification] = useState(record?.bid_decision_reason || '');
   const [editing, setEditing] = useState(false);
   const [variant, setVariant] = useState(0);
   const [refining, setRefining] = useState(false);
@@ -139,7 +142,7 @@ export default function SalesBidDecisionDialog({ record, busy, error, onClose, o
     setAiSource('instant');
     setJustification(safeText);
     setVariant(0);
-    refine(next, safeText);
+    if (record.stage === 'qualified') refine(next, safeText);
   };
 
   const regenerate = () => {
@@ -151,11 +154,14 @@ export default function SalesBidDecisionDialog({ record, busy, error, onClose, o
     setAiSource('instant');
     setEditing(false);
     setRefineError('');
-    refine(decision, instantText);
+    if (record.stage === 'qualified') refine(decision, instantText);
   };
 
-  const canSave = Boolean(decision) && justification.trim().length >= 20 && !busy && !refining;
-  const draftReady = Boolean(decision) && justification.trim().length >= 20 && !refining;
+  const decisionUnchanged = decision === GO
+    ? ['bid', 'conditional_bid'].includes(recordedDecision)
+    : decision === NO_GO && recordedDecision === 'no_bid';
+  const canSave = Boolean(decision) && !decisionUnchanged && justification.trim().length >= 20 && !busy && !refining;
+  const draftReady = Boolean(decision) && !decisionUnchanged && justification.trim().length >= 20 && !refining;
   useEffect(() => {
     onReadyChange?.(draftReady);
   }, [draftReady, onReadyChange]);
@@ -177,8 +183,8 @@ export default function SalesBidDecisionDialog({ record, busy, error, onClose, o
       <section role="dialog" aria-modal="true" aria-labelledby="sbd-title" className="sbd-dialog">
         <header className="sbd-head">
           <div>
-            <h2 id="sbd-title">Record Go / No-Go Decision</h2>
-            <p>Single-click executive decision with AI justification and governance trail.</p>
+            <h2 id="sbd-title">{initialDecision ? 'Reverse Go / No-Go Decision' : 'Record Go / No-Go Decision'}</h2>
+            <p>{initialDecision ? 'Select the revised decision and record its justification in the governance trail.' : 'Single-click executive decision with AI justification and governance trail.'}</p>
           </div>
           <button type="button" onClick={onClose} aria-label="Close" className="sbd-x">
             <XMarkIcon aria-hidden="true" />
@@ -225,6 +231,7 @@ export default function SalesBidDecisionDialog({ record, busy, error, onClose, o
               </button>
             </div>
             {!decision && <p className="sbd-hint">Select Go or No-Go — justification generates instantly.</p>}
+            {decisionUnchanged && <p className="sbd-hint">Choose the other decision to save a revision.</p>}
           </section>
           {decision && (
             <div className="sbd-grid">

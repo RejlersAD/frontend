@@ -102,10 +102,18 @@ export default function SalesLetterEditor({
   const [subject, setSubject] = useState(letter?.subject || "");
   const [head, setHead] = useState(() => {
     const lh = letter?.custom_data?.letterhead || {};
+    const extraction = letter?.custom_data?.letter_extraction || {};
+    const retainedFields = Array.isArray(extraction.retained_fields) ? extraction.retained_fields : [];
+    const detectedYourRef = extraction.values?.your_ref;
     const signatureTitles = Array.isArray(lh.signature_titles)
       ? lh.signature_titles.join("\n")
       : (lh.signature_titles || "");
-    return { ...EMPTY_HEAD, ...lh, signature_titles: signatureTitles };
+    return {
+      ...EMPTY_HEAD,
+      ...lh,
+      your_ref: lh.your_ref || (!retainedFields.includes("your_ref") ? detectedYourRef : "") || "",
+      signature_titles: signatureTitles,
+    };
   });
   const [paragraphs, setParagraphs] = useState([]);
   const editorRefs = useRef({});
@@ -494,6 +502,7 @@ SalesLetterEditor.propTypes = {
     body: PropTypes.string,
     custom_data: PropTypes.shape({
       letterhead: PropTypes.object,
+      letter_extraction: PropTypes.object,
       attachments: PropTypes.object,
     }),
   }).isRequired,

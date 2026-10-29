@@ -94,6 +94,9 @@ export default function SalesLetterModal({
   const [pdfError, setPdfError] = useState(null);
   // Bumped after every regenerate so the preview iframe reloads the PDF.
   const [previewEpoch, setPreviewEpoch] = useState(0);
+  const [letterContext, setLetterContext] = useState(null);
+  const [letterDetails, setLetterDetails] = useState({});
+  const [contextLoading, setContextLoading] = useState(false);
   const preparing = useRef(false);
 
   useEffect(() => {
@@ -116,6 +119,9 @@ export default function SalesLetterModal({
     setPdfError(null);
     setPreviewFullscreen(false);
     setPreviewEpoch(0);
+    setLetterContext(null);
+    setLetterDetails({});
+    setContextLoading(false);
     // Only the open transition matters; state setters are stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -123,18 +129,31 @@ export default function SalesLetterModal({
   useEffect(() => {
     if (!open || !deal || !selectedType) return;
     let cancelled = false;
+    setContextLoading(true);
     const checkExisting = async () => {
       try {
-        const response = await salesService.getLetters(deal.id);
-        const letters = Array.isArray(response) ? response : response?.results;
-        if (!Array.isArray(letters)) return;
+        let letters = [];
+        try {
+          const response = await salesService.getLetters(deal.id);
+          letters = Array.isArray(response) ? response : Array.isArray(response?.results) ? response.results : [];
+        } catch {
+          // Letter context can still be prepared if the optional draft list is unavailable.
+        }
         const existing = letters.find((letter) => letter.letter_type === selectedType && letter.status !== "archived");
         if (existing && !cancelled) {
           setGeneratedLetter(existing);
           setStep("preview");
+          return;
+        }
+        const context = await salesService.getLetterPreparationContext(deal.id);
+        if (!cancelled) {
+          setLetterContext(context);
+          setLetterDetails(context.letterhead || {});
         }
       } catch (err) {
-        // ignore
+        if (!cancelled) setError(extractApiError(err, "Could not check the saved letter fields. Retry or close and reopen the letter."));
+      } finally {
+        if (!cancelled) setContextLoading(false);
       }
     };
     checkExisting();
@@ -173,7 +192,7 @@ export default function SalesLetterModal({
       const letter = await salesService.prepareLetter(
         deal.id,
         selectedType,
-        {},
+        { letterhead: letterDetails },
       );
       setGeneratedLetter(letter);
       setStep("preview");
@@ -191,14 +210,14 @@ export default function SalesLetterModal({
       preparing.current = false;
       setLoading(false);
     }
-  }, [deal, selectedType, onLetterGenerated, onError]);
+  }, [deal, selectedType, letterDetails, onLetterGenerated, onError]);
 
   // The drawer action the user clicked already determines the letter type
   // (e.g. "Prepare Regret Letter (Expertise)"), so skip the select step and
   // generate that letter directly instead of offering both regret variants.
   useEffect(() => {
     if (!open || step !== "select") return;
-    if (!selectedType || generatedLetter || loading || error) return;
+    if (!selectedType || generatedLetter || loading || error || !letterContext || letterContext.missing_fields?.length) return;
     if (!availableTypes.includes(selectedType)) return;
     handleGenerate();
   }, [
@@ -209,6 +228,7 @@ export default function SalesLetterModal({
     loading,
     error,
     availableTypes,
+    letterContext,
     handleGenerate,
   ]);
 
@@ -412,6 +432,30 @@ export default function SalesLetterModal({
           );
         })}
       </div>
+      {contextLoading && <p className="sl-hint" role="status">Checking the tender and saved opportunity for letter details…</p>}
+      {letterContext?.missing_fields?.length > 0 && (
+        <section className="sl-letter-missing-fields" aria-label="Missing project-specific letter details">
+          <h4>Complete missing project details</h4>
+          <p>These details were not found in the tender or saved opportunity. Review the response date and enter any missing client details; the company template wording will remain unchanged.</p>
+          <p><strong>VF/Q number:</strong> {letterContext.deal_code}</p>
+          {letterContext.missing_fields.includes("recipient_name") && <label>
+            Client contact name <span aria-hidden="true">*</span>
+            <input value={letterDetails.recipient_name || ""} onChange={(event) => setLetterDetails((current) => ({ ...current, recipient_name: event.target.value }))} autoComplete="name" />
+          </label>}
+          {letterContext.missing_fields.includes("recipient_email") && <label>
+            Client contact email
+            <input type="email" value={letterDetails.recipient_email || ""} onChange={(event) => setLetterDetails((current) => ({ ...current, recipient_email: event.target.value }))} autoComplete="email" />
+          </label>}
+          {letterContext.missing_fields.includes("your_ref") && <label>
+            Client reference
+            <input value={letterDetails.your_ref || ""} onChange={(event) => setLetterDetails((current) => ({ ...current, your_ref: event.target.value }))} />
+          </label>}
+          {letterContext.missing_fields.includes("confidential_date") && <label>
+            Response date <span aria-hidden="true">*</span>
+            <input value={letterDetails.confidential_date || ""} onChange={(event) => setLetterDetails((current) => ({ ...current, confidential_date: event.target.value }))} />
+          </label>}
+        </section>
+      )}
       {availableTypes.length === 0 && (
         <div className="sl-no-options">
           <AlertCircle size={24} />
@@ -433,7 +477,7 @@ export default function SalesLetterModal({
           type="button"
           className="sl-btn sl-btn--primary"
           onClick={handleGenerate}
-          disabled={!selectedType || loading}
+          disabled={!selectedType || loading || contextLoading || !letterContext || (letterContext.missing_fields?.includes("recipient_name") && !letterDetails.recipient_name?.trim()) || (letterContext.missing_fields?.includes("confidential_date") && !letterDetails.confidential_date?.trim())}
         >
           {loading ? (
             <>

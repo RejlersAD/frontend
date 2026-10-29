@@ -551,7 +551,7 @@ export default function SalesOpportunityDetailPanel({
             />
           </div>
         )}
-        {activeTab === "Analysis" && <SalesOpportunityAnalysis key={record.id} record={record} />}
+        {activeTab === "Analysis" && <SalesOpportunityAnalysis key={record.id} record={record} onAction={onAction} />}
         {activeTab === "Overview" && (
           <>
             <Section number={1} title="Identity">

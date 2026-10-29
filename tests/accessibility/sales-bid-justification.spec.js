@@ -2,24 +2,24 @@ import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { prepareRegister, opportunity } from '../fixtures/sales-opportunity-register-api';
 
-const dialog = page => page.getByRole('dialog', { name: 'Record Go / No-Go Decision', exact: true });
+const dialog = (page, name = 'Record Go / No-Go Decision') => page.getByRole('dialog', { name, exact: true });
 const reason = page => dialog(page).getByRole('textbox', { name: 'Edit justification', exact: true });
-const choose = (page, name) => dialog(page).getByRole('radio', { name }).click();
-const save = page => dialog(page).getByRole('button', { name: 'Save Decision', exact: true });
+const choose = (page, name, dialogName = 'Record Go / No-Go Decision') => dialog(page, dialogName).getByRole('radio', { name }).click();
+const save = (page, name = 'Record Go / No-Go Decision') => dialog(page, name).getByRole('button', { name: 'Save Decision', exact: true });
 const row = (page, index) => page.locator('.sor-table-scroll').getByRole('button', { name: `Q-${102101 + index}`, exact: true });
 const selected = page => page.getByRole('complementary', { name: 'Opportunity details', exact: true });
 
-async function openDecision(page, index = 0) {
+async function openDecision(page, index = 0, action = 'Record Go / No-Go') {
   await row(page, index).click();
   await page.getByRole('button', { name: 'Close record', exact: true }).click();
-  await selected(page).getByRole('button', { name: 'Record Go / No-Go', exact: true }).click();
-  await expect(dialog(page)).toBeVisible();
+  await selected(page).getByRole('button', { name: action, exact: true }).click();
+  await expect(dialog(page, action.startsWith('Reverse') ? 'Reverse Go / No-Go Decision' : 'Record Go / No-Go Decision')).toBeVisible();
 }
 
 async function prepare(page, configuration = {}) {
   const state = await prepareRegister(page, {
     realShell: configuration.realShell,
-    records: [opportunity(0, { stage: 'qualified', opportunity_type: configuration.type ?? 'tender', estimated_value: '10000.00', currency: 'AED' }), opportunity(1, { stage: 'qualified', opportunity_type: 'rfq' })],
+    records: configuration.records || [opportunity(0, { stage: 'qualified', opportunity_type: configuration.type ?? 'tender', estimated_value: '10000.00', currency: 'AED' }), opportunity(1, { stage: 'qualified', opportunity_type: 'rfq' })],
   });
   const fixture = { aiRequests: [], decisions: [], completed: [], aborted: [], status: 200, hold: null, text: 'The saved scope supports this pursuit, subject to confirming delivery capacity.', responsePatch: null, ...configuration };
   page.on('requestfailed', request => { if (request.url().endsWith('/bid-decision-justification/')) fixture.aborted.push(request.postDataJSON()); });
@@ -42,7 +42,7 @@ async function prepare(page, configuration = {}) {
     await route.fulfill({ status, json: status === 200 ? response : { detail: status === 403 ? 'AI assistance permission denied.' : status === 409 ? 'The saved opportunity changed. Review its details before trying again.' : 'AI assistance is not configured. Your text is retained.', code: 'synthetic_ai_unavailable' } });
     fixture.completed.push(attempt);
   });
-  await openDecision(page);
+  if (!configuration.skipOpen) await openDecision(page);
   return { fixture, state };
 }
 
@@ -59,8 +59,35 @@ test('choosing Go drafts without saving and explicit save records reviewed wordi
   await reason(page).fill('Reviewed scope and capacity; proceed subject to confirming the client inputs.');
   await save(page).click();
   await expect(dialog(page)).toHaveCount(0);
-  expect(fixture.decisions).toEqual([{ id: 'opportunity-0', payload: { decision: 'bid', reason: 'Reviewed scope and capacity; proceed subject to confirming the client inputs.' } }]);
+  expect(fixture.decisions).toEqual([{ id: 'opportunity-0', payload: { decision: 'bid', reason: 'Reviewed scope and capacity; proceed subject to confirming the client inputs.', expected_decision: 'pending' } }]);
   expect(state.pageErrors).toEqual([]);
+});
+
+test('authorized reverse action can change Go to No-Go and No-Go to Go', async ({ page }) => {
+  const { fixture } = await prepare(page, {
+    skipOpen: true,
+    records: [
+      opportunity(0, { stage: 'proposal', bid_decision: 'bid', bid_decision_reason: 'Original Go decision.' }),
+      opportunity(1, { stage: 'no_bid', bid_decision: 'no_bid', bid_decision_reason: 'Original No-Go decision.' }),
+    ],
+  });
+
+  await openDecision(page, 0, 'Reverse Go / No-Go decision');
+  await expect(dialog(page, 'Reverse Go / No-Go Decision')).toBeVisible();
+  await expect(save(page, 'Reverse Go / No-Go Decision')).toBeDisabled();
+  await choose(page, 'No-Go Decline this pursuit', 'Reverse Go / No-Go Decision');
+  await save(page, 'Reverse Go / No-Go Decision').click();
+  await expect(dialog(page, 'Reverse Go / No-Go Decision')).toHaveCount(0);
+
+  await openDecision(page, 1, 'Reverse Go / No-Go decision');
+  await expect(dialog(page, 'Reverse Go / No-Go Decision')).toBeVisible();
+  await expect(save(page, 'Reverse Go / No-Go Decision')).toBeDisabled();
+  await choose(page, 'Go Pursue Go submission', 'Reverse Go / No-Go Decision');
+  await save(page, 'Reverse Go / No-Go Decision').click();
+  await expect(dialog(page, 'Reverse Go / No-Go Decision')).toHaveCount(0);
+  expect(fixture.aiRequests).toHaveLength(0);
+  expect(fixture.decisions.map(item => item.payload.decision)).toEqual(['no_bid', 'bid']);
+  expect(fixture.decisions.map(item => item.payload.expected_decision)).toEqual(['bid', 'no_bid']);
 });
 
 for (const status of [403, 409, 503]) test(`AI ${status} retains an editable record draft and retry can recover`, async ({ page }) => {
@@ -102,7 +129,7 @@ test('a changed decision ignores late output and cannot save while generation is
   await expect(dialog(page)).not.toContainText('OLD GO RESPONSE');
   await save(page).click();
   await expect(dialog(page)).toHaveCount(0);
-  expect(fixture.decisions[0].payload).toEqual({ decision: 'no_bid', reason: 'No-Go wording for the newly selected decision, subject to final review.' });
+  expect(fixture.decisions[0].payload).toEqual({ decision: 'no_bid', reason: 'No-Go wording for the newly selected decision, subject to final review.', expected_decision: 'pending' });
 });
 
 test('closing a pending draft fences output from another opportunity', async ({ page }) => {
