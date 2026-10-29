@@ -33,6 +33,7 @@ const RESULT_TABS = [
   { key: 'io', label: 'IO rows' },
   { key: 'service', label: 'Service review' },
   { key: 'lines', label: 'Line ↔ tags' },
+  { key: 'alarmtrip', label: 'Alarm & trip' },
   { key: 'setpoints', label: 'Set points' },
   { key: 'untagged', label: 'Untagged symbols' },
   { key: 'vendor', label: 'Vendor auto-fill' },
@@ -48,6 +49,7 @@ const confPill = (c) => {
 function Pill({ children, tone = 'slate' }) {
   const tones = {
     slate: 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200',
+    blue: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
     green: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
     amber: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
     red: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
@@ -67,6 +69,7 @@ export default function PidExtractionWorkspace({ project, onBack, onManageLegend
   const [activeTab, setActiveTab] = useState('io')
   const [tabData, setTabData] = useState(null)
   const [sheetFilter, setSheetFilter] = useState('')
+  const [alarmScope, setAlarmScope] = useState('pid')
   const [history, setHistory] = useState([])
   const [toast, setToast] = useState('')
   const [error, setError] = useState('')
@@ -221,14 +224,18 @@ export default function PidExtractionWorkspace({ project, onBack, onManageLegend
     if (!extId) return
     setTabData(null)
     try {
-      const data = await ioExtractionService.getExtraction(project.id, extId, { tab, sheet: sheet || undefined })
+      const data = await ioExtractionService.getExtraction(project.id, extId, {
+        tab,
+        sheet: sheet || undefined,
+        scope: tab === 'alarmtrip' ? alarmScope : undefined,
+      })
       setTabData(data)
     } catch (err) {
       setError(err.response?.data?.error || err.message)
     }
   }
 
-  useEffect(() => { if (extraction) loadTab(activeTab) }, [activeTab, sheetFilter]) // eslint-disable-line
+  useEffect(() => { if (extraction) loadTab(activeTab) }, [activeTab, sheetFilter, alarmScope]) // eslint-disable-line
 
   const decide = async (tag, decision) => {
     await ioExtractionService.postDecisions(project.id, extraction.id, [{ tag, decision }])
@@ -286,9 +293,10 @@ export default function PidExtractionWorkspace({ project, onBack, onManageLegend
           </button>
           {extraction && (
             <button className="rd-btn text-sm flex items-center gap-1"
-                    onClick={() => ioExtractionService.exportWorkbook(project.id, extraction.id, 'iolist')
+                    onClick={() => ioExtractionService.exportWorkbook(project.id, extraction.id)
+                      .then((fn) => showToast(`Exporting ${fn} · IO list + review sheets in one workbook`))
                       .catch((err) => setError(err.response?.data?.error || 'Export failed'))}>
-              <Download className="w-4 h-4" /> Export
+              <Download className="w-4 h-4" /> Export IO list (.xlsx)
             </button>
           )}
         </div>
@@ -433,7 +441,7 @@ export default function PidExtractionWorkspace({ project, onBack, onManageLegend
           summary={summary} activeTab={activeTab} setActiveTab={setActiveTab}
           tabData={tabData} sheetFilter={sheetFilter} setSheetFilter={setSheetFilter}
           onDecide={decide} onAskAi={askAi} onEditRow={saveRowEdit}
-          exportWorkbook={(fmt) => ioExtractionService.exportWorkbook(project.id, extraction.id, fmt)}
+          alarmScope={alarmScope} onAlarmScopeChange={setAlarmScope}
         />
       )}
 
@@ -657,7 +665,7 @@ function ConnectKeyModal({ onClose, onTest, onSave, testState }) {
 }
 
 /* Results */
-function ResultsView({ summary, activeTab, setActiveTab, tabData, sheetFilter, setSheetFilter, onDecide, onAskAi, onEditRow, exportWorkbook }) {
+function ResultsView({ summary, activeTab, setActiveTab, tabData, sheetFilter, setSheetFilter, onDecide, onAskAi, onEditRow, alarmScope, onAlarmScopeChange }) {
   const [search, setSearch] = useState('')
   const kpis = [
     ['Tags read', summary.tags, `${summary.confirmed || 0} confirmed by smart tags · ${summary.sheets || 0} sheets`],
@@ -718,16 +726,14 @@ function ResultsView({ summary, activeTab, setActiveTab, tabData, sheetFilter, s
             <option value="">All sheets</option>
             {[...Array(summary.sheets || 0)].map((_, i) => <option key={i + 1} value={i + 1}>Sheet {i + 1}</option>)}
           </select>
-          <button className="rd-btn text-xs flex items-center gap-1" onClick={() => exportWorkbook('review')}>
-            <Download className="w-3.5 h-3.5" /> Review workbook
-          </button>
         </div>
       </div>
 
       {!tabData ? (
         <div className="p-6 text-center text-slate-400 text-sm"><Loader2 className="w-5 h-5 animate-spin inline" /></div>
       ) : (
-        <ResultTable tab={activeTab} data={tabData} search={search} onDecide={onDecide} onAskAi={onAskAi} onEditRow={onEditRow} />
+        <ResultTable tab={activeTab} data={tabData} search={search} onDecide={onDecide} onAskAi={onAskAi} onEditRow={onEditRow}
+                     alarmScope={alarmScope} onAlarmScopeChange={onAlarmScopeChange} />
       )}
     </div>
   )
@@ -758,7 +764,7 @@ function EditableCell({ value, onSave }) {
 const recordMatches = (rec, q) =>
   JSON.stringify(rec ?? '').toLowerCase().includes(q)
 
-function ResultTable({ tab, data, onDecide, onAskAi, onEditRow, search = '' }) {
+function ResultTable({ tab, data, onDecide, onAskAi, onEditRow, search = '', alarmScope, onAlarmScopeChange }) {
   const q = search.trim().toLowerCase()
   const allRows = data.rows || []
   const rows = q ? allRows.filter((r) => recordMatches(r, q)) : allRows
@@ -811,11 +817,13 @@ function ResultTable({ tab, data, onDecide, onAskAi, onEditRow, search = '' }) {
     )
   }
   if (tab === 'lines') {
+    return <LineTagsTab rows={rows} />
+  }
+  if (tab === 'alarmtrip') {
     return (
-      <DataTable
-        cols={['Sheet', 'Line number', 'Label anchored by', 'Tags tapped on the line', 'Loop members (inherited)']}
-        rows={rows.map((l) => [l.sheet, l.line, l.anchoredBy, l.tagsOwn?.join(', '), l.tagsLoop?.join(', ')])}
-        empty="No line labels anchored."
+      <AlarmTripTab
+        rows={rows} counts={data.counts || {}}
+        scope={alarmScope} onScopeChange={onAlarmScopeChange}
       />
     )
   }
@@ -876,6 +884,253 @@ function ResultTable({ tab, data, onDecide, onAskAi, onEditRow, search = '' }) {
     )
   }
   return null
+}
+
+/* Line ↔ tags — one row per tag, grouped by line. Own (tapped) tags first. */
+function LineTagsTab({ rows }) {
+  const [q, setQ] = useState('')
+  const [filter, setFilter] = useState('all') // all | own | loop
+
+  // Expand each line's tagsOwn/tagsLoop into one row per tag.
+  const groups = useMemo(() => (rows || []).map((l) => {
+    const own = [...(l.tagsOwn || [])].sort()
+    const loopTags = [...(l.tagsLoop || [])].sort()
+    const tags = [
+      ...own.map((t) => ({ tag: t, kind: 'own', loop: loopOf(t), via: '' })),
+      ...loopTags.map((t) => {
+        const lp = loopOf(t)
+        return { tag: t, kind: 'loop', loop: lp, via: own.find((o) => loopOf(o) === lp) || '' }
+      }),
+    ]
+    return { line: l, tags }
+  }), [rows])
+
+  const query = q.trim().toLowerCase()
+  const visible = groups
+    .map((g) => ({
+      ...g,
+      tags: g.tags.filter((t) =>
+        (filter === 'all' || (filter === 'own' ? t.kind === 'own' : t.kind === 'loop'))
+        && (!query
+          || (g.line.line || '').toLowerCase().includes(query)
+          || t.tag.toLowerCase().includes(query)
+          || (t.loop || '').includes(query))),
+    }))
+    .filter((g) => g.tags.length)
+
+  const shown = visible.reduce((n, g) => n + g.tags.length, 0)
+  const allTags = groups.flatMap((g) => g.tags)
+  const ownCount = allTags.filter((t) => t.kind === 'own').length
+
+  const seg = (key, label) => (
+    <button
+      key={key}
+      className={`px-2 py-1 text-xs ${filter === key ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+      onClick={() => setFilter(key)}>
+      {label}
+    </button>
+  )
+
+  return (
+    <div className="space-y-2">
+      {/* Toolbar */}
+      <div className="flex items-center gap-2">
+        <div className="relative">
+          <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <input type="text" className="rd-input text-xs pl-7 w-56" placeholder="Search line or tag…"
+                 value={q} onChange={(e) => setQ(e.target.value)} />
+        </div>
+        <div className="flex rounded border border-slate-200 dark:border-slate-700 overflow-hidden">
+          {seg('all', 'All')}{seg('own', 'Tapped on line')}{seg('loop', 'Inherited')}
+        </div>
+      </div>
+
+      {!visible.length ? (
+        <div className="p-6 text-center text-slate-400 text-sm">No line labels anchored.</div>
+      ) : (
+        <div className="overflow-x-auto rd-card">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-slate-500 border-b border-slate-200 dark:border-slate-700">
+                {['Line number', 'Tag', 'On the line', 'Loop', 'On P&ID'].map((c) => (
+                  <th key={c} className="px-3 py-2 font-medium">{c}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((g) => (
+                <React.Fragment key={`${g.line.sheet}-${g.line.line}`}>
+                  <tr className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-100 dark:border-slate-800">
+                    <td colSpan={5} className="px-3 py-1.5">
+                      <span className="font-medium text-slate-700 dark:text-slate-200">{g.line.line}</span>
+                      <span className="ml-2 text-xs text-slate-400">
+                        Sheet {g.line.sheet} · label anchored by {g.line.anchoredBy} · {g.tags.length} tags
+                      </span>
+                    </td>
+                  </tr>
+                  {g.tags.map((t) => (
+                    <tr key={t.tag} className="border-b border-slate-100 dark:border-slate-800">
+                      <td className="px-3 py-2 align-top text-slate-400">〃</td>
+                      <td className="px-3 py-2 align-top text-blue-600 font-medium">{t.tag}</td>
+                      <td className="px-3 py-2 align-top">
+                        {t.kind === 'own'
+                          ? <Pill tone="blue">Tapped on line</Pill>
+                          : (
+                            <span>
+                              <Pill tone="slate">Inherited</Pill>
+                              {t.via && <span className="block text-[11px] text-slate-400 mt-0.5">via {t.via}</span>}
+                            </span>
+                          )}
+                      </td>
+                      <td className="px-3 py-2 align-top">{t.loop || '—'}</td>
+                      <td className="px-3 py-2 align-top">{g.line.sheet}</td>
+                    </tr>
+                  ))}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="text-xs text-slate-500">
+        {shown} rows shown · {allTags.length} tags carry a line number
+        ({ownCount} tapped · {allTags.length - ownCount} inherited)
+      </div>
+    </div>
+  )
+}
+
+/* Loop digits of a tag, e.g. 13-LT-7201A → 7201 */
+const loopOf = (tag) => {
+  const m = /-(\d+)[A-Za-z]*$/.exec(tag || '')
+  return m ? m[1] : ''
+}
+
+/* Alarm & trip — ISA alarm/trip tags derived from P&ID letters or the whole IO list. */
+function AlarmTripTab({ rows, counts, scope, onScopeChange }) {
+  const chips = [
+    ['From P&ID letters', counts.pidLetters],
+    ['Trips', counts.trips],
+    ['Alarms', counts.alarms],
+    ['Matched by a cause note', counts.causeNoteMatches],
+    ['With set point', counts.withSetpoint],
+    ['Whole IO list', counts.wholeIoList != null ? `${counts.wholeIoList} on ${counts.wholeTags ?? 0} tags` : null],
+  ]
+
+  const inIoListPill = (r) => {
+    const map = {
+      same: ['green', 'Same ISA tag'],
+      'type-differs': ['amber', 'Type differs'],
+      'not-in-io-list': ['slate', 'Not in IO list'],
+      'io-list-only': ['slate', 'IO list only'],
+    }
+    const [tone, label] = map[r.inIoList] || ['slate', r.inIoList || '—']
+    return (
+      <span>
+        <Pill tone={tone}>{label}</Pill>
+        {r.inIoListDetail && <span className="block text-[11px] text-slate-400 mt-0.5">{r.inIoListDetail}</span>}
+      </span>
+    )
+  }
+
+  const typePill = (type) => {
+    if (type === 'Trip') return <Pill tone="red">Trip</Pill>
+    if (type === 'Discrepancy') return <Pill tone="slate">Discrepancy</Pill>
+    if (type === 'Alarm (common)') return <Pill tone="slate">Alarm (common)</Pill>
+    return <Pill tone="amber">{type || 'Alarm'}</Pill>
+  }
+
+  const valueFromPill = (vf) => {
+    if (!vf) return '—'
+    if (vf.startsWith('P&ID')) return <Pill tone="blue">{vf}</Pill>
+    if (vf.startsWith('IO list')) return <Pill tone="green">{vf}</Pill>
+    return <Pill tone="slate">{vf}</Pill>
+  }
+
+  // Group rows by groupTag (backend sorts so groups are contiguous).
+  const groups = []
+  ;(rows || []).forEach((r) => {
+    const key = r.groupTag || r.tag
+    const last = groups[groups.length - 1]
+    if (last && last.key === key) last.rows.push(r)
+    else groups.push({ key, meta: r.groupMeta || '', rows: [r] })
+  })
+
+  const scopeBtn = (key, label) => (
+    <button
+      key={key}
+      className={`px-2 py-1 text-xs ${scope === key ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+      onClick={() => onScopeChange(key)}>
+      {label}
+    </button>
+  )
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 p-3 text-xs text-blue-700 dark:text-blue-300">
+        Alarm and trip letters beside each bubble become their own ISA tags and are checked
+        against the IO list. Worked example: 13-PT-7204B + SLL → 13-PSLL-7204B (trip, ESD,
+        2.25 barg). Trips come from letters starting with S; the set point is resolved from
+        the tag, then the loop transmitter, then the P&amp;ID scale, then C&amp;E.
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        {chips.map(([label, value]) => (
+          <span key={label} className="inline-flex items-center gap-1 rounded-full bg-slate-100 dark:bg-slate-700 px-2 py-0.5 text-xs text-slate-600 dark:text-slate-300">
+            {label} <span className="font-semibold">{value ?? 0}</span>
+          </span>
+        ))}
+        <div className="ml-auto flex rounded border border-slate-200 dark:border-slate-700 overflow-hidden">
+          {scopeBtn('pid', 'From P&ID letters')}{scopeBtn('all', 'Whole IO list')}
+        </div>
+      </div>
+
+      {!groups.length ? (
+        <div className="p-6 text-center text-slate-400 text-sm">No alarm or trip combinations found.</div>
+      ) : (
+        <div className="overflow-x-auto rd-card">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-slate-500 border-b border-slate-200 dark:border-slate-700">
+                {['Tag', 'Alarm / trip tag (ISA)', 'Alarm', 'Tag + alarm', 'In IO list Rev Q1', 'Type', 'System', 'Set point', 'Value from', 'Check on the P&ID'].map((c) => (
+                  <th key={c} className="px-3 py-2 font-medium">{c}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {groups.map((g) => (
+                <React.Fragment key={g.key}>
+                  <tr className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-100 dark:border-slate-800">
+                    <td colSpan={10} className="px-3 py-1.5">
+                      <span className="font-medium text-slate-700 dark:text-slate-200">{g.key}</span>
+                      {g.meta && <span className="ml-2 text-xs text-slate-400">{g.meta}</span>}
+                    </td>
+                  </tr>
+                  {g.rows.map((r) => (
+                    <tr key={`${r.tag}-${r.letter}-${r.isaTag}`} className="border-b border-slate-100 dark:border-slate-800">
+                      <td className="px-3 py-2 align-top">{r.tag}</td>
+                      <td className="px-3 py-2 align-top">
+                        <span className="font-semibold bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded px-1">{r.isaTag}</span>
+                      </td>
+                      <td className="px-3 py-2 align-top"><Pill tone="slate">{r.letter}</Pill></td>
+                      <td className="px-3 py-2 align-top text-slate-400">{r.tagAlarm}</td>
+                      <td className="px-3 py-2 align-top">{inIoListPill(r)}</td>
+                      <td className="px-3 py-2 align-top">{typePill(r.type)}</td>
+                      <td className="px-3 py-2 align-top">{r.system || '—'}</td>
+                      <td className="px-3 py-2 align-top">{r.setpoint || '—'}</td>
+                      <td className="px-3 py-2 align-top">{valueFromPill(r.valueFrom)}</td>
+                      <td className="px-3 py-2 align-top text-xs text-slate-500">{r.check || ''}</td>
+                    </tr>
+                  ))}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
 }
 
 function DataTable({ cols, rows, empty }) {

@@ -24,6 +24,10 @@
   --rd-info: #0284c7;
   --rd-info-soft: #f0f9ff;
 
+  /* AI marks (violet) — used ONLY to label AI-related affordances */
+  --rd-ai: #4f2bf5;
+  --rd-ai-soft: #f1edfe;
+
   /* Surfaces & text */
   --rd-bg: #f8fafc;
   --rd-surface: #ffffff;
@@ -70,6 +74,9 @@
   --rd-danger-soft: rgba(248, 113, 113, 0.12);
   --rd-info: #38bdf8;
   --rd-info-soft: rgba(56, 189, 248, 0.12);
+
+  --rd-ai: #a78bfa;
+  --rd-ai-soft: rgba(167, 139, 250, 0.14);
 
   --rd-bg: #0b1220;
   --rd-surface: #111a2e;
@@ -131,6 +138,7 @@
 .rd-pill-danger  { color: var(--rd-danger);  background: var(--rd-danger-soft);  border-color: var(--rd-danger); }
 .rd-pill-info    { color: var(--rd-info);    background: var(--rd-info-soft);    border-color: var(--rd-info); }
 .rd-pill-neutral { color: var(--rd-text-muted); background: var(--rd-surface-subtle); border-color: var(--rd-border); }
+.rd-pill-ai      { color: var(--rd-ai);      background: var(--rd-ai-soft);      border-color: var(--rd-ai); }
 
 .rd-banner {
   display: flex; align-items: center; gap: 0.75rem;

@@ -22,13 +22,15 @@ export const ROUTES = {
    * P&ID Verification (Primary)
    * Main entry point for P&ID quality checking workflow
    */
-  PID_VERIFICATION: '/engineering/process/pid-verification-v1',
+  // SOFT-CODED: points at V2 — V1 was removed (see backend/docs/pidv1-removal-inventory.md);
+  // constant kept because 14 files import it.
+  PID_VERIFICATION: '/engineering/process/pid-verification',
   
   /**
    * P&ID Verification Report
    * Detailed comparison report for a specific document
    */
-  PID_VERIFICATION_REPORT: '/engineering/process/pid-verification-v1/report',
+  PID_VERIFICATION_REPORT: '/engineering/process/pid-verification/report',
   
   /**
    * P&ID Checker V2
@@ -91,7 +93,7 @@ export const ROUTES = {
  * 
  * Example:
  *   buildRoute(ROUTES.PID_VERIFICATION_REPORT, { documentId: '123' })
- *   => '/engineering/process/pid-verification-v1/report/123'
+ *   => '/engineering/process/pid-verification/report/123'
  */
 export const buildRoute = (route, params = {}) => {
   let path = route;

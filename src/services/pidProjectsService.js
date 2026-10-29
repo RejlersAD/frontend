@@ -100,23 +100,24 @@ export async function getProjectHistory(projectId) {
 
 /**
  * Get project compatibility info
- * Projects work seamlessly across V1 and V2:
- * - V1 (pid-verification-v1): Quality checker with 20+ checks
- * - V2 (pid-checker-v2): Line-list extractor with advanced parsing
- * 
- * Both versions share:
+ * V1 (pid-verification-v1) was removed for a from-scratch redesign — existing
+ * projects/drawings are kept. Active modules:
+ * - V2 verification (pid-verification): AI quality checks & comparison
+ * - V2 checker (pid-checker-v2): Line-list extractor with advanced parsing
+ *
+ * Both share:
  * - Same project database
  * - Same legend sheets (via 'line_list' section)
  * - Same S3 storage structure
  * - Same upload history
  */
 export const PROJECT_COMPATIBILITY = {
-  v1: {
-    route: '/engineering/process/pid-verification-v1',
+  v2: {
+    route: '/engineering/process/pid-verification',
     name: 'P&ID Verification',
     features: ['Quality checks', 'Compliance', 'ISA-5.1', 'AI Vision'],
   },
-  v2: {
+  checker: {
     route: '/engineering/process/pid-checker-v2',
     name: 'Line List Extractor',
     features: ['Line tags', 'Advanced parsing', 'Master line list', 'Legend sheets'],
@@ -124,9 +125,9 @@ export const PROJECT_COMPATIBILITY = {
 }
 
 /**
- * Check if user can access a project in both versions
+ * Check if user can access a project across tools
  * @returns {boolean} Always true - projects are fully compatible
  */
 export function isProjectCompatible() {
-  return true // Full compatibility between V1 and V2
+  return true // Full compatibility
 }

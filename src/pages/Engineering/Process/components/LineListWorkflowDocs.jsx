@@ -45,7 +45,7 @@ export const LL_DOCS_CONFIG = {
     badge:         'P&ID Analysis',
     description:   'The same proven pipeline that powers P&ID Verification V1 — line extraction follows an identical Upload → AI Analysis → Quality Output journey.',
     linkLabel:     'Open P&ID Verification',
-    linkRoute:     '/engineering/process/pid-verification-v1',
+    linkRoute:     '/engineering/process/pid-verification',
     collapsible:   true,
     defaultCollapsed: false,
     maxZoomPct:    200,

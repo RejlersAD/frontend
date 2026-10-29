@@ -155,8 +155,12 @@ import SmartDatasheetPage from "./pages/ProcessDatasheet/SmartDatasheetPage";
 import ProcessEquipmentDatasheet from "./pages/Engineering/Process/ProcessEquipmentDatasheet";
 import LineList from "./pages/Engineering/Process/LineList";
 import EquipmentList from "./pages/Engineering/Process/EquipmentList";
-import PIDVerification from "./pages/Engineering/Process/PIDVerification";
+import PlaceholderPidVerification from "./pages/Engineering/Process/PlaceholderPidVerification";
 import PIDVerificationV2 from "./pages/Engineering/Process/PIDVerificationV2";
+import PidCheckerProjectsPage from "./pages/Engineering/Process/PidChecker/ProjectsPage";
+import PidCheckerWorkspacePage from "./pages/Engineering/Process/PidChecker/ProjectWorkspacePage";
+import PidCheckerDrawingSetPage from "./pages/Engineering/Process/PidChecker/DrawingSetPage";
+import PidCheckerDrawingPage from "./pages/Engineering/Process/PidChecker/DrawingPage";
 import PIDVerificationV2Report from "./pages/Engineering/Process/PIDVerificationV2Report";
 import PIDCheckerV2 from "./pages/Engineering/Process/PIDCheckerV2";
 import PIDCheckerV2Docs from "./pages/Engineering/Process/PIDCheckerV2Docs";
@@ -1235,21 +1239,57 @@ function App() {
                 </ModuleProtectedRoute>
               }
             />
-            {/* P&ID Verification - Default is now V2 */}
+            {/* PFD & P&ID Checker — redesigned project list (replaces V2 as default) */}
             <Route
               path="engineering/process/pid-verification"
+              element={
+                <ModuleProtectedRoute moduleCode="pid_analysis">
+                  <PidCheckerProjectsPage />
+                </ModuleProtectedRoute>
+              }
+            />
+            {/* PFD & P&ID Checker — project workspace */}
+            <Route
+              path="engineering/process/pid-verification/projects/:projectId"
+              element={
+                <ModuleProtectedRoute moduleCode="pid_analysis">
+                  <PidCheckerWorkspacePage />
+                </ModuleProtectedRoute>
+              }
+            />
+            {/* Screen 2 — single drawing (6 steps) */}
+            <Route
+              path="engineering/process/pid-verification/projects/:projectId/drawings/:drawingId"
+              element={
+                <ModuleProtectedRoute moduleCode="pid_analysis">
+                  <PidCheckerDrawingPage />
+                </ModuleProtectedRoute>
+              }
+            />
+            {/* Screen 3 — drawing set (PFD + P&ID set compare) */}
+            <Route
+              path="engineering/process/pid-verification/projects/:projectId/sets/:setId"
+              element={
+                <ModuleProtectedRoute moduleCode="pid_analysis">
+                  <PidCheckerDrawingSetPage />
+                </ModuleProtectedRoute>
+              }
+            />
+            {/* P&ID Verification V2 — classic UI, kept for reference */}
+            <Route
+              path="engineering/process/pid-verification/classic"
               element={
                 <ModuleProtectedRoute moduleCode="pid_analysis">
                   <PIDVerificationV2 />
                 </ModuleProtectedRoute>
               }
             />
-            {/* P&ID Verification V1 (Legacy) */}
+            {/* P&ID Verification V1 (removed — being redesigned; placeholder keeps the route and data) */}
             <Route
               path="engineering/process/pid-verification-v1"
               element={
                 <ModuleProtectedRoute moduleCode="pid_analysis">
-                  <PIDVerification />
+                  <PlaceholderPidVerification />
                 </ModuleProtectedRoute>
               }
             />

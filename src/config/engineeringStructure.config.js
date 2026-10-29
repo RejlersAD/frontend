@@ -77,8 +77,8 @@ export const ENGINEERING_DISCIPLINES = {
       // SOFT-CODED: V2 access via in-page switcher — no separate sidebar entry needed
       {
         id: 'pidVerification',
-        name: 'P&ID QC',
-        fullName: 'P&ID Quality Control',
+        name: 'PFD & P&ID Checker',
+        fullName: 'PFD & P&ID Checker',
 
         icon: DocumentChartBarIcon,
         path: ROUTES.PID_VERIFICATION, // SOFT-CODED: Using centralized route config
