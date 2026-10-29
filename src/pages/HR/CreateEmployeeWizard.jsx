@@ -75,7 +75,7 @@ export default function CreateEmployeeWizard({ onCancel, onCreated }) {
   const [initialDraft] = useState(() => {
     try {
       return draftKey
-        ? readEmployeeDraft(sessionStorage.getItem(draftKey))
+        ? readEmployeeDraft(localStorage.getItem(draftKey))
         : null;
     } catch {
       return null;
@@ -215,7 +215,7 @@ export default function CreateEmployeeWizard({ onCancel, onCreated }) {
     if (!draftKey || !touched.current || created) return undefined;
     const timer = setTimeout(() => {
       try {
-        sessionStorage.setItem(
+        localStorage.setItem(
           draftKey,
           serializeEmployeeDraft(data, step, Boolean(photo) || photoReminder),
         );
@@ -246,7 +246,7 @@ export default function CreateEmployeeWizard({ onCancel, onCreated }) {
       return;
     }
     try {
-      sessionStorage.setItem(
+      localStorage.setItem(
         draftKey,
         serializeEmployeeDraft(data, step, Boolean(photo) || photoReminder),
       );
@@ -360,7 +360,7 @@ export default function CreateEmployeeWizard({ onCancel, onCreated }) {
       setCreated(response.data);
       if (draftKey) {
         try {
-          sessionStorage.removeItem(draftKey);
+          localStorage.removeItem(draftKey);
         } catch {
           /* Creation remains successful when storage is disabled. */
         }
@@ -520,7 +520,7 @@ export default function CreateEmployeeWizard({ onCancel, onCreated }) {
                           : "New draft"}
                   <small>
                     {draftState === "saved" || draftState === "restored"
-                      ? "Saved in this tab"
+                      ? "Saved on this device"
                       : draftState === "error"
                         ? "Browser storage is unavailable"
                         : "Complete the details below"}
