@@ -29,12 +29,15 @@ import { createProject as createOrganizerProject } from "../../../../services/pr
 import {
   buildComparison,
   buildTemplateComparisonRows,
+  resolveTemplateProperty,
+  convertTemplateEditValue,
   buildGoverningCaseColumns,
   getGoverningCaseValue,
   formatValue,
   rowVaries,
 } from "./compare.ts";
 import { useCases } from "./useCases";
+import { MASTER_REVIEW_ROWS } from "./template.ts";
 import useRadaiChatPage from "../../../../hooks/useRadaiChatPage";
 import "./HMBStreamTableConsolidator.css";
 
@@ -159,193 +162,6 @@ const MAX_RATE_COLUMNS = [
     hint: "Values copied from the case with the highest Heavy Liquid Flow for this stream",
   },
 ];
-
-const MASTER_REVIEW_ROWS = [
-  { section: "", name: "Temperature", unit: "F" },
-  { section: "", name: "Pressure", unit: "psig" },
-  { section: "", name: "Molecular Weight", unit: "<none>" },
-  { section: "", name: "Mass Flow", unit: "lb/hr" },
-  { section: "", name: "Vapour Fraction", unit: "<none>" },
-  { section: "Vapour", name: "Mass Flow", unit: "lb/hr" },
-  { section: "Vapour", name: "Std Gas Flow", unit: "MMSCFD" },
-  { section: "Vapour", name: "Actual Volume Flow", unit: "ft3/hr" },
-  { section: "Vapour", name: "Molecular Weight", unit: "<none>" },
-  { section: "Vapour", name: "Mass Density", unit: "lb/ft3" },
-  { section: "Vapour", name: "Viscosity", unit: "cP" },
-  { section: "Vapour", name: "Compressibility", unit: "<none>" },
-  { section: "Vapour", name: "Thermal Conductivity", unit: "Btu/hr-ft-F" },
-  { section: "Vapour", name: "Mass Heat Capacity", unit: "Btu/lb-F" },
-  { section: "Vapour", name: "Cp/Cv (Gamma)", unit: "<none>" },
-  { section: "Light Liquid", name: "Mass Flow", unit: "lb/hr" },
-  {
-    section: "Light Liquid",
-    name: "Standard Ideal Liquid Volume Flow",
-    unit: "barrel/day",
-  },
-  { section: "Light Liquid", name: "Actual Volume Flow", unit: "ft3/hr" },
-  { section: "Light Liquid", name: "Actual Volume Flow", unit: "barrel/day" },
-  { section: "Light Liquid", name: "Molecular Weight", unit: "<none>" },
-  { section: "Light Liquid", name: "Mass Density", unit: "lb/ft3" },
-  { section: "Light Liquid", name: "Viscosity", unit: "cP" },
-  {
-    section: "Light Liquid",
-    name: "Thermal Conductivity",
-    unit: "Btu/hr-ft-F",
-  },
-  { section: "Light Liquid", name: "Mass Heat Capacity", unit: "Btu/lb-F" },
-  { section: "Heavy Liquid", name: "Mass Flow", unit: "lb/hr" },
-  {
-    section: "Heavy Liquid",
-    name: "Standard Ideal Liquid Volume Flow",
-    unit: "barrel/day",
-  },
-  { section: "Heavy Liquid", name: "Actual Volume Flow", unit: "ft3/hr" },
-  { section: "Heavy Liquid", name: "Actual Volume Flow", unit: "barrel/day" },
-  { section: "Heavy Liquid", name: "Molecular Weight", unit: "<none>" },
-  { section: "Heavy Liquid", name: "Mass Density", unit: "lb/ft3" },
-  { section: "Heavy Liquid", name: "Viscosity", unit: "cP" },
-  {
-    section: "Heavy Liquid",
-    name: "Thermal Conductivity",
-    unit: "Btu/hr-ft-F",
-  },
-  { section: "Heavy Liquid", name: "Mass Heat Capacity", unit: "Btu/lb-F" },
-  ...[
-    "H2S",
-    "CO2",
-    "Nitrogen",
-    "Methane",
-    "Ethane",
-    "Propane",
-    "i-Butane",
-    "n-Butane",
-    "i-Pentane",
-    "n-Pentane",
-    "n-Hexane",
-    "Mcyclopentan",
-    "Benzene",
-    "Cyclohexane",
-    "n-Heptane",
-    "n-Octane",
-    "n-Nonane",
-    "n-Decane",
-    "Mubarraz-C7+_1*",
-    "HAIL-C7-C10_1*",
-    "HAIL-C11-C14_1*",
-    "HAIL-C15-C19_1*",
-    "HAIL-C20-C25_1*",
-    "HAIL-C26-C29_1*",
-    "HAIL-C30+_1*",
-    "ARGA-Undecane+*",
-    "ARGA-C7+*",
-    "ARGA-C10+*",
-    "ARGA-C12+*",
-    "ARGA-C20+*",
-    "ARGA-C30+*",
-    "ARGA-C36+*",
-    "H2O",
-    "TEGlycol",
-    "MDEAmine",
-  ].map((name) => ({ section: "Composition", name, unit: "mol frac." })),
-];
-
-function normalizeReviewValue(value) {
-  return String(value || "")
-    .replace(/\s*\[(Vapour|Light Liquid|Heavy Liquid)\]$/i, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-function canonicalReviewPropertyName(value) {
-  const name = normalizeReviewValue(value);
-  const aliases = {
-    "vapour phase fraction": "vapour fraction",
-    "vapor phase fraction": "vapour fraction",
-    "std gas flow": "std gas flow",
-    "standard gas flow": "std gas flow",
-    "std ideal liq vol flow": "standard ideal liquid volume flow",
-    "std ideal liquid volume flow": "standard ideal liquid volume flow",
-    "act gas flow": "actual volume flow",
-    "act liq flow": "actual volume flow",
-    "act volume flow": "actual volume flow",
-    "z factor": "compressibility",
-    "cp cv": "cp cv gamma",
-    "cp cv ent method": "cp cv gamma",
-    "ideal gas cp cv": "cp cv gamma",
-  };
-  return aliases[name] || name;
-}
-
-function findMasterRowProperty(stream, row) {
-  if (row.section === "__template-divider__") return null;
-  const rowName = normalizeReviewValue(row.name);
-  const rowUnit = normalizeReviewValue(row.unit);
-  const sectionName = normalizeReviewValue(row.section);
-  const properties = stream.properties || [];
-  const canonicalRowName = canonicalReviewPropertyName(row.name);
-  const isUnitless = !rowUnit || rowUnit === "none";
-  const exact = properties.find(
-    (property) =>
-      canonicalReviewPropertyName(property.name) === canonicalRowName &&
-      (isUnitless || normalizeReviewValue(property.unit) === rowUnit) &&
-      (normalizeReviewValue(property.section) === sectionName ||
-        (!property.section && !sectionName)),
-  );
-  if (exact) return exact;
-
-  const aliasNames = {
-    "|vapour fraction|none": [
-      "Vapour / Phase Fraction",
-      "Vapor / Phase Fraction",
-    ],
-    "vapour|std gas flow": ["Std. Gas Flow", "Standard Gas Flow"],
-    "light liquid|standard ideal liquid volume flow": [
-      "Std Ideal Liq Vol Flow",
-      "Std. Ideal Liq Vol Flow",
-    ],
-    "light liquid|actual volume flow|ft3 hr": [
-      "Act. Liq. Flow",
-      "Act Liq Flow",
-    ],
-    "light liquid|actual volume flow|barrel day": ["Act. Volume Flow"],
-  };
-  const aliasKey = `${sectionName}|${rowName}${rowUnit ? `|${rowUnit}` : ""}`;
-  const aliases = aliasNames[aliasKey] || [];
-  const aliased = properties.find(
-    (property) =>
-      normalizeReviewValue(property.section) === sectionName &&
-      aliases.some((alias) => normalizeReviewValue(alias) === normalizeReviewValue(property.name.replace(/\s*\[[^\]]+\]$/, ""))) &&
-      (!rowUnit ||
-        rowUnit === "none" ||
-        normalizeReviewValue(property.unit) === rowUnit),
-  );
-  if (aliased) return aliased;
-
-  if (row.section === "Composition") {
-    return (
-      properties.find((property) => {
-        const normalizedName = normalizeReviewValue(property.name);
-        const propertyName = normalizedName.replace(/ mole fraction$/, "");
-        const isFraction =
-          /frac/.test(normalizeReviewValue(property.unit)) ||
-          / mole fraction$/.test(normalizedName);
-        return propertyName === rowName && isFraction;
-      }) || null
-    );
-  }
-  if (["Vapour", "Light Liquid", "Heavy Liquid"].includes(row.section)) {
-    return (
-      properties.find(
-        (property) =>
-          property.section === row.section &&
-          normalizeReviewValue(property.name) === rowName &&
-          normalizeReviewValue(property.unit) === rowUnit,
-      ) || null
-    );
-  }
-  return null;
-}
 
 function Dropzone({
   importing,
@@ -780,20 +596,21 @@ function ReviewView({ caseData, onToggleStream, onSetCell }) {
                     {showUnits && !sectionDivider ? row.unit || "—" : ""}
                   </td>
                   {visibleStreams.map((stream) => {
-                    const property = findMasterRowProperty(stream, row);
+                    const resolved = resolveTemplateProperty(stream, row);
+                    const property = resolved?.property;
                     return (
                       <td className="hmbc-review-value" key={stream.name}>
                         {property ? (
                           stream.included ? (
                             <CellEditor
-                              value={property.value}
+                              value={resolved.value}
                               edited={property.edited}
                               blankNull
                               onCommit={(raw) =>
                                 onSetCell(
                                   stream.name,
                                   property.name,
-                                  raw,
+                                  convertTemplateEditValue(raw, row.unit, property.unit),
                                   property.section || "",
                                   property.unit || "",
                                 )
@@ -801,9 +618,9 @@ function ReviewView({ caseData, onToggleStream, onSetCell }) {
                             />
                           ) : (
                             <span className="hmbc-excluded-value">
-                              {property.value === null
+                              {resolved.value === null
                                 ? ""
-                                : formatValue(property.value)}
+                                : formatValue(resolved.value)}
                             </span>
                           )
                         ) : (
