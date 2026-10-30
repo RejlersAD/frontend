@@ -1,4 +1,18 @@
-import type { CaseData, ComparisonRow, StreamGoverningColumns, StreamProperty } from './index.ts'
+import type { CaseData, CellValue, ComparisonRow, GoverningCaseColumn, StreamGoverningColumns, StreamProperty } from './index.ts'
+
+function propertySection(property: StreamProperty): string {
+  const suffix = property.name.match(/\[([^\]]+)\]$/)?.[1]
+  const section = (property.section || property.phase || suffix || '').trim()
+  if (/vapou?r/i.test(section)) return 'Vapour'
+  if (/aqueous|heavy liquid/i.test(section)) return 'Heavy Liquid'
+  if (/liquid/i.test(section)) return 'Light Liquid'
+  if (/composition/i.test(section)) return 'Composition'
+  return property.section || ''
+}
+
+function propertyName(name: string): string {
+  return name.replace(/\s*\[(Vapou?r|Light Liquid|Heavy Liquid|Aqueous|Composition)\]$/i, '').trim()
+}
 
 /**
  * Build the cross-case comparison matrix.
@@ -36,9 +50,8 @@ export function buildComparison(cases: CaseData[]): {
   const rows: ComparisonRow[] = []
   for (const displayName of streamOrder) {
     const key = displayName.trim().toLowerCase()
-    const propOrder: string[] = []
+    const propOrder: { key: string; name: string; section: string; unit: string }[] = []
     const propSeen = new Set<string>()
-    const propUnit = new Map<string, string>()
     const perCase = new Map<string, Map<string, { value: number | string | null; edited: boolean }>>()
 
     for (let ci = 0; ci < cases.length; ci++) {
@@ -47,20 +60,21 @@ export function buildComparison(cases: CaseData[]): {
       const map = new Map<string, { value: number | string | null; edited: boolean }>()
       if (stream) {
         for (const p of stream.properties) {
-          const pk = p.name.trim().toLowerCase()
+          const name = propertyName(p.name)
+          const section = propertySection(p)
+          const pk = JSON.stringify([section, name.toLowerCase(), normalizeUnit(p.unit)])
           if (!propSeen.has(pk)) {
             propSeen.add(pk)
-            propOrder.push(p.name)
+            propOrder.push({ key: pk, name, section, unit: p.unit })
           }
-          if (p.unit && !propUnit.get(pk)) propUnit.set(pk, p.unit)
           map.set(pk, { value: p.value, edited: p.edited })
         }
       }
       perCase.set(c.id, map)
     }
 
-    for (const propName of propOrder) {
-      const pk = propName.trim().toLowerCase()
+    for (const property of propOrder) {
+      const pk = property.key
       const values: ComparisonRow['values'] = {}
       const editedFlags: ComparisonRow['editedFlags'] = {}
       for (const c of cases) {
@@ -70,8 +84,9 @@ export function buildComparison(cases: CaseData[]): {
       }
       rows.push({
         streamName: displayName,
-        propertyName: propName,
-        unit: propUnit.get(pk) ?? '',
+        propertyName: property.name,
+        section: property.section,
+        unit: property.unit,
         values,
         editedFlags,
       })
@@ -120,9 +135,16 @@ const normalizeRateName = (name: string): string =>
     .trim()
 
 const normalizePropertyKey = (name: string): string =>
-  name.replace(/\s*\[(Vapour|Light Liquid|Heavy Liquid)\]$/i, '').trim().toLowerCase()
+  propertyName(name).toLowerCase()
 
 const normalizeUnit = (unit: string): string => unit.toLowerCase().replace(/[()\s]/g, '')
+
+const VOLUME_RATE_FACTORS: Record<string, number> = {
+  'ft3/hr': 1, 'ft3/h': 1, 'acfm': 60,
+  'barrel/day': 5.614583333333333 / 24, 'bbl/day': 5.614583333333333 / 24,
+  'mmscfd': 1e6 / 24, 'mscfd': 1e3 / 24, 'scfd': 1 / 24, 'scfh': 1,
+}
+const MASS_RATE_FACTORS: Record<string, number> = { 'lb/hr': 1, 'lb/h': 1, 'kg/hr': 2.20462262185, 'kg/h': 2.20462262185 }
 
 function unitsMatchOrConvert(sourceUnit: string, targetUnit: string): boolean {
   const source = normalizeUnit(sourceUnit)
@@ -146,20 +168,14 @@ function convertComparisonValue(value: StreamProperty['value'], sourceUnit: stri
 function propertyMatchesTemplate(property: StreamProperty, row: { section: string; name: string; unit: string }): boolean {
   const name = normalizePropertyKey(property.name).replace(/[^a-z0-9]+/g, ' ').trim()
   const target = row.name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
-  const propertySection = (property.section || '').toLowerCase()
+  const sourceSection = propertySection(property).toLowerCase()
   const targetSection = row.section.toLowerCase()
   if (targetSection === 'composition') {
-    return propertySection === 'composition' && name === target
+    return sourceSection === 'composition' && name === target
   }
   if (targetSection) {
-    if (propertySection !== targetSection) return false
-  } else if (propertySection) return false
-  if (targetSection && property.phase) {
-    const phase = property.phase.toLowerCase()
-    if (targetSection === 'vapour' && !/vapou?r/.test(phase)) return false
-    if (targetSection === 'light liquid' && !/liquid/.test(phase)) return false
-    if (targetSection === 'heavy liquid' && !/aqueous/.test(phase)) return false
-  }
+    if (sourceSection !== targetSection) return false
+  } else if (sourceSection) return false
   if (name === target) return unitsMatchOrConvert(property.unit, row.unit)
   const aliases: Record<string, string[]> = {
     'vapour fraction': ['vapour phase fraction', 'vapor phase fraction'],
@@ -167,6 +183,7 @@ function propertyMatchesTemplate(property: StreamProperty, row: { section: strin
     'standard ideal liquid volume flow': ['std ideal liq vol flow'],
     'actual volume flow': ['act liq flow', 'act volume flow', 'liquid volume flow'],
     'cp cv gamma': ['cp cv', 'cp cv ent method', 'ideal gas cp cv'],
+    'compressibility': ['z factor'],
   }
   if (!(aliases[target] || []).includes(name)) return false
   return unitsMatchOrConvert(property.unit, row.unit) || target === 'vapour fraction'
@@ -181,7 +198,9 @@ function rowsForTemplate(stream: string, cases: CaseData[], templateRows: { sect
       const sourceStream = item.streams.find((candidate) => candidate.included && candidate.name.trim().toLowerCase() === stream.trim().toLowerCase())
       const candidates = sourceStream?.properties.filter((candidate) => propertyMatchesTemplate(candidate, row)) || []
       const targetUnit = normalizeUnit(row.unit)
-      const property = candidates.find((candidate) => normalizeUnit(candidate.unit) === targetUnit) || candidates[0]
+      const populated = candidates.filter((candidate) => candidate.value !== null && candidate.value !== '')
+      const property = populated.find((candidate) => normalizeUnit(candidate.unit) === targetUnit)
+        || populated[0] || candidates.find((candidate) => normalizeUnit(candidate.unit) === targetUnit) || candidates[0]
       values[item.id] = property
         ? convertComparisonValue(property.value, property.unit, row.unit)
         : null
@@ -236,13 +255,43 @@ function rateMatchScore(kind: RateKind, propertyName: string): number {
 }
 
 function bestRateProperty(stream: CaseData['streams'][number], kind: RateKind) {
-  let best: { value: number | string | null; unit: string; score: number } | null = null
+  let best: { value: number; unit: string; score: number; preference: number } | null = null
+  const expectedSection = { gas: 'Vapour', liquid: 'Light Liquid', water: 'Heavy Liquid' }[kind]
   for (const p of stream.properties) {
-    const score = rateMatchScore(kind, p.name)
+    if (typeof p.value !== 'number' || !Number.isFinite(p.value)) continue
+    const section = propertySection(p)
+    if (section && section !== expectedSection) continue
+    const name = normalizeRateName(propertyName(p.name))
+    const actualVolume = /^(actual volume flow|act volume flow|act liq flow|act gas flow|liquid volume flow)$/.test(name)
+    const standardLiquid = /^(std ideal liq vol flow|standard ideal liquid volume flow)$/.test(name)
+    let score = rateMatchScore(kind, p.name)
+    if (section) {
+      // A phase's standard gas flow must not compete with Overall or Aqueous
+      // standard-gas-equivalent flow. Liquid uses its actual liquid flow;
+      // Heavy Liquid/Aqueous uses its mass flow, as in the master layout.
+      if (kind === 'gas') score = rateMatchScore(kind, name) === 100 ? 500 : actualVolume ? 300 : name === 'mass flow' ? 200 : 0
+      if (kind === 'liquid') score = actualVolume ? 500 : standardLiquid ? 400 : name === 'mass flow' ? 200 : 0
+      if (kind === 'water') score = name === 'mass flow' ? 500 : standardLiquid ? 400 : actualVolume ? 300 : 0
+    }
     if (score === 0) continue
-    if (!best || score > best.score) best = { value: p.value, unit: p.unit, score }
+    const unit = normalizeUnit(p.unit)
+    const volumeFactor = VOLUME_RATE_FACTORS[unit]
+    const massFactor = MASS_RATE_FACTORS[unit]
+    const factor = typeof volumeFactor === 'number' ? volumeFactor : typeof massFactor === 'number' ? massFactor : 1
+    const comparisonUnit = typeof volumeFactor === 'number' ? 'ft3/hr' : typeof massFactor === 'number' ? 'lb/hr' : unit
+    const value = p.value * factor
+    if (!Number.isFinite(value)) continue
+    const preference = unit === 'ft3/hr' ? 1 : 0
+    if (!best || score > best.score || (score === best.score && preference > best.preference)) {
+      best = { value, unit: comparisonUnit, score, preference }
+    }
   }
   return best
+}
+
+/** Copy the resolved row cell, preserving phase, units, aliases and missingness. */
+export function getGoverningCaseValue(row: ComparisonRow, column?: GoverningCaseColumn): CellValue {
+  return column?.caseId ? row.values[column.caseId] ?? null : null
 }
 
 /**
@@ -269,54 +318,39 @@ export function buildGoverningCaseColumns(
   const columns = new Map<string, StreamGoverningColumns>()
   for (const [key, name] of displayName) {
     const entry: StreamGoverningColumns = {
-      liquid: { caseName: null, values: {} },
-      gas: { caseName: null, values: {} },
-      water: { caseName: null, values: {} },
+      liquid: { caseId: null, caseName: null },
+      gas: { caseId: null, caseName: null },
+      water: { caseId: null, caseName: null },
     }
     for (const kind of RATE_KINDS) {
       let maxValue: number | null = null
-      let governing: CaseData['streams'][number] | null = null
+      let maxScore = 0
+      let comparisonUnit: string | null = null
+      let governingCaseId: string | null = null
       let governingCaseName: string | null = null
       for (const c of cases) {
         const stream = c.streams.find(
           (s) => s.included && s.name.trim().toLowerCase() === key,
         )
         if (!stream) continue
-        const match = kind === 'water'
-          ? bestRateProperty(stream, kind) || bestAqueousRateProperty(stream)
-          : bestRateProperty(stream, kind)
-        if (!match || typeof match.value !== 'number' || !Number.isFinite(match.value))
-          continue
+        const match = bestRateProperty(stream, kind)
+        if (!match || match.score < maxScore) continue
+        if (match.score > maxScore) {
+          maxScore = match.score
+          maxValue = null
+          comparisonUnit = match.unit
+        }
+        // Unknown/incompatible dimensions must never be compared as raw numbers.
+        if (match.unit !== comparisonUnit) continue
         if (maxValue === null || match.value > maxValue) {
           maxValue = match.value
-          governing = stream
+          governingCaseId = c.id
           governingCaseName = c.name
         }
       }
-      if (!governing) continue
-      const values: StreamGoverningColumns['liquid']['values'] = {}
-      for (const p of governing.properties) {
-        const pk = p.name.trim().toLowerCase()
-        const phaseKey = p.phase ? `${pk} [${p.phase.toLowerCase()}]` : pk
-        if (!(phaseKey in values)) values[phaseKey] = p.value
-      }
-      entry[kind] = { caseName: governingCaseName, values }
+      entry[kind] = { caseId: governingCaseId, caseName: governingCaseName }
     }
     columns.set(name, entry)
   }
   return columns
-}
-
-function bestAqueousRateProperty(stream: CaseData['streams'][number]) {
-  let best: { value: number | string | null; unit: string; score: number } | null = null
-  for (const property of stream.properties) {
-    if (!/aqueous/i.test(property.phase || '')) continue
-    const name = normalizeRateName(property.name)
-    let score = 0
-    if (name === 'mass flow') score = 100
-    else if (name === 'std ideal liq vol flow') score = 90
-    else if (name === 'liq vol flow std cond' || name === 'actual volume flow' || name === 'liquid volume flow') score = 80
-    if (score && (!best || score > best.score)) best = { value: property.value, unit: property.unit, score }
-  }
-  return best
 }

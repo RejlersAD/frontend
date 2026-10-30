@@ -30,6 +30,7 @@ import {
   buildComparison,
   buildTemplateComparisonRows,
   buildGoverningCaseColumns,
+  getGoverningCaseValue,
   formatValue,
   rowVaries,
 } from "./compare.ts";
@@ -270,6 +271,8 @@ function canonicalReviewPropertyName(value) {
     "act volume flow": "actual volume flow",
     "z factor": "compressibility",
     "cp cv": "cp cv gamma",
+    "cp cv ent method": "cp cv gamma",
+    "ideal gas cp cv": "cp cv gamma",
   };
   return aliases[name] || name;
 }
@@ -1046,16 +1049,12 @@ function ComparisonView({ cases }) {
                       const governing = governingColumns.get(row.streamName)?.[
                         column.kind
                       ];
-                      const valueKey =
-                        column.kind === "water"
-                          ? `${row.propertyName.trim().toLowerCase()} [aqueous phase]`
-                          : row.propertyName.trim().toLowerCase();
-                      const value = governing?.values[valueKey];
+                      const value = getGoverningCaseValue(row, governing);
                       return (
                         <td
                           key={column.kind}
                           className={`hmbc-max-cell${value == null ? " is-missing" : ""}`}
-                          title={column.hint}
+                          title={governing?.caseName ? `${column.hint}; governing case: ${governing.caseName}` : column.hint}
                         >
                           {value == null ? "—" : formatValue(value)}
                         </td>

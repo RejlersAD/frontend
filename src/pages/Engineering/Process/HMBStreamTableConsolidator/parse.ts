@@ -444,7 +444,7 @@ function extractLongPhaseRows(grid: Grid): Stream[] | null {
 
 function phaseSection(phase: string): string {
   if (/vapou?r/i.test(phase)) return 'Vapour'
-  if (/aqueous/i.test(phase)) return 'Heavy Liquid'
+  if (/aqueous|heavy liquid/i.test(phase)) return 'Heavy Liquid'
   if (/liquid/i.test(phase)) return 'Light Liquid'
   return ''
 }
