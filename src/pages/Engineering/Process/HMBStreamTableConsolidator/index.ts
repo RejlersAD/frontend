@@ -31,6 +31,7 @@ export type CellValue = number | string | null
 /** A row in the cross-case comparison matrix */
 export interface ComparisonRow {
   streamName: string
+  section?: string
   propertyName: string
   unit: string
   /** value per case id, null when the case lacks this stream/property */

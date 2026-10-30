@@ -28,6 +28,7 @@ import { PROJECT_ORGANIZER_CONFIG } from "../../../../config/projectOrganizer.co
 import { createProject as createOrganizerProject } from "../../../../services/projectOrganizerService";
 import {
   buildComparison,
+  buildTemplateComparisonRows,
   buildGoverningCaseColumns,
   formatValue,
   rowVaries,
@@ -805,7 +806,13 @@ function ComparisonView({ cases }) {
   const [limit, setLimit] = useState(1500);
   const scrollRef = useRef(null);
   const sentinelRef = useRef(null);
-  const comparison = useMemo(() => buildComparison(cases), [cases]);
+  const comparison = useMemo(() => {
+    const base = buildComparison(cases);
+    return {
+      ...base,
+      rows: buildTemplateComparisonRows(cases, MASTER_REVIEW_ROWS),
+    };
+  }, [cases]);
   const governingColumns = useMemo(
     () => buildGoverningCaseColumns(cases),
     [cases],
@@ -968,6 +975,8 @@ function ComparisonView({ cases }) {
               const newStream =
                 index === 0 ||
                 shownRows[index - 1].streamName !== row.streamName;
+              const firstInSection = newStream || shownRows[index - 1]?.section !== row.section;
+              const sectionRowSpan = visibleRows.filter((candidate) => candidate.streamName === row.streamName && candidate.section === row.section).length;
               const varies = highlight && rowVaries(row, caseIds);
               return (
                 <Fragment
@@ -975,19 +984,18 @@ function ComparisonView({ cases }) {
                 >
                   {newStream && (
                     <tr className="hmbc-stream-band">
-                      <th colSpan={cases.length + 5}>{row.streamName}</th>
+                      <th colSpan={cases.length + 6}>{row.streamName}</th>
                     </tr>
                   )}
                   <tr
-                    className={varies ? "is-varying" : ""}
+                    className={`${varies ? "is-varying" : ""}${firstInSection && index > 0 ? " hmbc-section-start" : ""}`}
                     style={{
                       contentVisibility: "auto",
                       containIntrinsicSize: "0 40px",
                     }}
                   >
-                    <th className="is-sticky" scope="row">
-                      {row.propertyName}
-                    </th>
+                    {firstInSection && <th className="hmbc-phase-cell" rowSpan={sectionRowSpan} scope="rowgroup">{row.section}</th>}
+                    <th className="is-sticky hmbc-property-cell" scope="row">{row.propertyName}</th>
                     <td className="hmbc-unit">{row.unit || "—"}</td>
                     {cases.map((item) => (
                       <td
