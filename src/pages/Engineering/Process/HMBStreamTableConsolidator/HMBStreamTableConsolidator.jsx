@@ -82,9 +82,17 @@ function isNotFoundResponse(error) {
 }
 
 async function getArchiveHistory(projectId) {
-  return apiClient.get(CONSOLIDATOR_ARCHIVE_ENDPOINT, {
-    params: { project_id: projectId },
-  });
+  try {
+    return await apiClient.get(CONSOLIDATOR_ARCHIVE_ENDPOINT, {
+      params: projectId ? { project_id: projectId } : undefined,
+      suppressErrorToast: true,
+    });
+  } catch (error) {
+    // A deleted or stale active-project ID should not hide workbooks that the
+    // backend can still safely return for the authenticated uploader.
+    if (!projectId || !isNotFoundResponse(error)) throw error;
+    return apiClient.get(CONSOLIDATOR_ARCHIVE_ENDPOINT);
+  }
 }
 
 async function postArchiveWorkbook(formData) {
