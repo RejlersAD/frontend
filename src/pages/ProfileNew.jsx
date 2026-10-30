@@ -414,7 +414,8 @@ const ProfileNew = () => {
                 <div className="w-32 h-32 rounded-2xl bg-white p-1.5 shadow-xl">
                   {photoPreview ? (
                     <img src={photoPreview} alt="Profile" 
-                      className="w-full h-full rounded-xl object-cover" />
+                      className="w-full h-full rounded-xl object-cover"
+                      onError={() => setPhotoPreview(null)} />
                   ) : (
                     <div className="w-full h-full rounded-xl bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white text-4xl font-bold">
                       {formData.first_name?.[0]}{formData.last_name?.[0]}

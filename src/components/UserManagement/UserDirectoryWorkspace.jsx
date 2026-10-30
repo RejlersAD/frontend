@@ -1,4 +1,5 @@
 import { useCurrentProfilePhoto } from '../Layout/ProfilePhotoContext';
+import ProfileAvatar from '../Common/ProfileAvatar';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 import { createPortal } from 'react-dom';
@@ -29,12 +30,10 @@ const issuesOf = u => [
 ].filter(Boolean);
 
 function Avatar({ user, large = false }) {
-  const [failed, setFailed] = useState(false);
   const sharedPhoto = useCurrentProfilePhoto();
   const ownPhoto = String(user.user?.id || user.login_account_id) === String(sharedPhoto.userId) || (emailOf(user) && emailOf(user) === sharedPhoto.email);
   const photo = (ownPhoto ? sharedPhoto.photo : null) || user.profile_photo;
-  useEffect(() => setFailed(false), [photo]);
-  return <span className={`ua-avatar${large ? ' ua-avatar-large' : ''}`}>{photo && !failed ? <img key={photo} src={photo} alt="" onError={() => setFailed(true)} /> : nameOf(user).split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase()}</span>;
+  return <ProfileAvatar name={nameOf(user)} photoUrl={photo} profileId={user.id} className={`ua-avatar${large ? ' ua-avatar-large' : ''}`} imageClassName="h-full w-full object-cover" />;
 }
 Avatar.propTypes = { user: PropTypes.object.isRequired, large: PropTypes.bool };
 

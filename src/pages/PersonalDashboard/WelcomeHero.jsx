@@ -3,6 +3,9 @@
  * Animated aurora background, glassmorphism KPI cards with trend hints.
  */
 import React, { useEffect, useState } from 'react'
+import { useSelector } from 'react-redux'
+import { useCurrentProfilePhoto } from '../../components/Layout/ProfilePhotoContext'
+import ProfileAvatar from '../../components/Common/ProfileAvatar'
 import { ROLE_GRADIENTS } from '../../config/personalDashboard.config'
 
 const KPI_ICONS = {
@@ -57,6 +60,9 @@ function formatRelativeTime(iso) {
 }
 
 export default function WelcomeHero({ userContext, kpis, loading, generatedAt }) {
+  const sharedPhoto = useCurrentProfilePhoto()
+  const profileId = useSelector(state => state.rbac?.currentUser?.id)
+  const avatarUrl = sharedPhoto.photo || userContext?.avatar_url
   const greeting  = getTimeOfDay()
   const firstName = userContext?.name?.split(' ')[0] || 'there'
   const roleCode  = userContext?.role_code || 'default'
@@ -109,17 +115,14 @@ export default function WelcomeHero({ userContext, kpis, loading, generatedAt })
           {/* Greeting */}
           <div className="flex items-center gap-4">
             <div className="relative">
-              {userContext?.avatar_url ? (
-                <img
-                  src={userContext.avatar_url}
-                  alt="avatar"
-                  className="w-16 h-16 rounded-2xl border-2 border-white/50 object-cover shadow-lg flex-shrink-0"
-                />
-              ) : (
-                <div className="w-16 h-16 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-2xl font-black text-white shadow-lg ring-2 ring-white/30 flex-shrink-0">
-                  {firstName[0]?.toUpperCase()}
-                </div>
-              )}
+              <ProfileAvatar
+                name={userContext?.name || firstName}
+                photoUrl={avatarUrl}
+                profileId={profileId}
+                className="h-16 w-16 rounded-2xl border-2 border-white/50 bg-white/20 text-2xl font-black text-white shadow-lg ring-2 ring-white/30 backdrop-blur-md"
+                imageClassName="h-full w-full rounded-2xl object-cover"
+                fallbackClassName="flex h-full w-full items-center justify-center"
+              />
               <div className="absolute -bottom-1 -right-1 h-4 w-4 rounded-full bg-emerald-400 ring-2 ring-white/80 shadow" />
             </div>
             <div>
