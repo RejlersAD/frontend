@@ -162,7 +162,16 @@ function convertComparisonValue(value: StreamProperty['value'], sourceUnit: stri
   if (source === 'barrel/day' && target === 'ft3/hr') return value * 5.614583333333333 / 24
   if (source === 'ft3/hr' && target === 'barrel/day') return value * 24 / 5.614583333333333
   if (source === 'acfm' && target === 'ft3/hr') return value * 60
+  if (source === 'ft3/hr' && target === 'acfm') return value / 60
   return value
+}
+
+/** Convert a displayed edit back to the units of the retained source property. */
+export function convertTemplateEditValue(raw: string, displayUnit: string, sourceUnit: string): string {
+  if (raw.trim() === '') return raw
+  const value = Number(raw)
+  if (!Number.isFinite(value)) return raw
+  return String(convertComparisonValue(value, displayUnit, sourceUnit))
 }
 
 function propertyMatchesTemplate(property: StreamProperty, row: { section: string; name: string; unit: string }): boolean {
@@ -171,7 +180,9 @@ function propertyMatchesTemplate(property: StreamProperty, row: { section: strin
   const sourceSection = propertySection(property).toLowerCase()
   const targetSection = row.section.toLowerCase()
   if (targetSection === 'composition') {
-    return sourceSection === 'composition' && name === target
+    if (sourceSection && sourceSection !== 'composition') return false
+    const fraction = sourceSection === 'composition' || /frac/i.test(property.unit) || / mole fraction$/.test(name)
+    return fraction && name.replace(/ mole fraction$/, '') === target
   }
   if (targetSection) {
     if (sourceSection !== targetSection) return false
@@ -180,13 +191,24 @@ function propertyMatchesTemplate(property: StreamProperty, row: { section: strin
   const aliases: Record<string, string[]> = {
     'vapour fraction': ['vapour phase fraction', 'vapor phase fraction'],
     'std gas flow': ['standard gas flow'],
-    'standard ideal liquid volume flow': ['std ideal liq vol flow'],
-    'actual volume flow': ['act liq flow', 'act volume flow', 'liquid volume flow'],
+    'standard ideal liquid volume flow': ['std ideal liq vol flow', 'std ideal liquid volume flow'],
+    'actual volume flow': ['act liq flow', 'act volume flow', 'act gas flow', 'liquid volume flow'],
     'cp cv gamma': ['cp cv', 'cp cv ent method', 'ideal gas cp cv'],
     'compressibility': ['z factor'],
   }
   if (!(aliases[target] || []).includes(name)) return false
   return unitsMatchOrConvert(property.unit, row.unit) || target === 'vapour fraction'
+}
+
+/** Shared by Review and Compare so populated sources use identical matching and units. */
+export function resolveTemplateProperty(sourceStream: CaseData['streams'][number] | undefined, row: { section: string; name: string; unit: string }) {
+  if (row.section === '__template-divider__') return null
+  const candidates = sourceStream?.properties.filter((candidate) => propertyMatchesTemplate(candidate, row)) || []
+  const targetUnit = normalizeUnit(row.unit)
+  const populated = candidates.filter((candidate) => candidate.value !== null && candidate.value !== '')
+  const property = populated.find((candidate) => normalizeUnit(candidate.unit) === targetUnit)
+    || populated[0] || candidates.find((candidate) => normalizeUnit(candidate.unit) === targetUnit) || candidates[0]
+  return property ? { property, value: convertComparisonValue(property.value, property.unit, row.unit) } : null
 }
 
 function rowsForTemplate(stream: string, cases: CaseData[], templateRows: { section: string; name: string; unit: string }[]): ComparisonRow[] {
@@ -196,16 +218,10 @@ function rowsForTemplate(stream: string, cases: CaseData[], templateRows: { sect
     let unit = row.unit
     for (const item of cases) {
       const sourceStream = item.streams.find((candidate) => candidate.included && candidate.name.trim().toLowerCase() === stream.trim().toLowerCase())
-      const candidates = sourceStream?.properties.filter((candidate) => propertyMatchesTemplate(candidate, row)) || []
-      const targetUnit = normalizeUnit(row.unit)
-      const populated = candidates.filter((candidate) => candidate.value !== null && candidate.value !== '')
-      const property = populated.find((candidate) => normalizeUnit(candidate.unit) === targetUnit)
-        || populated[0] || candidates.find((candidate) => normalizeUnit(candidate.unit) === targetUnit) || candidates[0]
-      values[item.id] = property
-        ? convertComparisonValue(property.value, property.unit, row.unit)
-        : null
-      editedFlags[item.id] = property?.edited ?? false
-      if (!unit && property?.unit) unit = property.unit
+      const resolved = resolveTemplateProperty(sourceStream, row)
+      values[item.id] = resolved?.value ?? null
+      editedFlags[item.id] = resolved?.property.edited ?? false
+      if (!unit && resolved?.property.unit) unit = resolved.property.unit
     }
     return { streamName: stream, section: row.section, propertyName: row.name, unit, values, editedFlags }
   })

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import * as XLSX from 'xlsx'
-import { buildComparison, buildTemplateComparisonRows, buildGoverningCaseColumns, getGoverningCaseValue } from '../src/pages/Engineering/Process/HMBStreamTableConsolidator/compare.ts'
+import { buildComparison, buildTemplateComparisonRows, buildGoverningCaseColumns, getGoverningCaseValue, resolveTemplateProperty, convertTemplateEditValue } from '../src/pages/Engineering/Process/HMBStreamTableConsolidator/compare.ts'
+import { MASTER_REVIEW_ROWS } from '../src/pages/Engineering/Process/HMBStreamTableConsolidator/template.ts'
 import { buildComparisonWorkbookBlob } from '../src/pages/Engineering/Process/HMBStreamTableConsolidator/export.ts'
 import { reopenComparisonWorkbook } from '../src/pages/Engineering/Process/HMBStreamTableConsolidator/reopen.ts'
 import { make1032Cases, templateRows } from './fixtures/hmb-governing-cases.mjs'
@@ -101,4 +102,58 @@ test('XLSX Max columns match their source case and reopen retains every phase an
     reopened.forEach((c, ci) => assert.equal(row.values[c.id], originalRows[i].values[cases[ci].id]))
   })
   assert.equal(buildGoverningCaseColumns(reopened).get('1032').gas.caseName, 'B1a')
+})
+
+test('all master rows resolve consistently across multiple non-1032 streams with different governing cases', () => {
+  const streamNames = ['7', '12', '33']
+  const cases = make1032Cases().slice(0, 3).map((item, ci) => ({ ...item,
+    streams: streamNames.map((name, si) => {
+      const p = (name, section, unit, value) => ({ name, section, unit, value, edited: false })
+      const liquid = ci === (si + 1) % 3 ? 100 : ci + 1
+      return { name, included: true, properties: [
+        p('Temperature', '', 'F', 100 + 10 * si + ci),
+        p('Std. Gas Flow', 'Vapour', 'MMSCFD', ci === si ? 10 : ci + 1),
+        p('Act. Volume Flow', 'Vapour', 'barrel/day', [0, 240, 3.826e-10][si]),
+        p('Act. Volume Flow', 'Light Liquid', 'barrel/day', liquid * 24 / 5.614583333333333),
+        p('Mass Flow', 'Heavy Liquid', 'lb/hr', ci === (si + 2) % 3 ? 1000 : ci + 1),
+        p('H2O', 'Composition', 'mol frac.', 0.9 + ci / 100),
+      ] }
+    }),
+  }))
+  const rows = buildTemplateComparisonRows(cases, MASTER_REVIEW_ROWS)
+  assert.equal(rows.length, 3 * 68)
+  const governing = buildGoverningCaseColumns(cases)
+  for (const row of rows) {
+    const si = streamNames.indexOf(row.streamName)
+    cases.forEach(c => {
+      const resolved = resolveTemplateProperty(c.streams[si], { section: row.section, name: row.propertyName, unit: row.unit })
+      assert.equal(resolved?.value ?? null, row.values[c.id])
+    })
+    for (const [kind, winner] of [['gas', si], ['liquid', (si + 1) % 3], ['water', (si + 2) % 3]]) {
+      assert.equal(governing.get(row.streamName)[kind].caseId, cases[winner].id)
+      assert.equal(getGoverningCaseValue(row, governing.get(row.streamName)[kind]), row.values[cases[winner].id])
+    }
+  }
+  const zero = rows.find(r => r.streamName === '7' && r.section === 'Vapour' && r.propertyName === 'Actual Volume Flow')
+  assert.equal(zero.values[cases[0].id], 0)
+  const tiny = rows.find(r => r.streamName === '33' && r.section === 'Vapour' && r.propertyName === 'Actual Volume Flow')
+  assert.ok(tiny.values[cases[0].id] > 0)
+  const missing = rows.find(r => r.streamName === '12' && r.section === 'Light Liquid' && r.propertyName === 'Viscosity')
+  assert.equal(missing.values[cases[0].id], null)
+})
+
+test('converted Review edits retain source units and identity and update comparison values', () => {
+  const property = { name: 'Act. Volume Flow', section: 'Light Liquid', unit: 'barrel/day', value: 240, edited: false }
+  const stream = { name: '12', included: true, properties: [property] }
+  const row = { section: 'Light Liquid', name: 'Actual Volume Flow', unit: 'ft3/hr' }
+  const resolved = resolveTemplateProperty(stream, row)
+  assert.equal(resolved.property, property)
+  assert.equal(resolved.value, 240 * 5.614583333333333 / 24)
+  property.value = Number(convertTemplateEditValue('100', row.unit, property.unit))
+  assert.ok(Math.abs(property.value - 100 * 24 / 5.614583333333333) < 1e-9)
+  assert.ok(Math.abs(resolveTemplateProperty(stream, row).value - 100) < 1e-9)
+  assert.equal(property.unit, 'barrel/day')
+  assert.equal(convertTemplateEditValue('', row.unit, property.unit), '')
+  assert.equal(convertTemplateEditValue('not numeric', row.unit, property.unit), 'not numeric')
+  assert.equal(convertTemplateEditValue('120', 'ft3/hr', 'ACFM'), '2')
 })
