@@ -1022,6 +1022,9 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
+.hmbc-comparison-table th.hmbc-phase-cell { position: sticky; left: 0; z-index: 12; width: 30px; min-width: 30px; max-width: 30px; padding: 3px 2px; text-align: center; vertical-align: middle; writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; background: #f7f9fc; color: #24466f; font-size: 10px; }`r`n.hmbc-comparison-table th.hmbc-property-cell { position: sticky; left: 30px; z-index: 11; min-width: 210px; text-align: left; }`r`n.hmbc-comparison-table tbody tr.hmbc-section-start > * { border-top: 1px solid #cbd5e1; }
+.hmbc-comparison-table th.hmbc-property-cell { position: sticky; left: 30px; z-index: 11; min-width: 210px; text-align: left; }
+.hmbc-comparison-table tbody tr.hmbc-section-start > * { border-top: 1px solid #cbd5e1; }
 .hmbc-comparison-table tbody td {
   text-align: right;
   font-variant-numeric: tabular-nums;
