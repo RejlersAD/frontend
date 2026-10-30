@@ -122,6 +122,27 @@ const normalizeRateName = (name: string): string =>
 const normalizePropertyKey = (name: string): string =>
   name.replace(/\s*\[(Vapour|Light Liquid|Heavy Liquid)\]$/i, '').trim().toLowerCase()
 
+const normalizeUnit = (unit: string): string => unit.toLowerCase().replace(/[()\s]/g, '')
+
+function unitsMatchOrConvert(sourceUnit: string, targetUnit: string): boolean {
+  const source = normalizeUnit(sourceUnit)
+  const target = normalizeUnit(targetUnit)
+  if (!source || !target || source === target) return true
+  return (source === 'barrel/day' && target === 'ft3/hr')
+    || (source === 'ft3/hr' && target === 'barrel/day')
+    || (source === 'acfm' && target === 'ft3/hr')
+}
+
+function convertComparisonValue(value: StreamProperty['value'], sourceUnit: string, targetUnit: string) {
+  if (typeof value !== 'number') return value
+  const source = normalizeUnit(sourceUnit)
+  const target = normalizeUnit(targetUnit)
+  if (source === 'barrel/day' && target === 'ft3/hr') return value * 5.614583333333333 / 24
+  if (source === 'ft3/hr' && target === 'barrel/day') return value * 24 / 5.614583333333333
+  if (source === 'acfm' && target === 'ft3/hr') return value * 60
+  return value
+}
+
 function propertyMatchesTemplate(property: StreamProperty, row: { section: string; name: string; unit: string }): boolean {
   const name = normalizePropertyKey(property.name).replace(/[^a-z0-9]+/g, ' ').trim()
   const target = row.name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
@@ -139,14 +160,16 @@ function propertyMatchesTemplate(property: StreamProperty, row: { section: strin
     if (targetSection === 'light liquid' && !/liquid/.test(phase)) return false
     if (targetSection === 'heavy liquid' && !/aqueous/.test(phase)) return false
   }
-  if (name === target) return true
+  if (name === target) return unitsMatchOrConvert(property.unit, row.unit)
   const aliases: Record<string, string[]> = {
     'vapour fraction': ['vapour phase fraction', 'vapor phase fraction'],
     'std gas flow': ['standard gas flow'],
     'standard ideal liquid volume flow': ['std ideal liq vol flow'],
+    'actual volume flow': ['act liq flow', 'act volume flow', 'liquid volume flow'],
+    'cp cv gamma': ['cp cv', 'cp cv ent method', 'ideal gas cp cv'],
   }
   if (!(aliases[target] || []).includes(name)) return false
-  return !row.unit || !property.unit || property.unit.toLowerCase().includes(row.unit.toLowerCase()) || target === 'vapour fraction'
+  return unitsMatchOrConvert(property.unit, row.unit) || target === 'vapour fraction'
 }
 
 function rowsForTemplate(stream: string, cases: CaseData[], templateRows: { section: string; name: string; unit: string }[]): ComparisonRow[] {
@@ -156,8 +179,12 @@ function rowsForTemplate(stream: string, cases: CaseData[], templateRows: { sect
     let unit = row.unit
     for (const item of cases) {
       const sourceStream = item.streams.find((candidate) => candidate.included && candidate.name.trim().toLowerCase() === stream.trim().toLowerCase())
-      const property = sourceStream?.properties.find((candidate) => propertyMatchesTemplate(candidate, row))
-      values[item.id] = property?.value ?? null
+      const candidates = sourceStream?.properties.filter((candidate) => propertyMatchesTemplate(candidate, row)) || []
+      const targetUnit = normalizeUnit(row.unit)
+      const property = candidates.find((candidate) => normalizeUnit(candidate.unit) === targetUnit) || candidates[0]
+      values[item.id] = property
+        ? convertComparisonValue(property.value, property.unit, row.unit)
+        : null
       editedFlags[item.id] = property?.edited ?? false
       if (!unit && property?.unit) unit = property.unit
     }
