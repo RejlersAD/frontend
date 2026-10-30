@@ -12,6 +12,7 @@ import { useEffect, useState } from 'react'
 import { useSelector } from 'react-redux'
 import * as HeroIcons from '@heroicons/react/24/outline'
 import apiClient from '../services/api.service'
+import ProfileAvatar from '../components/Common/ProfileAvatar'
 
 // ── Soft-coded API endpoints ──────────────────────────────────────────────
 const API_ENDPOINTS = {
@@ -268,11 +269,15 @@ export default function ProfileAligned() {
                 {/* Profile Photo */}
                 <div className="relative group">
                   <div className="w-24 h-24 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center border-4 border-white/30 overflow-hidden">
-                    {employee.photo_url ? (
-                      <img src={employee.photo_url} alt="Profile" className="w-full h-full object-cover" />
-                    ) : (
-                      <HeroIcons.UserIcon className="w-12 h-12 text-white" />
-                    )}
+                    <ProfileAvatar
+                      name={`${employee.first_name || ''} ${employee.last_name || ''}`.trim()}
+                      photoUrl={employee.photo_url}
+                      photoEndpoint="/users/employees/my-profile-photo/"
+                      retryMissingPhoto
+                      className="h-full w-full rounded-full bg-white/20 text-white"
+                      imageClassName="h-full w-full object-cover"
+                      fallbackClassName="flex h-full w-full items-center justify-center text-2xl font-bold"
+                    />
                   </div>
                   <label className="absolute inset-0 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer flex items-center justify-center">
                     <input

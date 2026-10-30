@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { CalendarDaysIcon, CheckIcon, ClockIcon, DocumentTextIcon, ArrowRightIcon, UserIcon, PrinterIcon } from '@heroicons/react/24/outline'
 import { printLeaveRequest } from './printLeaveRequest'
 import apiClient from '../../services/api.service'
+import ProfileAvatar from '../Common/ProfileAvatar'
 
 export const leaveError = error => {
   const data = error?.response?.data
@@ -27,7 +28,6 @@ export default function LeaveApprovalReview({ requestId, onClose, onUpdated, pag
   const [employeeOptionIndex, setEmployeeOptionIndex] = useState(0)
   const [loadingApprovers, setLoadingApprovers] = useState(false)
   const [printing, setPrinting] = useState(false)
-  const [failedPhoto, setFailedPhoto] = useState(null)
   useEffect(() => {
     let active = true
     if (!page) dialog.current?.showModal()
@@ -149,7 +149,7 @@ export default function LeaveApprovalReview({ requestId, onClose, onUpdated, pag
         {!request && !error && <p role="status" className="p-8 text-sm text-slate-500">Loading request...</p>}
         {request && <>
           <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-6">
-            <div className="flex min-w-0 items-center gap-4">{request.employee_photo_url && failedPhoto !== request.employee_photo_url ? <img src={request.employee_photo_url} alt={`${request.employee_name || 'Employee'} profile`} onError={() => setFailedPhoto(request.employee_photo_url)} className="h-12 w-12 shrink-0 rounded-xl object-cover" /> : <div aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-lg font-semibold text-indigo-700">{(request.employee_name || 'Employee').split(' ').filter(Boolean).slice(0, 2).map(word => word[0]).join('')}</div>}<div className="min-w-0"><h3 className="break-words text-xl font-semibold tracking-tight">{request.employee_name || 'Employee'}</h3><p className="mt-1 text-sm text-slate-500">{[request.employee_code, request.department].filter(Boolean).join(' / ') || 'Leave application'}</p></div></div>
+            <div className="flex min-w-0 items-center gap-4"><ProfileAvatar name={request.employee_name || 'Employee'} photoUrl={request.employee_photo_url} profileId={request.employee_profile_id} retryMissingPhoto className="h-12 w-12 rounded-xl bg-indigo-100 text-lg font-semibold text-indigo-700" imageClassName="h-full w-full rounded-xl object-cover" /> <div className="min-w-0"><h3 className="break-words text-xl font-semibold tracking-tight">{request.employee_name || 'Employee'}</h3><p className="mt-1 text-sm text-slate-500">{[request.employee_code, request.department].filter(Boolean).join(' / ') || 'Leave application'}</p></div></div>
             <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium ${statusStyle}`}><span className="h-1.5 w-1.5 rounded-full bg-current" />{statusLabel}</span>
           </div>
           <div className="mx-6 mb-6 grid grid-cols-1 divide-y divide-indigo-100 overflow-hidden rounded-xl border border-indigo-100 bg-indigo-50/40 sm:grid-cols-[1fr_1.6fr_0.8fr] sm:divide-x sm:divide-y-0">
