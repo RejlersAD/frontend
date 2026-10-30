@@ -45,10 +45,10 @@ export interface ComparisonRow {
  * Heavy Liquid Flow) is identified, and its entire stream column is copied.
  */
 export interface GoverningCaseColumn {
+  /** Source case ID used to copy the already resolved comparison cells. */
+  caseId: string | null
   /** Comparison case that governs this phase (null when none reported a value) */
   caseName: string | null
-  /** Copied cell values keyed by lowercase property name */
-  values: Record<string, CellValue>
 }
 
 export interface StreamGoverningColumns {

@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs'
 import type { CaseData } from './index.ts'
-import { buildComparison, buildGoverningCaseColumns, rowVaries } from './compare.ts'
+import { buildComparison, buildGoverningCaseColumns, getGoverningCaseValue, rowVaries } from './compare.ts'
 
 export interface ExportOptions {
   highlightVariation: boolean
@@ -144,12 +144,11 @@ export async function buildComparisonWorkbookBlob(
     const governing = governingColumns.get(row.streamName)
     const r = ws.addRow([
       '',
-      row.propertyName,
+      row.section ? `${row.propertyName} [${row.section}]` : row.propertyName,
       row.unit,
       ...caseIds.map((id) => row.values[id] ?? null),
       ...MAX_RATE_HEADERS.map((c) => {
-        const value = governing?.[c.kind].values[row.propertyName.trim().toLowerCase()]
-        return value === undefined ? null : value
+        return getGoverningCaseValue(row, governing?.[c.kind])
       }),
     ])
     const varies = options.highlightVariation && rowVaries(row, caseIds)
@@ -169,8 +168,7 @@ export async function buildComparisonWorkbookBlob(
             cell.font = { size: 10, bold: true, italic: true, color: { argb: FONT_EDITED } }
           }
         } else {
-          const copied = governing?.[MAX_RATE_HEADERS[col - 4 - caseIds.length].kind]
-            .values[row.propertyName.trim().toLowerCase()]
+          const copied = getGoverningCaseValue(row, governing?.[MAX_RATE_HEADERS[col - 4 - caseIds.length].kind])
           if (typeof copied === 'number') cell.numFmt = numFormat(row.unit)
           cell.font = { size: 10, bold: true, color: { argb: 'FF24466F' } }
         }
