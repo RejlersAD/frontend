@@ -81,6 +81,13 @@ function isNotFoundResponse(error) {
   return Number(error?.response?.status) === 404;
 }
 
+function isMissingProjectResponse(error) {
+  const data = error?.response?.data;
+  return isNotFoundResponse(error) && (
+    data?.code === "project_not_found" || data?.error === "Project not found."
+  );
+}
+
 async function getArchiveHistory(projectId) {
   try {
     return await apiClient.get(CONSOLIDATOR_ARCHIVE_ENDPOINT, {
@@ -90,13 +97,15 @@ async function getArchiveHistory(projectId) {
   } catch (error) {
     // A deleted or stale active-project ID should not hide workbooks that the
     // backend can still safely return for the authenticated uploader.
-    if (!projectId || !isNotFoundResponse(error)) throw error;
+    if (!projectId || !isMissingProjectResponse(error)) throw error;
     return apiClient.get(CONSOLIDATOR_ARCHIVE_ENDPOINT);
   }
 }
 
 async function postArchiveWorkbook(formData) {
-  return apiClient.post(CONSOLIDATOR_ARCHIVE_ENDPOINT, formData);
+  return apiClient.post(CONSOLIDATOR_ARCHIVE_ENDPOINT, formData, {
+    suppressErrorToast: true,
+  });
 }
 
 function normalizeProjectId(value) {
@@ -1748,9 +1757,20 @@ export default function HMBStreamTableConsolidator() {
       toast.success(`Saved ${savedName} under the selected project.`);
       await loadArchiveHistory();
     } catch (error) {
+      if (isMissingProjectResponse(error)) {
+        // Do not clear a project the user selected while this upload was running.
+        if (readActiveProjectId() === projectId) {
+          localStorage.removeItem(PROJECT_STORAGE_KEY);
+        }
+        setProjectModalError(
+          "The selected project could not be found. Create a project here, or close this form and select another project. Your extracted values are still available.",
+        );
+        setShowProjectModal(true);
+        return;
+      }
       if (isNotFoundResponse(error)) {
         toast.error(
-          "Save endpoint is not available on this backend runtime. Please restart/update backend and try again.",
+          "Saving is temporarily unavailable. Your extracted values are still available; use Export Excel to keep a copy.",
         );
         return;
       }
