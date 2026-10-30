@@ -5,7 +5,6 @@ import {
   AlertTriangle,
   ArrowDownUp,
   CheckCircle2,
-  Database,
   Download,
   FileSpreadsheet,
   Maximize2,
@@ -15,7 +14,6 @@ import {
   RotateCcw,
   Save,
   Search,
-  ShieldCheck,
   Table2,
   Trash2,
   UploadCloud,
@@ -240,7 +238,6 @@ function CasePanel({
   onRemove,
   onRename,
   onImport,
-  onDemo,
 }) {
   const [editingId, setEditingId] = useState(null);
   const [draft, setDraft] = useState("");
@@ -369,15 +366,6 @@ function CasePanel({
             </div>
           );
         })}
-      </div>
-      <button className="hmbc-load-demo" type="button" onClick={onDemo}>
-        <Database /> Load demo cases
-      </button>
-      <div className="hmbc-privacy-note">
-        <ShieldCheck aria-hidden="true" />
-        <span>
-          Source files: session only <i aria-label="Information">ⓘ</i>
-        </span>
       </div>
     </aside>
   );
@@ -647,9 +635,6 @@ function ReviewView({ caseData, onToggleStream, onSetCell }) {
           )}{" "}
           reviewed cells
         </span>
-        <span>
-          <ShieldCheck /> Source files: session only
-        </span>
       </div>
     </section>
   );
@@ -909,8 +894,7 @@ function ComparisonView({ cases }) {
           <i className="is-missing">—</i>Property absent in this case
         </span>
         <span>
-          <i className="is-max">MAX</i>Max Liquid / Gas / Water — complete copy
-          of the governing case column for this stream
+          <i className="is-max">MAX</i>Liquid / Gas / Water: case with highest flow; full stream column copied.
         </span>
       </div>
     </section>
@@ -1102,7 +1086,6 @@ function ConfirmResetDialog({ open, onCancel, onConfirm }) {
 function EmptyState({
   importing,
   onImport,
-  onDemo,
   errors,
   onClearErrors,
   view,
@@ -1168,20 +1151,6 @@ function EmptyState({
             <Search />
             <input placeholder="Search cases..." disabled />
           </label>
-          <button
-            className="hmbc-load-demo"
-            type="button"
-            onClick={onDemo}
-            disabled={importing}
-          >
-            <Database /> Load demo cases
-          </button>
-          <div className="hmbc-privacy-note">
-            <ShieldCheck />
-            <span>
-              Source files: session only <i>ⓘ</i>
-            </span>
-          </div>
         </aside>
       )}
       <section
@@ -1267,8 +1236,7 @@ function EmptyState({
                 <tbody>
                   <tr>
                     <td colSpan="3">
-                      Drop HMB workbooks or load demo cases to populate the
-                      review table.
+                      Drop HMB workbooks to populate the review table.
                     </td>
                   </tr>
                 </tbody>
@@ -1277,9 +1245,6 @@ function EmptyState({
             <div className="hmbc-review-footer">
               <span>
                 0 / 0 streams <i /> 0 reviewed cells
-              </span>
-              <span>
-                <ShieldCheck /> Source files: session only
               </span>
             </div>
           </>
@@ -1730,7 +1695,6 @@ export default function HMBStreamTableConsolidator() {
         <EmptyState
           importing={casesState.importing}
           onImport={casesState.importFiles}
-          onDemo={casesState.loadDemo}
           errors={casesState.errors}
           onClearErrors={casesState.clearErrors}
           view={view}
@@ -1756,7 +1720,6 @@ export default function HMBStreamTableConsolidator() {
               onRemove={casesState.removeCase}
               onRename={casesState.renameCase}
               onImport={casesState.importFiles}
-              onDemo={casesState.loadDemo}
             />
           ) : null}
           <main className="hmbc-main">
