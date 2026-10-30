@@ -415,13 +415,23 @@ function extractLongPhaseRows(grid: Grid): Stream[] | null {
     for (let col = 0; col < headers.length; col++) {
       const name = headers[col]
       if (!name || col === streamCol || col === phaseCol || row[col] === null || row[col] === undefined || row[col] === '') continue
-      const propertyName = name === 'Std Ideal Liq Vol Flow' ? 'Standard Ideal Liquid Volume Flow' : name
+      let propertyName = name === 'Std Ideal Liq Vol Flow' ? 'Standard Ideal Liquid Volume Flow' : name
+      let propertyUnit = stripParens(String(units[col] ?? ''))
+      let propertyValue = coerceValue(row[col])
+      // HYSYS reports vapour actual gas flow in ACFM while the master review
+      // layout is expressed in ft3/hr. Convert the value as it is imported so
+      // the displayed number and unit stay aligned.
+      if (/^act\.?\s*gas\s*flow$/i.test(name) && /^acfm$/i.test(propertyUnit) && typeof propertyValue === 'number') {
+        propertyName = 'Actual Volume Flow'
+        propertyUnit = 'ft3/hr'
+        propertyValue *= 60
+      }
       stream.properties.push({
         name: propertyName,
-        unit: stripParens(String(units[col] ?? '')),
+        unit: propertyUnit,
         ...(section ? { section } : {}),
         phase,
-        value: coerceValue(row[col]),
+        value: propertyValue,
         edited: false,
       })
     }

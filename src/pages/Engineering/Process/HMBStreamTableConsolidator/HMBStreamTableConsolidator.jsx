@@ -239,16 +239,36 @@ function normalizeReviewValue(value) {
     .trim();
 }
 
+function canonicalReviewPropertyName(value) {
+  const name = normalizeReviewValue(value);
+  const aliases = {
+    "vapour phase fraction": "vapour fraction",
+    "vapor phase fraction": "vapour fraction",
+    "std gas flow": "std gas flow",
+    "standard gas flow": "std gas flow",
+    "std ideal liq vol flow": "standard ideal liquid volume flow",
+    "std ideal liquid volume flow": "standard ideal liquid volume flow",
+    "act gas flow": "actual volume flow",
+    "act liq flow": "actual volume flow",
+    "act volume flow": "actual volume flow",
+    "z factor": "compressibility",
+    "cp cv": "cp cv gamma",
+  };
+  return aliases[name] || name;
+}
+
 function findMasterRowProperty(stream, row) {
   if (row.section === "__template-divider__") return null;
   const rowName = normalizeReviewValue(row.name);
   const rowUnit = normalizeReviewValue(row.unit);
   const sectionName = normalizeReviewValue(row.section);
   const properties = stream.properties || [];
+  const canonicalRowName = canonicalReviewPropertyName(row.name);
+  const isUnitless = !rowUnit || rowUnit === "none";
   const exact = properties.find(
     (property) =>
-      normalizeReviewValue(property.name) === rowName &&
-      normalizeReviewValue(property.unit) === rowUnit &&
+      canonicalReviewPropertyName(property.name) === canonicalRowName &&
+      (isUnitless || normalizeReviewValue(property.unit) === rowUnit) &&
       (normalizeReviewValue(property.section) === sectionName ||
         (!property.section && !sectionName)),
   );
@@ -275,7 +295,7 @@ function findMasterRowProperty(stream, row) {
   const aliased = properties.find(
     (property) =>
       normalizeReviewValue(property.section) === sectionName &&
-      aliases.includes(property.name.replace(/\s*\[[^\]]+\]$/, "")) &&
+      aliases.some((alias) => normalizeReviewValue(alias) === normalizeReviewValue(property.name.replace(/\s*\[[^\]]+\]$/, ""))) &&
       (!rowUnit ||
         rowUnit === "none" ||
         normalizeReviewValue(property.unit) === rowUnit),
