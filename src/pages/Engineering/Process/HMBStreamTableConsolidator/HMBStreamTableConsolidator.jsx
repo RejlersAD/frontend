@@ -939,7 +939,7 @@ function ComparisonView({ cases }) {
         <table className="hmbc-table hmbc-comparison-table">
           <thead>
             <tr>
-              <th className="is-sticky">
+              <th className="is-sticky" colSpan={2}>
                 <label className="hmbc-column-filter">
                   <span>Stream / property</span>
                   <select
@@ -1050,7 +1050,7 @@ function ComparisonView({ cases }) {
             })}
             {!visibleRows.length && (
               <tr>
-                <td className="hmbc-no-results" colSpan={cases.length + 5}>
+                <td className="hmbc-no-results" colSpan={cases.length + 6}>
                   No comparison rows match the current filters.
                 </td>
               </tr>

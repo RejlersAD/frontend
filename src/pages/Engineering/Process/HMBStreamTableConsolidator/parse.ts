@@ -411,7 +411,10 @@ function extractLongPhaseRows(grid: Grid): Stream[] | null {
       stream = { name: streamName, included: true, properties: [] }
       streams.set(streamName, stream)
     }
-    const section = /vapou?r/i.test(phase) ? 'Vapour' : /aqueous/i.test(phase) ? 'Heavy Liquid' : /liquid/i.test(phase) ? 'Light Liquid' : ''
+    // HYSYS exposes the water-rich phase as Aqueous. The review and
+    // comparison templates call this phase Heavy Liquid, but keep the source
+    // phase label so downstream consumers can distinguish its provenance.
+    const section = phaseSection(phase)
     for (let col = 0; col < headers.length; col++) {
       const name = headers[col]
       if (!name || col === streamCol || col === phaseCol || row[col] === null || row[col] === undefined || row[col] === '') continue
@@ -437,6 +440,13 @@ function extractLongPhaseRows(grid: Grid): Stream[] | null {
     }
   }
   return streams.size ? [...streams.values()] : null
+}
+
+function phaseSection(phase: string): string {
+  if (/vapou?r/i.test(phase)) return 'Vapour'
+  if (/aqueous/i.test(phase)) return 'Heavy Liquid'
+  if (/liquid/i.test(phase)) return 'Light Liquid'
+  return ''
 }
 
 function extractCompositions(grid: Grid): Stream[] | null {
