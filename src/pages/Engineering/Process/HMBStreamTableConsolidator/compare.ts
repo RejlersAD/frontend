@@ -1,4 +1,4 @@
-import type { CaseData, ComparisonRow, StreamGoverningColumns } from './index.ts'
+import type { CaseData, ComparisonRow, StreamGoverningColumns, StreamProperty } from './index.ts'
 
 /**
  * Build the cross-case comparison matrix.
@@ -118,6 +118,64 @@ const normalizeRateName = (name: string): string =>
     .replace(/[^a-z0-9]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
+
+const normalizePropertyKey = (name: string): string =>
+  name.replace(/\s*\[(Vapour|Light Liquid|Heavy Liquid)\]$/i, '').trim().toLowerCase()
+
+function propertyMatchesTemplate(property: StreamProperty, row: { section: string; name: string; unit: string }): boolean {
+  const name = normalizePropertyKey(property.name).replace(/[^a-z0-9]+/g, ' ').trim()
+  const target = row.name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+  const propertySection = (property.section || '').toLowerCase()
+  const targetSection = row.section.toLowerCase()
+  if (targetSection === 'composition') {
+    return propertySection === 'composition' && name === target
+  }
+  if (targetSection) {
+    if (propertySection !== targetSection) return false
+  } else if (propertySection) return false
+  if (targetSection && property.phase) {
+    const phase = property.phase.toLowerCase()
+    if (targetSection === 'vapour' && !/vapou?r/.test(phase)) return false
+    if (targetSection === 'light liquid' && !/liquid/.test(phase)) return false
+    if (targetSection === 'heavy liquid' && !/aqueous/.test(phase)) return false
+  }
+  if (name === target) return true
+  const aliases: Record<string, string[]> = {
+    'vapour fraction': ['vapour phase fraction', 'vapor phase fraction'],
+    'std gas flow': ['standard gas flow'],
+    'standard ideal liquid volume flow': ['std ideal liq vol flow'],
+  }
+  if (!(aliases[target] || []).includes(name)) return false
+  return !row.unit || !property.unit || property.unit.toLowerCase().includes(row.unit.toLowerCase()) || target === 'vapour fraction'
+}
+
+function rowsForTemplate(stream: string, cases: CaseData[], templateRows: { section: string; name: string; unit: string }[]): ComparisonRow[] {
+  return templateRows.map((row) => {
+    const values: ComparisonRow['values'] = {}
+    const editedFlags: ComparisonRow['editedFlags'] = {}
+    let unit = row.unit
+    for (const item of cases) {
+      const sourceStream = item.streams.find((candidate) => candidate.included && candidate.name.trim().toLowerCase() === stream.trim().toLowerCase())
+      const property = sourceStream?.properties.find((candidate) => propertyMatchesTemplate(candidate, row))
+      values[item.id] = property?.value ?? null
+      editedFlags[item.id] = property?.edited ?? false
+      if (!unit && property?.unit) unit = property.unit
+    }
+    return { streamName: stream, section: row.section, propertyName: row.name, unit, values, editedFlags }
+  })
+}
+
+export function buildTemplateComparisonRows(cases: CaseData[], templateRows: { section: string; name: string; unit: string }[]): ComparisonRow[] {
+  const streams: string[] = []
+  const seen = new Set<string>()
+  for (const item of cases) for (const stream of item.streams) {
+    const key = stream.name.trim().toLowerCase()
+    if (stream.included && !seen.has(key)) { seen.add(key); streams.push(stream.name) }
+  }
+  const rows = streams.flatMap((stream) => rowsForTemplate(stream, cases, templateRows))
+  for (const row of rows) if (row.section === '__template-divider__') row.section = 'Composition'
+  return rows
+}
 
 /**
  * Score how well a property name represents the requested phase rate.
