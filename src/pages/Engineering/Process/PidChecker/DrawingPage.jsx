@@ -1816,7 +1816,7 @@ function StepFindings({ drawingId, findings, errorCount, queryCount, openCount, 
     selectFinding(filtered[Math.min(idx + 1, filtered.length - 1)] ?? selected)
   }
 
-  const markers = findings.map(f => ({ id: f.id, number: f.number, status: markerStatus(f), locations: f.locations }))
+  const markers = findings.map(f => ({ id: f.id, number: f.number, displayId: f.displayId, status: markerStatus(f), locations: f.locations }))
   const marked = markers.filter(m => m.locations.length > 0).length
 
   // ── 2D | 3D viewer (spec §4.1) ────────────────────────────────────────
