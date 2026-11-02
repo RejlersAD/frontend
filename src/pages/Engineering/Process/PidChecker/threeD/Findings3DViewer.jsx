@@ -12,7 +12,7 @@ import * as svc from '../pidChecker.service.js';
 import './pid-scene3d.css';
 
 const VIEWS = [['iso', 'Iso'], ['iso2', 'Iso NW'], ['top', 'Top'], ['front', 'Front'], ['right', 'Right']];
-const LAYERS = [['rack', 'Pipe rack'], ['equipment', 'Equipment'], ['valves', 'Valves'], ['labels', 'Line labels'], ['findings', 'Findings'], ['grid', 'Grid']];
+const LAYERS = [['rack', 'Pipe rack'], ['equipment', 'Equipment'], ['valves', 'Valves'], ['labels', 'Labels'], ['findings', 'Findings'], ['grid', 'Grid']];
 const COLOR_BY = [['class', 'Piping class'], ['service', 'Service'], ['size', 'Size'], ['finding', 'Finding']];
 
 const toHex = (n) => (typeof n === 'number' ? '#' + n.toString(16).padStart(6, '0') : n);
@@ -26,7 +26,7 @@ export default function Findings3DViewer({ documentId, page, selectedFindingId, 
   const [proj, setProj] = useState('persp');
   const [theme, setTheme] = useState('studio'); // studio (dark) is the default
   const [colorBy, setColorBy] = useState('class');
-  const [layers, setLayers] = useState(() => Object.fromEntries(LAYERS.map(([k]) => [k, k !== 'labels']))); // line labels OFF by default (B4)
+  const [layers, setLayers] = useState(() => Object.fromEntries(LAYERS.map(([k]) => [k, true]))); // 'Labels' is a master toggle for all text labels
   const [classVisible, setClassVisible] = useState({});
   const [serviceVisible, setServiceVisible] = useState({});
 

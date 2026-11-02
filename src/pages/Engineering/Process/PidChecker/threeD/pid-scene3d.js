@@ -51,7 +51,7 @@
       this.T = opts.THREE || root.THREE;
       this.OC = opts.OrbitControls || (root.THREE && root.THREE.OrbitControls);
       this.el = container; this.data = scene; this.opts = opts;
-      this.selected = null; this.hovered = null; this.layers = { rack: true, equipment: true, valves: true, labels: false, findings: true, grid: true };
+      this.selected = null; this.hovered = null; this.layers = { rack: true, equipment: true, valves: true, labels: true, findings: true, grid: true };
       this.theme = 'studio'; this.colorBy = 'class'; this._lift = 0; // spec B1/B2/B6
       this.services = Object.fromEntries(Object.keys(SERVICE).map((k) => [k, true]));
       this.meshesByRef = {}; this.pick = []; this.clip = null;
@@ -321,33 +321,52 @@
       const hit = (r) => occ.some((o) => r[0] < o[0] + o[2] && r[0] + r[2] > o[0] && r[1] < o[1] + o[3] && r[1] + r[3] > o[1]);
       const OFF = [[44, -48], [-44, -48], [58, 0], [-58, 0], [44, 48], [-44, 48], [80, -84], [-80, -84]];
       const CARD_W = 190, CARD_H = 46;
-      this._pins.forEach((p) => {
+      // Smart placement: the selected finding and errors get first pick of
+      // the collision-free offsets; cards that cannot be placed without
+      // overlap collapse to just their ring+dot marker (no card, no leader
+      // line) so the canvas never turns into a pile of overlapping cards.
+      const KIND_PRI = { error: 0, minor: 1, query: 2 };
+      const pins = this._pins.slice().sort((a, b) => {
+        const aSel = this.selected === a.f.id ? 0 : 1, bSel = this.selected === b.f.id ? 0 : 1;
+        if (aSel !== bSel) return aSel - bSel;
+        return (KIND_PRI[a.f.kind] ?? 2) - (KIND_PRI[b.f.kind] ?? 2);
+      });
+      pins.forEach((p) => {
         const show = this.layers.findings; const s = this._project(p.f.anchor);
         if (!show || !s.vis) { p.el.hidden = true; p.lead.style.display = 'none'; return; }
-        let best = OFF[0]; for (const d of OFF) { const x = s.x + d[0], y = s.y + d[1]; if (x < 18 || x > w - 18 || y < 18 || y > h - 18) continue; if (!hit([x - CARD_W / 2, y - CARD_H / 2, CARD_W, CARD_H])) { best = d; break; } }
-        let px = s.x + best[0], py = s.y + best[1];
-        // Flip the card back inside the canvas when it would leave it.
-        px = Math.max(CARD_W / 2 + 4, Math.min(w - CARD_W / 2 - 4, px));
-        py = Math.max(CARD_H / 2 + 4, Math.min(h - CARD_H / 2 - 4, py));
-        occ.push([px - CARD_W / 2, py - CARD_H / 2, CARD_W, CARD_H]);
         const sel = this.selected === p.f.id; const col = sel ? PIN.selected : (PIN[p.f.kind] || PIN.query);
-        p.el.hidden = false;
-        p.el.style.left = (px - CARD_W / 2) + 'px'; p.el.style.top = (py - CARD_H / 2) + 'px';
-        p.el.classList.toggle('sel', sel);
-        p.el.style.opacity = this.selected == null || sel ? '' : '0.25';
-        const ang = Math.atan2(py - s.y, px - s.x);
+        let best = null; for (const d of OFF) { const x = s.x + d[0], y = s.y + d[1]; if (x < 18 || x > w - 18 || y < 18 || y > h - 18) continue; if (!hit([x - CARD_W / 2, y - CARD_H / 2, CARD_W, CARD_H])) { best = d; break; } }
         p.lead.style.display = ''; p.lead.style.left = '0px'; p.lead.style.top = '0px'; p.lead.setAttribute('width', w); p.lead.setAttribute('height', h);
         const [ln, ring, dot] = p.lead.children;
-        ln.setAttribute('x1', s.x + Math.cos(ang) * 8); ln.setAttribute('y1', s.y + Math.sin(ang) * 8);
-        ln.setAttribute('x2', px - Math.cos(ang) * (CARD_W / 2)); ln.setAttribute('y2', py - Math.sin(ang) * (CARD_H / 2));
-        ln.setAttribute('stroke', sel ? PIN.selected : '#0B1B3A'); ln.setAttribute('stroke-width', 2);
+        if (!best) {
+          // Crowded: collapse to marker only — the ring stays clickable via
+          // the 3D anchor and re-expands when it is selected or space frees up.
+          p.el.hidden = true;
+          ln.setAttribute('display', 'none');
+        } else {
+          let px = s.x + best[0], py = s.y + best[1];
+          // Flip the card back inside the canvas when it would leave it.
+          px = Math.max(CARD_W / 2 + 4, Math.min(w - CARD_W / 2 - 4, px));
+          py = Math.max(CARD_H / 2 + 4, Math.min(h - CARD_H / 2 - 4, py));
+          occ.push([px - CARD_W / 2, py - CARD_H / 2, CARD_W, CARD_H]);
+          p.el.hidden = false;
+          p.el.style.left = (px - CARD_W / 2) + 'px'; p.el.style.top = (py - CARD_H / 2) + 'px';
+          p.el.classList.toggle('sel', sel);
+          p.el.style.opacity = this.selected == null || sel ? '' : '0.25';
+          const ang = Math.atan2(py - s.y, px - s.x);
+          ln.removeAttribute('display');
+          ln.setAttribute('x1', s.x + Math.cos(ang) * 8); ln.setAttribute('y1', s.y + Math.sin(ang) * 8);
+          ln.setAttribute('x2', px - Math.cos(ang) * (CARD_W / 2)); ln.setAttribute('y2', py - Math.sin(ang) * (CARD_H / 2));
+          ln.setAttribute('stroke', sel ? PIN.selected : '#0B1B3A'); ln.setAttribute('stroke-width', 2);
+        }
         ring.setAttribute('cx', s.x); ring.setAttribute('cy', s.y); ring.setAttribute('fill', 'rgba(255,255,255,.85)'); ring.setAttribute('stroke', col); ring.setAttribute('stroke-width', 2.2);
         ring.setAttribute('class', 'ring' + (sel ? ' pulse' : ''));
         dot.setAttribute('cx', s.x); dot.setAttribute('cy', s.y); dot.setAttribute('fill', col);
       });
-      // Labels: equipment tags + finding callouts are always on; line
-      // labels are opt-in, collision-avoided, capped at 25 (priority:
-      // selected line first, then larger size — spec B4).
+      // Labels: one master toggle controls every text label (equipment
+      // tags, connector refs, line numbers). Finding callouts stay under
+      // the 'findings' layer. Line labels are collision-avoided, capped
+      // at 25 (priority: selected line first, then larger size — B4).
       const MAX_LINE_LABELS = 25;
       let lineShown = 0;
       const order = this._labels.slice().sort((a, b) => {
@@ -359,8 +378,7 @@
       });
       order.forEach((l) => {
         const isLine = l.pri === 3;
-        if (isLine && !this.layers.labels) { l.el.hidden = true; return; }
-        if (!this.layers.labels && l.cls !== 'eq' && l.cls !== 'eq ghost' && !isLine) { l.el.hidden = true; return; }
+        if (!this.layers.labels) { l.el.hidden = true; return; }
         if (l.ref && this.layers.labels && this.selected && !(this._selRefs || []).includes(l.ref) && isLine && !this._showAllLineLabels) { l.el.hidden = true; return; }
         const s = this._project(l.pos); if (!s.vis) { l.el.hidden = true; return; }
         const tw = l.text.length * 6.3 + 10, th = 18; const x = l.alignRight ? s.x - tw : s.x - tw / 2, y = s.y - th / 2;
