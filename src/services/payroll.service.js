@@ -106,6 +106,12 @@ const payrollService = {
   cancelLeaveRequest: (id) =>
     unwrap(apiClient.post(`${BASE}/leave-requests/${id}/cancel/`)),
 
+  getLeaveRequestReferralOptions: (id) =>
+    unwrap(apiClient.get(`${BASE}/leave-requests/${id}/referral-options/`)),
+
+  referLeaveRequest: (id, approverId, note = '') =>
+    unwrap(apiClient.post(`${BASE}/leave-requests/${id}/refer-to/`, { approver_id: approverId, note })),
+
   // ── Leave Calendar (approved leave per employee per day) ──────────────────
   getLeaveCalendar: (year, month) =>
     unwrap(apiClient.get(`${BASE}/leave-calendar/`, { params: { year, month } })),
