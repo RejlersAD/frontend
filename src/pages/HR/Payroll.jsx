@@ -94,6 +94,7 @@ export default function Payroll({ module = 'payroll' }) {
   )
 
   const [headerActions, setHeaderActions] = useState(null)
+  const [leaveSubtitle, setLeaveSubtitle] = useState('Employee balances and leave activity')
   const effectiveTab = module === 'payroll' ? activeTab : module
   const ActiveModule = TAB_COMPONENTS[effectiveTab]
   const title = module === 'attendance' ? 'Attendance Management' : module === 'leave' ? 'Leave Management' : 'Payroll Management'
@@ -106,16 +107,16 @@ export default function Payroll({ module = 'payroll' }) {
   }
 
   return (
-    <div className={`min-h-screen bg-slate-50 ${module === 'attendance' ? 'attendance-page' : ''}`}>
+    <div className={`${module === 'leave' ? 'leave-management-page' : 'min-h-screen'} bg-slate-50 ${module === 'attendance' ? 'attendance-page' : ''}`}>
       {module === 'attendance' && <h1 className="sr-only">Attendance Management</h1>}
       {/* Page Header */}
-      {module !== 'attendance' && <div className="border-b border-slate-200 bg-white">
-        <div className="px-4 py-5 sm:px-6 lg:px-8">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <h1 className="flex items-center gap-3 text-xl font-semibold tracking-tight text-slate-900">
-                <span className="rounded-lg border border-indigo-100 bg-indigo-50 p-2"><ModuleIcon className="h-5 w-5 text-indigo-600" /></span>
-                {title}
+      {module !== 'attendance' && <div className={`border-b border-slate-200 bg-white ${module === 'leave' ? 'leave-management-header' : ''}`}>
+        <div className={`px-4 py-5 sm:px-6 lg:px-8 ${module === 'leave' ? 'leave-management-header-inner' : ''}`}>
+          <div className={`flex flex-wrap items-center justify-between gap-4 ${module === 'leave' ? 'leave-management-title-row' : ''}`}>
+            <div className={module === 'leave' ? 'flex min-w-0 items-center' : ''}>
+              <h1 className={`flex items-center gap-3 font-semibold tracking-tight text-slate-900 ${module === 'leave' ? 'leave-page-title' : 'text-xl'}`}>
+                {module !== 'leave' && <span className="rounded-lg border border-indigo-100 bg-indigo-50 p-2"><ModuleIcon className="h-5 w-5 text-indigo-600" /></span>}
+                {title}{module === 'leave' && <span className="leave-page-subtitle ml-2 hidden font-normal text-slate-500 sm:inline">· {leaveSubtitle}</span>}
               </h1>
             </div>
             {module === 'leave' && <div ref={setHeaderActions} />}
@@ -149,10 +150,11 @@ export default function Payroll({ module = 'payroll' }) {
       </div>}
 
       {/* Module Content */}
-      <div className={`px-4 py-5 sm:px-6 lg:px-8 ${effectiveTab !== 'dashboard' ? 'radai-payroll-module' : ''} ${module === 'attendance' ? 'attendance-page-content' : ''}`}>
+      <div className={`min-w-0 px-4 py-5 sm:px-6 lg:px-8 ${effectiveTab !== 'dashboard' ? 'radai-payroll-module' : ''} ${module === 'attendance' ? 'attendance-page-content' : ''} ${module === 'leave' ? 'leave-management-content' : ''}`}>
         {ActiveModule ? (
           <ActiveModule
             headerActions={headerActions}
+            onViewChange={module === 'leave' ? setLeaveSubtitle : undefined}
             activeRunId={activeRunId}
             initialTab={activeTab === 'salary' && !activeRunId ? 'employees' : undefined}
             onSelectRun={(run) => {

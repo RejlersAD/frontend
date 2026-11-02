@@ -2237,6 +2237,7 @@ const EditableField = ({
   onChange,
   canCreateOrganizations = false,
   onOrganizationCreated,
+  organizations = [],
   options = null,
   error = null,
 }) => {
@@ -2318,7 +2319,10 @@ const EditableField = ({
 
   if (type === "combobox") {
     const currentOption = options?.find((option) => String(option.value) === String(value));
-    const inputValue = isOpen ? query : (currentOption?.label || (field.allowCustomValue ? value : "") || "");
+    const selectedOrganization = id === "organization" && value
+      ? organizations.find((organization) => String(organization.id) === String(value))
+      : null;
+    const inputValue = isOpen ? query : (currentOption?.label || selectedOrganization?.name || (field.allowCustomValue ? value : "") || "");
     const normalizedQuery = String(query || "").trim().toLowerCase();
     const filteredOptions = (options || []).filter((option) =>
       `${option.label || ""} ${option.searchText || ""}`.toLowerCase().includes(normalizedQuery),
@@ -2385,7 +2389,13 @@ const EditableField = ({
           className={baseInputClasses}
           onFocus={() => { setQuery(""); setLocalError(""); setIsOpen(true); }}
           onChange={(event) => { setQuery(event.target.value); setIsOpen(true); }}
-          onBlur={() => window.setTimeout(() => { if (field.allowCustomValue || field.createOption) commitText(); else setIsOpen(false); }, 120)}
+          onBlur={() => window.setTimeout(() => {
+            if (id === "organization") {
+              setQuery("");
+              setIsOpen(false);
+            } else if (field.allowCustomValue || field.createOption) commitText();
+            else setIsOpen(false);
+          }, 120)}
           onKeyDown={(event) => {
             if (event.key === "Escape") { setQuery(""); setIsOpen(false); event.currentTarget.blur(); }
             if (event.key === "Enter") { event.preventDefault(); if (filteredOptions.length) selectOption(filteredOptions[0]); else commitText(); }
@@ -4572,6 +4582,7 @@ const DetailDrawer = ({
                           isEditing={isEditing}
                           onChange={handleFieldChange}
                 canCreateOrganizations={canCreateOrganizations}
+                          organizations={organizations}
                 onOrganizationCreated={(organization) => setOrganizations((previous) => [...previous.filter((item) => String(item.id) !== String(organization.id)), organization])}
                         options={getFieldOptions(field)}
                           error={formErrors[field.id]}
@@ -4650,6 +4661,7 @@ const DetailDrawer = ({
                         isEditing={isEditing}
                         onChange={handleFieldChange}
                         canCreateOrganizations={canCreateOrganizations}
+                        organizations={organizations}
                         onOrganizationCreated={(organization) => setOrganizations((previous) => [...previous.filter((item) => String(item.id) !== String(organization.id)), organization])}
                         options={getFieldOptions(field)}
                         error={formErrors[field.id]}
