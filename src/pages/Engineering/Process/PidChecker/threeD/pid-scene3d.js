@@ -292,7 +292,11 @@
     _makePins() {
       // Finding callouts (spec B5): ring + dot at the anchor, a 2 px leader
       // to a card — number chip (red error / amber query), title, kind·rule.
-      return this.data.findings.filter((f) => f.anchor).map((f) => {
+      // 2 Nov 2026: only checklist-mapped findings appear on the canvas.
+      // New scenes mark them with `label`; old cached scenes have no labels
+      // at all — then keep everything rather than hiding the lot.
+      const hasLabels = this.data.findings.some((f) => f.label);
+      return this.data.findings.filter((f) => f.anchor && (!hasLabels || f.label)).map((f) => {
         const el = document.createElement('button');
         el.type = 'button'; el.className = 'p3d-callout';
         el.setAttribute('aria-label', 'Finding ' + (f.label || ('F' + f.n)) + ': ' + (f.title || ''));

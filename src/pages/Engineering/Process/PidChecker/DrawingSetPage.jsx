@@ -349,7 +349,8 @@ export default function DrawingSetPage() {
   // ── derived lists (single source of truth, spec §5) ──────────────────
   const findings = useMemo(() => members.flatMap(m => {
     const res = resultsByDoc[m.id]
-    return (res?.drawings || []).flatMap(d => (d.issues || []).map(issue => normalizeFinding(issue, d, m)))
+    // Only checklist-mapped findings (in_checklist absent on old payloads).
+    return (res?.drawings || []).flatMap(d => (d.issues || []).filter(issue => issue.in_checklist !== false).map(issue => normalizeFinding(issue, d, m)))
   }), [members, resultsByDoc])
   const openFindings = useMemo(() => findings.filter(isOpen), [findings])
   const errorCount = openFindings.filter(isErrorSev).length

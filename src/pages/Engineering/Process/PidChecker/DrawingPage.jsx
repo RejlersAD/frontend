@@ -387,7 +387,9 @@ export default function DrawingPage() {
   const findings = useMemo(
     () => drawings
       .filter(d => (d.page_index ?? 0) === currentPage)
-      .flatMap(d => (d.issues || []).map(issue => normalizeFinding(issue, d))),
+      // Only checklist-mapped findings are shown (2 Nov 2026 alignment) —
+      // in_checklist is absent on old payloads, so filter only on explicit false.
+      .flatMap(d => (d.issues || []).filter(issue => issue.in_checklist !== false).map(issue => normalizeFinding(issue, d))),
     [drawings, currentPage],
   )
 
