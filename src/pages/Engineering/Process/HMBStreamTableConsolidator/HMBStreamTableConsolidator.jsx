@@ -157,7 +157,7 @@ const MAX_RATE_COLUMNS = [
   {
     kind: "water",
     label: "Max Water",
-    hint: "Values copied from the case with the highest Heavy Liquid Flow for this stream",
+    hint: "Values copied from the case with the highest Heavy Liquid/Aqueous Actual Volume Flow (or Standard Ideal Liquid Volume Flow, then Mass Flow if unavailable) for this stream",
   },
 ];
 

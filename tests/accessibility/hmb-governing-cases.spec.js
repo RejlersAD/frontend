@@ -40,7 +40,7 @@ test('1032 Max Gas/Liquid/Water copy complete phase-aware case columns in the ta
   await page.getByRole('tab', { name: 'Compare', exact: true }).click()
   await page.getByRole('combobox', { name: 'Filter by stream or property' }).selectOption('stream:1032')
   const names = (await page.locator('.hmbc-column-case').allTextContents()).map(name => name.trim())
-  const indices = ['B1a', 'B1a', 'A2b'].map(name => names.indexOf(name))
+  const indices = ['B1a', 'B1a', 'A2a'].map(name => names.indexOf(name))
   expect(indices.every(index => index >= 0)).toBe(true)
   const rows = await page.locator('.hmbc-comparison-table tbody tr:not(.hmbc-stream-band)').evaluateAll(elements => {
     let section = ''
@@ -55,9 +55,11 @@ test('1032 Max Gas/Liquid/Water copy complete phase-aware case columns in the ta
   for (const row of rows) {
     indices.forEach((index, maxIndex) => {
       expect(row.values[names.length + 1 + maxIndex], `${row.section} / ${row.property}`).toBe(row.values[index + 1])
-      expect(row.titles[maxIndex]).toContain(`governing case: ${['B1a', 'B1a', 'A2b'][maxIndex]}`)
+      expect(row.titles[maxIndex]).toContain(`governing case: ${['B1a', 'B1a', 'A2a'][maxIndex]}`)
     })
   }
+  const water = rows.find(row => row.section === 'Heavy Liquid' && row.property === 'Actual Volume Flow')
+  expect(water.values[names.length + 3]).toBe('22,270')
   const gas = rows.find(row => row.section === 'Vapour' && row.property === 'Std Gas Flow')
   expect(gas.values[names.length + 2]).toBe('5.632')
   const compressibility = rows.find(row => row.section === 'Vapour' && row.property === 'Compressibility')
@@ -73,9 +75,9 @@ test('1032 Max Gas/Liquid/Water copy complete phase-aware case columns in the ta
   for (const row of sheetRows.slice(2).filter(row => row[1])) {
     expect(row[header.indexOf('Max Gas')]).toBe(row[header.indexOf('B1a')])
     expect(row[header.indexOf('Max Liquid')]).toBe(row[header.indexOf('B1a')])
-    expect(row[header.indexOf('Max Water')]).toBe(row[header.indexOf('A2b')])
+    expect(row[header.indexOf('Max Water')]).toBe(row[header.indexOf('A2a')])
   }
   expect(sheetRows.find(row => row[1] === 'Mass Flow [Vapour]')[header.indexOf('Max Gas')]).toBe(14900)
   expect(sheetRows.find(row => row[1] === 'Mass Flow [Light Liquid]')[header.indexOf('Max Liquid')]).toBe(305800)
-  expect(sheetRows.find(row => row[1] === 'Mass Flow [Heavy Liquid]')[header.indexOf('Max Water')]).toBe(1386000)
+  expect(sheetRows.find(row => row[1] === 'Mass Flow [Heavy Liquid]')[header.indexOf('Max Water')]).toBe(1385000)
 })

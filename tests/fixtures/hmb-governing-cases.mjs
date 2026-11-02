@@ -40,7 +40,7 @@ export function make1032Cases() {
         p('Act. Liq. Flow', 'ft3/hr', totalMass / 10),
         ...phase('Vapour', gasMass, 100 + index, index),
         ...phase('Light Liquid', liquidMass, liquidFlow, 10 + index),
-        ...phase('Heavy Liquid', waterMass, 20000 + index, 20 + index),
+        ...phase('Heavy Liquid', waterMass, [17990, 22270, 22270, 21940, 18260, 17990, 22270, 21940][index], 20 + index),
         p('H2O', 'mol frac.', 0.9 + index / 100, 'Composition'),
         p('Methane', 'mol frac.', 0.01 + index / 1000, 'Composition'),
       ] }],
