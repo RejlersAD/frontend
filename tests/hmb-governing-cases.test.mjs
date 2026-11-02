@@ -11,7 +11,7 @@ test('1032 selects phase criteria rather than larger Overall/gas-equivalent valu
   const columns = buildGoverningCaseColumns(make1032Cases()).get('1032')
   assert.equal(columns.gas.caseId, 'B1a')
   assert.equal(columns.liquid.caseId, 'B1a')
-  assert.equal(columns.water.caseId, 'A2b') // tied B2b loses to the earlier import
+  assert.equal(columns.water.caseId, 'A2a') // highest actual volume; tied later imports lose
 })
 
 test('every Max cell copies the governing case row across summary, phases, aliases and composition', () => {
@@ -21,13 +21,13 @@ test('every Max cell copies the governing case row across summary, phases, alias
   for (const row of rows) {
     assert.equal(getGoverningCaseValue(row, columns.gas), row.values.B1a)
     assert.equal(getGoverningCaseValue(row, columns.liquid), row.values.B1a)
-    assert.equal(getGoverningCaseValue(row, columns.water), row.values.A2b)
+    assert.equal(getGoverningCaseValue(row, columns.water), row.values.A2a)
   }
   const mass = section => rows.find(r => r.section === section && r.propertyName === 'Mass Flow')
   assert.equal(getGoverningCaseValue(mass(''), columns.gas), 1458000)
   assert.equal(getGoverningCaseValue(mass('Vapour'), columns.gas), 14900)
   assert.equal(getGoverningCaseValue(mass('Light Liquid'), columns.liquid), 305800)
-  assert.equal(getGoverningCaseValue(mass('Heavy Liquid'), columns.water), 1386000)
+  assert.equal(getGoverningCaseValue(mass('Heavy Liquid'), columns.water), 1385000)
   assert.ok(rows.find(r => r.section === 'Vapour' && r.propertyName === 'Compressibility').values.B1a > 0)
 })
 
@@ -93,7 +93,7 @@ test('XLSX Max columns match their source case and reopen retains every phase an
   for (const row of rows.slice(2).filter(row => row[1])) {
     assert.equal(row[header.indexOf('Max Gas')], row[header.indexOf('B1a')])
     assert.equal(row[header.indexOf('Max Liquid')], row[header.indexOf('B1a')])
-    assert.equal(row[header.indexOf('Max Water')], row[header.indexOf('A2b')])
+    assert.equal(row[header.indexOf('Max Water')], row[header.indexOf('A2a')])
   }
   const reopened = reopenComparisonWorkbook(buffer, 'comparison.xlsx')
   const restoredRows = buildTemplateComparisonRows(reopened, templateRows)
@@ -156,4 +156,27 @@ test('converted Review edits retain source units and identity and update compari
   assert.equal(convertTemplateEditValue('', row.unit, property.unit), '')
   assert.equal(convertTemplateEditValue('not numeric', row.unit, property.unit), 'not numeric')
   assert.equal(convertTemplateEditValue('120', 'ft3/hr', 'ACFM'), '2')
+})
+
+
+test('Max Water ranks actual aqueous volume across units ahead of higher mass or standard flow', () => {
+  const cases = make1032Cases().slice(0, 2)
+  cases[0].streams[0].properties = [
+    { name: 'Actual Volume Flow', section: 'Heavy Liquid', unit: 'ft3/hr', value: 120 },
+    { name: 'Mass Flow', section: 'Heavy Liquid', unit: 'lb/hr', value: 10 },
+  ]
+  cases[1].streams[0].properties = [
+    { name: 'Act. Volume Flow', phase: 'Aqueous Phase', unit: 'barrel/day', value: 500 },
+    { name: 'Mass Flow', section: 'Heavy Liquid', unit: 'lb/hr', value: 1000000 },
+    { name: 'Std Ideal Liq Vol Flow', section: 'Heavy Liquid', unit: 'barrel/day', value: 2000000 },
+  ]
+  assert.equal(buildGoverningCaseColumns(cases).get('1032').water.caseId, 'A1b')
+  cases[0].streams[0].properties[0].value = 0
+  assert.equal(buildGoverningCaseColumns(cases).get('1032').water.caseId, 'A2a')
+  cases[1].streams[0].properties[0].value = null
+  assert.equal(buildGoverningCaseColumns(cases).get('1032').water.caseId, 'A1b') // zero actual volume beats fallback criteria
+  cases[0].streams[0].properties[0].value = null
+  assert.equal(buildGoverningCaseColumns(cases).get('1032').water.caseId, 'A2a') // standard flow fallback
+  cases[1].streams[0].properties[2].value = null
+  assert.equal(buildGoverningCaseColumns(cases).get('1032').water.caseId, 'A2a') // mass fallback only when no volume exists
 })

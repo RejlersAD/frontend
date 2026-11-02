@@ -243,7 +243,7 @@ export function buildTemplateComparisonRows(cases: CaseData[], templateRows: { s
  * Score how well a property name represents the requested phase rate.
  * 0 = not a rate for that phase; higher = closer to the criterion row:
  *   liquid → "Light Liquid Act Flow" (light liquid family)
- *   water  → "Heavy Liquid Flow" (heavy liquid family)
+ *   water  → "Heavy Liquid Actual Volume Flow" (heavy liquid family)
  *   gas    → "Std Ideal Gas Vol Flow" / "Standard Gas Flow" (standard gas)
  * Lower tiers keep the columns useful when a workbook only carries a more
  * generic flow name for that phase.
@@ -284,10 +284,10 @@ function bestRateProperty(stream: CaseData['streams'][number], kind: RateKind) {
     if (section) {
       // A phase's standard gas flow must not compete with Overall or Aqueous
       // standard-gas-equivalent flow. Liquid uses its actual liquid flow;
-      // Heavy Liquid/Aqueous uses its mass flow, as in the master layout.
+      // Heavy Liquid/Aqueous also uses actual volume, rather than mass flow.
       if (kind === 'gas') score = rateMatchScore(kind, name) === 100 ? 500 : actualVolume ? 300 : name === 'mass flow' ? 200 : 0
       if (kind === 'liquid') score = actualVolume ? 500 : standardLiquid ? 400 : name === 'mass flow' ? 200 : 0
-      if (kind === 'water') score = name === 'mass flow' ? 500 : standardLiquid ? 400 : actualVolume ? 300 : 0
+      if (kind === 'water') score = actualVolume ? 500 : standardLiquid ? 400 : name === 'mass flow' ? 200 : 0
     }
     if (score === 0) continue
     const unit = normalizeUnit(p.unit)
@@ -315,7 +315,7 @@ export function getGoverningCaseValue(row: ComparisonRow, column?: GoverningCase
  * keyed by display stream name (same keying as comparison rows).
  * For each phase the case with the highest criterion value governs
  * (Light Liquid Act Flow → liquid, Std Ideal Gas Vol Flow → gas,
- * Heavy Liquid Flow → water); that case's entire stream column is copied
+ * Heavy Liquid Actual Volume Flow → water); that case's entire stream column is copied
  * property-by-property. Only included streams and finite numeric criterion
  * values participate; ties go to the earliest imported case.
  */

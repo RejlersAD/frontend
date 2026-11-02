@@ -61,8 +61,8 @@ function sourceRate(kind, section, data, overall, phaseHeaders, overallHeaders) 
       ?? scale(readOverall('Standard Ideal Liquid Volume Flow'), volume)],
   ]
   if (kind === 'water') candidates = [
-    [4, read('Mass Flow')], [3, scale(read('Standard Ideal Liquid Volume Flow'), volume)],
-    [2, read('Actual Volume Flow', 'ft3/hr')],
+    [4, read('Actual Volume Flow', 'ft3/hr')], [3, scale(read('Standard Ideal Liquid Volume Flow'), volume)],
+    [2, read('Mass Flow')],
   ]
   return candidates.find(([, value]) => typeof value === 'number' && Number.isFinite(value)) || null
 }
