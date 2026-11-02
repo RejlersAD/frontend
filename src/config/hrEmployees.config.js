@@ -678,15 +678,15 @@ export const HR_EDITABLE_FIELDS = {
     { 
       id: 'organization', 
       label: 'Organisation', 
-      type: 'select', 
+      type: 'combobox', 
       optionsFrom: 'organizations',  // fetched from rbacService.getOrganizations()
       valueField: 'id',
       labelField: 'name',
-      readOnly: true,  // Usually fixed; change via admin
-      helpText: 'Organisation assignment cannot be changed here. Use Admin panel.'
+      createOption: true,
+      helpText: 'Search for an organisation or create one. Creating an organisation requires Super Administrator access.'
     },
-    { id: 'department', label: 'Department', type: 'text', placeholder: 'e.g., Process Engineering', required: true, maxLength: 100 },
-    { id: 'job_title', label: 'Organizational role / Job title', type: 'text', placeholder: 'Select a suggestion or enter the recorded job title', required: true, maxLength: 100 },
+    { id: 'department', label: 'Department', type: 'combobox', createOption: true, placeholder: 'Search or enter a department', required: true, maxLength: 100 },
+    { id: 'job_title', label: 'Organizational role / Job title', type: 'combobox', createOption: true, placeholder: 'Search or enter a job title', required: true, maxLength: 100 },
     { 
       id: 'status', 
       label: 'Employment Status', 
@@ -709,10 +709,11 @@ export const HR_EDITABLE_FIELDS = {
     { 
       id: 'manager', 
       label: 'Reports To (Manager)', 
-      type: 'select',
+      type: 'combobox',
       optionsFrom: 'managers',  // will be fetched dynamically
       valueField: 'id',
       labelField: 'name',
+      allowCustomValue: true,
       helpText: 'Direct line manager for reporting hierarchy'
     },
     { 

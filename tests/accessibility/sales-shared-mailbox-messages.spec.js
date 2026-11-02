@@ -1444,7 +1444,7 @@ test('connection pagination filters delegated mailboxes and waits for complete a
     ? { body: paginated([mailbox({ id: 'shared-2', mailbox_address: 'projects@example.test' })]), hold }
     : { body: paginated([mailbox(), mailbox({ id: 'personal', auth_mode: 'delegated', mailbox_address: 'personal@example.test' })], `${connectionsPath}?page=2`) },
   })
-  await expect(page.getByRole('status')).toContainText('Loading shared mailboxes')
+  await expect(page.getByRole('status')).toContainText('Loading mailboxes')
   expect(state.requests.filter(request => request.path.endsWith('/messages/'))).toHaveLength(0)
   hold.resolve()
   const selector = page.getByRole('combobox', { name: 'Mailbox', exact: true })
@@ -1465,8 +1465,29 @@ test('loading, an empty authorized mailbox, and missing connections have distinc
   await expect(region(page).getByRole('alert')).toHaveCount(0)
   state.connections = paginated([])
   await page.reload()
-  await expect(page.getByText('No shared mailbox is available to your account.', { exact: true })).toBeVisible()
+  await expect(page.getByText('No connected mailbox is available to your account.', { exact: true })).toBeVisible()
   await expect(region(page)).toHaveCount(0)
+  assertReadOnly(state)
+})
+
+test('connected personal Outlook appears beside shared mailboxes and reads its own source', async ({ page }) => {
+  const personal = mailbox({
+    id: 'personal-1', name: 'My Outlook account', auth_mode: 'delegated',
+    delegated_connected: true, mailbox_address: 'personal@example.test',
+  })
+  const state = await prepare(page, {
+    connections: paginated([mailbox(), personal]),
+    messageHandler: ({ url }) => ({ body: listing(
+      [message()], null,
+      url.pathname === messagesPath('personal-1') ? personal.mailbox_address : 'sales@example.test',
+    ) }),
+  })
+  const selector = page.getByRole('combobox', { name: 'Mailbox', exact: true })
+  await expect(selector.getByRole('option')).toHaveCount(3)
+  await selector.selectOption('personal-1')
+  await expect(page.getByRole('region', { name: 'My Outlook messages' })).toBeVisible()
+  await expect(selector.locator('option[value="personal-1"]')).toContainText('My Outlook')
+  expect(state.requests.some(request => request.path === messagesPath('personal-1'))).toBe(true)
   assertReadOnly(state)
 })
 

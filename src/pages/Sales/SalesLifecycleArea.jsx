@@ -566,6 +566,11 @@ const lifecycleActions = (area, record) => {
       actions.push({ id: "qualify", label: "Submit qualification" });
     if (record.stage === "qualified")
       actions.push({ id: "bid_decision", label: "Record Go / No-Go" });
+    if (
+      (record.stage === "proposal" && ["bid", "conditional_bid"].includes(record.bid_decision))
+      || (record.stage === "no_bid" && record.bid_decision === "no_bid")
+    )
+      actions.push({ id: "bid_decision", label: "Reverse Go / No-Go decision" });
     if (record.stage === "proposal")
       actions.push({ id: "ceo_decision", label: "Record CEO go/no-go" });
     if (record.stage === "proposal")
@@ -1533,8 +1538,12 @@ export default function SalesLifecycleArea() {
     if (actionId === "bid_decision")
       return showAction(
         {
-          title: "Record Go / No-Go Decision",
-          submitLabel: "Record decision",
+          title: ["proposal", "no_bid"].includes(record.stage)
+            ? "Reverse Go / No-Go Decision"
+            : "Record Go / No-Go Decision",
+          submitLabel: ["proposal", "no_bid"].includes(record.stage)
+            ? "Save revised decision"
+            : "Record decision",
           redesignedBidDecision: true,
           fields: [],
           execute: (values) =>
@@ -1542,6 +1551,7 @@ export default function SalesLifecycleArea() {
               record.id,
               values.decision,
               values.bid_justification,
+              record.bid_decision || "pending",
             ),
         },
         {},

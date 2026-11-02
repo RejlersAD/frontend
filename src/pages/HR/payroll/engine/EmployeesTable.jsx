@@ -8,18 +8,14 @@ import payrollEngineService, { downloadBlob } from '../../../../services/payroll
 import rbacService from '../../../../services/rbac.service'
 import { formatCurrency, canEditPayrollEmployee } from '../../../../config/payrollEngine.config'
 import EmployeeEditModal from './EmployeeEditModal'
+import ProfileAvatar from '../../../../components/Common/ProfileAvatar'
 
-const initials = (name = '') => name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || 'EP'
 const money = (value) => formatCurrency(Number(value || 0))
 const listFrom = (data) => Array.isArray(data) ? data : (data?.results ?? [])
 const userListFrom = (response) => response?.data?.data?.results ?? response?.data?.results ?? response?.data?.data ?? response?.data ?? response?.results ?? []
 
-function EmployeeAvatar({ name, src, className = 'h-10 w-10', textClassName = 'text-xs' }) {
-  const [failed, setFailed] = useState(false)
-  useEffect(() => { setFailed(false) }, [src])
-  return <span className={`flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 font-bold text-white ${textClassName} ${className}`}>
-    {src && !failed ? <img src={src} alt={`${name || 'Employee'} profile`} className="h-full w-full object-cover" loading="lazy" onError={() => setFailed(true)} /> : initials(name)}
-  </span>
+function EmployeeAvatar({ name, src, profileId, className = 'h-10 w-10', textClassName = 'text-xs' }) {
+  return <ProfileAvatar name={name} photoUrl={src} profileId={profileId} alt={`${name || 'Employee'} profile`} className={`rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 font-bold text-white ${textClassName} ${className}`} imageClassName="h-full w-full object-cover" />
 }
 
 function AccountLinkModal({ employee, linkedEmployeesByUser, onClose, onLinked }) {
@@ -79,7 +75,7 @@ function AccountLinkModal({ employee, linkedEmployeesByUser, onClose, onLinked }
             const userId = profile.user?.id
             const linkedOwner = linkedEmployeesByUser.get(String(userId))
             const candidateName = profile.full_name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || profile.email
-            return <div key={profile.id} className="flex items-center gap-3 px-4 py-3"><EmployeeAvatar name={candidateName} src={profile.profile_photo} /><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-slate-900">{candidateName}</p><p className="truncate text-xs text-slate-500">#{profile.employee_id || 'No employee ID'} · {profile.email}</p><p className="truncate text-[11px] text-slate-400">{profile.job_title || 'No job title'} · {profile.department || 'No department'}</p>{linkedOwner && <p className="mt-1 text-xs font-medium text-amber-700">Currently linked to payroll #{linkedOwner.employee_no} · {linkedOwner.full_name}</p>}</div><button type="button" onClick={() => linkAccount(profile, linkedOwner)} disabled={!userId || savingId === userId} className={`rounded-lg px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 ${linkedOwner ? 'border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100' : 'bg-indigo-700 text-white hover:bg-indigo-800'}`}>{savingId === userId ? 'Saving…' : linkedOwner ? 'Move link here' : 'Link account'}</button></div>
+            return <div key={profile.id} className="flex items-center gap-3 px-4 py-3"><EmployeeAvatar name={candidateName} src={profile.profile_photo} profileId={profile.id} /><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-slate-900">{candidateName}</p><p className="truncate text-xs text-slate-500">#{profile.employee_id || 'No employee ID'} · {profile.email}</p><p className="truncate text-[11px] text-slate-400">{profile.job_title || 'No job title'} · {profile.department || 'No department'}</p>{linkedOwner && <p className="mt-1 text-xs font-medium text-amber-700">Currently linked to payroll #{linkedOwner.employee_no} · {linkedOwner.full_name}</p>}</div><button type="button" onClick={() => linkAccount(profile, linkedOwner)} disabled={!userId || savingId === userId} className={`rounded-lg px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 ${linkedOwner ? 'border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100' : 'bg-indigo-700 text-white hover:bg-indigo-800'}`}>{savingId === userId ? 'Saving…' : linkedOwner ? 'Move link here' : 'Link account'}</button></div>
           })}</div>}
         </div>
       </div>
@@ -112,7 +108,7 @@ function PayrollEmployeeDrawer({ employee, canEdit, onClose, onEdit, onLink }) {
         <header className="bg-gradient-to-r from-slate-950 via-blue-950 to-blue-800 px-6 py-5 text-white">
           <div className="flex items-start justify-between gap-4">
             <div className="flex min-w-0 items-center gap-4">
-              <EmployeeAvatar name={detail.full_name} src={detail.profile_photo} className="h-14 w-14 rounded-2xl ring-1 ring-white/20" textClassName="text-lg" />
+              <EmployeeAvatar name={detail.full_name} src={detail.profile_photo} profileId={detail.hr_profile_id} className="h-14 w-14 rounded-2xl ring-1 ring-white/20" textClassName="text-lg" />
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2"><h2 className="truncate text-xl font-bold">{detail.full_name}</h2><span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${detail.is_active ? 'bg-emerald-400/20 text-emerald-200' : 'bg-slate-400/20 text-slate-200'}`}>{detail.is_active ? 'Active' : 'Inactive'}</span></div>
                 <p className="mt-1 text-sm text-blue-100">#{detail.employee_no} · {detail.designation || 'Designation not set'}</p>
@@ -243,7 +239,7 @@ export default function EmployeesTable({ actionsTarget }) {
       {uploadSummary && <div className="m-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-medium text-emerald-800">Import complete: {uploadSummary.employees_created} created, {uploadSummary.employees_updated} updated.</div>}
       {error && <div className="m-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">{error}</div>}
       {loading ? <div className="p-14 text-center text-sm text-slate-500"><HeroIcons.ArrowPathIcon className="mx-auto mb-3 h-6 w-6 animate-spin text-blue-600" />Loading payroll employees…</div> : filtered.length === 0 ? <div className="p-14 text-center text-sm text-slate-500">No payroll employees match this search.</div> : <div className="divide-y divide-slate-100">{pageRows.map((employee) => <button key={employee.id} type="button" onClick={() => setSelected(employee)} className="grid w-full grid-cols-[auto_1fr_auto] items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-blue-50/50 sm:px-5 lg:grid-cols-[auto_minmax(220px,1.4fr)_minmax(160px,1fr)_130px_130px_auto]">
-        <EmployeeAvatar name={employee.full_name} src={employee.profile_photo} />
+        <EmployeeAvatar name={employee.full_name} src={employee.profile_photo} profileId={employee.hr_profile_id} />
         <span className="min-w-0"><span className="flex items-center gap-2"><span className="truncate text-sm font-bold text-slate-900">{employee.full_name}</span>{employee.user ? <HeroIcons.LinkIcon className="h-3.5 w-3.5 shrink-0 text-violet-500" title="Linked to RADAI employee" /> : null}</span><span className="mt-0.5 block text-xs text-slate-500">#{employee.employee_no} · {employee.designation || 'No designation'}</span></span>
         <span className="hidden min-w-0 lg:block"><span className="block truncate text-sm font-medium text-slate-700">{employee.department || 'No department'}</span><span className="mt-0.5 block truncate text-xs text-slate-400">{employee.grade || employee.discipline || '—'}</span></span>
         <span className="hidden text-right lg:block"><span className="block text-[10px] font-bold uppercase text-slate-400">Basic</span><span className="text-sm font-semibold text-slate-700">{money(employee.basic)}</span></span>

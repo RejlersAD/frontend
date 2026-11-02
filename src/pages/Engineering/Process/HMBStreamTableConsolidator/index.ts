@@ -31,6 +31,7 @@ export type CellValue = number | string | null
 /** A row in the cross-case comparison matrix */
 export interface ComparisonRow {
   streamName: string
+  section?: string
   propertyName: string
   unit: string
   /** value per case id, null when the case lacks this stream/property */
@@ -44,10 +45,10 @@ export interface ComparisonRow {
  * Heavy Liquid Flow) is identified, and its entire stream column is copied.
  */
 export interface GoverningCaseColumn {
+  /** Source case ID used to copy the already resolved comparison cells. */
+  caseId: string | null
   /** Comparison case that governs this phase (null when none reported a value) */
   caseName: string | null
-  /** Copied cell values keyed by lowercase property name */
-  values: Record<string, CellValue>
 }
 
 export interface StreamGoverningColumns {

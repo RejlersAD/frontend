@@ -3390,7 +3390,7 @@ export default function EmployeeSelfService() {
 
       setProfile((current) => ({ ...current, profile_photo: photoUrl }))
       dispatch(updateUser({ profile_photo: photoUrl }))
-      window.dispatchEvent(new Event('radai:profile-photo-changed'))
+      window.dispatchEvent(new CustomEvent('radai:profile-photo-changed', { detail: { profileId: profile?.id } }))
       setPhotoUploadState({ type: 'success', message: 'Profile picture updated successfully.' })
     } catch (error) {
       const message = error?.response?.data?.error

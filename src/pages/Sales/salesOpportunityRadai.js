@@ -58,6 +58,10 @@ export function RadaiConfidence(data = null) {
   const failed = num(counts.failed) ?? 0;
   const total = num(counts.total) ?? 0;
   const status = data?.status;
+  if (total > 0 && ready === 0 && partial + failed > 0) {
+    const analyzed = num(counts.chunks_done) ?? 0;
+    return { level: 'low', label: 'Partial coverage', detail: `${analyzed} text sections analyzed · ${partial + failed} source${partial + failed === 1 ? '' : 's'} need review` };
+  }
   if (status === 'ready' && ready > 0 && failed === 0) {
     return { level: 'high', label: 'High confidence', detail: `${ready} verified source${ready === 1 ? '' : 's'}` };
   }

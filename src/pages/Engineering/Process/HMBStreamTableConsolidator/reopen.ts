@@ -87,8 +87,10 @@ export function reopenComparisonWorkbook(buffer: ArrayBuffer, archiveName: strin
         stream = { name: currentStream, included: true, properties: [] }
         streamMaps[caseIndex].set(currentStream, stream)
       }
+      const sectionMatch = propertyName.match(/^(.*?)\s*\[(Vapour|Light Liquid|Heavy Liquid|Composition)\]$/i)
       const property: StreamProperty = {
-        name: propertyName,
+        name: sectionMatch ? sectionMatch[1].trim() : propertyName,
+        ...(sectionMatch ? { section: sectionMatch[2] } : {}),
         unit,
         value: value as number | string,
         edited: false,

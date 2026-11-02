@@ -1,5 +1,5 @@
-import useAuthenticatedPhoto from '../../hooks/useAuthenticatedPhoto';
 import { useCurrentProfilePhoto } from '../../components/Layout/ProfilePhotoContext';
+import ProfileAvatar from '../../components/Common/ProfileAvatar';
 import { radaiAlert, radaiConfirm } from '../../services/radaiDialog'
 /**
  * HR · Employee Management (`/hr/employees`)
@@ -549,17 +549,10 @@ const FiltersBar = ({
 // Sub-component: Avatar
 // ─────────────────────────────────────────────────────────────────────────────
 const Avatar = ({ emp, size = "md" }) => {
-  const [photoFailed, setPhotoFailed] = useState(false);
   const sharedPhoto = useCurrentProfilePhoto();
   const isCurrentUser = (emp.user?.id != null && String(emp.user.id) === String(sharedPhoto.userId))
     || (getEmail(emp) && getEmail(emp).toLowerCase() === String(sharedPhoto.email || '').toLowerCase());
-  const [storageFailed, setStorageFailed] = useState(false);
-  useEffect(() => setStorageFailed(false), [emp.id, emp.profile_photo]);
-  const managedPhoto = useAuthenticatedPhoto(
-    !isCurrentUser && emp.id && (size === 'xl' || storageFailed) ? `/rbac/users/${emp.id}/profile-photo/` : null,
-    emp.profile_photo,
-  );
-  const photoUrl = (isCurrentUser ? sharedPhoto.photo : managedPhoto) || String(emp.profile_photo || "").trim();
+  const photoUrl = (isCurrentUser ? sharedPhoto.photo : null) || emp.profile_photo;
   const sizes = {
     sm: "w-8 h-8 text-xs",
     md: "w-12 h-12 text-sm",
@@ -567,33 +560,15 @@ const Avatar = ({ emp, size = "md" }) => {
     xl: "w-24 h-24 text-3xl",
   };
   const cls = sizes[size] || sizes.md;
-
-  useEffect(() => {
-    setPhotoFailed(false);
-  }, [photoUrl]);
-
-  if (photoUrl && !photoFailed) {
-    return (
-      <img
-        key={photoUrl}
-        src={photoUrl}
-        alt={fullName(emp)}
-        loading="lazy"
-        decoding="async"
-        className={`${cls} shrink-0 rounded-full object-cover ring-2 ring-white shadow`}
-        onError={() => { setPhotoFailed(true); if (!managedPhoto) setStorageFailed(true); }}
-      />
-    );
-  }
-  return (
-    <div
-      role="img"
-      aria-label={`${fullName(emp)} initials`}
-      className={`${cls} shrink-0 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold flex items-center justify-center ring-2 ring-white shadow`}
-    >
-      {initials(emp)}
-    </div>
-  );
+  return <ProfileAvatar
+    name={fullName(emp)}
+    photoUrl={photoUrl}
+    profileId={emp.id}
+    className={`${cls} rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold ring-2 ring-white shadow`}
+    imageClassName="h-full w-full rounded-full object-cover"
+    fallbackClassName="flex h-full w-full items-center justify-center"
+    alt={fullName(emp)}
+  />;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2260,10 +2235,15 @@ const EditableField = ({
   value,
   isEditing,
   onChange,
+  canCreateOrganizations = false,
+  onOrganizationCreated,
   options = null,
   error = null,
 }) => {
   const suggestionId = useId();
+  const [query, setQuery] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
+  const [localError, setLocalError] = useState("");
   const {
     id,
     label,
@@ -2282,7 +2262,7 @@ const EditableField = ({
   // Read-only mode OR field marked as readOnly
   if (!isEditing || readOnly) {
     let displayValue = value;
-    if (type === "select" && options) {
+    if ((type === "select" || type === "combobox") && options) {
       const opt = options.find((o) => o.value === value);
       displayValue = opt?.label || value;
     }
@@ -2335,6 +2315,106 @@ const EditableField = ({
       ? "border-red-300 focus:border-red-500 focus:ring-red-500"
       : "border-slate-300"
   }`;
+
+  if (type === "combobox") {
+    const currentOption = options?.find((option) => String(option.value) === String(value));
+    const inputValue = isOpen ? query : (currentOption?.label || (field.allowCustomValue ? value : "") || "");
+    const normalizedQuery = String(query || "").trim().toLowerCase();
+    const filteredOptions = (options || []).filter((option) =>
+      `${option.label || ""} ${option.searchText || ""}`.toLowerCase().includes(normalizedQuery),
+    ).slice(0, 80);
+    const selectOption = (option) => {
+      onChange(id, option.value);
+      setQuery("");
+      setIsOpen(false);
+    };
+    const createOrganization = async () => {
+      const name = query.trim();
+      if (!name || !field.createOption || id !== "organization") return;
+      if (!canCreateOrganizations) {
+        setLocalError("Only a Super Administrator can create an organisation.");
+        return;
+      }
+      const code = name.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 50);
+      if (!code) return;
+      try {
+        const response = await rbacService.createOrganization({ name, code });
+        const created = response?.data ?? response;
+        if (!created?.id) throw new Error("The organisation was created without an identifier.");
+        onOrganizationCreated?.(created);
+        onChange(id, created.id);
+        setQuery("");
+        setIsOpen(false);
+      } catch (error) {
+        const message = error?.response?.data?.name?.[0] || error?.response?.data?.code?.[0] || error?.response?.data?.detail || "The organisation could not be created. Check your access or choose an existing organisation.";
+        setLocalError(message);
+      }
+    };
+    const commitText = () => {
+      const text = query.trim();
+      if (!text) {
+        setIsOpen(false);
+        return;
+      }
+      const exact = (options || []).find((option) =>
+        String(option.label || "").trim().toLowerCase() === text.toLowerCase(),
+      );
+      if (exact) selectOption(exact);
+      else if (field.allowCustomValue || field.createOption) {
+        if (id !== "organization") onChange(id, text);
+        setQuery("");
+        setIsOpen(false);
+      }
+    };
+
+    return (
+      <div className="relative">
+        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+          {label} {field.required && <span className="text-red-500">*</span>}
+        </label>
+        <input
+          type="text"
+          role="combobox"
+          aria-label={label}
+          aria-autocomplete="list"
+          aria-expanded={isOpen}
+          aria-controls={`${suggestionId}-listbox`}
+          value={inputValue}
+          placeholder={placeholder || `Search ${label.toLowerCase()}`}
+          maxLength={maxLength}
+          className={baseInputClasses}
+          onFocus={() => { setQuery(""); setLocalError(""); setIsOpen(true); }}
+          onChange={(event) => { setQuery(event.target.value); setIsOpen(true); }}
+          onBlur={() => window.setTimeout(() => { if (field.allowCustomValue || field.createOption) commitText(); else setIsOpen(false); }, 120)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") { setQuery(""); setIsOpen(false); event.currentTarget.blur(); }
+            if (event.key === "Enter") { event.preventDefault(); if (filteredOptions.length) selectOption(filteredOptions[0]); else commitText(); }
+            if (event.key === "ArrowDown") setIsOpen(true);
+          }}
+        />
+        {localError && <p role="alert" className="mt-1 text-xs text-red-600">{localError}</p>}
+        {isOpen && (
+          <ul id={`${suggestionId}-listbox`} role="listbox" className="absolute z-40 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+            {filteredOptions.map((option) => (
+              <li key={option.value} role="option" aria-selected={String(option.value) === String(value)}>
+                <button type="button" className="w-full px-3 py-2 text-left text-sm text-slate-800 hover:bg-blue-50" onMouseDown={(event) => event.preventDefault()} onClick={() => selectOption(option)}>
+                  <span className="block truncate">{option.label}</span>
+                  {option.searchText && <span className="block truncate text-xs text-slate-500">{option.searchText}</span>}
+                </button>
+              </li>
+            ))}
+            {field.createOption && (id !== "organization" || canCreateOrganizations) && query.trim() && !filteredOptions.some((option) => String(option.label).toLowerCase() === query.trim().toLowerCase()) && (
+              <li><button type="button" className="w-full px-3 py-2 text-left text-sm font-medium text-blue-700 hover:bg-blue-50" onMouseDown={(event) => event.preventDefault()} onClick={id === "organization" ? createOrganization : () => { onChange(id, query.trim()); setQuery(""); setIsOpen(false); }}>{id === "organization" ? "Create organisation" : "Use"} &quot;{query.trim()}&quot;</button></li>
+            )}
+            {field.allowCustomValue && query.trim() && !filteredOptions.length && (
+              <li><button type="button" className="w-full px-3 py-2 text-left text-sm font-medium text-blue-700 hover:bg-blue-50" onMouseDown={(event) => event.preventDefault()} onClick={commitText}>Use custom manager: “{query.trim()}”</button></li>
+            )}
+            {!filteredOptions.length && !query.trim() && <li className="px-3 py-2 text-sm text-slate-500">No matching options</li>}
+          </ul>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -3593,6 +3673,7 @@ const DetailDrawer = ({
   const [roles, setRoles] = useState([]);
   const [organizations, setOrganizations] = useState([]);
   const [managers, setManagers] = useState([]);
+  const [canCreateOrganizations, setCanCreateOrganizations] = useState(false);
   const { catalog: organizationCatalog } = useOrganizationCatalog({ enabled: isEditing });
 
   useEffect(() => {
@@ -3693,6 +3774,7 @@ const DetailDrawer = ({
   useEffect(() => {
     if (!isEditing || !HR_EDIT_CONFIG.enableEditMode) return;
     let cancelled = false;
+    setCanCreateOrganizations(hasConfiguredAccess(currentUser, ["Super Administrator"], null));
     loadEmployeeEditOptions().then((options) => {
       if (cancelled) return;
       setRoles(options.roles);
@@ -3701,7 +3783,7 @@ const DetailDrawer = ({
     return () => {
       cancelled = true;
     };
-  }, [isEditing]);
+  }, [isEditing, currentUser]);
 
   useEffect(() => {
     setManagers(managerOptions);
@@ -3724,7 +3806,7 @@ const DetailDrawer = ({
       location: emp.location ?? "",
       bio: emp.bio || "",
       is_mfa_enabled: emp.is_mfa_enabled || false,
-      organization: emp.organization?.id || "",
+      organization: emp.organization?.id || emp.organization_id || "",
       department: emp.department || "",
       job_title: emp.job_title || "",
       status: emp.status || "active",
@@ -3825,6 +3907,14 @@ const DetailDrawer = ({
       }
     });
 
+    if (
+      typeof formData.manager === "string" &&
+      formData.manager.trim() &&
+      !managers.some((manager) => String(manager.id) === String(formData.manager))
+    ) {
+      errors.manager = "Select an employee from the results to save a reporting manager.";
+    }
+
     setFormErrors(errors);
     const errorIds = Object.keys(errors);
     if (errorIds.length && policy.focusFirstErrorTab) {
@@ -3836,7 +3926,7 @@ const DetailDrawer = ({
         .filter((f) => errors[f.id])
         .map((f) => [f.id, { message: errors[f.id], tabId: f.tabId }]),
     );
-  }, [formData]);
+  }, [formData, managers]);
 
   // Check if user has edit permission
   const canEdit = useMemo(() => {
@@ -3896,10 +3986,13 @@ const DetailDrawer = ({
         phone: formData.phone,
         location: formData.location,
         bio: formData.bio,
+        organization_id: formData.organization || null,
         department: formData.department,
         job_title: formData.job_title,
         status: formData.status,
-        manager_id: formData.manager || null, // Use manager_id for backend
+        manager_id: managers.some((manager) => String(manager.id) === String(formData.manager))
+          ? formData.manager
+          : null, // Custom manager text cannot be stored in the manager foreign key.
         engineer_profile: {
           ...ep,
           discipline: formData["engineer_profile.discipline"],
@@ -4078,7 +4171,7 @@ const DetailDrawer = ({
     } finally {
       setSaving(false);
     }
-  }, [emp, formData, validateForm, canEditSalary, onUpdate]);
+  }, [emp, formData, validateForm, canEditSalary, onUpdate, managers]);
 
   // Handle payroll profile loaded — populate form with payroll data
   const handlePayrollLoad = useCallback(
@@ -4108,7 +4201,7 @@ const DetailDrawer = ({
         phone: emp.phone || "",
         location: emp.location ?? "",
         bio: emp.bio || "",
-        organization: emp.organization?.id || "",
+        organization: emp.organization?.id || emp.organization_id || "",
         department: emp.department || "",
         job_title: emp.job_title || "",
         status: emp.status || "active",
@@ -4136,8 +4229,8 @@ const DetailDrawer = ({
   const getFieldOptions = useCallback(
     (field) => {
       if (field.options) return field.options;
-      if (field.id === "department") return organizationDepartmentOptions(organizationCatalog);
-      if (field.id === "job_title") return organizationRoleLabels(organizationCatalog).map(label => ({ value: label, label }));
+      if (field.id === "department") return organizationDepartmentOptions(organizationCatalog, formData.department);
+      if (field.id === "job_title") return [...new Set([...organizationRoleLabels(organizationCatalog), formData.job_title].filter(Boolean))].map(label => ({ value: label, label }));
       if (field.optionsFrom === "roles") {
         if (!Array.isArray(roles)) return [];
         return roles.map((r) => ({
@@ -4156,13 +4249,13 @@ const DetailDrawer = ({
           .filter((m) => m.id !== emp?.id) // Don't allow self as manager
           .map((m) => ({
             value: m.id,
-            label:
-              `${m.user?.first_name || ""} ${m.user?.last_name || ""} (${m.job_title || "N/A"})`.trim(),
+            label: `${m.user?.first_name || ""} ${m.user?.last_name || ""} (${m.job_title || "N/A"})`.trim(),
+            searchText: `${m.employee_id || ""} ${m.job_title || ""} ${m.user?.first_name || ""} ${m.user?.last_name || ""}`,
           }));
       }
       return [];
     },
-    [roles, organizations, managers, emp?.id, organizationCatalog],
+    [roles, organizations, managers, emp?.id, organizationCatalog, formData.department, formData.job_title],
   );
 
   // Get field value for display (read-only mode)
@@ -4185,9 +4278,7 @@ const DetailDrawer = ({
     if (field.id === "is_mfa_enabled") return emp.is_mfa_enabled || false;
 
     // Employment fields
-    if (field.id === "organization") {
-      return emp.organization_name || emp.organization?.name || "";
-    }
+    if (field.id === "organization") return emp.organization?.id || emp.organization_id || "";
     if (field.id === "department") return emp.department || "";
     if (field.id === "job_title") return emp.job_title || "";
     if (field.id === "status") return emp.status || "active";
@@ -4261,7 +4352,7 @@ const DetailDrawer = ({
       const payload = response?.data ?? response;
       const updated = normalizeEmployee(payload?.profile || { ...emp, profile_photo: payload?.photo_url });
       onUpdate?.(updated);
-      window.dispatchEvent(new Event('radai:profile-photo-changed'));
+      window.dispatchEvent(new CustomEvent('radai:profile-photo-changed', { detail: { profileId: emp.id } }));
       setPhotoUploadMessage({ type: "success", text: "Profile picture updated." });
     } catch (error) {
       const responseData = error?.response?.data;
@@ -4480,6 +4571,9 @@ const DetailDrawer = ({
                           value={isEditing ? formData[field.id] : getFieldValue(field, emp)}
                           isEditing={isEditing}
                           onChange={handleFieldChange}
+                canCreateOrganizations={canCreateOrganizations}
+                onOrganizationCreated={(organization) => setOrganizations((previous) => [...previous.filter((item) => String(item.id) !== String(organization.id)), organization])}
+                        options={getFieldOptions(field)}
                           error={formErrors[field.id]}
                         />
                       </div>
@@ -4555,6 +4649,8 @@ const DetailDrawer = ({
                         value={isEditing ? formData[field.id] : getFieldValue(field, emp)}
                         isEditing={isEditing}
                         onChange={handleFieldChange}
+                        canCreateOrganizations={canCreateOrganizations}
+                        onOrganizationCreated={(organization) => setOrganizations((previous) => [...previous.filter((item) => String(item.id) !== String(organization.id)), organization])}
                         options={getFieldOptions(field)}
                         error={formErrors[field.id]}
                       />

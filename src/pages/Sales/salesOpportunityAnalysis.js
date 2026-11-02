@@ -3,7 +3,6 @@ export const ANALYSIS_SECTIONS = [
   ["brief", "What is this opportunity?"],
   ["client_need", "What does the client want?"],
   ["submission", "What do we need to submit?"],
-  ["risk", "What risks need attention?"],
   ["action", "What actions are pending?"],
   ["deadline", "Which deadlines are approaching?"],
   ["next_step", "What should we do next?"],
@@ -113,6 +112,34 @@ export function analysisMarkdown(record, data) {
         `  Evidence: ${item.excerpt}`,
       );
   }
+  const review = data.result?.manager_review;
+  if (review?.status === "ready") {
+    const labels = { capability_fit: "Scope vs capabilities", strategic_fit: "Strategic fit", resources: "Resources", execution_risk: "Execution risk", commercial: "Commercial attractiveness", schedule: "Schedule" };
+    const verdict = { go: "Go", conditional_go: "Conditional Go", no_go: "No-Go", insufficient_evidence: "More information needed" }[review.recommendation] || "Review";
+    lines.push("", "## Sales manager recommendation", "", verdict, review.rationale || "", review.review_note || "");
+    lines.push("", "## Business decision risks");
+    if (!review.business_risks?.length) lines.push("No cited business decision risk was identified. Commercial terms and internal guardrails still need Sales review.");
+    for (const item of review.business_risks || []) {
+      lines.push(`- ${item.category.replaceAll("_", " ")}: ${item.risk}`, `  Decision impact: ${item.decision_impact}`);
+      for (const source of item.evidence || []) lines.push(`  Source: ${source.name}, ${source.location}: ${source.excerpt}`);
+    }
+    for (const item of review.dimensions || []) {
+      lines.push("", `### ${labels[item.dimension] || item.dimension} — ${item.assessment}`, item.summary || "");
+      for (const source of item.evidence || []) lines.push(`- ${source.name}, ${source.location}: ${source.excerpt}`);
+    }
+    if (review.rationale_evidence?.length) {
+      lines.push("", "Recommendation evidence");
+      for (const source of review.rationale_evidence) lines.push(`- ${source.name}, ${source.location}: ${source.excerpt}`);
+    }
+    if (review.clarifications?.length) {
+      lines.push("", "### Client clarifications");
+      for (const item of review.clarifications) {
+        lines.push(`- ${item.text}`);
+        for (const source of item.evidence || []) lines.push(`  - ${source.name}, ${source.location}: ${source.excerpt}`);
+      }
+    }
+  }
+  else lines.push("", "## Business decision risks", "Sales manager review is not ready; business decision risks have not been assessed.");
   lines.push("", "## Document relationships");
   for (const relation of data.result?.relationships || [])
     lines.push(

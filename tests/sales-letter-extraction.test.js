@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { letterExtractionStatus } from '../src/pages/Sales/salesLetterExtraction.js';
 
 test('shows the actual filename, current document version and email reference', () => {
-  const message = letterExtractionStatus({ custom_data: { letter_extraction: {
+  const message = letterExtractionStatus({ custom_data: { letterhead: { your_ref: '' }, letter_extraction: {
     source: { upload_id: 'current-upload', name: 'Invitation.eml', version: 2 },
     fields: ['recipient_name', 'recipient_company', 'recipient_email', 'your_ref'],
     values: {
@@ -15,7 +15,22 @@ test('shows the actual filename, current document version and email reference', 
   assert.match(message, /document version 2/);
   assert.match(message, /01,07,2026/);
   assert.match(message, /MSG123/);
+  assert.match(message, /Edit and save the letter to add this detected reference/);
   assert.match(message, /Not found in the source: Position, Address/);
+});
+
+test('does not prompt when the detected reference is already applied or retained', () => {
+  const extraction = {
+    source: { upload_id: 'file' }, fields: ['your_ref'],
+    values: { your_ref: 'REF-123' },
+  };
+  assert.doesNotMatch(letterExtractionStatus({ custom_data: {
+    letterhead: { your_ref: 'REF-123' }, letter_extraction: extraction,
+  } }), /Edit and save/);
+  assert.doesNotMatch(letterExtractionStatus({ custom_data: {
+    letterhead: { your_ref: '' },
+    letter_extraction: { ...extraction, retained_fields: ['your_ref'] },
+  } }), /Edit and save/);
 });
 
 test('distinguishes retained overrides from newly detected values', () => {

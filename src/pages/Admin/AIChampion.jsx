@@ -21,6 +21,7 @@ import {
 } from '@heroicons/react/24/outline';
 import analyticsService from '../../services/analyticsService';
 import { isUserAdmin, isUserSuperuser } from '../../utils/rbac.utils';
+import ProfileAvatar from '../../components/Common/ProfileAvatar';
 
 /**
  * AI Champion of the Month — gamified leaderboard, real-time activity tracking,
@@ -845,11 +846,13 @@ const AIChampion = () => {
                       {/* Avatar */}
                       <div className={`flex-shrink-0 p-1 rounded-full bg-gradient-to-br ${ts.ring}`}>
                         <div className="w-16 h-16 rounded-full bg-white text-purple-700 text-xl font-extrabold flex items-center justify-center shadow-inner">
-                          {h.avatar ? (
-                            <img src={h.avatar} alt={h.name} className="w-full h-full rounded-full object-cover" />
-                          ) : (
-                            getInitials(h.name, h.email)
-                          )}
+                          <ProfileAvatar
+                            name={h.name || h.email}
+                            photoUrl={h.avatar}
+                            className="h-full w-full rounded-full bg-white text-purple-700 text-xl font-extrabold shadow-inner"
+                            imageClassName="h-full w-full rounded-full object-cover"
+                            fallbackClassName="flex h-full w-full items-center justify-center"
+                          />
                         </div>
                       </div>
 

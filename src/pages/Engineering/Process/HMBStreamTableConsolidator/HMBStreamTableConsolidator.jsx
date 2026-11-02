@@ -5,7 +5,6 @@ import {
   AlertTriangle,
   ArrowDownUp,
   CheckCircle2,
-  Database,
   Download,
   FileSpreadsheet,
   Maximize2,
@@ -15,7 +14,6 @@ import {
   RotateCcw,
   Save,
   Search,
-  ShieldCheck,
   Table2,
   Trash2,
   UploadCloud,
@@ -28,11 +26,16 @@ import { PROJECT_ORGANIZER_CONFIG } from "../../../../config/projectOrganizer.co
 import { createProject as createOrganizerProject } from "../../../../services/projectOrganizerService";
 import {
   buildComparison,
+  buildTemplateComparisonRows,
+  resolveTemplateProperty,
+  convertTemplateEditValue,
   buildGoverningCaseColumns,
+  getGoverningCaseValue,
   formatValue,
   rowVaries,
 } from "./compare.ts";
 import { useCases } from "./useCases";
+import { MASTER_REVIEW_ROWS } from "./template.ts";
 import useRadaiChatPage from "../../../../hooks/useRadaiChatPage";
 import "./HMBStreamTableConsolidator.css";
 
@@ -80,14 +83,31 @@ function isNotFoundResponse(error) {
   return Number(error?.response?.status) === 404;
 }
 
+function isMissingProjectResponse(error) {
+  const data = error?.response?.data;
+  return isNotFoundResponse(error) && (
+    data?.code === "project_not_found" || data?.error === "Project not found."
+  );
+}
+
 async function getArchiveHistory(projectId) {
-  return apiClient.get(CONSOLIDATOR_ARCHIVE_ENDPOINT, {
-    params: { project_id: projectId },
-  });
+  try {
+    return await apiClient.get(CONSOLIDATOR_ARCHIVE_ENDPOINT, {
+      params: projectId ? { project_id: projectId } : undefined,
+      suppressErrorToast: true,
+    });
+  } catch (error) {
+    // A deleted or stale active-project ID should not hide workbooks that the
+    // backend can still safely return for the authenticated uploader.
+    if (!projectId || !isMissingProjectResponse(error)) throw error;
+    return apiClient.get(CONSOLIDATOR_ARCHIVE_ENDPOINT);
+  }
 }
 
 async function postArchiveWorkbook(formData) {
-  return apiClient.post(CONSOLIDATOR_ARCHIVE_ENDPOINT, formData);
+  return apiClient.post(CONSOLIDATOR_ARCHIVE_ENDPOINT, formData, {
+    suppressErrorToast: true,
+  });
 }
 
 function normalizeProjectId(value) {
@@ -140,171 +160,6 @@ const MAX_RATE_COLUMNS = [
     hint: "Values copied from the case with the highest Heavy Liquid Flow for this stream",
   },
 ];
-
-const MASTER_REVIEW_ROWS = [
-  { section: "", name: "Temperature", unit: "F" },
-  { section: "", name: "Pressure", unit: "psig" },
-  { section: "", name: "Molecular Weight", unit: "<none>" },
-  { section: "", name: "Mass Flow", unit: "lb/hr" },
-  { section: "", name: "Vapour Fraction", unit: "<none>" },
-  { section: "Vapour", name: "Mass Flow", unit: "lb/hr" },
-  { section: "Vapour", name: "Std Gas Flow", unit: "MMSCFD" },
-  { section: "Vapour", name: "Actual Volume Flow", unit: "ft3/hr" },
-  { section: "Vapour", name: "Molecular Weight", unit: "<none>" },
-  { section: "Vapour", name: "Mass Density", unit: "lb/ft3" },
-  { section: "Vapour", name: "Viscosity", unit: "cP" },
-  { section: "Vapour", name: "Compressibility", unit: "<none>" },
-  { section: "Vapour", name: "Thermal Conductivity", unit: "Btu/hr-ft-F" },
-  { section: "Vapour", name: "Mass Heat Capacity", unit: "Btu/lb-F" },
-  { section: "Vapour", name: "Cp/Cv (Gamma)", unit: "<none>" },
-  { section: "Light Liquid", name: "Mass Flow", unit: "lb/hr" },
-  {
-    section: "Light Liquid",
-    name: "Standard Ideal Liquid Volume Flow",
-    unit: "barrel/day",
-  },
-  { section: "Light Liquid", name: "Actual Volume Flow", unit: "ft3/hr" },
-  { section: "Light Liquid", name: "Actual Volume Flow", unit: "barrel/day" },
-  { section: "Light Liquid", name: "Molecular Weight", unit: "<none>" },
-  { section: "Light Liquid", name: "Mass Density", unit: "lb/ft3" },
-  { section: "Light Liquid", name: "Viscosity", unit: "cP" },
-  {
-    section: "Light Liquid",
-    name: "Thermal Conductivity",
-    unit: "Btu/hr-ft-F",
-  },
-  { section: "Light Liquid", name: "Mass Heat Capacity", unit: "Btu/lb-F" },
-  { section: "Heavy Liquid", name: "Mass Flow", unit: "lb/hr" },
-  {
-    section: "Heavy Liquid",
-    name: "Standard Ideal Liquid Volume Flow",
-    unit: "barrel/day",
-  },
-  { section: "Heavy Liquid", name: "Actual Volume Flow", unit: "ft3/hr" },
-  { section: "Heavy Liquid", name: "Actual Volume Flow", unit: "barrel/day" },
-  { section: "Heavy Liquid", name: "Molecular Weight", unit: "<none>" },
-  { section: "Heavy Liquid", name: "Mass Density", unit: "lb/ft3" },
-  { section: "Heavy Liquid", name: "Viscosity", unit: "cP" },
-  {
-    section: "Heavy Liquid",
-    name: "Thermal Conductivity",
-    unit: "Btu/hr-ft-F",
-  },
-  { section: "Heavy Liquid", name: "Mass Heat Capacity", unit: "Btu/lb-F" },
-  ...[
-    "H2S",
-    "CO2",
-    "Nitrogen",
-    "Methane",
-    "Ethane",
-    "Propane",
-    "i-Butane",
-    "n-Butane",
-    "i-Pentane",
-    "n-Pentane",
-    "n-Hexane",
-    "Mcyclopentan",
-    "Benzene",
-    "Cyclohexane",
-    "n-Heptane",
-    "n-Octane",
-    "n-Nonane",
-    "n-Decane",
-    "Mubarraz-C7+_1*",
-    "HAIL-C7-C10_1*",
-    "HAIL-C11-C14_1*",
-    "HAIL-C15-C19_1*",
-    "HAIL-C20-C25_1*",
-    "HAIL-C26-C29_1*",
-    "HAIL-C30+_1*",
-    "ARGA-Undecane+*",
-    "ARGA-C7+*",
-    "ARGA-C10+*",
-    "ARGA-C12+*",
-    "ARGA-C20+*",
-    "ARGA-C30+*",
-    "ARGA-C36+*",
-    "H2O",
-    "TEGlycol",
-    "MDEAmine",
-  ].map((name) => ({ section: "Composition", name, unit: "mol frac." })),
-];
-
-function normalizeReviewValue(value) {
-  return String(value || "")
-    .replace(/\s*\[(Vapour|Light Liquid|Heavy Liquid)\]$/i, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-function findMasterRowProperty(stream, row) {
-  if (row.section === "__template-divider__") return null;
-  const rowName = normalizeReviewValue(row.name);
-  const rowUnit = normalizeReviewValue(row.unit);
-  const sectionName = normalizeReviewValue(row.section);
-  const properties = stream.properties || [];
-  const exact = properties.find(
-    (property) =>
-      normalizeReviewValue(property.name) === rowName &&
-      normalizeReviewValue(property.unit) === rowUnit &&
-      (normalizeReviewValue(property.section) === sectionName ||
-        (!property.section && !sectionName)),
-  );
-  if (exact) return exact;
-
-  const aliasNames = {
-    "|vapour fraction|none": [
-      "Vapour / Phase Fraction",
-      "Vapor / Phase Fraction",
-    ],
-    "vapour|std gas flow": ["Std. Gas Flow", "Standard Gas Flow"],
-    "light liquid|standard ideal liquid volume flow": [
-      "Std Ideal Liq Vol Flow",
-      "Std. Ideal Liq Vol Flow",
-    ],
-    "light liquid|actual volume flow|ft3 hr": [
-      "Act. Liq. Flow",
-      "Act Liq Flow",
-    ],
-    "light liquid|actual volume flow|barrel day": ["Act. Volume Flow"],
-  };
-  const aliasKey = `${sectionName}|${rowName}${rowUnit ? `|${rowUnit}` : ""}`;
-  const aliases = aliasNames[aliasKey] || [];
-  const aliased = properties.find(
-    (property) =>
-      normalizeReviewValue(property.section) === sectionName &&
-      aliases.includes(property.name.replace(/\s*\[[^\]]+\]$/, "")) &&
-      (!rowUnit ||
-        rowUnit === "none" ||
-        normalizeReviewValue(property.unit) === rowUnit),
-  );
-  if (aliased) return aliased;
-
-  if (row.section === "Composition") {
-    return (
-      properties.find((property) => {
-        const normalizedName = normalizeReviewValue(property.name);
-        const propertyName = normalizedName.replace(/ mole fraction$/, "");
-        const isFraction =
-          /frac/.test(normalizeReviewValue(property.unit)) ||
-          / mole fraction$/.test(normalizedName);
-        return propertyName === rowName && isFraction;
-      }) || null
-    );
-  }
-  if (["Vapour", "Light Liquid", "Heavy Liquid"].includes(row.section)) {
-    return (
-      properties.find(
-        (property) =>
-          property.section === row.section &&
-          normalizeReviewValue(property.name) === rowName &&
-          normalizeReviewValue(property.unit) === rowUnit,
-      ) || null
-    );
-  }
-  return null;
-}
 
 function Dropzone({
   importing,
@@ -383,7 +238,6 @@ function CasePanel({
   onRemove,
   onRename,
   onImport,
-  onDemo,
 }) {
   const [editingId, setEditingId] = useState(null);
   const [draft, setDraft] = useState("");
@@ -512,15 +366,6 @@ function CasePanel({
             </div>
           );
         })}
-      </div>
-      <button className="hmbc-load-demo" type="button" onClick={onDemo}>
-        <Database /> Load demo cases
-      </button>
-      <div className="hmbc-privacy-note">
-        <ShieldCheck aria-hidden="true" />
-        <span>
-          Source files: session only <i aria-label="Information">ⓘ</i>
-        </span>
       </div>
     </aside>
   );
@@ -739,20 +584,21 @@ function ReviewView({ caseData, onToggleStream, onSetCell }) {
                     {showUnits && !sectionDivider ? row.unit || "—" : ""}
                   </td>
                   {visibleStreams.map((stream) => {
-                    const property = findMasterRowProperty(stream, row);
+                    const resolved = resolveTemplateProperty(stream, row);
+                    const property = resolved?.property;
                     return (
                       <td className="hmbc-review-value" key={stream.name}>
                         {property ? (
                           stream.included ? (
                             <CellEditor
-                              value={property.value}
+                              value={resolved.value}
                               edited={property.edited}
                               blankNull
                               onCommit={(raw) =>
                                 onSetCell(
                                   stream.name,
                                   property.name,
-                                  raw,
+                                  convertTemplateEditValue(raw, row.unit, property.unit),
                                   property.section || "",
                                   property.unit || "",
                                 )
@@ -760,9 +606,9 @@ function ReviewView({ caseData, onToggleStream, onSetCell }) {
                             />
                           ) : (
                             <span className="hmbc-excluded-value">
-                              {property.value === null
+                              {resolved.value === null
                                 ? ""
-                                : formatValue(property.value)}
+                                : formatValue(resolved.value)}
                             </span>
                           )
                         ) : (
@@ -789,9 +635,6 @@ function ReviewView({ caseData, onToggleStream, onSetCell }) {
           )}{" "}
           reviewed cells
         </span>
-        <span>
-          <ShieldCheck /> Source files: session only
-        </span>
       </div>
     </section>
   );
@@ -805,7 +648,13 @@ function ComparisonView({ cases }) {
   const [limit, setLimit] = useState(1500);
   const scrollRef = useRef(null);
   const sentinelRef = useRef(null);
-  const comparison = useMemo(() => buildComparison(cases), [cases]);
+  const comparison = useMemo(() => {
+    const base = buildComparison(cases);
+    return {
+      ...base,
+      rows: buildTemplateComparisonRows(cases, MASTER_REVIEW_ROWS),
+    };
+  }, [cases]);
   const governingColumns = useMemo(
     () => buildGoverningCaseColumns(cases),
     [cases],
@@ -912,7 +761,7 @@ function ComparisonView({ cases }) {
         <table className="hmbc-table hmbc-comparison-table">
           <thead>
             <tr>
-              <th className="is-sticky">
+              <th className="is-sticky" colSpan={2}>
                 <label className="hmbc-column-filter">
                   <span>Stream / property</span>
                   <select
@@ -968,6 +817,8 @@ function ComparisonView({ cases }) {
               const newStream =
                 index === 0 ||
                 shownRows[index - 1].streamName !== row.streamName;
+              const firstInSection = newStream || shownRows[index - 1]?.section !== row.section;
+              const sectionRowSpan = visibleRows.filter((candidate) => candidate.streamName === row.streamName && candidate.section === row.section).length;
               const varies = highlight && rowVaries(row, caseIds);
               return (
                 <Fragment
@@ -975,19 +826,18 @@ function ComparisonView({ cases }) {
                 >
                   {newStream && (
                     <tr className="hmbc-stream-band">
-                      <th colSpan={cases.length + 5}>{row.streamName}</th>
+                      <th colSpan={cases.length + 6}>{row.streamName}</th>
                     </tr>
                   )}
                   <tr
-                    className={varies ? "is-varying" : ""}
+                    className={`${varies ? "is-varying" : ""}${firstInSection && index > 0 ? " hmbc-section-start" : ""}`}
                     style={{
                       contentVisibility: "auto",
                       containIntrinsicSize: "0 40px",
                     }}
                   >
-                    <th className="is-sticky" scope="row">
-                      {row.propertyName}
-                    </th>
+                    {firstInSection && <th className="hmbc-phase-cell" rowSpan={sectionRowSpan} scope="rowgroup">{row.section}</th>}
+                    <th className="is-sticky hmbc-property-cell" scope="row">{row.propertyName}</th>
                     <td className="hmbc-unit">{row.unit || "—"}</td>
                     {cases.map((item) => (
                       <td
@@ -1001,16 +851,12 @@ function ComparisonView({ cases }) {
                       const governing = governingColumns.get(row.streamName)?.[
                         column.kind
                       ];
-                      const valueKey =
-                        column.kind === "water"
-                          ? `${row.propertyName.trim().toLowerCase()} [aqueous phase]`
-                          : row.propertyName.trim().toLowerCase();
-                      const value = governing?.values[valueKey];
+                      const value = getGoverningCaseValue(row, governing);
                       return (
                         <td
                           key={column.kind}
                           className={`hmbc-max-cell${value == null ? " is-missing" : ""}`}
-                          title={column.hint}
+                          title={governing?.caseName ? `${column.hint}; governing case: ${governing.caseName}` : column.hint}
                         >
                           {value == null ? "—" : formatValue(value)}
                         </td>
@@ -1022,7 +868,7 @@ function ComparisonView({ cases }) {
             })}
             {!visibleRows.length && (
               <tr>
-                <td className="hmbc-no-results" colSpan={cases.length + 5}>
+                <td className="hmbc-no-results" colSpan={cases.length + 6}>
                   No comparison rows match the current filters.
                 </td>
               </tr>
@@ -1048,8 +894,7 @@ function ComparisonView({ cases }) {
           <i className="is-missing">—</i>Property absent in this case
         </span>
         <span>
-          <i className="is-max">MAX</i>Max Liquid / Gas / Water — complete copy
-          of the governing case column for this stream
+          <i className="is-max">MAX</i>Liquid / Gas / Water: case with highest flow; full stream column copied.
         </span>
       </div>
     </section>
@@ -1241,7 +1086,6 @@ function ConfirmResetDialog({ open, onCancel, onConfirm }) {
 function EmptyState({
   importing,
   onImport,
-  onDemo,
   errors,
   onClearErrors,
   view,
@@ -1307,20 +1151,6 @@ function EmptyState({
             <Search />
             <input placeholder="Search cases..." disabled />
           </label>
-          <button
-            className="hmbc-load-demo"
-            type="button"
-            onClick={onDemo}
-            disabled={importing}
-          >
-            <Database /> Load demo cases
-          </button>
-          <div className="hmbc-privacy-note">
-            <ShieldCheck />
-            <span>
-              Source files: session only <i>ⓘ</i>
-            </span>
-          </div>
         </aside>
       )}
       <section
@@ -1406,8 +1236,7 @@ function EmptyState({
                 <tbody>
                   <tr>
                     <td colSpan="3">
-                      Drop HMB workbooks or load demo cases to populate the
-                      review table.
+                      Drop HMB workbooks to populate the review table.
                     </td>
                   </tr>
                 </tbody>
@@ -1416,9 +1245,6 @@ function EmptyState({
             <div className="hmbc-review-footer">
               <span>
                 0 / 0 streams <i /> 0 reviewed cells
-              </span>
-              <span>
-                <ShieldCheck /> Source files: session only
               </span>
             </div>
           </>
@@ -1712,9 +1538,20 @@ export default function HMBStreamTableConsolidator() {
       toast.success(`Saved ${savedName} under the selected project.`);
       await loadArchiveHistory();
     } catch (error) {
+      if (isMissingProjectResponse(error)) {
+        // Do not clear a project the user selected while this upload was running.
+        if (readActiveProjectId() === projectId) {
+          localStorage.removeItem(PROJECT_STORAGE_KEY);
+        }
+        setProjectModalError(
+          "The selected project could not be found. Create a project here, or close this form and select another project. Your extracted values are still available.",
+        );
+        setShowProjectModal(true);
+        return;
+      }
       if (isNotFoundResponse(error)) {
         toast.error(
-          "Save endpoint is not available on this backend runtime. Please restart/update backend and try again.",
+          "Saving is temporarily unavailable. Your extracted values are still available; use Export Excel to keep a copy.",
         );
         return;
       }
@@ -1858,7 +1695,6 @@ export default function HMBStreamTableConsolidator() {
         <EmptyState
           importing={casesState.importing}
           onImport={casesState.importFiles}
-          onDemo={casesState.loadDemo}
           errors={casesState.errors}
           onClearErrors={casesState.clearErrors}
           view={view}
@@ -1884,7 +1720,6 @@ export default function HMBStreamTableConsolidator() {
               onRemove={casesState.removeCase}
               onRename={casesState.renameCase}
               onImport={casesState.importFiles}
-              onDemo={casesState.loadDemo}
             />
           ) : null}
           <main className="hmbc-main">

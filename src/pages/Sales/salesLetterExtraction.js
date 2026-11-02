@@ -17,9 +17,12 @@ export function letterExtractionStatus(letter) {
     : origin.upload_id ? `uploaded correspondence (${origin.upload_id})` : 'linked email';
   const retained = (extraction.retained_fields || []).filter(key => fields[key]);
   const reference = extraction.values?.your_ref;
+  const currentReference = letter?.custom_data?.letterhead?.your_ref;
+  const referenceNeedsApplying = Boolean(reference && !currentReference && !retained.includes('your_ref'));
   return `Detected in ${source}: ${detected.map(key => fields[key]).join(', ') || 'no contact fields'}.`
     + (missing.length ? ` Not found in the source: ${missing.map(key => fields[key]).join(', ')}.` : '')
     + (retained.length ? ` Saved overrides retained: ${retained.map(key => fields[key]).join(', ')}; review against the current source.` : '')
     + (reference ? ` Source reference: ${reference}.` : '')
+    + (referenceNeedsApplying ? ' Edit and save the letter to add this detected reference.' : '')
     + ' Your edits are preserved.';
 }

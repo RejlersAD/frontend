@@ -266,3 +266,22 @@ Release alignment verification on 1 October 2026:
   attachments require durable private storage. SharePoint remains an optional,
   separately configured destination; no synchronization is implied. These checks
   establish neither a production deployment nor a merge into `main`.
+
+## Sales manager review follow-up
+
+The Analysis panel now opens on a cited Sales manager recommendation with six
+review dimensions and client clarifications. Internal capability, strategy,
+resource and commercial guardrail facts without an approved source are marked
+unknown. The recommendation remains advisory and opens the existing decision
+action; it does not save a decision. Matching saved-template letters remain
+decision-gated. Regret template selection is suggested only when cited evidence
+supports its standard reason. The letter preparation flow requests missing
+client contact, email and reference values and confirms the response date while
+preserving saved template wording.
+Partial source coverage reports analyzed text sections and source gaps without
+equating a partially processed source with zero verified findings.
+The Risks tab and downloaded analysis brief use the manager review's cited
+business decision risks. Each risk explains its effect on attractiveness,
+profitability, winnability or commercial exposure. Raw source risk claims and
+heuristic severity labels are not shown as Sales decision risks. If the manager
+review is unavailable, the tab says the assessment is pending.
