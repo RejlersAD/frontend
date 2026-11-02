@@ -130,7 +130,11 @@ function normalizeFinding(issue, drawing, doc) {
     pfdValue: issue.pfd_value ?? (pair ? issue.expected ?? null : null),
     pidValue: issue.pid_value ?? (pair ? issue.evidence ?? null : null),
     basis: issue.action_required ?? null,
-    checklist: issue.rule_id ?? null,
+    // Checklist serial(s) the finding maps to (AI-PID-02 item numbers via
+    // report_meta.checklist_items); the rule code stays in ruleId.
+    checklist: (issue.report && Array.isArray(issue.report.checklist_items) && issue.report.checklist_items.length
+      ? issue.report.checklist_items.join(' / ')
+      : null) ?? issue.rule_id ?? null,
     pageIndex: drawing?.page_index ?? 0,
     locations: locationsFor(issue, drawing?.metadata?.tag_positions),
     raw: issue,

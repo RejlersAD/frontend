@@ -127,7 +127,8 @@ export default function FindingDetailCard({
           <dt>Found</dt><dd>{finding.found ?? '—'}</dd>
           <dt>Expected</dt><dd>{finding.expected ?? '—'}</dd>
           <dt>Basis</dt><dd>{finding.basis ?? '—'}</dd>
-          <dt>Checklist</dt><dd>{finding.checklist ?? '—'}</dd>
+          <dt>Checklist item</dt><dd>{finding.checklist ?? '—'}</dd>
+          <dt>Rule</dt><dd>{finding.ruleId ?? '—'}</dd>
         </dl>
       )}
 

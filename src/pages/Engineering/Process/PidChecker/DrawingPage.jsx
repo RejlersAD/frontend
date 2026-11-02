@@ -153,7 +153,11 @@ function normalizeFinding(issue, drawing) {
     found: cleanLineText(issue.evidence) || null,
     expected: null,
     basis: issue.action_required ?? null,
-    checklist: issue.rule_id ?? null,
+    // Checklist serial(s) the finding maps to (AI-PID-02 item numbers via
+    // report_meta.checklist_items); the rule code stays in ruleId.
+    checklist: (issue.report && Array.isArray(issue.report.checklist_items) && issue.report.checklist_items.length
+      ? issue.report.checklist_items.join(' / ')
+      : null) ?? issue.rule_id ?? null,
     pageIndex: drawing?.page_index ?? 0,
     locations,
     bbox: issue.bbox ?? null, // percent, as sent by the API (pc-ring takes percent)
@@ -1298,7 +1302,9 @@ function ExtractionRow({ item, kind, onPatch, onShowOnDrawing }) {
         <Pill label={flagLabel} tone={flagTone} />
         {item.finding_ids?.length > 0 && (
           <span className="pc-faint" style={{ marginLeft: '0.375rem', fontSize: 'var(--rd-text-caption)' }}>
-            {item.finding_ids.map(id => `F${id}`).join(' ')}
+            {/* F-numbers (sl_no via finding_nos) match the Findings list;
+                fall back to ids for old payloads. */}
+            {item.finding_ids.map((id, i) => `F${item.finding_nos?.[i] ?? id}`).join(' ')}
           </span>
         )}
       </td>
@@ -1705,11 +1711,16 @@ function ChecklistRow({ item, expanded, onToggle, onPatch, onAddInput, onShowFin
         <td>
           {item.finding_ids?.length > 0 && (
             <span style={{ display: 'inline-flex', gap: '0.25rem', flexWrap: 'wrap' }}>
-              {item.finding_ids.map(fid => (
-                <button key={fid} type="button" className="rd-btn rd-btn-ghost rd-btn-sm" onClick={() => onShowFinding?.(fid)} aria-label={`Open finding F${fid}`}>
-                  F{fid}
-                </button>
-              ))}
+              {/* Show the F-number used in the Findings list (sl_no via
+                  finding_nos); fall back to the id for old payloads. */}
+              {item.finding_ids.map((fid, i) => {
+                const n = item.finding_nos?.[i] ?? fid
+                return (
+                  <button key={fid} type="button" className="rd-btn rd-btn-ghost rd-btn-sm" onClick={() => onShowFinding?.(n)} aria-label={`Open finding F${n}`}>
+                    F{n}
+                  </button>
+                )
+              })}
             </span>
           )}
         </td>
