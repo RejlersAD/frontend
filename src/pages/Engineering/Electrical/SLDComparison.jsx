@@ -404,7 +404,7 @@ function NewAnalysis({ project, state, reload, setToast, onAnalysed }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Stage 1 — Upload files
 // ═══════════════════════════════════════════════════════════════════════════
-function Stage1Files({ project, byKind, reload, setToast, locked }) {
+export function Stage1Files({ project, byKind, reload, setToast, locked }) {
   const [busy, setBusy] = useState('');
   const refs = { sld: useRef(), equipment: useRef(), load: useRef() };
 
@@ -465,7 +465,7 @@ function Stage1Files({ project, byKind, reload, setToast, locked }) {
   );
 }
 
-function SlotSummary({ kind, summary }) {
+export function SlotSummary({ kind, summary }) {
   if (!summary) return null;
   if (kind === 'sld') {
     return (
@@ -510,7 +510,7 @@ function SlotSummary({ kind, summary }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Stage 2 — RADAI AI Engine (BYOK)
 // ═══════════════════════════════════════════════════════════════════════════
-function Stage2Engine({ state, reload, locked, notNeeded }) {
+export function Stage2Engine({ state, reload, locked, notNeeded }) {
   const [modal, setModal] = useState(false);
   const byok = state.byok;
 
@@ -555,7 +555,7 @@ function Stage2Engine({ state, reload, locked, notNeeded }) {
   );
 }
 
-function ConnectKeyModal({ onClose, onSaved }) {
+export function ConnectKeyModal({ onClose, onSaved }) {
   const [provider, setProvider] = useState('claude');
   const [key, setKey] = useState('');
   const [testing, setTesting] = useState(false);
@@ -623,7 +623,7 @@ function ConnectKeyModal({ onClose, onSaved }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Stage 3 — Electrical legend
 // ═══════════════════════════════════════════════════════════════════════════
-function Stage3Legend({ project, state, reload, locked, notNeeded }) {
+export function Stage3Legend({ project, state, reload, locked, notNeeded }) {
   const [busy, setBusy] = useState(false);
   const legend = state.legend || {};
   const activate = async () => {
@@ -791,7 +791,7 @@ function ResultTable({ project, analysisId, tab }) {
     subtitle="Matched before equipment rules, so a cable tag can never become a panel." />;
 }
 
-function EquipmentTable({ rows, meta }) {
+export function EquipmentTable({ rows, meta }) {
   const [filter, setFilter] = useState('all');
   const [showDemo, setShowDemo] = useState(false);
   const counts = useMemo(() => ({
@@ -844,7 +844,7 @@ function EquipmentTable({ rows, meta }) {
   );
 }
 
-function LoadTable({ rows, meta }) {
+export function LoadTable({ rows, meta }) {
   return (
     <div style={{ display: 'grid', gap: 8 }}>
       <p className="rd-text-muted" style={{ margin: 0, fontSize: 'var(--rd-text-caption)' }}>
@@ -891,7 +891,7 @@ const EQLOAD_STATUS_LABEL = {
   'board-covered': 'Board covered', 'board-not-covered': 'Board not covered',
 };
 
-function EqLoadTable({ rows, meta }) {
+export function EqLoadTable({ rows, meta }) {
   return (
     <div style={{ display: 'grid', gap: 8 }}>
       <p className="rd-text-muted" style={{ margin: 0, fontSize: 'var(--rd-text-caption)' }}>
@@ -920,7 +920,7 @@ function EqLoadTable({ rows, meta }) {
   );
 }
 
-function DraftingTable({ rows, meta }) {
+export function DraftingTable({ rows, meta }) {
   return (
     <div style={{ display: 'grid', gap: 8 }}>
       <p className="rd-text-muted" style={{ margin: 0, fontSize: 'var(--rd-text-caption)' }}>
@@ -943,7 +943,7 @@ function DraftingTable({ rows, meta }) {
   );
 }
 
-function SimpleTable({ rows, cols, keys, subtitle }) {
+export function SimpleTable({ rows, cols, keys, subtitle }) {
   return (
     <div style={{ display: 'grid', gap: 8 }}>
       <p className="rd-text-muted" style={{ margin: 0, fontSize: 'var(--rd-text-caption)' }}>{subtitle}</p>
@@ -962,7 +962,7 @@ function SimpleTable({ rows, cols, keys, subtitle }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Previous analyses
 // ═══════════════════════════════════════════════════════════════════════════
-function PreviousAnalyses({ project, reload, onView }) {
+export function PreviousAnalyses({ project, reload, onView }) {
   const [list, setList] = useState(null);
   const load = useCallback(async () => {
     const d = await sldService.listAnalyses(project.project_id);

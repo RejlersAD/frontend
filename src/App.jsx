@@ -181,6 +181,10 @@ import ElectricalDatasheetPage from "./pages/Engineering/Electrical/ElectricalDa
 import ElectricalEquipmentDatasheet from "./pages/Engineering/Electrical/ElectricalEquipmentDatasheet";
 import ElectricalDatasheetFormPage from "./pages/Engineering/Electrical/ElectricalDatasheetFormPage";
 import SingleLineDiagram from "./pages/Engineering/Electrical/SLDComparison";
+import SldCheckerProjectsPage from "./pages/Engineering/Electrical/SldChecker/SldCheckerProjectsPage";
+import SldCheckerWorkspacePage from "./pages/Engineering/Electrical/SldChecker/SldCheckerWorkspacePage";
+import SldCheckerDrawingPage from "./pages/Engineering/Electrical/SldChecker/SldCheckerDrawingPage";
+import SldCheckerReviewPage from "./pages/Engineering/Electrical/SldChecker/SldCheckerReviewPage";
 import ElectricalCheckList from "./pages/Engineering/Electrical/ElectricalCheckList";
 import ExcelQualityCheckerPage from "./pages/Engineering/Electrical/ExcelQualityCheckerPage";
 import UnifiedElectricalQualityChecker from "./pages/Engineering/Electrical/UnifiedElectricalQualityChecker";
@@ -1450,9 +1454,45 @@ function App() {
               }
             />
             {/* Electrical Routes */}
-            {/* Single Line Diagram - Coming Soon */}
+            {/* SLD Checker — redesigned project list (replaces the classic comparison as default) */}
             <Route
               path="engineering/electrical/sld"
+              element={
+                <ProtectedRoute>
+                  <SldCheckerProjectsPage />
+                </ProtectedRoute>
+              }
+            />
+            {/* SLD Checker — project workspace */}
+            <Route
+              path="engineering/electrical/sld/projects/:projectId"
+              element={
+                <ProtectedRoute>
+                  <SldCheckerWorkspacePage />
+                </ProtectedRoute>
+              }
+            />
+            {/* SLD Checker — single SLD file (6 steps) */}
+            <Route
+              path="engineering/electrical/sld/projects/:projectId/drawings/:fileId"
+              element={
+                <ProtectedRoute>
+                  <SldCheckerDrawingPage />
+                </ProtectedRoute>
+              }
+            />
+            {/* SLD Checker — All SLDs combined project review */}
+            <Route
+              path="engineering/electrical/sld/projects/:projectId/review"
+              element={
+                <ProtectedRoute>
+                  <SldCheckerReviewPage />
+                </ProtectedRoute>
+              }
+            />
+            {/* SLD Equipment Comparison — classic UI, kept for reference */}
+            <Route
+              path="engineering/electrical/sld/classic"
               element={
                 <ProtectedRoute>
                   <SingleLineDiagram />
