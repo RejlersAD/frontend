@@ -1,0 +1,61 @@
+/* PidScene3D styles — RADAI tokens (--rd-*). Selector classes are scoped
+   under .p3d-wrap / .p3d-tb / .p3d-view so the generic names (.btn, .seg,
+   .legend …) never leak into the rest of the app. */
+.p3d-wrap{display:flex;flex-direction:column}
+.p3d-tb{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 12px;border-bottom:1px solid var(--rd-border,#E3E8EF)}
+.p3d-view{position:relative;height:640px;background:#F4F7FB;overflow:hidden}
+@media (max-width:640px){.p3d-view{height:460px}}
+.p3d-help{position:absolute;left:12px;top:12px;font-size:11.5px;color:#475569;background:rgba(255,255,255,.88);border:1px solid #E3E8EF;border-radius:6px;padding:5px 9px;pointer-events:none}
+.p3d-badge{position:absolute;right:12px;bottom:12px;font:600 10.5px Inter,sans-serif;letter-spacing:.06em;color:#8A5200;background:#FFF4DF;border:1px solid #F6DDA6;border-radius:4px;padding:3px 8px;pointer-events:none}
+.p3d-empty{padding:40px 16px;text-align:center;color:var(--rd-text-muted,#64748B);display:flex;flex-direction:column;gap:8px;align-items:center}
+.p3d-empty a{color:var(--rd-primary,#3730a3)}
+.p3d-tb .seg{display:inline-flex;border:1px solid var(--rd-border,#cbd5e1);border-radius:6px;overflow:hidden}
+.p3d-tb .seg button{height:30px;padding:0 12px;border:0;background:var(--rd-surface,#fff);font:600 12px Inter,"Segoe UI",system-ui,sans-serif;color:var(--rd-text,#0f172a);cursor:pointer}
+.p3d-tb .seg button+button{border-left:1px solid var(--rd-border,#cbd5e1)}
+.p3d-tb .seg button.on{background:var(--rd-primary,#3730a3);color:#fff}
+.p3d-tb .btn{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border:1px solid var(--rd-border,#cbd5e1);border-radius:6px;background:var(--rd-surface,#fff);color:var(--rd-text,#0f172a);font:500 12px Inter,"Segoe UI",system-ui,sans-serif;cursor:pointer}
+.p3d-tb .btn:hover,.p3d-tb .seg button:hover:not(.on){border-color:var(--rd-primary,#3730a3);color:var(--rd-primary,#3730a3)}
+.p3d-tb .btn.on{background:var(--rd-primary-soft,#eef2ff);border-color:var(--rd-primary,#3730a3);color:var(--rd-primary,#3730a3)}
+.p3d-tb .ib{width:30px;padding:0;justify-content:center;font-size:15px}
+.p3d-tb .rng{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--rd-text-muted,#475569)}
+.p3d-tb .rng input{width:110px;accent-color:var(--rd-primary,#3730a3)}
+.p3d{position:absolute;inset:0}
+.p3d canvas{display:block;touch-action:none}
+.p3d-overlay{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.p3d-lead{position:absolute;overflow:visible;pointer-events:none}
+.p3d-pin{position:absolute;transform:translate(-50%,-50%);width:28px;height:28px;border-radius:50%;border:2px solid #fff;color:#fff;font:700 11px Inter,"Segoe UI",system-ui,sans-serif;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 6px rgba(11,27,58,.35);pointer-events:auto;padding:0}
+.p3d-pin.sel{width:34px;height:34px;font-size:12px;box-shadow:0 0 0 4px rgba(10,94,245,.3),0 2px 6px rgba(11,27,58,.35)}
+.p3d-lbl{position:absolute;white-space:nowrap;font:500 11px Inter,"Segoe UI",system-ui,sans-serif;color:#334155;padding:1px 5px;border-radius:3px;background:rgba(255,255,255,.82);border:1px solid rgba(203,213,225,.9);pointer-events:none}
+.p3d-lbl.eq{font-weight:600;color:#0B1B3A;background:rgba(255,255,255,.92)}
+.p3d-lbl.conn{color:#1D5BEA;border-color:rgba(29,91,234,.25)}
+.p3d-lbl.line{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10.5px}
+.p3d-lbl.line.new{color:#BE185D;border-color:rgba(190,24,93,.3)}
+.p3d-tip{position:absolute;max-width:310px;background:#0B1B3A;color:#E8EEF8;border-radius:6px;padding:8px 10px;font-size:12px;pointer-events:none;box-shadow:0 6px 18px rgba(11,27,58,.25);display:flex;flex-direction:column;gap:2px;z-index:3}
+.p3d-tip b{font-family:"JetBrains Mono",ui-monospace,monospace;font-weight:500;color:#fff}
+.p3d-tip span{color:#B8C4D6}
+.p3d-view .legend{position:absolute;left:12px;bottom:12px;display:flex;flex-direction:column;gap:3px;background:rgba(255,255,255,.92);border:1px solid #E3E8EF;border-radius:6px;padding:8px 10px}
+.p3d-view .legend button{display:flex;align-items:center;gap:8px;background:none;border:0;padding:1px 0;font:500 11.5px Inter,"Segoe UI",system-ui,sans-serif;color:#334155;cursor:pointer;text-align:left}
+.p3d-view .legend button.off{opacity:.4}
+.p3d-view .legend i{width:16px;height:5px;border-radius:3px;display:inline-block}
+
+/* ── studio (dark) theme + finding callouts (spec B) ─────────────────── */
+.p3d-wrap.studio .p3d-view{background:radial-gradient(circle at 50% 35%, #0C2A4F 0%, #06162B 55%, #040F1E 100%)}
+.p3d-wrap.studio .p3d-help{background:rgba(6,22,43,.88);border-color:rgba(90,130,190,.45);color:#B8C4D6}
+.p3d-wrap.studio .p3d-view .legend{background:rgba(6,22,43,.88);border-color:rgba(90,130,190,.45)}
+.p3d-wrap.studio .p3d-view .legend button{color:#B8C4D6}
+.p3d-wrap.studio .p3d-lbl{background:rgba(6,22,43,.88);border-color:rgba(90,130,190,.45);color:#D6E2F2}
+.p3d-lbl.ghost{border-style:dashed;background:transparent;color:inherit}
+.p3d-callout{position:absolute;width:190px;min-height:46px;display:flex;gap:6px;align-items:flex-start;padding:5px 7px;border-radius:6px;background:rgba(255,255,255,.95);border:1px solid var(--rd-border,#cbd5e1);box-shadow:0 4px 14px rgba(11,27,58,.28);cursor:pointer;pointer-events:auto;text-align:left;transition:opacity .15s ease, transform .15s ease}
+.p3d-wrap.studio .p3d-callout{background:rgba(6,22,43,.92);border-color:rgba(90,130,190,.45)}
+.p3d-callout.sel{transform:scale(1.1);box-shadow:0 0 0 3px rgba(10,94,245,.35),0 4px 14px rgba(11,27,58,.28);z-index:2}
+.p3d-chipnum{flex:none;min-width:24px;height:20px;border-radius:4px;color:#fff;font:700 11px Inter,"Segoe UI",system-ui,sans-serif;display:inline-flex;align-items:center;justify-content:center;padding:0 4px}
+.p3d-callout-text{display:flex;flex-direction:column;min-width:0}
+.p3d-callout-title{font:500 11px Inter,"Segoe UI",system-ui,sans-serif;color:#0B1B3A;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.p3d-wrap.studio .p3d-callout-title{color:#E8EEF8}
+.p3d-callout-sub{font:500 10.5px Inter,"Segoe UI",system-ui,sans-serif;color:#64748B}
+.p3d-wrap.studio .p3d-callout-sub{color:#8FA3C4}
+.p3d-lead .ring{transform-box:fill-box;transform-origin:center}
+.p3d-lead .ring.pulse{animation:p3d-pulse 1.2s ease-out infinite}
+@keyframes p3d-pulse{0%{transform:scale(1);opacity:1}70%{transform:scale(1.9);opacity:.2}100%{transform:scale(1);opacity:1}}
+.p3d-status{display:flex;gap:14px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid var(--rd-border,#cbd5e1);font-size:12px;color:var(--rd-text-muted,#475569)}
+.p3d-status b{color:var(--rd-text,#0f172a);font-weight:600}

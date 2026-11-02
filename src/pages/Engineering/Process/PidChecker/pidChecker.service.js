@@ -61,23 +61,45 @@ export function normalizeDrawing(d = {}) {
   const tags = d.instrument_tags_found ?? d.tag_count ?? d.tags ?? null
   const readability = d.readability
     ?? (d.is_scanned === true || d.ocr_used === true ? 'ocr' : null)
+  const fileName = d.file_name ?? d.filename ?? d.original_filename ?? null
   return {
     id,
-    drawingNo: d.drawing_number ?? d.document_number ?? d.drawing_no ?? null,
-    title: d.title ?? d.filename ?? d.original_filename ?? '—',
-    type: d.drawing_type ?? d.doc_type ?? null, // PFD | P&ID | UFD
+    // Until the title-block reader lands, the file name is the drawing number.
+    drawingNo: d.drawing_number ?? d.document_number ?? d.drawing_no
+      ?? (fileName ? fileName.replace(/\.pdf$/i, '') : null),
+    title: d.title ?? null, // '—' when the title block has not been read
+    fileName,
+    type: d.drawing_type || (/process flow diagram/i.test(d.title ?? '') ? 'PFD' : null) || null, // PFD | P&ID | UFD ('' from backend = unset; PFD auto-detected from the title block)
     rev: d.revision ?? d.rev ?? null,
     readability, // 'vector' | 'ocr' | 'unreadable' | null
-    status: d.status ?? null,
+    status: d.status ?? null, // pending | processing | completed | failed
     set: d.set_name ?? d.set ?? d.drawing_set ?? null,
     charactersRead: chars,
     lineNumbers,
     tags,
-    findingsOpen: d.findings_open ?? d.open_findings ?? null,
-    findingsTotal: d.findings_total ?? d.findings_count ?? null,
+    findingsOpen: d.findings_open ?? d.open_findings ?? d.total_issues ?? null,
+    findingsTotal: d.findings_total ?? d.findings_count ?? d.total_issues ?? null,
+    // One entry per sheet of a multi-sheet PDF (page_index, drawing_number,
+    // title) and the cross-sheet tag occurrences for the "Tags across
+    // sheets" table (both from the v2 list serializer, 30 Oct 2026).
+    sheets: Array.isArray(d.sheets) ? d.sheets : [],
+    tagsAcrossSheets: Array.isArray(d.tags_across_sheets) ? d.tags_across_sheets : [],
     signed: d.signed ?? d.signed_off ?? false,
+    reviewedBy: d.reviewed_by ?? null,
+    approvedBy: d.approved_by ?? null,
+    updatedAt: d.updated_at ?? null,
     raw: d,
   }
+}
+
+/** Table status mapping (spec B): Queued / Running / Checked / Failed. */
+export function drawingStatusLabel(d) {
+  const s = String(d?.status || '').toLowerCase()
+  if (s === 'processing' || s === 'running') return 'Running'
+  if (s === 'completed' || s === 'complete' || s === 'checked') return 'Checked'
+  if (s === 'failed' || s === 'error') return 'Failed'
+  if (s === 'pending' || s === 'queued' || s === 'uploaded') return 'Queued'
+  return d?.status || 'Queued'
 }
 
 // ── projects ────────────────────────────────────────────────────────────
@@ -112,6 +134,21 @@ export async function createProject({ name, number = '', client = '', descriptio
   return normalizeProject(res.data)
 }
 
+export async function updateProject(projectId, { name, number = '', client = '', description = '' }) {
+  const payload = {}
+  if (name) payload.project_name = name
+  if (description != null) payload.description = description
+  if (number) payload.project_number = number
+  if (client) payload.client_profile = client
+  const res = await axios.put(`${V1}/projects/${projectId}/`, payload, { headers: authHeader() })
+  return normalizeProject(res.data)
+}
+
+export async function deleteProject(projectId) {
+  // Backend keeps the documents — they become project-less, not deleted.
+  await axios.delete(`${V1}/projects/${projectId}/`, { headers: authHeader() })
+}
+
 // ── drawings ────────────────────────────────────────────────────────────
 
 export async function listDrawings(projectId) {
@@ -122,10 +159,11 @@ export async function listDrawings(projectId) {
   return unwrapArray(res.data).map(normalizeDrawing)
 }
 
-export async function uploadDrawing(projectId, file) {
+export async function uploadDrawing(projectId, file, { allowDuplicate = false } = {}) {
   const fd = new FormData()
   fd.append('file', file)
   if (projectId) fd.append('project_id', projectId)
+  if (allowDuplicate) fd.append('allow_duplicate', '1')
   const res = await axios.post(`${V2}/upload-pid/`, fd, {
     headers: { ...authHeader(), 'Content-Type': 'multipart/form-data' },
     timeout: 2400000, // matches existing V2 page: Celery task headroom
@@ -133,9 +171,10 @@ export async function uploadDrawing(projectId, file) {
   return res.data
 }
 
-export async function getResults(documentId) {
+export async function getResults(documentId, page = null) {
   const res = await axios.get(`${V2}/results/${documentId}/`, {
     headers: authHeader(),
+    params: page != null ? { page } : {}, // 1-based sheet number
     timeout: 30000,
   })
   return res.data
@@ -151,12 +190,145 @@ export async function updateDrawing(documentId, patch) {
   return res.data
 }
 
+export async function deleteDrawing(documentId) {
+  await axios.delete(`${V2}/delete/${documentId}/`, { headers: authHeader() })
+}
+
 export function drawingImageUrl(documentId, page = 0) {
   return `${V2}/drawing-image/${documentId}/${page}/`
 }
 
+/**
+ * Authenticated drawing image (spec C): a plain <img src> carries no
+ * Authorization header and gets a 401. Fetch as a blob with the API token
+ * and hand back an object URL. Caller must revoke it on unmount/change.
+ * Never put the access token in the URL.
+ */
+export async function fetchDrawingImage(documentId, page = 0) {
+  const res = await axios.get(drawingImageUrl(documentId, page), {
+    headers: authHeader(),
+    responseType: 'blob',
+    timeout: 120000,
+  })
+  return URL.createObjectURL(res.data)
+}
+
 export async function getStatus(documentId) {
   const res = await axios.get(`${V2}/status/${documentId}/`, { headers: authHeader() })
+  return res.data
+}
+
+// ── checklist (step 4, spec §8) ─────────────────────────────────────────
+
+export async function getChecklist(documentId, page = null) {
+  const res = await axios.get(`${V2}/documents/${documentId}/checklist/`, {
+    headers: authHeader(),
+    params: page != null ? { page } : {},
+  })
+  return res.data
+}
+
+export async function patchChecklistItem(documentId, page, itemNo, body) {
+  const res = await axios.patch(`${V2}/documents/${documentId}/checklist/${encodeURIComponent(itemNo)}/`, body, {
+    headers: authHeader(),
+    params: { page },
+  })
+  return res.data
+}
+
+function saveBlob(res, fallbackName) {
+  const disposition = res.headers?.['content-disposition'] || ''
+  const match = /filename="?([^";]+)"?/i.exec(disposition)
+  const url = URL.createObjectURL(res.data)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = match?.[1] || fallbackName
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
+export async function downloadChecklistReport(documentId, page) {
+  const res = await axios.get(`${V2}/documents/${documentId}/checklist-report.xlsx`, {
+    headers: authHeader(), params: { page }, responseType: 'blob', timeout: 120000,
+  })
+  saveBlob(res, `AI_PID_Review_Checklist_02_${documentId}.xlsx`)
+}
+
+export async function downloadProjectChecklistReport(projectId) {
+  const res = await axios.get(`${V2}/projects/${projectId}/checklist-report.xlsx`, {
+    headers: authHeader(), params: { scope: 'all' }, responseType: 'blob', timeout: 300000,
+  })
+  saveBlob(res, `AI_PID_Review_Checklist_02_${projectId}_AllPIDs.xlsx`)
+}
+
+export async function importChecklistReport(documentId, page, file) {
+  const fd = new FormData()
+  fd.append('file', file)
+  const res = await axios.post(`${V2}/documents/${documentId}/checklist-report/import/`, fd, {
+    headers: { ...authHeader(), 'Content-Type': 'multipart/form-data' },
+    params: { page },
+    timeout: 120000,
+  })
+  return res.data
+}
+
+export async function getProjectChecklist(projectId) {
+  const res = await axios.get(`${V2}/projects/${projectId}/checklist/`, { headers: authHeader(), timeout: 120000 })
+  return res.data
+}
+
+export async function uploadChecklistTemplate(projectId, file) {
+  const fd = new FormData()
+  fd.append('file', file)
+  const res = await axios.post(`${V2}/projects/${projectId}/checklist-template/`, fd, {
+    headers: { ...authHeader(), 'Content-Type': 'multipart/form-data' },
+    timeout: 600000,
+  })
+  return res.data
+}
+
+export async function patchReviewMeta(documentId, patch) {
+  const res = await axios.patch(`${V2}/documents/${documentId}/review-meta/`, patch, { headers: authHeader() })
+  return res.data
+}
+
+// ── extraction (step 3, spec §3.1) ──────────────────────────────────────
+
+export async function getExtraction(documentId, kind = null, page = null) {
+  const params = {}
+  if (kind) params.kind = kind
+  if (page != null) params.page = page // 1-based sheet number
+  const res = await axios.get(`${V2}/documents/${documentId}/extraction/`, {
+    headers: authHeader(),
+    params,
+  })
+  return res.data
+}
+
+export async function getExtractionSummary(documentId) {
+  const res = await axios.get(`${V2}/documents/${documentId}/extraction/summary/`, { headers: authHeader() })
+  return res.data
+}
+
+export async function patchExtractionItem(documentId, entityId, patch) {
+  const res = await axios.patch(`${V2}/documents/${documentId}/extraction/${entityId}/`, patch, { headers: authHeader() })
+  return res.data
+}
+
+// ── 3D scene (spec §4.1 — PidScene3D viewer) ────────────────────────────
+
+/**
+ * 3D scene for one sheet: GET documents/<id>/scene3d/?page=N (1-based).
+ * Returns { status:'ok', lines, valves, equipment, connectors, findings,
+ * bounds } or { status:'no_vector_geometry' } for scanned/OCR sheets.
+ */
+export async function getScene3D(documentId, page) {
+  const res = await axios.get(`${V2}/documents/${documentId}/scene3d/`, {
+    headers: authHeader(),
+    params: { page },
+  })
   return res.data
 }
 
@@ -174,7 +346,7 @@ export async function patchFinding(findingId, patch) {
 // ── exports ─────────────────────────────────────────────────────────────
 // Export endpoints require the Authorization header, so a plain <a href>
 // cannot be used — fetch as blob and trigger a download client-side.
-export async function downloadExport(documentId, kind /* 'excel' | 'pdf' */, view = 'all') {
+export async function downloadExport(documentId, kind /* 'excel' | 'pdf' */, view = 'all', filename = null) {
   const res = await axios.get(`${V2}/export/${kind}/${documentId}/`, {
     headers: authHeader(),
     params: { view },
@@ -183,16 +355,63 @@ export async function downloadExport(documentId, kind /* 'excel' | 'pdf' */, vie
   })
   const disposition = res.headers?.['content-disposition'] || ''
   const match = /filename="?([^";]+)"?/i.exec(disposition)
-  const filename = match?.[1] || `pidv_${kind}_${documentId}.${kind === 'excel' ? 'xlsx' : 'pdf'}`
+  const downloadName = filename || match?.[1] || `pidv_${kind}_${documentId}.${kind === 'excel' ? 'xlsx' : 'pdf'}`
   const url = URL.createObjectURL(res.data)
   const a = document.createElement('a')
   a.href = url
-  a.download = filename
+  a.download = downloadName
   document.body.appendChild(a)
   a.click()
   a.remove()
   URL.revokeObjectURL(url)
-  return filename
+  return downloadName
+}
+
+// ── project sheets + combined review (spec A3/B1) ───────────────────────
+
+export async function getProjectSheets(projectId) {
+  const res = await axios.get(`${V2}/projects/${projectId}/sheets/`, { headers: authHeader() })
+  return res.data
+}
+
+export async function getProjectReview(projectId) {
+  const res = await axios.get(`${V2}/projects/${projectId}/review/`, { headers: authHeader(), timeout: 60000 })
+  return res.data
+}
+
+export async function getProjectFindings(projectId, { scope = 'all', sheetId = null, kind = 'sheet' } = {}) {
+  const res = await axios.get(`${V2}/projects/${projectId}/findings/`, {
+    headers: authHeader(),
+    params: { scope, kind, ...(sheetId ? { sheet_id: sheetId } : {}) },
+  })
+  return res.data
+}
+
+export async function runCrossCheck(projectId) {
+  const res = await axios.post(`${V2}/projects/${projectId}/cross-check/`, {}, { headers: authHeader() })
+  return res.data
+}
+
+export async function patchSheet(sheetId, patch) {
+  const res = await axios.patch(`${V2}/sheets/${sheetId}/`, patch, { headers: authHeader() })
+  return res.data
+}
+
+export async function downloadProjectReport(projectId) {
+  const res = await axios.get(`${V2}/projects/${projectId}/report.xlsx`, {
+    headers: authHeader(),
+    params: { scope: 'all' },
+    responseType: 'blob',
+    timeout: 120000,
+  })
+  const url = URL.createObjectURL(res.data)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `pidv_project_${projectId}.xlsx`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
 }
 
 // ── reference data ──────────────────────────────────────────────────────

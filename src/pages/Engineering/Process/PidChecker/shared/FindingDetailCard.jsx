@@ -3,15 +3,24 @@
  * close-up crop with red ring · Found/Expected/Basis/Checklist ·
  * Confirm finding · Reject — not an error (comment required) · Next.
  * Pair findings show both values side by side plus "Show on PFD / Show on P&ID".
+ *
+ * Spec §4.2: the close-up area has its own "2D | 3D" switch, independent of
+ * the main viewer. 3D shows a small section view of the items near the
+ * finding's anchor; findings without a physical anchor keep 2D only.
  */
-import { useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import Pill from './Pill'
+
+// three.js is lazy-loaded so the 2D flow never pays for it.
+const Scene3DFocus = lazy(() => import('../threeD/Scene3DFocus'))
 
 export default function FindingDetailCard({
   finding,
   cropUrl = null,
   cropRect = null, // { x, y, width, height } in % of the crop image
   isPair = false,
+  scene3d = null, // scene JSON from GET documents/<id>/scene3d/ (or null)
+  onViewIn3D, // (findingId) => void — switches the main viewer to 3D + focuses
   onConfirm,
   onReject, // (comment) => void — comment required
   onNext,
@@ -19,6 +28,17 @@ export default function FindingDetailCard({
 }) {
   const [rejecting, setRejecting] = useState(false)
   const [comment, setComment] = useState('')
+  const [detailView, setDetailView] = useState('2d')
+
+  // The finding's 3D anchor from the sheet's scene (null = not a physical
+  // item — 2D only).
+  const sceneFinding = finding && scene3d
+    ? (scene3d.findings || []).find(f => f.id === finding.id)
+    : null
+  const anchor = sceneFinding?.anchor ?? null
+
+  // Reset to the 2D crop whenever a different finding is shown.
+  useEffect(() => { setDetailView('2d') }, [finding?.id])
 
   if (!finding) return null
 
@@ -36,7 +56,47 @@ export default function FindingDetailCard({
         <Pill label={finding.status || 'Open'} />
       </div>
 
-      {cropUrl && (
+      <div className="pc-segbar" style={{ marginBottom: 0 }}>
+        <div className="pc-seg" role="group" aria-label="Close-up view mode">
+          <button
+            type="button"
+            className={`pc-seg-btn${detailView === '2d' ? ' pc-seg-btn-active' : ''}`}
+            aria-pressed={detailView === '2d'}
+            onClick={() => setDetailView('2d')}
+          >
+            2D
+          </button>
+          <button
+            type="button"
+            className={`pc-seg-btn${detailView === '3d' ? ' pc-seg-btn-active' : ''}`}
+            aria-pressed={detailView === '3d'}
+            disabled={!anchor}
+            title={anchor ? 'Section view around this finding' : 'Not a physical item — 2D only'}
+            onClick={() => anchor && setDetailView('3d')}
+          >
+            3D
+          </button>
+        </div>
+      </div>
+
+      {detailView === '3d' && anchor ? (
+        <>
+          <Suspense fallback={<div className="pc-skeleton" style={{ height: 280 }} />}>
+            <Scene3DFocus scene={scene3d} findingId={finding.id} anchor={anchor} />
+          </Suspense>
+          {onViewIn3D && (
+            <div>
+              <button
+                type="button"
+                className="rd-btn rd-btn-secondary rd-btn-sm"
+                onClick={() => onViewIn3D(finding.id)}
+              >
+                Open in main 3D
+              </button>
+            </div>
+          )}
+        </>
+      ) : cropUrl ? (
         <div className="pc-finding-crop">
           <img src={cropUrl} alt={`Close-up for finding F${finding.number}`} />
           {cropRect && (
@@ -49,7 +109,7 @@ export default function FindingDetailCard({
             />
           )}
         </div>
-      )}
+      ) : null}
 
       {isPair ? (
         <div className="pc-finding-values">

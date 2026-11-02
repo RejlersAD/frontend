@@ -134,6 +134,24 @@
 .pc-banner-actions { display: flex; gap: 0.5rem; margin-top: 0.625rem; flex-wrap: wrap; }
 .pc-note { padding: 0.625rem 0.875rem; border-radius: var(--rd-radius-control); font-size: var(--rd-text-table); }
 .pc-note-warning { background: var(--rd-warning-soft); color: var(--rd-text); border: 1px solid color-mix(in srgb, var(--rd-warning) 35%, transparent); }
+.pc-note-danger { background: var(--rd-danger-soft); color: var(--rd-text); border: 1px solid color-mix(in srgb, var(--rd-danger) 35%, transparent); }
+.pc-required { color: var(--rd-danger); font-weight: 700; }
+
+/* ── toasts (spec A) ─────────────────────────────────────────────────── */
+.pc-toasts { position: fixed; right: 1rem; bottom: 1rem; display: flex; flex-direction: column; gap: 0.5rem; z-index: 70; max-width: 360px; }
+.pc-toast { margin: 0; padding: 0.625rem 0.875rem; border-radius: var(--rd-radius-control); box-shadow: var(--rd-shadow-overlay); font-size: var(--rd-text-table); background: var(--rd-surface); border: 1px solid var(--rd-border); color: var(--rd-text); }
+.pc-toast-success { border-color: var(--rd-success); }
+.pc-toast-danger { border-color: var(--rd-danger); }
+.pc-toast-info { border-color: var(--rd-info); }
+
+.pc-progress-indeterminate { animation: pc-indeterminate 1.4s ease-in-out infinite; }
+@keyframes pc-indeterminate {
+  0% { margin-left: 0; }
+  50% { margin-left: 60%; }
+  100% { margin-left: 0; }
+}
+
+.pc-ring { position: absolute; border: 2px solid var(--rd-danger); border-radius: 4px; pointer-events: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--rd-danger) 25%, transparent); }
 .pc-note-ai { background: var(--rd-ai-soft); color: var(--rd-text); border: 1px solid color-mix(in srgb, var(--rd-ai) 30%, transparent); }
 
 /* ── drawers ─────────────────────────────────────────────────────────── */
@@ -226,6 +244,53 @@
 .pc-marker-rejected { background: var(--rd-border); color: var(--rd-text-muted); }
 .pc-marker-selected { box-shadow: 0 0 0 3px var(--rd-accent); width: 34px; height: 34px; }
 
+/* ── 2D | 3D segmented control + 3D findings viewer (spec §4) ────────── */
+.pc-segbar { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.375rem; }
+.pc-seg { display: inline-flex; border: 1px solid var(--rd-border); border-radius: var(--rd-radius-control); overflow: hidden; background: var(--rd-surface); }
+.pc-seg-btn {
+  min-height: 30px; padding: 0 0.875rem; border: none; cursor: pointer;
+  background: transparent; color: var(--rd-text-muted);
+  font-size: var(--rd-text-caption); font-weight: 600; font-family: var(--rd-font-sans);
+}
+.pc-seg-btn + .pc-seg-btn { border-left: 1px solid var(--rd-border-soft); }
+.pc-seg-btn-active { background: var(--rd-primary); color: #fff; }
+.pc-seg-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.pc-seg-btn:focus-visible { outline: none; box-shadow: var(--rd-focus); }
+
+.pc-3d-canvas { position: relative; height: 640px; overflow: hidden; background: #fff; }
+.pc-3d-canvas-compact { height: 280px; }
+.pc-3d-badge {
+  position: absolute; z-index: 5; pointer-events: none;
+  font-size: 0.6875rem; font-weight: 600; line-height: 1.4;
+  padding: 0.125rem 0.5rem; border-radius: 999px;
+  background: var(--rd-surface); border: 1px solid var(--rd-border-soft); color: var(--rd-text-muted);
+}
+.pc-3d-badge-tl { top: 8px; left: 8px; }
+.pc-3d-badge-br { bottom: 8px; right: 8px; color: var(--rd-warning); border-color: var(--rd-warning); }
+.pc-3d-pin {
+  min-width: 24px; height: 24px; padding: 0 4px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 0.6875rem; font-weight: 700; color: #fff; cursor: pointer;
+  border: 2px solid #fff; box-shadow: var(--rd-shadow-card);
+  transform: translate(-50%, -50%);
+}
+.pc-3d-pin-error { background: var(--rd-danger); }
+.pc-3d-pin-query { background: var(--rd-warning); }
+.pc-3d-pin-minor { background: var(--rd-text-faint); }
+.pc-3d-pin-selected { box-shadow: 0 0 0 3px var(--rd-accent); }
+.pc-3d-tag {
+  background: var(--rd-surface); border: 1px solid var(--rd-border-soft);
+  color: var(--rd-text); font-size: 0.6875rem; font-weight: 600;
+  padding: 0.0625rem 0.375rem; border-radius: 4px; white-space: nowrap;
+  transform: translate(-50%, -50%); pointer-events: none;
+}
+.pc-3d-status {
+  margin: 0; padding: 0.375rem 0.625rem;
+  border-top: 1px solid var(--rd-border-soft);
+  font-size: var(--rd-text-caption); color: var(--rd-text-muted);
+  background: var(--rd-surface);
+}
+
 /* ── finding detail card ─────────────────────────────────────────────── */
 .pc-finding-card { border: 1px solid var(--rd-border-soft); border-radius: var(--rd-radius-panel); background: var(--rd-surface); padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; }
 .pc-finding-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; }
@@ -254,6 +319,7 @@
 
 /* ── screen 2: drawing page ──────────────────────────────────────────── */
 .pc-kpi-grid-6 { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.75rem; }
+.pc-kpi-grid-7 { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0.75rem; }
 .pc-note-success { background: var(--rd-success-soft); color: var(--rd-text); border: 1px solid color-mix(in srgb, var(--rd-success) 35%, transparent); }
 
 .pc-progress { display: flex; height: 8px; border-radius: 999px; overflow: hidden; background: var(--rd-surface-subtle); }
@@ -300,13 +366,13 @@
 .pc-checkrow-num { font-family: var(--rd-font-mono); font-size: var(--rd-text-caption); font-weight: 700; }
 
 @media (max-width: 1180px) {
-  .pc-kpi-grid-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .pc-kpi-grid-6, .pc-kpi-grid-7 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 900px) {
   .pc-split { grid-template-columns: 1fr; }
 }
 @media (max-width: 700px) {
-  .pc-kpi-grid-6 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pc-kpi-grid-6, .pc-kpi-grid-7 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 /* ── responsive ──────────────────────────────────────────────────────── */
@@ -318,5 +384,6 @@
   .pc-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pc-drawer, .pc-drawer-wide { width: 100vw; }
   .pc-viewer-canvas { height: 420px; }
+  .pc-3d-canvas { height: 420px; }
   .pc-header-actions { width: 100%; }
 }

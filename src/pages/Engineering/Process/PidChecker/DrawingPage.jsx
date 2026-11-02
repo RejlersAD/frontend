@@ -19,23 +19,27 @@
  * Deep links: ?step=1..6 · ?tab=<extraction tab> · ?finding=F<n> ·
  * ?by / ?result (checklist chip presets) · ?highlight=<tag>.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import * as svc from './pidChecker.service'
 import { PageHeader, KpiTile, Pill, ReadabilityPill, Stepper, DrawingViewer, FindingDetailCard, EmptyState } from './shared'
+import ScopeSwitch, { rememberLastSheet } from './shared/ScopeSwitch'
+import { useDrawingImage } from './shared/DrawingViewer'
 import './pidchecker.css'
 
-const STEPS = ['Drawings', 'Reference documents', 'Extraction review', 'Checklist', 'Findings', 'Report & sign-off']
+// three.js is heavy — the 3D findings viewer loads only when the user
+// switches to 3D (or the detail card opens its section view).
+const Findings3DViewer = lazy(() => import('./threeD/Findings3DViewer'))
+
+const STEPS = ['Drawings', 'Legend & checklist', 'Extraction review', 'Checklist', 'Findings', 'Report & sign-off']
+
+// Spec §3 step 2: only legend sheets and the checklist — both compulsory.
+// AI-PID-02 (125 points) is the default checklist for new projects.
+const DEFAULT_CHECKLIST = 'AI-PID-02 · 125 points'
 
 const REFERENCE_SLOTS = [
-  { key: 'legend_pid', name: 'Legend P&ID', unlocks: 'Symbol and abbreviation checks', format: 'PDF' },
-  { key: 'line_list', name: 'Line list', unlocks: 'Line number, size and service checks', format: 'Excel' },
-  { key: 'instrument_index', name: 'Instrument index', unlocks: 'Instrument tag and function checks', format: 'Excel' },
-  { key: 'equipment_list', name: 'Equipment list', unlocks: 'Equipment numbering and rating checks', format: 'Excel' },
-  { key: 'piping_class_index', name: 'Piping class index', unlocks: 'Piping class checks', format: 'Excel' },
-  { key: 'document_register', name: 'Document register', unlocks: 'Revision and document status checks', format: 'Excel / PDF' },
-  { key: 'adnoc_dgs', name: 'ADNOC DGS', unlocks: 'Client standard checks', format: 'PDF' },
-  { key: 'cause_effect', name: 'Cause & effect', unlocks: 'Trip and alarm cross-checks', format: 'Excel' },
+  { key: 'legend_pid', name: 'Legend sheets', unlocks: '1.1, 10.2, 12.6', format: 'PDF' },
+  { key: 'checklist', name: 'Checklist', unlocks: 'All checklist points', format: 'Excel' },
 ]
 
 const EXTRACTION_TABS = [
@@ -76,10 +80,17 @@ function markerStatus(f) {
   return 'query'
 }
 
+/** API bboxes and tag positions are sent in PERCENT of the sheet (e.g.
+ *  [58.59, 41.88, 64.76, 42.66]); the viewer wants fractions 0–1. Accept
+ *  either (30 Oct 2026 — percent values were multiplied by 100 again and
+ *  landed ~100× off the drawing). */
+const pct = v => (typeof v === 'number' && Number.isFinite(v) ? (v > 1 ? v / 100 : v) : null)
+
 /** Pull real 0..1 marker coordinates from a drawing's tag_positions for the
  *  tag(s) a finding mentions. Absolute PDF points cannot be normalised
- *  without page dimensions, so only fractional coordinates are used —
- *  findings without usable coordinates get NO marker (spec §1). */
+ *  without page dimensions, so only fractional/percent coordinates are
+ *  used — findings without usable coordinates get NO marker (spec §1).
+ *  tag_positions carry x_pct / y_pct in percent; x / y in fractions. */
 function locationsFor(f, tagPositions) {
   if (!tagPositions) return []
   const text = `${f.evidence || ''} ${f.issue_observed || ''}`
@@ -88,33 +99,65 @@ function locationsFor(f, tagPositions) {
     if (!tag || !text.includes(tag)) continue
     const candidates = []
     if (pos && typeof pos === 'object' && !Array.isArray(pos)) {
-      if (typeof pos.x === 'number' && typeof pos.y === 'number') candidates.push(pos)
-      if (Array.isArray(pos.all)) candidates.push(...pos.all.filter(p => typeof p?.x === 'number' && typeof p?.y === 'number'))
+      candidates.push(pos)
+      if (Array.isArray(pos.all)) candidates.push(...pos.all)
     } else if (Array.isArray(pos)) {
-      candidates.push(...pos.filter(p => typeof p?.x === 'number' && typeof p?.y === 'number'))
+      candidates.push(...pos)
     }
     for (const p of candidates) {
-      if (p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1) points.push({ x: p.x, y: p.y })
+      if (!p || typeof p !== 'object') continue
+      const x = pct(typeof p.x === 'number' ? p.x : p.x_pct)
+      const y = pct(typeof p.y === 'number' ? p.y : p.y_pct)
+      if (x != null && y != null && x >= 0 && x <= 1 && y >= 0 && y <= 1) points.push({ x, y })
     }
   }
   return points.slice(0, 4)
 }
 
+/** Centre of one bbox ([x0,y0,x1,y1] or {x0,y0,x1,y1}) as a 0..1 fraction. */
+function bboxCentre(b) {
+  const rect = Array.isArray(b) ? { x0: b[0], y0: b[1], x1: b[2], y1: b[3] } : b
+  if (!rect || ![rect.x0, rect.y0, rect.x1, rect.y1].every(v => typeof v === 'number')) return null
+  const x = pct((rect.x0 + rect.x1) / 2)
+  const y = pct((rect.y0 + rect.y1) / 2)
+  return x != null && y != null ? { x, y } : null
+}
+
+/** Normalise line-number tokens for display and comparison (spec A7):
+ *  '1"-68- WG-147263- A2AP01- DA .' → '1"-68-WG-147263-A2AP01-DA'. */
+const LINE_TOKEN_RE = /(\d+(?:\.\d+)?")\s*-\s*([A-Z0-9]{1,4})\s*-\s*([A-Z0-9]{1,4})\s*-\s*(\d{3,6})\s*-\s*([A-Z0-9]{2,8})\s*-\s*([A-Z0-9]{1,4})\s*\.?/g
+const cleanLineText = t => String(t || '').replace(LINE_TOKEN_RE, (_m, a, b, c, d, e, f) => [a, b, c, d, e, f].join('-'))
+
 function normalizeFinding(issue, drawing) {
+  // Prefer the finding's own locations (one bbox per affected item, spec
+  // §3); then its single bbox; then tag positions.
+  let locations = []
+  if (Array.isArray(issue.locations) && issue.locations.length > 0) {
+    locations = issue.locations.map(bboxCentre).filter(Boolean)
+  }
+  if (locations.length === 0) {
+    const centre = bboxCentre(issue.bbox)
+    if (centre) locations = [centre]
+  }
+  if (locations.length === 0) {
+    locations = locationsFor(issue, drawing?.metadata?.tag_positions)
+  }
   return {
     id: issue.id,
     number: issue.sl_no ?? issue.id,
-    title: issue.issue_observed ?? 'Finding',
+    title: cleanLineText(issue.issue_observed ?? 'Finding'),
     status: issue.status,
     severity: issue.severity,
     category: issue.category,
     ruleId: issue.rule_id,
-    found: issue.evidence ?? null,
+    found: cleanLineText(issue.evidence) || null,
     expected: null,
     basis: issue.action_required ?? null,
     checklist: issue.rule_id ?? null,
     pageIndex: drawing?.page_index ?? 0,
-    locations: locationsFor(issue, drawing?.metadata?.tag_positions),
+    locations,
+    bbox: issue.bbox ?? null, // percent, as sent by the API (pc-ring takes percent)
+    entityId: issue.entity_id ?? null,
     raw: issue,
   }
 }
@@ -210,15 +253,36 @@ export default function DrawingPage() {
     setSearchParams(next)
   }
 
+  // Sheet selector (bug: all 76 sheets' markers were drawn on sheet 1).
+  // 1-based in the URL (&sheet=1), 0-based internally.
+  const selectedPage = Math.max(0, (Number(searchParams.get('sheet')) || 1) - 1)
+  const setSelectedPage = idx => patchParams({ sheet: String(idx + 1) })
+
   const [project, setProject] = useState(null)
   const [results, setResults] = useState(null)
+  const [resultsPage, setResultsPage] = useState(null) // sheet the loaded results belong to
   const [processing, setProcessing] = useState(null) // status message when 202
   const [projectDrawings, setProjectDrawings] = useState([])
   const [references, setReferences] = useState(null)
+  const [listsLoaded, setListsLoaded] = useState(false) // project + list + refs resolved
   const [unlocked, setUnlocked] = useState({}) // data_type -> true after upload this session
   const [error, setError] = useState(null)
   const [actionMessage, setActionMessage] = useState(null)
   const [exporting, setExporting] = useState(null)
+  const [extractionCounts, setExtractionCounts] = useState(null) // { confirmed, total } from step 3 API
+  const [checklistSummary, setChecklistSummary] = useState(null) // { ok, query, engineer_review, not_applicable, not_checked, total }
+
+  // Combined project review (links + cross findings) — drives the "All
+  // P&IDs" scope switch, the cross-drawing KPI and the findings-step
+  // cross context. Fetched once per project; cached server-side.
+  const [reviewData, setReviewData] = useState(null)
+  useEffect(() => {
+    let alive = true
+    svc.getProjectReview(projectId)
+      .then(data => { if (alive) setReviewData(data) })
+      .catch(() => {}) // cross context is additive — the sheet view works without it
+    return () => { alive = false }
+  }, [projectId])
 
   // backend-free stores (documented above)
   const [confirmedTabs, setConfirmedTabs] = useState(() => lsRead(drawingId, 'extraction-confirmed'))
@@ -237,10 +301,13 @@ export default function DrawingPage() {
       setReferences(refs)
     } catch (err) {
       setError(err?.response?.data?.error || 'The project could not be loaded.')
+    } finally {
+      setListsLoaded(true)
     }
     try {
-      const data = await svc.getResults(drawingId)
+      const data = await svc.getResults(drawingId, selectedPage + 1)
       setResults(data)
+      setResultsPage(selectedPage)
       setProcessing(null)
     } catch (err) {
       if (err?.response?.status === 202) {
@@ -249,7 +316,7 @@ export default function DrawingPage() {
         setError(err?.response?.data?.error || 'The drawing results could not be loaded.')
       }
     }
-  }, [projectId, drawingId])
+  }, [projectId, drawingId, selectedPage])
 
   useEffect(() => { load() }, [load])
 
@@ -266,17 +333,96 @@ export default function DrawingPage() {
     [projectDrawings, drawingId],
   )
 
+  // ── run state (spec §2): one state per document drives every step ─────
+  const runState = useMemo(() => {
+    if (processing) return 'running'
+    if (results) return 'checked'
+    const s = String(currentDoc?.status || '').toLowerCase()
+    if (s === 'completed') return 'checked'
+    if (['processing', 'running', 'queued'].includes(s)) return 'running'
+    if (['failed', 'error'].includes(s)) return 'failed'
+    return 'not-run' // 'uploaded' or unknown
+  }, [processing, results, currentDoc])
+
+  // "Not started": still 'uploaded' 30 s after the last update.
+  const notStarted = useMemo(() => {
+    if (runState !== 'not-run') return false
+    const ts = currentDoc?.updatedAt ? new Date(currentDoc.updatedAt).getTime() : null
+    return ts ? Date.now() - ts > 30 * 1000 : true
+  }, [runState, currentDoc])
+
+  // Poll every 5 s while queued/processing (spec §2), on top of the
+  // slower processing poll above.
+  useEffect(() => {
+    if (runState !== 'running') return undefined
+    const t = setInterval(load, 5000)
+    return () => clearInterval(t)
+  }, [runState, load])
+
   const drawings = useMemo(() => results?.drawings || [], [results])
-  const mergedMetadata = useMemo(() => {
-    const merged = {}
-    for (const d of drawings) Object.assign(merged, d.metadata || {})
-    return merged
-  }, [drawings])
+
+  // Clamp the URL sheet into range once the sheet list is known.
+  const currentPage = Math.min(selectedPage, Math.max(drawings.length - 1, 0))
+  const currentDrawing = useMemo(
+    () => drawings.find(d => d.page_index === currentPage) ?? drawings[0] ?? null,
+    [drawings, currentPage],
+  )
+
+  // True while the loaded results belong to another sheet (or none yet) —
+  // drives the "Loading results…" skeletons instead of a false "0 findings".
+  const pageDataLoading = !results || resultsPage !== currentPage
+
+  // Per-sheet: the extraction tabs, KPIs, markers and 3D model only ever
+  // show the selected sheet (30 Oct 2026 — the merged view drew all 76
+  // sheets' 746 markers on sheet 1).
+  const mergedMetadata = useMemo(() => currentDrawing?.metadata || {}, [currentDrawing])
 
   const findings = useMemo(
-    () => drawings.flatMap(d => (d.issues || []).map(issue => normalizeFinding(issue, d))),
+    () => drawings
+      .filter(d => (d.page_index ?? 0) === currentPage)
+      .flatMap(d => (d.issues || []).map(issue => normalizeFinding(issue, d))),
+    [drawings, currentPage],
+  )
+
+  // Sheet selector data: "Sheet 1 of 76 · 13-PP-152-20070-P2" — the
+  // drawing number comes from each sheet's own title block.
+  const sheetList = useMemo(
+    () => drawings.map(d => ({
+      pageIndex: d.page_index ?? 0,
+      number: d.metadata?.title_block?.drawing_number ?? d.title ?? null,
+    })),
     [drawings],
   )
+
+  // The current sheet's project-wide identity (spec B4).
+  const currentSheet = useMemo(
+    () => (reviewData?.sheets || []).find(
+      s => String(s.document_id) === String(drawingId) && s.page_index === currentPage,
+    ) ?? null,
+    [reviewData, drawingId, currentPage],
+  )
+  const crossForSheet = useMemo(
+    () => (reviewData?.cross || []).filter(c => currentSheet && (c.sheets || []).includes(currentSheet.sheet_id)),
+    [reviewData, currentSheet],
+  )
+  const linkedSheets = useMemo(() => {
+    if (!currentSheet || !reviewData) return []
+    const byId = {}
+    for (const s of reviewData.sheets || []) byId[s.sheet_id] = s
+    return (reviewData.links || [])
+      .filter(l => l.a.sheet_id === currentSheet.sheet_id || l.b.sheet_id === currentSheet.sheet_id)
+      .map(l => {
+        const other = l.a.sheet_id === currentSheet.sheet_id ? l.b : l.a
+        const s = byId[other.sheet_id]
+        return s ? { ...s, both: l.both } : null
+      })
+      .filter(Boolean)
+  }, [reviewData, currentSheet])
+
+  // "This P&ID" in the scope switch returns here.
+  useEffect(() => {
+    rememberLastSheet(projectId, drawingId, currentPage + 1)
+  }, [projectId, drawingId, currentPage])
   const openFindings = useMemo(() => findings.filter(isOpen), [findings])
   const errorFindings = useMemo(() => findings.filter(f => ['critical', 'major'].includes(String(f.severity).toLowerCase())), [findings])
   const queryFindings = useMemo(() => findings.filter(f => !['critical', 'major'].includes(String(f.severity).toLowerCase())), [findings])
@@ -289,10 +435,14 @@ export default function DrawingPage() {
     }
     return map
   }, [references])
+  // Checklist is provided by the default PRO-001 Rev A unless a client
+  // checklist replaced it; legend sheets must be uploaded. Both compulsory.
+  const checklistLabel = referencesByType.checklist?.file_name ?? referencesByType.checklist?.filename ?? DEFAULT_CHECKLIST
   const missingRefs = useMemo(
-    () => REFERENCE_SLOTS.filter(s => !referencesByType[s.key] && !unlocked[s.key]),
+    () => REFERENCE_SLOTS.filter(s => s.key !== 'checklist' && !referencesByType[s.key] && !unlocked[s.key]),
     [referencesByType, unlocked],
   )
+  const inputsMissing = missingRefs.length > 0 // drawings exist by definition on this page
 
   const extractionData = useMemo(() => {
     const out = {}
@@ -309,6 +459,12 @@ export default function DrawingPage() {
 
   const gates = useMemo(() => ([
     {
+      id: 'inputs',
+      label: 'Drawings, legend sheets and checklist provided',
+      ok: !inputsMissing,
+      missing: inputsMissing ? `Add the ${missingRefs.map(s => s.name.toLowerCase()).join(' and ')}` : null,
+    },
+    {
       id: 'findings',
       label: 'Findings dispositioned',
       ok: results != null && openFindings.length === 0,
@@ -324,19 +480,28 @@ export default function DrawingPage() {
     },
     {
       id: 'engineer',
-      label: 'Engineer points signed',
-      ok: checklistConfigured,
-      missing: 'Checklist not configured — engineer points cannot be verified',
+      label: 'Critical and engineer-led points verified; 13.3 agreed',
+      ok: checklistSummary ? checklistSummary.criticalPending === 0 && checklistSummary.item133Agree === true : false,
+      missing: checklistSummary
+        ? [
+          checklistSummary.criticalPending > 0 ? `${checklistSummary.criticalPending} critical/engineer-led point${checklistSummary.criticalPending === 1 ? '' : 's'} without verification` : null,
+          checklistSummary.item133Agree ? null : 'Item 13.3 not agreed',
+        ].filter(Boolean).join(' · ') || null
+        : 'Checklist results are not loaded yet',
     },
     {
       id: 'extraction',
       label: 'Extraction confirmed',
-      ok: tabsWithData.length > 0 && confirmedCount === tabsWithData.length,
-      missing: tabsWithData.length === 0
-        ? 'No extraction detail to confirm'
-        : `${confirmedCount} / ${tabsWithData.length} extraction tabs confirmed`,
+      ok: extractionCounts
+        ? extractionCounts.total > 0 && extractionCounts.confirmed === extractionCounts.total
+        : tabsWithData.length > 0 && confirmedCount === tabsWithData.length,
+      missing: extractionCounts
+        ? `${extractionCounts.confirmed} / ${extractionCounts.total} extraction items confirmed`
+        : tabsWithData.length === 0
+          ? 'No extraction detail to confirm'
+          : `${confirmedCount} / ${tabsWithData.length} extraction tabs confirmed`,
     },
-  ]), [results, openFindings, references, missingRefs, confirmedCount, tabsWithData, checklistConfigured])
+  ]), [results, openFindings, references, missingRefs, inputsMissing, confirmedCount, tabsWithData, checklistConfigured, extractionCounts, checklistSummary])
   const allGatesGreen = gates.every(g => g.ok)
 
   // ── actions ───────────────────────────────────────────────────────────
@@ -396,17 +561,6 @@ export default function DrawingPage() {
     }
   }
 
-  const removeReference = async slotKey => {
-    const record = referencesByType[slotKey]
-    if (!record?.reference_id) return
-    try {
-      await svc.deleteReferenceData(record.reference_id)
-      setReferences(await svc.listReferenceData(projectId))
-    } catch {
-      setActionMessage('The reference document could not be removed. Please retry.')
-    }
-  }
-
   const rerun = async () => {
     try {
       await svc.reprocess(drawingId)
@@ -430,20 +584,33 @@ export default function DrawingPage() {
 
   // ── header / stepper ──────────────────────────────────────────────────
   const projectBase = `/engineering/process/pid-verification/projects/${projectId}`
-  const drawingNo = currentDoc?.drawingNo ?? null
   const lastRun = results?.updated_at ? new Date(results.updated_at).toLocaleString() : null
+
+  // A2 (30 Oct 2026): the header belongs to the SELECTED sheet — number,
+  // revision and title come from that sheet's own title block.
+  const sheetTb = useMemo(
+    () => drawings.find(d => (d.page_index ?? 0) === currentPage)?.metadata?.title_block ?? null,
+    [drawings, currentPage],
+  )
+  const drawingNo = sheetTb?.drawing_number ?? currentDoc?.drawingNo ?? null
+  const sheetRev = sheetTb?.revision ?? currentDoc?.rev ?? null
+  const sheetTitle = sheetTb?.title ?? currentDoc?.title ?? null
 
   const stepStates = useMemo(() => {
     const extractionTotal = tabsWithData.length
     return [
       { state: results ? 'done' : 'todo', statusText: currentDoc ? `1 drawing · ${currentDoc.readability === 'ocr' ? 'OCR' : currentDoc.readability === 'unreadable' ? 'not readable' : 'vector PDF'}` : '—' },
-      { state: missingRefs.length > 0 ? 'warning' : 'done', statusText: references ? `${missingRefs.length} of ${REFERENCE_SLOTS.length} missing` : '—' },
-      { state: extractionTotal > 0 && confirmedCount === extractionTotal ? 'done' : extractionTotal > 0 ? 'warning' : 'todo', statusText: extractionTotal > 0 ? `${confirmedCount} / ${extractionTotal} confirmed` : 'No extraction detail' },
-      { state: 'todo', statusText: checklistConfigured ? undefined : 'Checklist not configured' },
-      { state: openFindings.length > 0 ? 'warning' : findings.length > 0 ? 'done' : 'todo', statusText: `${openFindings.length} open` },
+      { state: missingRefs.length > 0 ? 'warning' : 'done', statusText: references ? (missingRefs.length > 0 ? 'Legend sheets missing' : 'Both provided') : '—' },
+      { state: extractionCounts
+          ? (extractionCounts.total > 0 && extractionCounts.confirmed === extractionCounts.total ? 'done' : 'warning')
+          : extractionTotal > 0 && confirmedCount === extractionTotal ? 'done' : extractionTotal > 0 ? 'warning' : 'todo',
+        statusText: extractionCounts ? `${extractionCounts.confirmed} / ${extractionCounts.total} confirmed` : extractionTotal > 0 ? `${confirmedCount} / ${extractionTotal} confirmed` : 'No extraction detail' },
+      { state: checklistSummary ? (checklistSummary.criticalPending > 0 ? 'warning' : 'done') : 'todo',
+        statusText: checklistSummary ? `${checklistSummary.withResult} / ${checklistSummary.total} with a result` : '— / 125 with a result' },
+      { state: runState !== 'checked' ? 'todo' : openFindings.length > 0 ? 'warning' : findings.length > 0 ? 'done' : 'todo', statusText: runState === 'checked' ? `${openFindings.length} open` : 'Not run' },
       { state: allGatesGreen ? 'done' : 'warning', statusText: allGatesGreen ? 'Ready' : 'Blocked' },
     ]
-  }, [results, currentDoc, missingRefs, references, tabsWithData, confirmedCount, openFindings, findings, allGatesGreen, checklistConfigured])
+  }, [results, currentDoc, missingRefs, references, tabsWithData, confirmedCount, openFindings, findings, allGatesGreen, checklistConfigured, runState, extractionCounts, checklistSummary])
 
   const header = (
     <PageHeader
@@ -454,20 +621,26 @@ export default function DrawingPage() {
         { label: project?.name ?? '…', to: projectBase },
         { label: drawingNo ?? results?.file_name ?? '…' },
       ]}
-      title="P&ID Checker"
-      pill={<Pill label="Checklist — · — points" tone="neutral" title="No project checklist is configured" />}
+      title={currentDoc?.type === 'PFD' ? 'PFD Checker' : 'P&ID Checker'}
+      pill={<Pill label={`Checklist ${checklistLabel}`} tone="neutral" title="Checklist in effect for this project" />}
       subtitle={project
-        ? `${project.name} · ${project.client ?? 'Client not set'} · ${drawingNo ?? '—'}${currentDoc?.rev ? ` Rev ${currentDoc.rev}` : ''}${results?.file_name ? ` · ${results.file_name}` : ''}`
+        ? `${project.name} · ${project.client ?? 'Client not set'} · ${drawingNo ?? '—'}${sheetRev ? ` Rev ${sheetRev}` : ''}${sheetTitle ? ` · ${sheetTitle}` : ''}`
         : null}
       actions={(
         <>
+          <ScopeSwitch
+            projectId={projectId}
+            drawingNo={sheetList[currentPage]?.number ?? drawingNo}
+            sheetCount={reviewData?.stats?.sheets ?? (sheetList.length || null)}
+            active="one"
+          />
           <span className="pc-faint" style={{ fontSize: 'var(--rd-text-caption)' }}>
             Last run {lastRun ?? '—'} · rules —
           </span>
           <button type="button" className="rd-btn rd-btn-secondary" onClick={() => navigate(projectBase)}>
             Drawing sets
           </button>
-          <button type="button" className="rd-btn rd-btn-secondary" onClick={rerun} disabled={Boolean(processing)}>
+          <button type="button" className="rd-btn rd-btn-secondary" onClick={rerun} disabled={Boolean(processing) || inputsMissing} title={inputsMissing ? 'Checks cannot run — drawings, legend sheets and checklist are all compulsory' : undefined}>
             Re-run checks
           </button>
           <button type="button" className="rd-btn rd-btn-primary" onClick={() => setStep(5)}>
@@ -482,6 +655,24 @@ export default function DrawingPage() {
     return <div className="pc-page">{header}<p className="pc-error" role="alert">{error}</p></div>
   }
 
+  // A1 (30 Oct 2026): until the project, the drawings list, the references
+  // and this sheet's results have all resolved, show skeletons — never an
+  // input or worker alarm based on half-loaded state.
+  const booted = Boolean(
+    project
+    && listsLoaded
+    && (results || processing || error),
+  )
+  if (!booted) {
+    return (
+      <div className="pc-page">
+        {header}
+        <div className="pc-card pc-card-pad" style={{ marginBottom: '1rem' }}><div className="pc-skeleton" style={{ height: 72 }} /></div>
+        <div className="pc-card pc-card-pad"><div className="pc-skeleton" style={{ height: 320 }} /></div>
+      </div>
+    )
+  }
+
   return (
     <div className="pc-page">
       {header}
@@ -491,6 +682,17 @@ export default function DrawingPage() {
         current={step}
         onSelect={i => setStep(i)}
       />
+
+      {inputsMissing && (
+        <div className="pc-banner pc-banner-danger" role="alert" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <p style={{ margin: 0 }}>
+            Checks cannot run. Add the {missingRefs.map(s => s.name.toLowerCase()).join(' and ')} — drawings, legend sheets and checklist are all compulsory.
+          </p>
+          <button type="button" className="rd-btn rd-btn-primary rd-btn-sm" onClick={() => setStep(1)}>
+            Add missing input
+          </button>
+        </div>
+      )}
 
       {processing && (
         <p className="pc-note pc-note-warning" role="status">
@@ -504,11 +706,23 @@ export default function DrawingPage() {
         </p>
       )}
 
+      {notStarted && (
+        <div className="pc-banner pc-banner-warning" role="alert" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <p style={{ margin: 0 }}>Not started — the check worker may be down.</p>
+          <button type="button" className="rd-btn rd-btn-primary rd-btn-sm" onClick={rerun}>Start checks</button>
+        </div>
+      )}
+
       <KpiRow
         findings={findings}
         openFindings={openFindings}
         missingRefs={missingRefs}
         checklistConfigured={checklistConfigured}
+        checklistSummary={checklistSummary}
+        runState={runState}
+        resultsLoading={pageDataLoading}
+        crossCount={crossForSheet.length}
+        goToCrossFindings={() => setStep(4, { fkind: 'cross' })}
         goToChecklist={preset => setStep(3, preset)}
       />
 
@@ -519,6 +733,7 @@ export default function DrawingPage() {
           projectId={projectId}
           onUploaded={load}
           checklistConfigured={checklistConfigured}
+          checklistSummary={checklistSummary}
         />
       )}
       {step === 1 && (
@@ -527,25 +742,38 @@ export default function DrawingPage() {
           referencesByType={referencesByType}
           unlocked={unlocked}
           onUpload={uploadReference}
-          onRemove={removeReference}
+          checklistLabel={checklistLabel}
         />
       )}
       {step === 2 && (
         <StepExtraction
-          tabs={EXTRACTION_TABS}
-          data={extractionData}
-          confirmedTabs={confirmedTabs}
-          onConfirmTab={confirmTab}
+          drawingId={drawingId}
+          page={currentPage}
+          runState={runState}
+          readability={currentDoc?.readability ?? null}
+          onRunChecks={rerun}
           activeTab={searchParams.get('tab') || 'lines'}
           onTabChange={t => patchParams({ tab: t === 'lines' ? null : t })}
-          onShowOnDrawing={row => {
-            const pos = row.tag ? locationsFor({ evidence: row.tag, issue_observed: '' }, mergedMetadata.tag_positions) : []
-            if (row.tag && pos.length > 0) setStep(4, { highlight: row.tag })
+          onConfirmedChange={(confirmed, total) => setExtractionCounts({ confirmed, total })}
+          onShowOnDrawing={item => {
+            if (item.bbox) setStep(4, { ring: [item.bbox.x0, item.bbox.y0, item.bbox.x1, item.bbox.y1].join(',') })
             else setActionMessage('No coordinates on the drawing for this value yet.')
           }}
         />
       )}
-      {step === 3 && <StepChecklist searchParams={searchParams} patchParams={patchParams} />}
+      {step === 3 && (
+        <StepChecklist
+          drawingId={drawingId}
+          page={currentPage}
+          searchParams={searchParams}
+          patchParams={patchParams}
+          inputsMissing={inputsMissing}
+          runState={runState}
+          onSummary={setChecklistSummary}
+          onAddInput={() => setStep(1)}
+          onShowFinding={fid => setStep(4, { finding: `F${fid}` })}
+        />
+      )}
       {step === 4 && (
         <StepFindings
           drawingId={drawingId}
@@ -558,6 +786,16 @@ export default function DrawingPage() {
           onConfirm={confirmFinding}
           onReject={rejectFinding}
           rejectComments={rejectComments}
+          runState={runState}
+          runStartedAt={currentDoc?.updatedAt ?? null}
+          onRunChecks={rerun}
+          resultsLoading={pageDataLoading}
+          sheets={sheetList}
+          selectedPage={currentPage}
+          onPageChange={setSelectedPage}
+          crossFindings={crossForSheet}
+          linkedSheets={linkedSheets}
+          projectId={projectId}
         />
       )}
       {step === 5 && (
@@ -568,6 +806,9 @@ export default function DrawingPage() {
           exporting={exporting}
           onExport={exportFile}
           resultsReady={Boolean(results)}
+          drawingId={drawingId}
+          currentDoc={currentDoc}
+          onSubmit={() => setActionMessage('Sign-off submission is available after the backend sign-off workflow endpoint is connected.')}
         />
       )}
     </div>
@@ -576,28 +817,35 @@ export default function DrawingPage() {
 
 // ── KPI tiles ───────────────────────────────────────────────────────────
 
-function KpiRow({ findings, openFindings, missingRefs, checklistConfigured, goToChecklist }) {
-  const engineerReview = findings.filter(f => isOpen(f)).length // open findings await engineer disposition
+function KpiRow({ findings, openFindings, missingRefs, checklistConfigured, checklistSummary = null, runState = 'checked', resultsLoading = false, crossCount = null, goToChecklist, goToCrossFindings = null }) {
+  const checked = runState === 'checked' && !resultsLoading
+  const runMeta = resultsLoading ? 'Loading results…' : { running: 'Running…', failed: 'Run failed', 'not-run': 'Not run' }[runState]
+  const scored = checklistSummary != null
+  const matrixTotal = r => (scored ? checklistSummary.matrix?.[r]?.total ?? 0 : '—')
   return (
-    <div className="pc-kpi-grid-6" aria-label="Drawing summary">
+    <div className="pc-kpi-grid-7" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }} aria-label="Drawing summary">
       <KpiTile
-        label="Checklist points"
-        value={checklistConfigured ? undefined : '—'}
-        meta={checklistConfigured ? undefined : 'Automatic / Reference / Engineer — checklist not configured'}
+        label="Check points"
+        value={scored ? checklistSummary.total : 125}
+        meta={scored
+          ? `Automated ${checklistSummary.by_mode?.Automated ?? 0} · AI-Assisted ${checklistSummary.by_mode?.['AI-Assisted'] ?? 0} · Engineer-Led ${checklistSummary.by_mode?.['Engineer-Led'] ?? 0}`
+          : 'AI-PID-02 (default) · Automated / AI-Assisted / Engineer-Led split after the first run'}
         onClick={() => goToChecklist({})}
       />
-      <KpiTile label="Findings open" value={openFindings.length} danger={openFindings.length > 0} meta={`${findings.length} raised on this sheet`} onClick={() => goToChecklist({ result: 'open' })} />
-      <KpiTile label="OK" value={checklistConfigured ? undefined : '—'} meta={checklistConfigured ? undefined : 'Checklist not configured'} onClick={() => goToChecklist({ result: 'ok' })} />
-      <KpiTile label="Not checked" value={missingRefs.length} meta={missingRefs.length > 0 ? `${missingRefs.length} reference document${missingRefs.length === 1 ? '' : 's'} missing` : 'All reference documents provided'} onClick={() => goToChecklist({ result: 'not-checked' })} />
-      <KpiTile label="Engineer review" value={engineerReview} meta="Open findings awaiting disposition" onClick={() => goToChecklist({ by: 'engineer' })} />
-      <KpiTile label="Not applicable" value={checklistConfigured ? undefined : '—'} meta={checklistConfigured ? undefined : 'Checklist not configured'} onClick={() => goToChecklist({ result: 'na' })} />
+      <KpiTile label="Findings open" value={checked ? openFindings.length : '—'} danger={checked && openFindings.length > 0} meta={checked ? `${findings.length} raised on this sheet` : runMeta} onClick={() => goToChecklist({})} />
+      <KpiTile label="Cross-drawing findings" value={crossCount != null ? crossCount : '—'} danger={Boolean(crossCount)} meta="X-checks involving this sheet" onClick={goToCrossFindings} />
+      <KpiTile label="Non-Conformance" value={matrixTotal('Non-Conformance')} danger={scored && matrixTotal('Non-Conformance') > 0} meta={scored ? 'Check points failing' : runMeta ?? 'Available once the checklist is evaluated'} onClick={() => goToChecklist({ cresult: 'Non-Conformance' })} />
+      <KpiTile label="Query" value={matrixTotal('Query')} meta={scored ? 'Needs an answer' : runMeta ?? 'Available once the checklist is evaluated'} onClick={() => goToChecklist({ cresult: 'Query' })} />
+      <KpiTile label="Not Verifiable" value={matrixTotal('Not Verifiable')} meta={missingRefs.length > 0 ? `${missingRefs.map(s => s.name.toLowerCase()).join(' and ')} missing` : scored ? 'Missing or unreadable inputs' : 'All three compulsory inputs provided'} onClick={() => goToChecklist({ cresult: 'Not Verifiable' })} />
+      <KpiTile label="OK" value={matrixTotal('OK')} meta={scored ? 'Check points passing' : runMeta ?? 'Available once the checklist is evaluated'} onClick={() => goToChecklist({ cresult: 'OK' })} />
+      <KpiTile label="Not applicable" value={scored ? checklistSummary.not_applicable : '—'} meta={scored ? 'Objects not on this sheet' : runMeta ?? 'Available once the checklist is evaluated'} onClick={() => goToChecklist({ needsme: null })} />
     </div>
   )
 }
 
 // ── Step 1: Drawings ────────────────────────────────────────────────────
 
-function StepDrawings({ currentDoc, projectDrawings, projectId, onUploaded, checklistConfigured }) {
+function StepDrawings({ currentDoc, projectDrawings, projectId, onUploaded, checklistConfigured, checklistSummary = null }) {
   const [dragActive, setDragActive] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [message, setMessage] = useState(null)
@@ -647,12 +895,13 @@ function StepDrawings({ currentDoc, projectDrawings, projectId, onUploaded, chec
                     <td className="pc-mono">{d.rev ?? '—'}</td>
                     <td><ReadabilityPill readability={d.readability} /></td>
                     <td style={{ minWidth: 160 }}>
-                      {/* No checklist configured: every point is unknown → N/A (grey), honestly labelled. */}
-                      <div className="pc-progress" role="img" aria-label={checklistConfigured ? 'Checklist progress' : 'Checklist not configured'}>
-                        <span className="pc-progress-na" style={{ width: '100%' }} />
+                      {/* AI-PID-02: share of the 125 check points with a result on this sheet. */}
+                      <div className="pc-progress" role="img" aria-label={checklistSummary ? `Checklist progress: ${checklistSummary.withResult} of ${checklistSummary.total} with a result` : 'Checklist not evaluated yet'}>
+                        <span className="pc-progress-ok" style={{ width: checklistSummary ? `${(checklistSummary.withResult / Math.max(checklistSummary.total, 1)) * 100}%` : 0 }} />
+                        <span className="pc-progress-na" style={{ width: checklistSummary ? `${100 - (checklistSummary.withResult / Math.max(checklistSummary.total, 1)) * 100}%` : '100%' }} />
                       </div>
                       <span className="pc-faint" style={{ fontSize: 'var(--rd-text-caption)' }}>
-                        {checklistConfigured ? '' : 'Checklist not configured'}
+                        {checklistSummary ? `${checklistSummary.withResult} / ${checklistSummary.total} with a result` : 'Not evaluated yet'}
                       </span>
                     </td>
                   </tr>
@@ -690,24 +939,24 @@ function StepDrawings({ currentDoc, projectDrawings, projectId, onUploaded, chec
   )
 }
 
-// ── Step 2: Reference documents ─────────────────────────────────────────
+// ── Step 2: Legend & checklist (both compulsory, spec §3) ───────────────
 
-function StepReferences({ missingRefs, referencesByType, unlocked, onUpload, onRemove }) {
+function StepReferences({ missingRefs, referencesByType, unlocked, onUpload, checklistLabel }) {
   const m = missingRefs.length
   return (
-    <section className="pc-section" aria-label="Reference documents">
+    <section className="pc-section" aria-label="Legend and checklist">
       {m > 0 && (
-        <div className="pc-banner pc-banner-warning" role="status">
+        <div className="pc-banner pc-banner-danger" role="alert">
           <div>
-            <p className="pc-banner-title">Checklist points wait for {m} reference document{m === 1 ? '' : 's'}</p>
-            <p>Points that need {missingRefs.map(s => s.name).join(', ')} stay at “Not checked — document not provided” until the file is uploaded.</p>
+            <p className="pc-banner-title">Checks cannot run — compulsory input missing</p>
+            <p>Add the {missingRefs.map(s => s.name.toLowerCase()).join(' and ')}. Drawings, legend sheets and checklist are all compulsory; every checklist point shows “Not run — compulsory input missing” until then.</p>
           </div>
         </div>
       )}
       <div className="pc-card pc-table-wrap">
         <table className="pc-table">
           <thead>
-            <tr><th>Document</th><th>Reference</th><th>Checks it unlocks</th><th>Format</th><th>Status</th><th>Actions</th></tr>
+            <tr><th>Input</th><th>Reference</th><th>Checks it unlocks</th><th>Format</th><th>Status</th><th>Actions</th></tr>
           </thead>
           <tbody>
             {REFERENCE_SLOTS.map(slot => (
@@ -715,44 +964,46 @@ function StepReferences({ missingRefs, referencesByType, unlocked, onUpload, onR
                 key={slot.key}
                 slot={slot}
                 record={referencesByType[slot.key]}
+                defaultLabel={slot.key === 'checklist' ? checklistLabel : null}
                 justUnlocked={Boolean(unlocked[slot.key])}
                 onUpload={onUpload}
-                onRemove={onRemove}
               />
             ))}
           </tbody>
         </table>
       </div>
+      <p className="pc-help">
+        No line list, instrument index, equipment list or other registers are used. Provided inputs can be replaced, never removed.
+      </p>
     </section>
   )
 }
 
-function ReferenceRow({ slot, record, justUnlocked, onUpload, onRemove }) {
+function ReferenceRow({ slot, record, defaultLabel, justUnlocked, onUpload }) {
   const inputRef = useRef(null)
-  const uploaded = Boolean(record)
+  const uploaded = Boolean(record) || Boolean(defaultLabel)
   return (
     <tr>
-      <td>{slot.name}</td>
-      <td className="pc-mono">{record?.file_name ?? record?.filename ?? '—'}</td>
+      <td><span className="pc-required" aria-hidden="true">*</span> {slot.name}</td>
+      <td className="pc-mono">{record?.file_name ?? record?.filename ?? defaultLabel ?? '—'}</td>
       <td className="pc-muted">{slot.unlocks}</td>
       <td>{slot.format}</td>
       <td>
         {uploaded
-          ? <Pill label="Uploaded" tone="success" />
+          ? <Pill label="Provided" tone="success" />
           : justUnlocked
             ? <Pill label="Ready — re-run checks" tone="info" />
-            : <Pill label="Missing" tone="warning" />}
+            : <Pill label="Required — missing" tone="danger" />}
       </td>
       <td>
         <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
-          <button type="button" className="rd-btn rd-btn-secondary rd-btn-sm" onClick={() => inputRef.current?.click()}>
+          <button
+            type="button"
+            className={`rd-btn rd-btn-sm ${uploaded ? 'rd-btn-secondary' : 'rd-btn-primary'}`}
+            onClick={() => inputRef.current?.click()}
+          >
             {uploaded ? 'Replace' : 'Upload'}
           </button>
-          {uploaded && (
-            <button type="button" className="rd-btn rd-btn-ghost rd-btn-sm" onClick={() => onRemove(slot.key)}>
-              Remove
-            </button>
-          )}
           <input ref={inputRef} type="file" hidden onChange={e => { onUpload(slot.key, e.target.files?.[0]); e.target.value = '' }} aria-label={`Upload ${slot.name}`} />
         </div>
       </td>
@@ -760,15 +1011,89 @@ function ReferenceRow({ slot, record, justUnlocked, onUpload, onRemove }) {
   )
 }
 
-// ── Step 3: Extraction review ───────────────────────────────────────────
-// Confirmations persist in localStorage (keyed by drawing id) — extraction
-// rows are not findings, so the findings/<id>/ PATCH does not apply.
+// ── Step 3: Extraction review (spec §3.2) ───────────────────────────────
+// Reads the extraction API (documents/<id>/extraction/). Falls back to the
+// drawing metadata when the endpoint has nothing yet — never invents rows.
 
-function StepExtraction({ tabs, data, confirmedTabs, onConfirmTab, activeTab, onTabChange, onShowOnDrawing }) {
+function StepExtraction({ drawingId, page = 0, runState = 'checked', readability = null, onRunChecks = null, onShowOnDrawing = null, activeTab, onTabChange, onConfirmedChange = null }) {
+  const [items, setItems] = useState(null) // { lines: [], instruments: [], ... }
+  const [apiAvailable, setApiAvailable] = useState(true)
+  const [actionError, setActionError] = useState(null)
   const listRef = useRef(null)
+
+  const tabs = EXTRACTION_TABS
   const tab = tabs.find(t => t.id === activeTab) ?? tabs[0]
-  const rows = data[tab.id] || []
-  const confirmed = Boolean(confirmedTabs[tab.id])
+
+  const load = useCallback(async () => {
+    try {
+      // Per-sheet fetch (?page= is 1-based) — a sheet loads in under 1 s
+      // instead of pulling the whole 2.5 MB document extraction.
+      const data = await svc.getExtraction(drawingId, null, page + 1)
+      const grouped = {}
+      for (const t of tabs) grouped[t.id] = []
+      const rawItems = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : data?.items ?? {}
+      if (Array.isArray(rawItems)) {
+        for (const item of rawItems) {
+          if (grouped[item.kind]) grouped[item.kind].push(item)
+        }
+      } else {
+        // kind-grouped object: { lines: [...], instruments: [...], ... }
+        for (const [kind, list] of Object.entries(rawItems)) {
+          if (grouped[kind] && Array.isArray(list)) grouped[kind] = list
+        }
+      }
+      setItems(grouped)
+      setApiAvailable(true)
+    } catch (err) {
+      if (err?.response?.status === 404) setApiAvailable(false)
+      else setActionError('The extraction could not be loaded. Please retry.')
+    }
+  }, [drawingId, page]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { load() }, [load])
+  // Sheet switch: clear the previous sheet's rows so the skeleton shows
+  // instead of stale data (bug 6 — stale lists read as a wrong result).
+  useEffect(() => { setItems(null) }, [page])
+
+  const counts = useMemo(() => {
+    const out = {}
+    let confirmed = 0
+    let total = 0
+    for (const t of tabs) {
+      const list = items?.[t.id] ?? []
+      const conf = list.filter(i => i.confirmed).length
+      out[t.id] = { total: list.length, confirmed: conf }
+      confirmed += conf
+      total += list.length
+    }
+    return { ...out, confirmed, total }
+  }, [items]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const reportedRef = useRef(null)
+  useEffect(() => {
+    const key = `${counts.confirmed}/${counts.total}`
+    if (reportedRef.current !== key) {
+      reportedRef.current = key
+      onConfirmedChange?.(counts.confirmed, counts.total)
+    }
+  }, [counts, onConfirmedChange])
+
+  const patchItem = async (item, patch) => {
+    try {
+      await svc.patchExtractionItem(drawingId, item.id, patch)
+      await load()
+    } catch {
+      setActionError('The change could not be saved. Please retry.')
+    }
+  }
+
+  const confirmTab = async () => {
+    const pending = (items?.[tab.id] ?? []).filter(i => !i.confirmed)
+    for (const item of pending) {
+      await svc.patchExtractionItem(drawingId, item.id, { confirmed: true }) // eslint-disable-line no-await-in-loop
+    }
+    await load()
+  }
 
   const onKeyDown = (event, index) => {
     let next = null
@@ -781,93 +1106,387 @@ function StepExtraction({ tabs, data, confirmedTabs, onConfirmTab, activeTab, on
     }
   }
 
+  // ── run states (spec §3.2) ────────────────────────────────────────────
+  if (runState !== 'checked') {
+    return (
+      <section className="pc-section" aria-label="Extraction review">
+        <div className="pc-card pc-card-pad" style={{ textAlign: 'center' }}>
+          {runState === 'running' ? (
+            <>
+              <p className="pc-empty-title">Reading sheet…</p>
+              <div className="pc-skeleton" style={{ height: 18, margin: '0.5rem 0' }} />
+              <div className="pc-skeleton" style={{ height: 18, margin: '0.5rem 0' }} />
+              <div className="pc-skeleton" style={{ height: 18, margin: '0.5rem 0' }} />
+            </>
+          ) : runState === 'failed' ? (
+            <>
+              <p className="pc-empty-title">The check run failed.</p>
+              {onRunChecks && <button type="button" className="rd-btn rd-btn-primary" onClick={onRunChecks}>Retry</button>}
+            </>
+          ) : (
+            <>
+              <p className="pc-empty-title">Run checks to extract this drawing.</p>
+              {onRunChecks && <button type="button" className="rd-btn rd-btn-primary" onClick={onRunChecks}>Run checks</button>}
+            </>
+          )}
+        </div>
+      </section>
+    )
+  }
+
+  const rows = items?.[tab.id] ?? []
+  const allConfirmed = rows.length > 0 && rows.every(i => i.confirmed)
+
   return (
     <section className="pc-section" aria-label="Extraction review">
-      <div className="pc-tabs" role="tablist" ref={listRef}>
-        {tabs.map((t, i) => (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            aria-selected={t.id === tab.id}
-            className={`pc-tab${t.id === tab.id ? ' pc-tab-active' : ''}`}
-            onClick={() => onTabChange(t.id)}
-            onKeyDown={e => onKeyDown(e, i)}
-          >
-            {t.label}
-            <span className="pc-tab-count">
-              {data[t.id].length > 0 ? (confirmedTabs[t.id] ? 'confirmed' : data[t.id].length) : '—'}
-            </span>
-          </button>
-        ))}
+      {readability === 'ocr' && (
+        <div className="pc-banner pc-banner-warning" role="status">
+          <p style={{ margin: 0 }}>Read by OCR — confirm every value.</p>
+        </div>
+      )}
+
+      <div className="pc-card-header" style={{ padding: 0 }}>
+        <p className="pc-muted" style={{ margin: 0, fontSize: 'var(--rd-text-table)' }}>
+          {items
+            ? <>Read from the drawing: {tabs.map(t => `${counts[t.id].total} ${t.label.toLowerCase()}`).join(' · ')} — {counts.confirmed} of {counts.total} confirmed</>
+            : 'Reading the extraction…'}
+        </p>
+        <button
+          type="button"
+          className={`rd-btn ${allConfirmed ? 'rd-btn-secondary' : 'rd-btn-primary'}`}
+          disabled={rows.length === 0 || allConfirmed}
+          onClick={confirmTab}
+        >
+          {allConfirmed ? 'This tab is confirmed' : 'Confirm this tab'}
+        </button>
       </div>
 
+      <div className="pc-tabs" role="tablist" ref={listRef}>
+        {tabs.map((t, i) => {
+          const c = counts[t.id]
+          return (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={t.id === tab.id}
+              className={`pc-tab${t.id === tab.id ? ' pc-tab-active' : ''}`}
+              onClick={() => onTabChange(t.id)}
+              onKeyDown={e => onKeyDown(e, i)}
+            >
+              {t.label}
+              <span className={`pc-tab-count${c.total > 0 && c.confirmed === c.total ? ' pc-tab-count-confirmed' : ''}`}>
+                {c.total > 0 ? (c.confirmed === c.total ? `${c.total} confirmed` : c.total) : '—'}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      {actionError && <p className="pc-error" role="alert">{actionError}</p>}
+
       <div className="pc-card pc-table-wrap" role="tabpanel">
-        {rows.length === 0 ? (
+        {!apiAvailable ? (
           <EmptyState title={`No ${tab.label.toLowerCase()} detail is stored for this drawing.`}>
-            Available after the backend persists extraction detail for this tab. The run summary counts are shown on the drawings step.
+            Available after the run saves extraction detail. Re-run the check to populate this tab.
+          </EmptyState>
+        ) : items === null ? (
+          <div style={{ padding: '1rem' }}><div className="pc-skeleton" style={{ height: 96 }} /></div>
+        ) : rows.length === 0 ? (
+          <EmptyState title={`No ${tab.label.toLowerCase()} were read from this drawing.`}>
+            Nothing was extracted for this kind — the sheet may not contain any.
           </EmptyState>
         ) : (
           <table className="pc-table">
             <thead>
-              <tr><th aria-label="OK">OK</th><th>Value</th><th>{tab.col1}</th><th>{tab.col2}</th><th>Check note</th><th>Drawing</th></tr>
+              <tr><th aria-label="OK">OK</th><th>Value</th><th>{tab.col1}</th><th>{tab.col2}</th><th>Flag</th><th>Drawing</th></tr>
             </thead>
             <tbody>
-              {rows.map(row => (
-                <ExtractionRow key={row.key} row={row} confirmed={confirmed} onShowOnDrawing={onShowOnDrawing} />
+              {rows.map(item => (
+                <ExtractionRow
+                  key={item.id}
+                  item={item}
+                  kind={tab.id}
+                  onPatch={patchItem}
+                  onShowOnDrawing={onShowOnDrawing}
+                />
               ))}
             </tbody>
           </table>
         )}
       </div>
-
-      {rows.length > 0 && (
-        <div>
-          <button
-            type="button"
-            className={`rd-btn ${confirmed ? 'rd-btn-secondary' : 'rd-btn-primary'}`}
-            onClick={() => onConfirmTab(tab.id)}
-            disabled={confirmed}
-          >
-            {confirmed ? 'This tab is confirmed' : 'Confirm this tab'}
-          </button>
-        </div>
-      )}
     </section>
   )
 }
 
-function ExtractionRow({ row, confirmed, onShowOnDrawing }) {
-  const [ok, setOk] = useState(confirmed)
-  useEffect(() => { if (confirmed) setOk(true) }, [confirmed])
-  const noteTone = /hold|truncat/i.test(row.note || '') ? 'warning' : 'success'
+function ExtractionRow({ item, kind, onPatch, onShowOnDrawing }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const p = item.parsed || {}
+  const corrected = p.corrected_value != null && p.corrected_value !== item.text
+
+  // Parsed columns per kind (spec §3.1). Missing fields render "—".
+  let col1 = '—'
+  let col2 = '—'
+  if (kind === 'lines') {
+    col1 = [p.system, p.fluid_code].filter(Boolean).join(' · ') || '—'
+    col2 = [p.piping_class, p.insulation].filter(Boolean).join(' · ') || '—'
+    if (Array.isArray(p.design_cases) && p.design_cases.length > 0) {
+      col2 = `${col2 === '—' ? '' : `${col2} · `}${p.design_cases.length} design case${p.design_cases.length === 1 ? '' : 's'}`
+    }
+  } else if (kind === 'instruments') {
+    col1 = p.function_letters ?? '—'
+    col2 = p.loop ?? '—'
+  } else if (kind === 'equipment') {
+    col1 = p.code ?? '—'
+    col2 = p.description ?? '—'
+  } else if (kind === 'connectors') {
+    col1 = p.drawing_no ?? '—'
+    col2 = p.direction ?? '—'
+  } else if (kind === 'notes') {
+    col1 = p.number != null ? `Note ${p.number}` : '—'
+    col2 = p.deleted ? 'Deleted' : '—'
+  }
+
+  const flagLabel = item.flag ?? 'Matches drawing'
+  const flagTone = item.flag ? (item.finding_ids?.length ? 'danger' : 'warning') : 'success'
+
+  const commit = () => {
+    setEditing(false)
+    if (draft.trim() && draft.trim() !== item.text) onPatch(item, { corrected_value: draft.trim() })
+  }
+
   return (
     <tr>
       <td>
-        <input type="checkbox" checked={ok} onChange={e => setOk(e.target.checked)} aria-label={`OK for ${row.value ?? 'row'}`} style={{ width: 18, height: 18, accentColor: 'var(--rd-primary)' }} />
+        <input
+          type="checkbox"
+          checked={Boolean(item.confirmed)}
+          onChange={e => onPatch(item, { confirmed: e.target.checked })}
+          aria-label={`Confirm ${item.text}`}
+          style={{ width: 18, height: 18, accentColor: 'var(--rd-primary)' }}
+        />
       </td>
-      <td className="pc-mono">{row.value ?? '—'}</td>
-      <td>{row.col1 ?? '—'}</td>
-      <td>{row.col2 ?? '—'}</td>
-      <td><Pill label={row.note || 'Matches drawing'} tone={row.note === 'Matches drawing' ? 'success' : noteTone} /></td>
+      <td className="pc-mono" onClick={() => { setDraft(p.corrected_value ?? item.text); setEditing(true) }} style={{ cursor: 'text' }} title="Click to correct the value">
+        {editing ? (
+          <span style={{ display: 'inline-flex', gap: '0.375rem', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
+            <input
+              className="pc-input pc-mono"
+              style={{ minHeight: 30, minWidth: 160 }}
+              value={draft}
+              autoFocus
+              onChange={e => setDraft(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') commit()
+                if (e.key === 'Escape') setEditing(false)
+              }}
+              aria-label={`Correct ${item.text}`}
+            />
+            <button type="button" className="rd-btn rd-btn-primary rd-btn-sm" onClick={commit}>Save</button>
+            <button type="button" className="rd-btn rd-btn-ghost rd-btn-sm" onClick={() => setEditing(false)}>Cancel</button>
+          </span>
+        ) : (
+          <>
+            {corrected && <s className="pc-faint" style={{ marginRight: '0.375rem' }}>{item.text}</s>}
+            {p.corrected_value ?? item.text}
+          </>
+        )}
+      </td>
+      <td>{col1}</td>
+      <td>{col2}</td>
       <td>
-        <button type="button" className="rd-btn rd-btn-ghost rd-btn-sm" onClick={() => onShowOnDrawing(row)}>
-          Show on drawing
-        </button>
+        <Pill label={flagLabel} tone={flagTone} />
+        {item.finding_ids?.length > 0 && (
+          <span className="pc-faint" style={{ marginLeft: '0.375rem', fontSize: 'var(--rd-text-caption)' }}>
+            {item.finding_ids.map(id => `F${id}`).join(' ')}
+          </span>
+        )}
+      </td>
+      <td>
+        {item.bbox && onShowOnDrawing ? (
+          <button type="button" className="rd-btn rd-btn-ghost rd-btn-sm" onClick={() => onShowOnDrawing(item)}>
+            Show on drawing
+          </button>
+        ) : '—'}
       </td>
     </tr>
   )
 }
 
-// ── Step 4: Checklist ───────────────────────────────────────────────────
+// ── Step 4: Checklist (AI-PID-02 — 125 points, spec §3.2) ───────────────
 
-const CHECKED_BY = ['All', 'Automatic', 'Reference', 'Engineer']
-const RESULTS = ['All', 'Not OK or query', 'Not checked', 'Engineer review', 'OK', 'N/A', 'Signed by engineer']
+const CL_RESULT_TONES = { OK: 'success', 'Non-Conformance': 'danger', Query: 'warning', 'Not Verifiable': 'neutral' }
+const CL_SEV_TONES = { Critical: 'danger', Major: 'warning', Minor: 'neutral' }
+const CL_RESULTS = ['OK', 'Non-Conformance', 'Query', 'Not Verifiable']
 
-function StepChecklist({ searchParams, patchParams }) {
-  const by = searchParams.get('by') || 'All'
-  const result = searchParams.get('result') || 'All'
-  const q = searchParams.get('q') || ''
+function StepChecklist({ drawingId, page = 0, searchParams, patchParams, inputsMissing, runState = 'checked', onSummary = null, onAddInput = null, onShowFinding = null }) {
+  const fResult = searchParams.get('cresult') || 'All'
+  const fSeverity = searchParams.get('csev') || 'All'
+  const fMode = searchParams.get('cmode') || 'All'
+  const needsMe = searchParams.get('needsme') === '1'
+  const q = (searchParams.get('q') || '').toLowerCase()
+
+  const [data, setData] = useState(null)
+  const [loadError, setLoadError] = useState(null)
+  const [busy, setBusy] = useState(null) // 'download' | 'import'
+  const [message, setMessage] = useState(null)
+  const [openSections, setOpenSections] = useState(null) // null = all open
+  const [expanded, setExpanded] = useState(null) // item no
+  const importRef = useRef(null)
+
+  const load = useCallback(async () => {
+    try {
+      setData(await svc.getChecklist(drawingId, page + 1))
+      setLoadError(null)
+    } catch (err) {
+      setLoadError(err?.response?.status === 404 ? 'no-template' : 'error')
+    }
+  }, [drawingId, page])
+
+  useEffect(() => { if (runState === 'checked' && !inputsMissing) load() }, [load, runState, inputsMissing])
+
+  const items = useMemo(() => data?.items ?? [], [data])
+  const summary = data?.summary ?? null
+
+  const reportedRef = useRef(null)
+  useEffect(() => {
+    if (!summary) return
+    const applicable = items.filter(i => i.applicability === 'Y')
+    const criticalPending = applicable.filter(i =>
+      (i.severity === 'Critical' || i.mode === 'Engineer-Led') && !i.engineer_verification,
+    ).length
+    const withResult = items.filter(i => i.applicability === 'Y' && i.ai_result).length
+    const s = {
+      ...summary,
+      total: items.length,
+      withResult,
+      // step-6 gates (spec §3.3): every applicable Critical + Engineer-Led
+      // item has J set; 13.3 is Agree.
+      criticalPending,
+      item133Agree: items.find(i => i.no === '13.3')?.engineer_verification === 'Agree',
+    }
+    const key = JSON.stringify(s)
+    if (reportedRef.current !== key) {
+      reportedRef.current = key
+      onSummary?.(s)
+    }
+  }, [summary, items, onSummary])
+
+  const patchItem = async (item, body) => {
+    try {
+      await svc.patchChecklistItem(drawingId, page + 1, item.no, body)
+      await load()
+    } catch {
+      setMessage('The change could not be saved. Please retry.')
+    }
+  }
+
+  const downloadReport = async () => {
+    setBusy('download')
+    try {
+      await svc.downloadChecklistReport(drawingId, page + 1)
+    } catch (err) {
+      setMessage(err?.response?.data?.error || 'The report could not be generated.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const importReport = async file => {
+    if (!file) return
+    setBusy('import')
+    try {
+      const res = await svc.importChecklistReport(drawingId, page + 1, file)
+      setMessage(`${res.count} item${res.count === 1 ? '' : 's'} updated from the reviewed workbook.`)
+      await load()
+    } catch (err) {
+      setMessage(err?.response?.data?.error || 'The import failed — is this the downloaded checklist report?')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const needsVerification = it =>
+    it.applicability === 'Y' && (
+      it.severity === 'Critical' || it.mode === 'Engineer-Led'
+      || (['Non-Conformance', 'Query'].includes(it.ai_result) && !it.engineer_verification)
+    )
+
+  const visible = items.filter(it => {
+    if (fResult !== 'All' && it.ai_result !== fResult) return false
+    if (fSeverity !== 'All' && it.severity !== fSeverity) return false
+    if (fMode !== 'All' && it.mode !== fMode) return false
+    if (needsMe && !needsVerification(it)) return false
+    if (q && !`${it.no} ${it.check_point} ${it.section_title}`.toLowerCase().includes(q)) return false
+    return true
+  })
+
+  const sections = useMemo(() => {
+    const groups = new Map()
+    for (const it of visible) {
+      const key = `${it.section} · ${it.section_title}`
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key).push(it)
+    }
+    return [...groups.entries()]
+  }, [visible]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── run states ────────────────────────────────────────────────────────
+  if (inputsMissing) {
+    return (
+      <section className="pc-section" aria-label="Checklist">
+        <div className="pc-card">
+          <EmptyState title="Not run — compulsory input missing.">
+            Every check point is “Not run — compulsory input missing”. Add the missing input on the
+            Legend &amp; checklist step; checks can then run without a page reload.
+          </EmptyState>
+        </div>
+      </section>
+    )
+  }
+  if (runState !== 'checked') {
+    return (
+      <section className="pc-section" aria-label="Checklist">
+        <div className="pc-card">
+          <EmptyState title="Check points are evaluated by the check run.">
+            {runState === 'running' ? 'Running… this page refreshes when the run finishes.' : 'Run checks to evaluate the checklist.'}
+          </EmptyState>
+        </div>
+      </section>
+    )
+  }
+  if (data === null && !loadError) {
+    return (
+      <section className="pc-section" aria-label="Checklist">
+        <div className="pc-card" style={{ padding: '1rem' }}><div className="pc-skeleton" style={{ height: 140 }} /></div>
+      </section>
+    )
+  }
+  if (loadError) {
+    return (
+      <section className="pc-section" aria-label="Checklist">
+        <div className="pc-card">
+          <EmptyState title={loadError === 'no-template' ? 'No checklist template is imported yet.' : 'The checklist could not be loaded.'}>
+            {loadError === 'no-template'
+              ? 'Run: python manage.py import_checklist_template AI_PID_Review_Checklist_02.xlsx --code AI-PID-02 --default'
+              : 'Please retry.'}
+          </EmptyState>
+        </div>
+      </section>
+    )
+  }
+
+  const isOpen = key => openSections === null || openSections.has(key)
+  const toggleSection = key => {
+    const all = new Map()
+    for (const it of items) {
+      const k = `${it.section} · ${it.section_title}`
+      all.set(k, true)
+    }
+    const next = openSections === null ? new Set(all.keys()) : new Set(openSections)
+    if (next.has(key)) next.delete(key); else next.add(key)
+    setOpenSections(next)
+  }
 
   return (
     <section className="pc-section" aria-label="Checklist">
@@ -876,44 +1495,263 @@ function StepChecklist({ searchParams, patchParams }) {
           type="search"
           className="pc-input"
           style={{ minWidth: 220 }}
-          placeholder="Search checklist points"
-          aria-label="Search checklist points"
+          placeholder="Search check points"
+          aria-label="Search check points"
           value={q}
           onChange={e => patchParams({ q: e.target.value || null })}
         />
+        <span className="pc-faint" style={{ fontSize: 'var(--rd-text-caption)' }}>
+          {data.template.code} v{data.template.version} · {items.length} points · {summary?.not_yet_reviewed ?? 0} not yet reviewed
+        </span>
+        <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: '0.5rem' }}>
+          <button type="button" className="rd-btn rd-btn-secondary rd-btn-sm" onClick={() => importRef.current?.click()} disabled={busy === 'import'}>
+            {busy === 'import' ? 'Importing…' : 'Import reviewed checklist'}
+          </button>
+          <input
+            ref={importRef} type="file" accept=".xlsx" hidden
+            onChange={e => { importReport(e.target.files?.[0]); e.target.value = '' }}
+            aria-label="Import reviewed checklist workbook"
+          />
+          <button type="button" className="rd-btn rd-btn-primary rd-btn-sm" onClick={downloadReport} disabled={busy === 'download'}>
+            {busy === 'download' ? 'Preparing…' : 'Download checklist report (.xlsx)'}
+          </button>
+        </span>
       </div>
-      <div className="pc-chips" role="group" aria-label="Checked by">
-        {CHECKED_BY.map(name => (
-          <button key={name} type="button" className={`pc-chip${by === name ? ' pc-chip-active' : ''}`} aria-pressed={by === name} onClick={() => patchParams({ by: name === 'All' ? null : name })}>
-            {name}<span className="pc-chip-count">—</span>
+
+      <div className="pc-chips" role="group" aria-label="Filter by result">
+        {['All', ...CL_RESULTS].map(name => (
+          <button key={name} type="button" className={`pc-chip${fResult === name ? ' pc-chip-active' : ''}`} style={{ minHeight: 30 }} aria-pressed={fResult === name} onClick={() => patchParams({ cresult: name === 'All' ? null : name })}>
+            {name}
+            <span className="pc-chip-count">{name === 'All' ? items.length : items.filter(i => i.ai_result === name).length}</span>
+          </button>
+        ))}
+        <button type="button" className={`pc-chip${needsMe ? ' pc-chip-active' : ''}`} style={{ minHeight: 30 }} aria-pressed={needsMe} onClick={() => patchParams({ needsme: needsMe ? null : '1' })}>
+          Needs my verification<span className="pc-chip-count">{items.filter(needsVerification).length}</span>
+        </button>
+      </div>
+      <div className="pc-chips" role="group" aria-label="Filter by severity and mode">
+        {['All', 'Critical', 'Major', 'Minor'].map(name => (
+          <button key={name} type="button" className={`pc-chip${fSeverity === name ? ' pc-chip-active' : ''}`} style={{ minHeight: 30 }} aria-pressed={fSeverity === name} onClick={() => patchParams({ csev: name === 'All' ? null : name })}>
+            {name}
+          </button>
+        ))}
+        <span className="pc-faint" style={{ alignSelf: 'center' }}>|</span>
+        {['All', 'Automated', 'AI-Assisted', 'Engineer-Led'].map(name => (
+          <button key={name} type="button" className={`pc-chip${fMode === name ? ' pc-chip-active' : ''}`} style={{ minHeight: 30 }} aria-pressed={fMode === name} onClick={() => patchParams({ cmode: name === 'All' ? null : name })}>
+            {name}
           </button>
         ))}
       </div>
-      <div className="pc-chips" role="group" aria-label="Result">
-        {RESULTS.map(name => (
-          <button key={name} type="button" className={`pc-chip${result === name ? ' pc-chip-active' : ''}`} aria-pressed={result === name} onClick={() => patchParams({ result: name === 'All' ? null : name })}>
-            {name}<span className="pc-chip-count">—</span>
-          </button>
-        ))}
-      </div>
-      <div className="pc-card">
-        <EmptyState title="Checklist available after the project checklist is configured.">
-          The v2 backend has no checklist-definition endpoint yet, so there are no real checklist
-          points to show. Upload and configure “Checklist -P&amp;ID.xls” on the project once the
-          endpoint exists — counts here stay honest (“—”) until then.
-        </EmptyState>
+
+      {message && (
+        <p className="pc-note pc-note-warning" role="status" style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center' }}>
+          <span>{message}</span>
+          <button type="button" className="pc-icon-btn" style={{ minWidth: 30, minHeight: 30 }} aria-label="Dismiss message" onClick={() => setMessage(null)}>×</button>
+        </p>
+      )}
+
+      <div className="pc-split" style={{ gridTemplateColumns: 'minmax(0, 3fr) minmax(0, 1.2fr)' }}>
+        <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {sections.length === 0 ? (
+            <div className="pc-card">
+              <EmptyState title="No check points match these filters.">Change the filters or the search text.</EmptyState>
+            </div>
+          ) : (
+            sections.map(([section, rows]) => {
+              const counts = Object.fromEntries(CL_RESULTS.map(r => [r, rows.filter(i => i.ai_result === r && i.applicability === 'Y').length]))
+              const naCount = rows.filter(i => i.applicability !== 'Y').length
+              return (
+                <div key={section} className="pc-card">
+                  <button
+                    type="button"
+                    className="pc-card-header"
+                    style={{ width: '100%', background: 'none', border: 0, cursor: 'pointer', textAlign: 'left' }}
+                    onClick={() => toggleSection(section)}
+                    aria-expanded={isOpen(section)}
+                  >
+                    <h2 className="pc-card-title">{section}</h2>
+                    <span className="pc-faint" style={{ fontSize: 'var(--rd-text-caption)' }}>
+                      {counts['Non-Conformance'] > 0 && `${counts['Non-Conformance']} Non-Conformance · `}
+                      {counts.Query > 0 && `${counts.Query} Query · `}
+                      {counts.OK} OK{naCount > 0 && ` · ${naCount} N/A`}
+                    </span>
+                  </button>
+                  {isOpen(section) && (
+                    <div className="pc-table-wrap">
+                      <table className="pc-table">
+                        <thead>
+                          <tr><th>No.</th><th>Check point</th><th>Mode</th><th>Severity</th><th>Applicability</th><th>AI Result</th><th>Engineer</th><th>Remarks</th><th /></tr>
+                        </thead>
+                        <tbody>
+                          {rows.map(it => (
+                            <ChecklistRow
+                              key={it.no}
+                              item={it}
+                              expanded={expanded === it.no}
+                              onToggle={() => setExpanded(expanded === it.no ? null : it.no)}
+                              onPatch={patchItem}
+                              onAddInput={onAddInput}
+                              onShowFinding={onShowFinding}
+                              subHeading={it.sub_heading}
+                            />
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )
+            })
+          )}
+        </div>
+
+        {/* Summary panel — the Summary-sheet matrix from the same list */}
+        {summary && (
+          <div className="pc-card" style={{ alignSelf: 'start', minWidth: 0 }}>
+            <div className="pc-card-header"><h2 className="pc-card-title">Summary</h2></div>
+            <div className="pc-table-wrap">
+              <table className="pc-table">
+                <thead>
+                  <tr><th /><th>Critical</th><th>Major</th><th>Minor</th><th>Total</th></tr>
+                </thead>
+                <tbody>
+                  {CL_RESULTS.map(r => (
+                    <tr key={r}>
+                      <td>{r}</td>
+                      {['Critical', 'Major', 'Minor'].map(s => <td key={s} className="pc-mono">{summary.matrix[r]?.[s] ?? 0}</td>)}
+                      <td className="pc-mono">{summary.matrix[r]?.total ?? 0}</td>
+                    </tr>
+                  ))}
+                  <tr>
+                    <td className="pc-muted">Not yet reviewed</td>
+                    <td colSpan={3} />
+                    <td className="pc-mono">{summary.not_yet_reviewed}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <dl className="pc-kv" style={{ padding: '0 1rem 0.75rem' }}>
+              <dt>Mode</dt>
+              <dd>Automated {summary.by_mode.Automated} · AI-Assisted {summary.by_mode['AI-Assisted']} · Engineer-Led {summary.by_mode['Engineer-Led']}</dd>
+              <dt>Disagree</dt><dd className="pc-mono">{summary.disagree}</dd>
+              <dt>Accuracy</dt><dd className="pc-mono">{summary.accuracy != null ? `${summary.accuracy}%` : '—'}</dd>
+            </dl>
+          </div>
+        )}
       </div>
     </section>
   )
 }
 
+function ChecklistRow({ item, expanded, onToggle, onPatch, onAddInput, onShowFinding, subHeading }) {
+  const [draft, setDraft] = useState(item.remarks || '')
+  useEffect(() => { setDraft(item.remarks || '') }, [item.remarks, item.no])
+  const noResult = item.applicability !== 'Y' || !item.ai_result
+  return (
+    <>
+      {subHeading && <tr className="pc-muted"><td colSpan={9} style={{ fontWeight: 600, fontSize: 'var(--rd-text-caption)' }}>{subHeading}</td></tr>}
+      <tr>
+        <td className="pc-mono">{item.no}</td>
+        <td>
+          <button type="button" className="rd-btn rd-btn-ghost rd-btn-sm" style={{ padding: 0, textAlign: 'left', minWidth: 0 }} onClick={onToggle} aria-expanded={expanded} aria-label={`Details for item ${item.no}`}>
+            {item.check_point}
+          </button>
+        </td>
+        <td><Pill label={item.mode} tone={item.mode === 'Engineer-Led' ? 'neutral' : 'info'} /></td>
+        <td><Pill label={item.severity} tone={CL_SEV_TONES[item.severity] ?? 'neutral'} /></td>
+        <td>
+          <span className="pc-seg" role="group" aria-label={`Applicability for item ${item.no}`} style={{ verticalAlign: 'middle' }}>
+            {['Y', 'N', 'NA'].map(v => (
+              <button
+                key={v}
+                type="button"
+                className={`pc-seg-btn${item.applicability === v ? ' pc-seg-btn-active' : ''}`}
+                style={{ minHeight: 26, padding: '0 0.5rem' }}
+                aria-pressed={item.applicability === v}
+                onClick={() => onPatch(item, { applicability: v })}
+              >
+                {v}
+              </button>
+            ))}
+          </span>
+          {item.applicability_by === 'ai' && <span className="pc-faint" style={{ marginLeft: '0.25rem', fontSize: 'var(--rd-text-caption)' }} title="AI suggestion — not yet confirmed">AI</span>}
+        </td>
+        <td>{noResult ? '—' : <Pill label={item.ai_result} tone={CL_RESULT_TONES[item.ai_result] ?? 'neutral'} />}</td>
+        <td>
+          <select
+            className="pc-select"
+            style={{ minHeight: 30 }}
+            value={item.engineer_verification ?? ''}
+            onChange={e => onPatch(item, { engineer_verification: e.target.value })}
+            aria-label={`Engineer verification for item ${item.no}`}
+          >
+            <option value="">—</option>
+            <option value="Agree">Agree</option>
+            <option value="Disagree">Disagree</option>
+            <option value="Modified">Modified</option>
+          </select>
+        </td>
+        <td>
+          <input
+            className="pc-input"
+            style={{ minHeight: 30, minWidth: 140 }}
+            value={draft}
+            placeholder="—"
+            onChange={e => setDraft(e.target.value)}
+            onBlur={() => { if (draft.trim() !== (item.remarks || '')) onPatch(item, { remarks: draft.trim() }) }}
+            aria-label={`Remarks for item ${item.no}`}
+          />
+        </td>
+        <td>
+          {item.finding_ids?.length > 0 && (
+            <span style={{ display: 'inline-flex', gap: '0.25rem', flexWrap: 'wrap' }}>
+              {item.finding_ids.map(fid => (
+                <button key={fid} type="button" className="rd-btn rd-btn-ghost rd-btn-sm" onClick={() => onShowFinding?.(fid)} aria-label={`Open finding F${fid}`}>
+                  F{fid}
+                </button>
+              ))}
+            </span>
+          )}
+        </td>
+      </tr>
+      {expanded && (
+        <tr>
+          <td colSpan={9} style={{ background: 'var(--rd-surface-subtle)' }}>
+            <dl className="pc-kv" style={{ gap: '0.5rem' }}>
+              <dt>What AI shall do</dt><dd>{item.ai_task || '—'}</dd>
+              <dt>Inputs</dt>
+              <dd>
+                {item.ref_inputs || '—'}
+                {item.missing_inputs?.length > 0 && (
+                  <>
+                    {' — missing: '}
+                    <span style={{ color: 'var(--rd-danger)' }}>{item.missing_inputs.join(', ')}</span>
+                    {onAddInput && (
+                      <button type="button" className="rd-btn rd-btn-ghost rd-btn-sm" onClick={onAddInput}>Add</button>
+                    )}
+                  </>
+                )}
+              </dd>
+              <dt>Evidence required</dt><dd>{item.evidence_required || '—'}</dd>
+              <dt>AI evidence</dt><dd>{item.evidence || '—'}</dd>
+            </dl>
+          </td>
+        </tr>
+      )}
+    </>
+  )
+}
+
 // ── Step 5: Findings ────────────────────────────────────────────────────
 
-function StepFindings({ drawingId, findings, errorCount, queryCount, openCount, searchParams, patchParams, onConfirm, onReject, rejectComments }) {
+function StepFindings({ drawingId, findings, errorCount, queryCount, openCount, searchParams, patchParams, onConfirm, onReject, rejectComments, runState = 'checked', runStartedAt = null, onRunChecks = null, resultsLoading = false, sheets = [], selectedPage = 0, onPageChange = null, crossFindings = [], linkedSheets = [], projectId = null }) {
   const filter = searchParams.get('ffilter') || 'All'
+  const fkind = searchParams.get('fkind') || 'sheet'
   const findingParam = searchParams.get('finding')
   const listRef = useRef(null)
   const detailRef = useRef(null)
+  const navigate = useNavigate()
+
 
   const filtered = useMemo(() => {
     if (filter === 'Errors') return findings.filter(f => ['critical', 'major'].includes(String(f.severity).toLowerCase()))
@@ -963,6 +1801,96 @@ function StepFindings({ drawingId, findings, errorCount, queryCount, openCount, 
   const markers = findings.map(f => ({ id: f.id, number: f.number, status: markerStatus(f), locations: f.locations }))
   const marked = markers.filter(m => m.locations.length > 0).length
 
+  // ── 2D | 3D viewer (spec §4.1) ────────────────────────────────────────
+  const [viewMode, setViewMode] = useState(() => {
+    try { return localStorage.getItem('pidchk:view-mode') === '3d' ? '3d' : '2d' } catch { return '2d' }
+  })
+  const [liftFrom2D, setLiftFrom2D] = useState(false)
+  const chooseView = mode => {
+    if (mode === '3d' && viewMode === '2d') setLiftFrom2D(true) // B6: play the lift once
+    setViewMode(mode)
+    try { localStorage.setItem('pidchk:view-mode', mode) } catch { /* storage blocked */ }
+  }
+  const [inspected, setInspected] = useState(null) // 3D click-to-inspect object
+  // The scene JSON is fetched once per sheet here (cached server-side) to
+  // drive the finding anchors in the detail card; the viewer wrapper
+  // fetches it for its own render.
+  const [scene3d, setScene3d] = useState(null)
+  useEffect(() => {
+    let alive = true
+    setScene3d(null)
+    setInspected(null)
+    if (!drawingId || runState !== 'checked') return undefined
+    svc.getScene3D(drawingId, selectedPage + 1)
+      .then(scene => { if (alive && scene?.status === 'ok') setScene3d(scene) })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [drawingId, selectedPage, runState])
+
+  const onViewIn3D = findingId => {
+    chooseView('3d')
+    selectFinding(findings.find(f => f.id === findingId))
+  }
+
+  // The 2D image and markers follow the SHEET selector, not the selected
+  // finding (all shown findings belong to the selected sheet).
+  const page = selectedPage
+  const image = useDrawingImage(drawingId, page)
+  const ring = useMemo(() => {
+    const raw = searchParams.get('ring')
+    if (!raw) return null
+    const [x0, y0, x1, y1] = raw.split(',').map(Number)
+    return [x0, y0, x1, y1].every(Number.isFinite) ? { x0, y0, x1, y1 } : null
+  }, [searchParams])
+
+  // Spec §2: never show "0 findings" for a drawing that has not run.
+  if (runState !== 'checked') {
+    return (
+      <section className="pc-section" aria-label="Findings">
+        <div className="pc-card pc-card-pad" style={{ textAlign: 'center' }}>
+          {runState === 'running' && (
+            <>
+              <p className="pc-empty-title">Running… {runStartedAt ? `started ${new Date(runStartedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}</p>
+              <div className="pc-progress" role="img" aria-label="Check run in progress" style={{ maxWidth: 320, margin: '0.75rem auto' }}>
+                <span className="pc-progress-ok pc-progress-indeterminate" style={{ width: '40%' }} />
+              </div>
+              <p className="pc-empty-text">This page refreshes automatically when the run finishes.</p>
+            </>
+          )}
+          {runState === 'failed' && (
+            <>
+              <p className="pc-empty-title">The check run failed.</p>
+              <p className="pc-empty-text">The error is shown on the drawings table of the project workspace.</p>
+              {onRunChecks && <button type="button" className="rd-btn rd-btn-primary" onClick={onRunChecks}>Retry</button>}
+            </>
+          )}
+          {runState === 'not-run' && (
+            <>
+              <p className="pc-empty-title">Checks have not run yet.</p>
+              <p className="pc-empty-text">Findings appear here after the check run finishes.</p>
+              {onRunChecks && <button type="button" className="rd-btn rd-btn-primary" onClick={onRunChecks}>Run checks</button>}
+            </>
+          )}
+        </div>
+      </section>
+    )
+  }
+
+  // Bug 6: while the results are in flight, show a skeleton — never
+  // "Findings 0 / No findings were raised on this sheet".
+  if (resultsLoading) {
+    return (
+      <section className="pc-section" aria-label="Findings">
+        <div className="pc-card pc-card-pad" style={{ textAlign: 'center' }}>
+          <p className="pc-empty-title">Loading results…</p>
+          <div className="pc-skeleton" style={{ height: 18, margin: '0.5rem 0' }} />
+          <div className="pc-skeleton" style={{ height: 18, margin: '0.5rem 0' }} />
+          <div className="pc-skeleton" style={{ height: 18, margin: '0.5rem 0' }} />
+        </div>
+      </section>
+    )
+  }
+
   return (
     <section className="pc-section" aria-label="Findings">
       {findings.length > 0 && (
@@ -973,16 +1901,140 @@ function StepFindings({ drawingId, findings, errorCount, queryCount, openCount, 
         </p>
       )}
       <div className="pc-split">
-        <DrawingViewer
-          imageUrl={svc.drawingImageUrl(drawingId, selected?.pageIndex ?? 0)}
-          findings={markers}
-          selectedId={selected?.id ?? null}
-          onSelect={id => selectFinding(findings.find(f => f.id === id))}
-        />
+        <div style={{ minWidth: 0 }}>
+          {sheets.length > 1 && (
+            <div className="pc-segbar" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="rd-btn rd-btn-secondary rd-btn-sm"
+                disabled={selectedPage <= 0}
+                onClick={() => onPageChange?.(selectedPage - 1)}
+                aria-label="Previous sheet"
+              >
+                ← Prev
+              </button>
+              <select
+                className="pc-select"
+                style={{ minHeight: 30, minWidth: 260 }}
+                value={selectedPage}
+                onChange={e => onPageChange?.(Number(e.target.value))}
+                aria-label="Sheet"
+              >
+                {sheets.map(s => (
+                  <option key={s.pageIndex} value={s.pageIndex}>
+                    {`Sheet ${s.pageIndex + 1} of ${sheets.length}${s.number ? ` · ${s.number}` : ''}`}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="rd-btn rd-btn-secondary rd-btn-sm"
+                disabled={selectedPage >= sheets.length - 1}
+                onClick={() => onPageChange?.(selectedPage + 1)}
+                aria-label="Next sheet"
+              >
+                Next →
+              </button>
+              <span className="pc-faint" style={{ fontSize: 'var(--rd-text-caption)' }}>
+                Sheet {selectedPage + 1} of {sheets.length}{sheets[selectedPage]?.number ? ` · ${sheets[selectedPage].number}` : ''}
+              </span>
+            </div>
+          )}
+          {linkedSheets.length > 0 && (
+            <div className="pc-segbar" style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', flexWrap: 'wrap' }}>
+              <span className="pc-faint" style={{ fontSize: 'var(--rd-text-caption)' }}>Linked P&IDs:</span>
+              {linkedSheets.map(s => (
+                <button
+                  key={s.sheet_id}
+                  type="button"
+                  className="pc-chip"
+                  style={s.both ? { minHeight: 30 } : { minHeight: 30, borderColor: '#d97706', color: '#b45309' }}
+                  title={s.both ? 'Linked both ways' : 'One way — no return connector'}
+                  onClick={() => navigate(`/engineering/process/pid-verification/projects/${projectId}/drawings/${s.document_id}?sheet=${s.page_index + 1}`)}
+                >
+                  {s.drawing_no ?? `p.${s.page_index + 1}`}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="pc-segbar">
+            <div className="pc-seg" role="group" aria-label="Viewer mode">
+              <button
+                type="button"
+                className={`pc-seg-btn${viewMode === '2d' ? ' pc-seg-btn-active' : ''}`}
+                aria-pressed={viewMode === '2d'}
+                onClick={() => chooseView('2d')}
+              >
+                2D
+              </button>
+              <button
+                type="button"
+                className={`pc-seg-btn${viewMode === '3d' ? ' pc-seg-btn-active' : ''}`}
+                aria-pressed={viewMode === '3d'}
+                onClick={() => chooseView('3d')}
+              >
+                3D
+              </button>
+            </div>
+          </div>
+          {viewMode === '2d' ? (
+            <DrawingViewer
+              imageUrl={image.url}
+              imageLoading={image.loading}
+              imageError={image.error}
+              onImageRetry={image.retry}
+              findings={markers}
+              ring={ring}
+              selectedId={selected?.id ?? null}
+              onSelect={id => selectFinding(findings.find(f => f.id === id))}
+              zoom={searchParams.get('zoom')}
+              onZoomChange={z => patchParams({ zoom: z === 'fit' ? null : z })}
+            />
+          ) : (
+            <Suspense fallback={(
+              <div className="pc-viewer pc-3d">
+                <div className="pc-3d-canvas" style={{ padding: '1rem' }}>
+                  <div className="pc-skeleton" style={{ height: '100%' }} />
+                </div>
+              </div>
+            )}>
+              <Findings3DViewer
+                documentId={drawingId}
+                page={selectedPage}
+                selectedFindingId={selected?.id ?? null}
+                onSelectFinding={id => selectFinding(findings.find(f => f.id === id))}
+                onSelectObject={setInspected}
+                playLift={liftFrom2D}
+              />
+            </Suspense>
+          )}
+          {viewMode === '3d' && inspected && (
+            <InspectorCard object={inspected} scene={scene3d} onClose={() => setInspected(null)} />
+          )}
+        </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', minWidth: 0 }}>
           <div className="pc-card">
-            <div className="pc-card-header">
+            <div className="pc-card-header" style={{ flexWrap: 'wrap', gap: '0.5rem' }}>
               <h2 className="pc-card-title">Findings</h2>
+              <div className="pc-seg" role="group" aria-label="Finding source">
+                <button
+                  type="button"
+                  className={`pc-seg-btn${fkind === 'sheet' ? ' pc-seg-btn-active' : ''}`}
+                  aria-pressed={fkind === 'sheet'}
+                  onClick={() => patchParams({ fkind: null, finding: null })}
+                >
+                  Sheet
+                </button>
+                <button
+                  type="button"
+                  className={`pc-seg-btn${fkind === 'cross' ? ' pc-seg-btn-active' : ''}`}
+                  aria-pressed={fkind === 'cross'}
+                  onClick={() => patchParams({ fkind: 'cross', finding: null })}
+                >
+                  Cross-drawing{crossFindings.length > 0 ? ` (${crossFindings.length})` : ''}
+                </button>
+              </div>
+              {fkind === 'sheet' && (
               <div className="pc-chips" role="group" aria-label="Filter findings">
                 {[['All', findings.length], ['Errors', errorCount], ['Queries', queryCount], ['Open', openCount]].map(([name, count]) => (
                   <button
@@ -997,8 +2049,45 @@ function StepFindings({ drawingId, findings, errorCount, queryCount, openCount, 
                   </button>
                 ))}
               </div>
+              )}
             </div>
-            {filtered.length === 0 ? (
+            {fkind === 'cross' ? (
+              crossFindings.length === 0 ? (
+                <EmptyState title="No cross-drawing findings involve this sheet.">
+                  Cross-drawing checks run across all P&IDs in the project — see All P&IDs.
+                </EmptyState>
+              ) : (
+                <div className="pc-flist" role="listbox" aria-label="Cross-drawing findings on this sheet">
+                  {crossFindings.map(c => {
+                    const others = (c.sheets || [])
+                      .map(id => linkedSheets.find(s => s.sheet_id === id))
+                      .filter(Boolean)
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        role="option"
+                        aria-selected="false"
+                        className="pc-flist-item"
+                        onClick={() => {
+                          const evOwn = (c.evidence || []).find(e => e.bbox)
+                          if (evOwn?.bbox) patchParams({ ring: evOwn.bbox.join(',') })
+                        }}
+                      >
+                        <span className="pc-flist-num">X{c.number}</span>
+                        <span className="pc-flist-title">
+                          {c.title}
+                          <span className="pc-faint" style={{ display: 'block', fontSize: 'var(--rd-text-caption)' }}>
+                            {others.length > 0 ? `↔ ${others.map(s => s.drawing_no).join(', ')} (Open)` : 'Across sheets'}
+                          </span>
+                        </span>
+                        <Pill label={c.kind === 'error' ? 'Error' : 'Query'} tone={c.kind === 'error' ? 'danger' : 'warning'} />
+                      </button>
+                    )
+                  })}
+                </div>
+              )
+            ) : filtered.length === 0 ? (
               <EmptyState title={findings.length === 0 ? 'No findings were raised on this sheet.' : `No ${filter.toLowerCase()} findings.`}>
                 {findings.length === 0 ? 'Findings appear here after the check run finishes.' : 'Change the filter to see the other findings.'}
               </EmptyState>
@@ -1033,6 +2122,8 @@ function StepFindings({ drawingId, findings, errorCount, queryCount, openCount, 
             <div ref={detailRef}>
               <FindingDetailCard
                 finding={{ ...selected, status: findingLabel(selected) }}
+                scene3d={scene3d}
+                onViewIn3D={onViewIn3D}
                 onConfirm={() => onConfirm(selected)}
                 onReject={comment => onReject(selected, comment)}
                 onNext={filtered.length > 1 ? nextFinding : null}
@@ -1050,9 +2141,83 @@ function StepFindings({ drawingId, findings, errorCount, queryCount, openCount, 
   )
 }
 
+// ── 3D inspector card (click-to-inspect, spec §2) ───────────────────────
+
+function InspectorCard({ object, scene, onClose }) {
+  if (!object?.data) return null
+  const d = object.data
+  const isLine = object.type === 'line'
+  const isValve = object.type === 'valve'
+  const valveLine = isValve && scene ? (scene.lines || []).find(l => l.id === d.line_id) : null
+  return (
+    <div className="pc-card pc-card-pad" style={{ marginTop: '0.75rem' }}>
+      <div className="pc-card-header" style={{ padding: 0 }}>
+        <h3 className="pc-card-title">
+          {isLine ? (d.line_no || 'Line') : isValve ? 'Valve' : (d.tag || 'Equipment')}
+        </h3>
+        <button type="button" className="pc-icon-btn" style={{ minWidth: 30, minHeight: 30 }} aria-label="Close inspector" onClick={onClose}>×</button>
+      </div>
+      <dl className="pc-kv">
+        {isLine && (
+          <>
+            <dt>Size</dt><dd>{d.size_in != null ? `${Math.round(d.size_in * 10) / 10}"` : '—'}</dd>
+            <dt>Class</dt><dd>{d.cls ? `${d.cls}${d.cls_desc ? ` · ${d.cls_desc}` : ''}` : '—'}</dd>
+            <dt>Insulation</dt><dd>{d.ins ? `${d.ins}${d.ins_desc ? ` · ${d.ins_desc}` : ''}` : '—'}</dd>
+            <dt>Design cases</dt><dd>{d.cases?.length ? d.cases.join(' · ') : '—'}</dd>
+            {d.new && (<><dt>Scope</dt><dd>New scope (red on the drawing)</dd></>)}
+          </>
+        )}
+        {isValve && (
+          <>
+            <dt>On line</dt><dd className="pc-mono">{valveLine?.line_no ?? '—'}</dd>
+            <dt>Size</dt><dd>{d.size_in != null ? `${Math.round(d.size_in * 10) / 10}"` : '—'}</dd>
+          </>
+        )}
+        {object.type === 'equipment' && (
+          <>
+            <dt>Kind</dt><dd>{d.kind ?? '—'}</dd>
+            {d.ghost && (<><dt>Presence</dt><dd>{d.note ?? 'Referenced, not drawn on this sheet'}</dd></>)}
+          </>
+        )}
+      </dl>
+    </div>
+  )
+}
+
+// ── sign-off name field (writes C5/F5 via the review-meta endpoint) ─────
+
+function ReviewNameField({ label, field, drawingId, initial }) {
+  const [value, setValue] = useState(initial)
+  const [saved, setSaved] = useState(null)
+  useEffect(() => { setValue(initial) }, [initial])
+  const save = async () => {
+    if (value.trim() === initial) return
+    try {
+      await svc.patchReviewMeta(drawingId, { [field]: value.trim() })
+      setSaved('Saved')
+      setTimeout(() => setSaved(null), 3000)
+    } catch {
+      setSaved('Save failed')
+    }
+  }
+  return (
+    <label className="pc-field" style={{ margin: 0, flex: 1, minWidth: 180 }}>
+      <span className="pc-label">{label}</span>
+      <input
+        className="pc-input"
+        value={value}
+        onChange={e => setValue(e.target.value)}
+        onBlur={save}
+        aria-label={label}
+      />
+      {saved && <span className="pc-faint" style={{ fontSize: 'var(--rd-text-caption)' }}>{saved}</span>}
+    </label>
+  )
+}
+
 // ── Step 6: Report & sign-off ───────────────────────────────────────────
 
-function StepReport({ gates, allGatesGreen, findings, exporting, onExport, resultsReady }) {
+function StepReport({ gates, allGatesGreen, findings, exporting, onExport, resultsReady, onSubmit, drawingId = null, currentDoc = null }) {
   const byCategory = useMemo(() => {
     const groups = new Map()
     for (const f of findings) {
@@ -1088,7 +2253,8 @@ function StepReport({ gates, allGatesGreen, findings, exporting, onExport, resul
                 type="button"
                 className="rd-btn rd-btn-primary"
                 disabled={!allGatesGreen}
-                title={allGatesGreen ? undefined : 'All four gates must be green before submitting'}
+                title={allGatesGreen ? undefined : 'All five gates must be green before submitting'}
+                onClick={onSubmit}
               >
                 Submit for review
               </button>
@@ -1129,9 +2295,13 @@ function StepReport({ gates, allGatesGreen, findings, exporting, onExport, resul
                 </tbody>
               </table>
             </div>
-            <p className="pc-help" style={{ padding: '0 1rem 0.75rem', margin: 0 }}>
-              Available after the backend stores sign-off names and dates.
-            </p>
+            {/* Written to C5 / F5 of the checklist report (spec §3.3). */}
+            {drawingId && (
+              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', padding: '0 1rem 0.75rem' }}>
+                <ReviewNameField label="Reviewed by" field="reviewed_by" drawingId={drawingId} initial={currentDoc?.reviewedBy ?? ''} />
+                <ReviewNameField label="Approved by" field="approved_by" drawingId={drawingId} initial={currentDoc?.approvedBy ?? ''} />
+              </div>
+            )}
           </div>
 
           <div className="pc-card pc-card-pad" style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>

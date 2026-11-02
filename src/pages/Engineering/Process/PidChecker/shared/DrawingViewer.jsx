@@ -15,13 +15,45 @@
  *  selectedId    – currently selected finding id
  *  onSelect      – (findingId) => void
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { fetchDrawingImage } from '../pidChecker.service'
 
 const ZOOMS = [
   { id: 'fit', label: 'Fit' },
   { id: '200', label: '200%' },
   { id: '300', label: '300%' },
 ]
+
+/**
+ * Authenticated drawing image (spec C). A plain <img src> carries no
+ * Authorization header → 401. Fetches the blob via the API client and
+ * exposes an object URL; revoked on change/unmount. The token never goes
+ * in the URL.
+ */
+export function useDrawingImage(documentId, page = 0) {
+  const [state, setState] = useState({ url: null, loading: true, error: null })
+  const [attempt, setAttempt] = useState(0)
+  useEffect(() => {
+    if (!documentId) return undefined
+    let alive = true
+    let objUrl = null
+    setState({ url: null, loading: true, error: null })
+    fetchDrawingImage(documentId, page)
+      .then(url => {
+        if (!alive) { URL.revokeObjectURL(url); return }
+        objUrl = url
+        setState({ url, loading: false, error: null })
+      })
+      .catch(err => {
+        if (alive) setState({ url: null, loading: false, error: err?.response?.status ?? 'error' })
+      })
+    return () => {
+      alive = false
+      if (objUrl) URL.revokeObjectURL(objUrl)
+    }
+  }, [documentId, page, attempt])
+  return { ...state, retry: () => setAttempt(a => a + 1) }
+}
 
 function markerClass(status = '') {
   const s = String(status).toLowerCase()
@@ -33,7 +65,7 @@ function markerClass(status = '') {
   return 'pc-marker-minor'
 }
 
-export default function DrawingViewer({ imageUrl, imageSize = null, findings = [], selectedId = null, onSelect, zoom: controlledZoom = null, onZoomChange = null }) {
+export default function DrawingViewer({ imageUrl, imageLoading = false, imageError = null, onImageRetry = null, imageSize = null, findings = [], ring = null, selectedId = null, onSelect, zoom: controlledZoom = null, onZoomChange = null }) {
   const [internalZoom, setInternalZoom] = useState('fit')
   // Optionally controlled by the caller (zoom deep link, spec §5).
   const zoom = controlledZoom ?? internalZoom
@@ -81,9 +113,25 @@ export default function DrawingViewer({ imageUrl, imageSize = null, findings = [
         </span>
       </div>
       <div className="pc-viewer-canvas">
-        {imageUrl ? (
+        {imageLoading ? (
+          <div style={{ padding: '1rem', width: '100%' }}><div className="pc-skeleton" style={{ height: '100%', minHeight: 320 }} /></div>
+        ) : imageError ? (
+          <p className="pc-empty-text" style={{ padding: '2rem' }}>
+            Drawing image could not be loaded ({imageError}).{' '}
+            {onImageRetry && (
+              <button type="button" className="rd-btn rd-btn-secondary rd-btn-sm" onClick={onImageRetry}>Retry</button>
+            )}
+          </p>
+        ) : imageUrl ? (
           <div style={{ position: 'relative', display: 'inline-block' }}>
             <img src={imageUrl} alt="Drawing page" style={imgStyle} />
+            {ring && (
+              <span
+                className="pc-ring"
+                aria-hidden="true"
+                style={{ left: `${ring.x0}%`, top: `${ring.y0}%`, width: `${ring.x1 - ring.x0}%`, height: `${ring.y1 - ring.y0}%` }}
+              />
+            )}
             {markers.map(({ finding, x, y }, i) => (
               <button
                 key={`${finding.id}-${i}`}

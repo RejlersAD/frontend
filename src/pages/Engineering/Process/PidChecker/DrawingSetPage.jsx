@@ -39,6 +39,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import * as svc from './pidChecker.service'
 import { PageHeader, KpiTile, Pill, ReadabilityPill, DrawingViewer, FindingDetailCard, EmptyState } from './shared'
+import { useDrawingImage } from './shared/DrawingViewer'
 import './pidchecker.css'
 
 const TABS = [
@@ -310,8 +311,12 @@ export default function DrawingSetPage() {
   const members = useMemo(() => currentSet?.members ?? [], [currentSet])
   const pfd = useMemo(() => members.find(m => m.type === 'PFD') ?? null, [members])
 
-  // Fetch results for every set member (per-document endpoint).
+  // Fetch results for every set member (per-document endpoint). All per-set
+  // result state is reset first so a switched set never shows stale tiles,
+  // tables or selections from the previous set.
   useEffect(() => {
+    setResultsByDoc({})
+    setActionMessage(null)
     if (members.length === 0) return undefined
     let cancelled = false
     ;(async () => {
@@ -381,9 +386,10 @@ export default function DrawingSetPage() {
       }
     }
     if (!sawFunctionData) return null
-    const missing = openFindings.filter(f => /function/i.test(`${f.ruleId ?? ''} ${f.title}`)).length
-    return { found, missing }
-  }, [resultsList, openFindings])
+    // No authoritative found/missing dataset exists in the results payload —
+    // missing is NOT inferred from finding text (that would be guessing).
+    return { found, missing: null }
+  }, [resultsList])
 
   const readTotals = useMemo(() => {
     const lines = members.reduce((n, d) => n + (d.lineNumbers ?? 0), 0)
@@ -452,14 +458,19 @@ export default function DrawingSetPage() {
     }
   }
 
-  // No set-level export exists in the v2 backend; the set report reuses the
-  // per-document workbook of the set's PFD. Without a PFD there is nothing
-  // real to export, so the button is disabled with an honest note.
+  // No set-level export endpoint exists in the v2 backend
+  // (pidChecker.service.downloadExport is per-document), so the set report
+  // aggregates every set member: each document's 'excel' workbook is
+  // downloaded in turn, named with the set name.
   const exportSetReport = async () => {
-    if (!pfd) return
+    if (members.length === 0) return
     setExporting(true)
     try {
-      await svc.downloadExport(pfd.id, 'excel')
+      const safeSet = (currentSet?.name ?? 'set').replace(/[^\w.-]+/g, '_')
+      for (const m of members) {
+        // eslint-disable-next-line no-await-in-loop -- sequential downloads keep browser download prompts sane
+        await svc.downloadExport(m.id, 'excel', 'all', `${safeSet}_${m.drawingNo ?? m.id}.xlsx`)
+      }
     } catch (err) {
       setActionMessage(err?.response?.data?.error || 'The set report export failed.')
     } finally {
@@ -500,8 +511,8 @@ export default function DrawingSetPage() {
           <button
             type="button"
             className="rd-btn rd-btn-secondary"
-            onClick={() => navigate(projectBase)}
-            title="Drawings are added from the project workspace drop zone"
+            onClick={() => navigate(currentSet ? `${projectBase}?addToSet=${encodeURIComponent(currentSet.name)}` : projectBase)}
+            title="Opens the project workspace with this set preselected as the upload target"
           >
             Add drawings to set
           </button>
@@ -509,8 +520,8 @@ export default function DrawingSetPage() {
             type="button"
             className="rd-btn rd-btn-primary"
             onClick={exportSetReport}
-            disabled={!pfd || exporting}
-            title={pfd ? 'Exports the workbook of the set’s PFD document' : 'Set workbook available after the backend adds a set export'}
+            disabled={members.length === 0 || exporting}
+            title={members.length > 0 ? 'Downloads the .xlsx workbook of every document in this set' : 'No documents in this set yet'}
           >
             {exporting ? 'Exporting…' : 'Export set report (.xlsx)'}
           </button>
@@ -547,27 +558,29 @@ export default function DrawingSetPage() {
         </p>
       )}
 
-      {/* Set selector — hidden when the project has a single set (spec §4). */}
-      {sets.length > 1 && (
+      {/* Set selector — always rendered, even for a single set (spec §4). */}
+      {sets.length > 0 && (
         <section className="pc-section" aria-label="Drawing sets">
           <div className="pc-card pc-card-pad" style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
             <h2 className="pc-card-title">Drawing sets</h2>
             <div className="pc-chips" role="group" aria-label="Choose drawing set">
               {sets.map(s => {
                 const setPfd = s.members.find(m => m.type === 'PFD')
-                const openCount = s.members.reduce((n, m) => n + (m.findingsOpen ?? 0), 0)
-                const active = currentSet && s.name === currentSet.name
+                // Findings counts come from the render-time findings list,
+                // which only covers the currently loaded set; other sets show '—'.
+                const isCurrent = currentSet && s.name === currentSet.name
+                const openCount = isCurrent ? openFindings.length : null
                 return (
                   <button
                     key={s.name}
                     type="button"
-                    className={`pc-chip${active ? ' pc-chip-active' : ''}`}
-                    aria-pressed={active}
+                    className={`pc-chip${isCurrent ? ' pc-chip-active' : ''}`}
+                    aria-pressed={Boolean(isCurrent)}
                     onClick={() => navigate(`${projectBase}/sets/${encodeURIComponent(s.name)}`)}
                   >
                     <span className="pc-mono">{setPfd?.drawingNo ?? '—'}</span>
                     {s.name}
-                    <span className="pc-chip-count">{openCount} finding{openCount === 1 ? '' : 's'}</span>
+                    <span className="pc-chip-count">{openCount == null ? '— findings' : `${openCount} finding${openCount === 1 ? '' : 's'}`}</span>
                   </button>
                 )
               })}
@@ -605,7 +618,7 @@ export default function DrawingSetPage() {
         </div>
       )}
 
-      <DocumentsTable members={members} findings={findings} projectBase={projectBase} pfdId={pfd?.id} />
+      <DocumentsTable members={members} findings={findings} resultsByDoc={resultsByDoc} projectBase={projectBase} pfdId={pfd?.id} />
 
       <TabsBar tab={tab} onChange={setTab} counts={{ cmp: cmpRows.length, con: conRows.length, find: findings.length, ok: null }} />
 
@@ -634,6 +647,7 @@ export default function DrawingSetPage() {
       {tab === 'ok' && (
         <TabCheckedOk
           findings={findings}
+          cmpRows={cmpRows}
           rejectComments={rejectComments}
           onReopen={reopenFinding}
         />
@@ -663,8 +677,8 @@ function KpiRow({ members, pfd, pidCount, cmpRows, cmpCounts, instrumentFns, con
       />
       <KpiTile
         label="Instrument functions"
-        value={instrumentFns ? `${instrumentFns.found} found · ${instrumentFns.missing} missing` : '—'}
-        meta={instrumentFns ? 'From instrument extraction detail' : 'Available after comparison runs'}
+        value={instrumentFns ? `${instrumentFns.found} found · ${instrumentFns.missing ?? '—'} missing` : '—'}
+        meta={instrumentFns ? 'From instrument extraction detail' : 'Available after the set comparison run'}
         danger={Boolean(instrumentFns?.missing)}
         onClick={() => goToTab('cmp')}
       />
@@ -684,8 +698,8 @@ function KpiRow({ members, pfd, pidCount, cmpRows, cmpCounts, instrumentFns, con
       />
       <KpiTile
         label="Read from drawings"
-        value={readTotals.known ? `${readTotals.lines} lines · ${readTotals.tags} tags` : '—'}
-        meta="Lines · instrument tags across the set"
+        value={readTotals.known ? `${readTotals.lines} lines · ${readTotals.tags} instrument tags` : '—'}
+        meta="lines · instrument tags read across the set"
       />
     </div>
   )
@@ -693,7 +707,35 @@ function KpiRow({ members, pfd, pidCount, cmpRows, cmpCounts, instrumentFns, con
 
 // ── documents table ─────────────────────────────────────────────────────
 
-function DocumentsTable({ members, findings, projectBase, pfdId }) {
+/** Per-document read counts: prefer the loaded results payload (authoritative
+ *  metadata), fall back to the drawings-list fields, and keep null when
+ *  neither exists so the UI can render '—' instead of an invented zero. */
+function docReadCounts(d, res) {
+  if (res !== undefined) {
+    if (res === null) return { lines: null, tags: null } // loaded but failed
+    const metas = (res.drawings || []).map(x => x.metadata || {})
+    const collect = (...keys) => {
+      let total = 0
+      let seen = false
+      for (const m of metas) {
+        for (const k of keys) {
+          const v = m[k]
+          if (Array.isArray(v)) { total += v.length; seen = true }
+          else if (typeof v === 'number') { total += v; seen = true }
+        }
+      }
+      return seen ? total : null
+    }
+    return {
+      lines: collect('line_tags', 'line_numbers', 'lines'),
+      tags: collect('instrument_tags', 'instruments', 'tags'),
+    }
+  }
+  // Results not loaded yet — fall back to the drawings-list counts.
+  return { lines: d.lineNumbers ?? null, tags: d.tags ?? null }
+}
+
+function DocumentsTable({ members, findings, resultsByDoc, projectBase, pfdId }) {
   return (
     <section className="pc-section" aria-label="Documents in this set">
       <h2 className="pc-section-title">Documents in this set</h2>
@@ -714,6 +756,7 @@ function DocumentsTable({ members, findings, projectBase, pfdId }) {
                 const openCount = docFindings.filter(isOpen).length
                 const isPfd = d.type === 'PFD' && String(d.id) === String(pfdId)
                 const readNote = d.charactersRead != null ? `${d.charactersRead} characters read` : 'Read detail not stored'
+                const counts = docReadCounts(d, resultsByDoc?.[d.id])
                 return (
                   <tr key={d.id}>
                     <td><Pill label={d.type ?? '—'} tone={d.type === 'PFD' ? 'info' : 'neutral'} /></td>
@@ -730,7 +773,7 @@ function DocumentsTable({ members, findings, projectBase, pfdId }) {
                       </span>
                     </td>
                     <td className="pc-mono">
-                      {d.lineNumbers ?? '—'} lines · {d.tags ?? '—'} tags
+                      {counts.lines ?? '—'} lines · {counts.tags ?? '—'} instrument tags
                     </td>
                     <td><Pill label={`${openCount} open`} tone={openCount > 0 ? 'warning' : 'success'} title={`${docFindings.length} raised on this document`} /></td>
                     <td>
@@ -1019,6 +1062,8 @@ function TabFindings({ members, findings, resultsByDoc, searchParams, patchParam
     )
   }
 
+  const setImage = useDrawingImage(selectedDoc?.id ?? null, selected?.pageIndex ?? 0)
+
   return (
     <section className="pc-section" aria-label="Findings on drawings">
       <div className="pc-chips" role="group" aria-label="Choose drawing">
@@ -1042,7 +1087,10 @@ function TabFindings({ members, findings, resultsByDoc, searchParams, patchParam
 
       <div className="pc-split">
         <DrawingViewer
-          imageUrl={selectedDoc ? svc.drawingImageUrl(selectedDoc.id, selected?.pageIndex ?? 0) : null}
+          imageUrl={setImage.url}
+          imageLoading={selectedDoc ? setImage.loading : false}
+          imageError={setImage.error}
+          onImageRetry={setImage.retry}
           findings={markers}
           selectedId={selected?.id ?? null}
           onSelect={id => selectFinding(visibleFindings.find(f => f.id === id))}
@@ -1124,18 +1172,21 @@ function TabFindings({ members, findings, resultsByDoc, searchParams, patchParam
 
 // ── tab 4: checked, not flagged ─────────────────────────────────────────
 
-function TabCheckedOk({ findings, rejectComments, onReopen }) {
-  // Real rows: findings that were reviewed and rejected (resolved) or raised
-  // as minor. Everything else has no backend representation — honest empty
-  // state rather than invented "looks OK" rows.
-  const rows = findings.filter(f => isRejected(f) || String(f.severity).toLowerCase() === 'minor')
+function TabCheckedOk({ findings, cmpRows = [], rejectComments, onReopen }) {
+  // Real rows only: findings reviewed and confirmed OK or rejected (resolved),
+  // minor findings, plus comparison rows whose result says the values agree.
+  const findingRows = findings.filter(f => isRejected(f) || isConfirmed(f) || String(f.severity).toLowerCase() === 'minor')
+  const okCmpRows = cmpRows.filter(r => !r.finding
+    && /agree|confirm|match|ok/i.test(String(r.result ?? ''))
+    && !/not ok|differ|conflict/i.test(String(r.result ?? '')))
+  const isEmpty = findingRows.length === 0 && okCmpRows.length === 0
   return (
     <section className="pc-section" aria-label="Checked, not flagged">
       <div className="pc-card pc-table-wrap">
-        {rows.length === 0 ? (
+        {isEmpty ? (
           <EmptyState title="Nothing has been checked and deliberately not flagged yet.">
-            Items appear here when a finding is rejected as “not an error” or a
-            check is confirmed as OK. Available after the check run and review.
+            Rows appear here when a PFD vs P&amp;ID comparison agrees, when a finding is
+            reviewed and confirmed OK, rejected as “not an error”, or raised as minor.
           </EmptyState>
         ) : (
           <table className="pc-table">
@@ -1143,13 +1194,17 @@ function TabCheckedOk({ findings, rejectComments, onReopen }) {
               <tr><th>Looks like</th><th>Why it is not an error</th><th>Rule applied</th><th>Reopen as finding</th></tr>
             </thead>
             <tbody>
-              {rows.map(f => (
+              {findingRows.map(f => (
                 <tr key={`${f.prefix}-${f.id}`}>
                   <td>
                     <span className="pc-flist-num" style={{ minWidth: 'auto', marginRight: '0.375rem' }}>{f.displayId}</span>
                     {f.title}
                   </td>
-                  <td>{rejectComments[f.id] ?? f.basis ?? '—'}</td>
+                  <td>
+                    {isConfirmed(f) && !rejectComments[f.id] && !f.basis
+                      ? 'Reviewed and confirmed OK'
+                      : rejectComments[f.id] ?? f.basis ?? '—'}
+                  </td>
                   <td className="pc-mono">{f.ruleId ?? '—'}</td>
                   <td>
                     {f.id != null ? (
@@ -1167,6 +1222,23 @@ function TabCheckedOk({ findings, rejectComments, onReopen }) {
                         Reopen as finding
                       </button>
                     )}
+                  </td>
+                </tr>
+              ))}
+              {okCmpRows.map(r => (
+                <tr key={r.key}>
+                  <td>
+                    {r.item ?? '—'}
+                    <span className="pc-faint" style={{ fontSize: 'var(--rd-text-caption)' }}>
+                      {' '}— PFD <span className="pc-mono">{r.pfdValue ?? '—'}</span> · P&amp;ID <span className="pc-mono">{r.pidValue ?? '—'}</span>
+                    </span>
+                  </td>
+                  <td>Comparison {String(r.result).toLowerCase() === 'ok' ? 'is OK' : String(r.result).toLowerCase()} — PFD and P&amp;ID values match</td>
+                  <td className="pc-mono">—</td>
+                  <td>
+                    <button type="button" className="rd-btn rd-btn-secondary rd-btn-sm" disabled title="Reopen is available once this row maps to a real finding">
+                      Reopen as finding
+                    </button>
                   </td>
                 </tr>
               ))}

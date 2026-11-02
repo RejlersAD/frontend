@@ -285,8 +285,14 @@ export default defineConfig(({ mode }) => {
     // Soft-coded: explicitly pre-bundle packages that use non-standard ESM
     // default exports so Vite's esbuild can wrap them correctly.
     // Root cause: @mui/material uses @emotion/styled via @mui/styled-engine.
-    // Without pre-bundling @emotion packages, the default export can resolve 
+    // Without pre-bundling @emotion packages, the default export can resolve
     // to undefined → "styled_default is not a function".
+    //
+    // 30 Oct 2026: the "styled_default is not a function" failure came back
+    // as an esbuild 0.21.5 chunk-splitting defect (a chunk calling
+    // styled_default() without importing init_styled()). Fixed by forcing
+    // esbuild 0.24 via package.json "overrides" (cross-chunk lazy-init fix)
+    // — the include list below is unchanged.
     optimizeDeps: {
       // Scan the application entry rather than archived builds and HTML reports.
       entries: ['index.html'],

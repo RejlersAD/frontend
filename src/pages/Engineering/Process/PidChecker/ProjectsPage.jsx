@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import * as svc from './pidChecker.service'
-import { PageHeader, KpiTile, Pill, ReadabilityPill, Drawer, EmptyState } from './shared'
+import { PageHeader, KpiTile, Pill, Drawer, EmptyState } from './shared'
 import './pidchecker.css'
 
 const CLIENTS = ['ADNOC Onshore', 'ADNOC Offshore', 'ADNOC Gas']
@@ -139,6 +139,83 @@ function NewProjectDrawer({ open, onClose, onCreated }) {
       </div>
 
       {error && <p className="pc-error" role="alert">{error}</p>}
+
+      <p className="pc-note" style={{ margin: 0 }}>
+        After creating the project, add the three compulsory inputs: drawings, legend sheets and checklist.
+        The project opens with the required inputs missing until all three are provided.
+      </p>
+    </Drawer>
+  )
+}
+
+// ── Edit project drawer ─────────────────────────────────────────────────
+
+function EditProjectDrawer({ project, onClose, onSaved }) {
+  const [name, setName] = useState('')
+  const [number, setNumber] = useState('')
+  const [client, setClient] = useState('')
+  const [description, setDescription] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    if (project) {
+      setName(project.name ?? '')
+      setNumber(project.number ?? '')
+      setClient(project.client ?? '')
+      setDescription(project.description ?? '')
+      setError(null)
+    }
+  }, [project])
+
+  const submit = async () => {
+    if (!name.trim() || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      await svc.updateProject(project.id, { name: name.trim(), number: number.trim(), client, description: description.trim() })
+      onSaved()
+    } catch (err) {
+      setError(err?.response?.data?.error || 'The project could not be saved. Please retry.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Drawer
+      open={Boolean(project)}
+      onClose={onClose}
+      title={`Edit project — ${project?.name ?? ''}`}
+      footer={(
+        <>
+          <button type="button" className="rd-btn rd-btn-secondary" onClick={onClose}>Cancel</button>
+          <button type="button" className="rd-btn rd-btn-primary" disabled={!name.trim() || busy} onClick={submit}>
+            {busy ? 'Saving…' : 'Save changes'}
+          </button>
+        </>
+      )}
+    >
+      <div className="pc-field">
+        <label className="pc-label" htmlFor="pc-ep-name">Project name</label>
+        <input id="pc-ep-name" className="pc-input" value={name} onChange={e => setName(e.target.value)} />
+      </div>
+      <div className="pc-field">
+        <label className="pc-label" htmlFor="pc-ep-number">Project number</label>
+        <input id="pc-ep-number" className="pc-input pc-mono" value={number} onChange={e => setNumber(e.target.value)} />
+      </div>
+      <div className="pc-field">
+        <label className="pc-label" htmlFor="pc-ep-client">Client</label>
+        <select id="pc-ep-client" className="pc-select" value={client} onChange={e => setClient(e.target.value)}>
+          <option value="">Not set</option>
+          {[...CLIENTS, 'Other client'].map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </div>
+      <div className="pc-field">
+        <label className="pc-label" htmlFor="pc-ep-desc">Description</label>
+        <textarea id="pc-ep-desc" className="pc-input" style={{ minHeight: 72, padding: '0.5rem 0.625rem' }} value={description} onChange={e => setDescription(e.target.value)} />
+      </div>
+      {error && <p className="pc-error" role="alert">{error}</p>}
     </Drawer>
   )
 }
@@ -152,6 +229,10 @@ export default function ProjectsPage() {
   const [error, setError] = useState(null)
   const [filter, setFilter] = useState('All')
   const [showNew, setShowNew] = useState(false)
+  const [editing, setEditing] = useState(null) // project being edited
+  const [deleting, setDeleting] = useState(null) // project pending delete confirm
+  const [notice, setNotice] = useState(null) // { text, tone }
+  const [reloadTick, setReloadTick] = useState(0)
 
   useEffect(() => {
     let alive = true
@@ -175,7 +256,7 @@ export default function ProjectsPage() {
       }
     })()
     return () => { alive = false }
-  }, [])
+  }, [reloadTick])
 
   const drawingsLoaded = useMemo(
     () => (projects || []).length > 0 && (projects || []).every(p => drawingsByProject[p.id] != null),
@@ -294,11 +375,13 @@ export default function ProjectsPage() {
           const signed = drawings.filter(d => d.signed).length
           const status = projectStatus(project, drawings)
           return (
-            <button
+            <div
               key={project.id}
-              type="button"
-              className="pc-project-card"
+              className="pc-project-card pc-row-clickable"
+              role="button"
+              tabIndex={0}
               onClick={() => navigate(`/engineering/process/pid-verification/projects/${project.id}`)}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/engineering/process/pid-verification/projects/${project.id}`) } }}
             >
               <div className="pc-project-card-top">
                 <h2 className="pc-project-name">{project.name}</h2>
@@ -320,10 +403,52 @@ export default function ProjectsPage() {
                 {drawings.length > 0 ? `${findingsOpen} findings open · ${signed} drawings signed` : 'No drawings yet'}
                 {' · '}updated {fmtDate(project.updatedAt)}
               </span>
-            </button>
+              <span
+                className="pc-project-actions"
+                onClick={e => e.stopPropagation()}
+                onKeyDown={e => e.stopPropagation()}
+              >
+                {deleting?.id === project.id ? (
+                  <>
+                    <span className="pc-faint" style={{ fontSize: 'var(--rd-text-caption)' }}>
+                      Delete this project? Drawings are kept (unassigned).
+                    </span>
+                    <button type="button" className="rd-btn rd-btn-primary rd-btn-sm" style={{ background: 'var(--rd-danger)', borderColor: 'var(--rd-danger)' }} onClick={async () => {
+                      try {
+                        await svc.deleteProject(project.id)
+                        setDeleting(null)
+                        setNotice({ text: `${project.name} deleted. Its drawings are kept, unassigned.`, tone: 'success' })
+                        setReloadTick(t => t + 1)
+                      } catch (err) {
+                        setNotice({ text: err?.response?.data?.error || 'The project could not be deleted.', tone: 'danger' })
+                        setDeleting(null)
+                      }
+                    }}>Confirm</button>
+                    <button type="button" className="rd-btn rd-btn-ghost rd-btn-sm" onClick={() => setDeleting(null)}>Cancel</button>
+                  </>
+                ) : (
+                  <>
+                    <button type="button" className="rd-btn rd-btn-ghost rd-btn-sm" onClick={() => setEditing(project)} aria-label={`Edit ${project.name}`}>Edit</button>
+                    <button type="button" className="rd-btn rd-btn-ghost rd-btn-sm" onClick={() => setDeleting(project)} aria-label={`Delete ${project.name}`}>Delete</button>
+                  </>
+                )}
+              </span>
+            </div>
           )
         })}
       </div>
+
+      {notice && (
+        <p className={`pc-note ${notice.tone === 'danger' ? 'pc-note-danger' : 'pc-note-success'}`} role="status" style={{ marginTop: '0.75rem' }}>
+          {notice.text}
+        </p>
+      )}
+
+      <EditProjectDrawer
+        project={editing}
+        onClose={() => setEditing(null)}
+        onSaved={() => { setEditing(null); setNotice({ text: 'Project updated.', tone: 'success' }); setReloadTick(t => t + 1) }}
+      />
 
       <NewProjectDrawer
         open={showNew}

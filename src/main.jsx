@@ -1,4 +1,10 @@
 import React from 'react'
+// Side-effect import FIRST: the esbuild dep-optimizer emits deep MUI entry
+// chunks (Popper/Tooltip) that call styled_default() at module top level
+// without initializing it; the '@mui/material' root entry performs that
+// init, so it must evaluate before any deep chunk (30 Oct 2026 —
+// "styled_default is not a function" on app boot).
+import '@mui/material'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { Provider } from 'react-redux'

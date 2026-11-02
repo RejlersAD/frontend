@@ -161,6 +161,7 @@ import PidCheckerProjectsPage from "./pages/Engineering/Process/PidChecker/Proje
 import PidCheckerWorkspacePage from "./pages/Engineering/Process/PidChecker/ProjectWorkspacePage";
 import PidCheckerDrawingSetPage from "./pages/Engineering/Process/PidChecker/DrawingSetPage";
 import PidCheckerDrawingPage from "./pages/Engineering/Process/PidChecker/DrawingPage";
+import PidCheckerReviewPage from "./pages/Engineering/Process/PidChecker/ProjectReviewPage";
 import PIDVerificationV2Report from "./pages/Engineering/Process/PIDVerificationV2Report";
 import PIDCheckerV2 from "./pages/Engineering/Process/PIDCheckerV2";
 import PIDCheckerV2Docs from "./pages/Engineering/Process/PIDCheckerV2Docs";
@@ -1254,6 +1255,15 @@ function App() {
               element={
                 <ModuleProtectedRoute moduleCode="pid_analysis">
                   <PidCheckerWorkspacePage />
+                </ModuleProtectedRoute>
+              }
+            />
+            {/* All P&IDs — combined project review */}
+            <Route
+              path="engineering/process/pid-verification/projects/:projectId/review"
+              element={
+                <ModuleProtectedRoute moduleCode="pid_analysis">
+                  <PidCheckerReviewPage />
                 </ModuleProtectedRoute>
               }
             />
