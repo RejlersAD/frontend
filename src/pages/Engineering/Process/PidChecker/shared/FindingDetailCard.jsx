@@ -52,7 +52,7 @@ export default function FindingDetailCard({
   return (
     <article className="pc-finding-card">
       <div className="pc-finding-head">
-        <h3 className="pc-finding-title">F{finding.number} — {finding.title}</h3>
+        <h3 className="pc-finding-title">{finding.displayId ?? `F${finding.number}`} — {finding.title}</h3>
         <Pill label={finding.status || 'Open'} />
       </div>
 

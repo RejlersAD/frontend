@@ -114,7 +114,9 @@ function normalizeFinding(issue, drawing, doc) {
   return {
     id: issue.id,
     number,
-    displayId: `${prefix}${number}`,
+    // Prefer the backend checklist-serial label ('9.1', '9.1-2'…); fall
+    // back to the legacy prefix+number scheme when absent (old caches).
+    displayId: issue.display_id ?? `${prefix}${number}`,
     prefix,
     isPair: pair,
     docId: doc?.id ?? null,

@@ -295,11 +295,11 @@
       return this.data.findings.filter((f) => f.anchor).map((f) => {
         const el = document.createElement('button');
         el.type = 'button'; el.className = 'p3d-callout';
-        el.setAttribute('aria-label', 'Finding F' + f.n + ': ' + (f.title || ''));
+        el.setAttribute('aria-label', 'Finding ' + (f.label || ('F' + f.n)) + ': ' + (f.title || ''));
         const chipCol = f.kind === 'error' ? PIN.error : f.kind === 'minor' ? PIN.minor : PIN.query;
         const kindLabel = f.kind === 'error' ? 'Error' : f.kind === 'minor' ? 'Minor' : 'Query';
         el.innerHTML = '';
-        const chip = document.createElement('span'); chip.className = 'p3d-chipnum'; chip.style.background = chipCol; chip.textContent = 'F' + f.n;
+        const chip = document.createElement('span'); chip.className = 'p3d-chipnum'; chip.style.background = chipCol; chip.textContent = f.label || ('F' + f.n);
         const txt = document.createElement('span'); txt.className = 'p3d-callout-text';
         const t1 = document.createElement('span'); t1.className = 'p3d-callout-title'; t1.textContent = f.title || '';
         const t2 = document.createElement('span'); t2.className = 'p3d-callout-sub'; t2.textContent = kindLabel + (f.rule ? ' · ' + f.rule : '');

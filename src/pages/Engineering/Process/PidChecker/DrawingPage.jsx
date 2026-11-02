@@ -145,6 +145,9 @@ function normalizeFinding(issue, drawing) {
   return {
     id: issue.id,
     number: issue.sl_no ?? issue.id,
+    // Checklist-serial label from the backend ('9.1', '9.1-2'…); falls back
+    // to F<sl_no> for findings with no checklist mapping or old caches.
+    displayId: issue.display_id ?? `F${issue.sl_no ?? issue.id}`,
     title: cleanLineText(issue.issue_observed ?? 'Finding'),
     status: issue.status,
     severity: issue.severity,
@@ -1302,9 +1305,12 @@ function ExtractionRow({ item, kind, onPatch, onShowOnDrawing }) {
         <Pill label={flagLabel} tone={flagTone} />
         {item.finding_ids?.length > 0 && (
           <span className="pc-faint" style={{ marginLeft: '0.375rem', fontSize: 'var(--rd-text-caption)' }}>
-            {/* F-numbers (sl_no via finding_nos) match the Findings list;
-                fall back to ids for old payloads. */}
-            {item.finding_ids.map((id, i) => `F${item.finding_nos?.[i] ?? id}`).join(' ')}
+            {/* finding_nos carries the checklist-serial labels (e.g. '9.1-2')
+                from the backend; fall back to ids for old payloads. */}
+            {item.finding_ids.map((id, i) => {
+              const lbl = item.finding_nos?.[i] ?? id
+              return typeof lbl === 'number' ? `F${lbl}` : lbl
+            }).join(' ')}
           </span>
         )}
       </td>
@@ -1711,13 +1717,14 @@ function ChecklistRow({ item, expanded, onToggle, onPatch, onAddInput, onShowFin
         <td>
           {item.finding_ids?.length > 0 && (
             <span style={{ display: 'inline-flex', gap: '0.25rem', flexWrap: 'wrap' }}>
-              {/* Show the F-number used in the Findings list (sl_no via
-                  finding_nos); fall back to the id for old payloads. */}
+              {/* Show the checklist-serial label used in the Findings list
+                  (finding_labels, e.g. '9.1-2'); fall back to sl_no, then id. */}
               {item.finding_ids.map((fid, i) => {
+                const label = item.finding_labels?.[i] ?? null
                 const n = item.finding_nos?.[i] ?? fid
                 return (
-                  <button key={fid} type="button" className="rd-btn rd-btn-ghost rd-btn-sm" onClick={() => onShowFinding?.(n)} aria-label={`Open finding F${n}`}>
-                    F{n}
+                  <button key={fid} type="button" className="rd-btn rd-btn-ghost rd-btn-sm" onClick={() => onShowFinding?.(n)} aria-label={`Open finding ${label ?? `F${n}`}`}>
+                    {label ?? `F${n}`}
                   </button>
                 )
               })}
@@ -2120,7 +2127,7 @@ function StepFindings({ drawingId, findings, errorCount, queryCount, openCount, 
                     className={`pc-flist-item${selected?.id === f.id ? ' pc-flist-item-selected' : ''}`}
                     onClick={() => selectFinding(f)}
                   >
-                    <span className="pc-flist-num">F{f.number}</span>
+                    <span className="pc-flist-num">{f.displayId}</span>
                     <span className="pc-flist-title">{f.title}</span>
                     <Pill label={findingLabel(f)} />
                   </button>
