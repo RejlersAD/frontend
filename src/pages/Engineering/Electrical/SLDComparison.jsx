@@ -404,7 +404,7 @@ function NewAnalysis({ project, state, reload, setToast, onAnalysed }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Stage 1 — Upload files
 // ═══════════════════════════════════════════════════════════════════════════
-function Stage1Files({ project, byKind, reload, setToast, locked }) {
+export function Stage1Files({ project, byKind, reload, setToast, locked }) {
   const [busy, setBusy] = useState('');
   const refs = { sld: useRef(), equipment: useRef(), load: useRef() };
 
@@ -465,7 +465,7 @@ function Stage1Files({ project, byKind, reload, setToast, locked }) {
   );
 }
 
-function SlotSummary({ kind, summary }) {
+export function SlotSummary({ kind, summary }) {
   if (!summary) return null;
   if (kind === 'sld') {
     return (
@@ -510,7 +510,7 @@ function SlotSummary({ kind, summary }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Stage 2 — RADAI AI Engine (BYOK)
 // ═══════════════════════════════════════════════════════════════════════════
-function Stage2Engine({ state, reload, locked, notNeeded }) {
+export function Stage2Engine({ state, reload, locked, notNeeded }) {
   const [modal, setModal] = useState(false);
   const byok = state.byok;
 
@@ -555,7 +555,7 @@ function Stage2Engine({ state, reload, locked, notNeeded }) {
   );
 }
 
-function ConnectKeyModal({ onClose, onSaved }) {
+export function ConnectKeyModal({ onClose, onSaved }) {
   const [provider, setProvider] = useState('claude');
   const [key, setKey] = useState('');
   const [testing, setTesting] = useState(false);
@@ -623,7 +623,7 @@ function ConnectKeyModal({ onClose, onSaved }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Stage 3 — Electrical legend
 // ═══════════════════════════════════════════════════════════════════════════
-function Stage3Legend({ project, state, reload, locked, notNeeded }) {
+export function Stage3Legend({ project, state, reload, locked, notNeeded }) {
   const [busy, setBusy] = useState(false);
   const legend = state.legend || {};
   const activate = async () => {
@@ -791,7 +791,7 @@ function ResultTable({ project, analysisId, tab }) {
     subtitle="Matched before equipment rules, so a cable tag can never become a panel." />;
 }
 
-function EquipmentTable({ rows, meta }) {
+export function EquipmentTable({ rows, meta, hideFilter = false, hideEmptyColumns = false }) {
   const [filter, setFilter] = useState('all');
   const [showDemo, setShowDemo] = useState(false);
   const counts = useMemo(() => ({
@@ -799,42 +799,46 @@ function EquipmentTable({ rows, meta }) {
     'not-on-sld': rows.filter((r) => r.status === 'not-on-sld').length,
     'sld-only': rows.filter((r) => r.status === 'sld-only').length,
   }), [rows]);
-  const visible = rows.filter((r) => {
+  const visible = hideFilter ? rows : rows.filter((r) => {
     const isDemo = r.listSheet === 'Demolition';
     if (isDemo && !showDemo) return false;
     if (filter === 'all') return true;
     return r.status === filter;
   });
+  const showCategory = !hideEmptyColumns || visible.some((r) => r.category);
+  const showReason = !hideEmptyColumns || visible.some((r) => r.reason);
   return (
     <div style={{ display: 'grid', gap: 8 }}>
       <p className="rd-text-muted" style={{ margin: 0, fontSize: 'var(--rd-text-caption)' }}>
         New Equipment sheet: {meta.summary?.['New Equipment']?.row_count ?? '—'} rows → {meta.summary?.['New Equipment']?.tag_count ?? '—'} tags after splitting 285-U-558A/B.
         Boards, transformers and generators only — loads are compared in the Load List tab.
       </p>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        {['all', 'matched', 'not-on-sld', 'sld-only'].map((f) => (
-          <button key={f} className={`rd-btn rd-btn-sm ${filter === f ? 'rd-btn-primary' : 'rd-btn-ghost'}`} onClick={() => setFilter(f)}>
-            {f === 'all' ? 'All' : `${EQ_STATUS_LABEL[f]} ${counts[f]}`}
+      {!hideFilter && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          {['all', 'matched', 'not-on-sld', 'sld-only'].map((f) => (
+            <button key={f} className={`rd-btn rd-btn-sm ${filter === f ? 'rd-btn-primary' : 'rd-btn-ghost'}`} onClick={() => setFilter(f)}>
+              {f === 'all' ? 'All' : `${EQ_STATUS_LABEL[f]} ${counts[f]}`}
+            </button>
+          ))}
+          <button className="rd-btn rd-btn-secondary rd-btn-sm" style={{ marginLeft: 'auto' }}
+            onClick={() => setShowDemo((v) => !v)}>
+            {showDemo ? 'Hide demolition rows' : `Show demolition rows (${meta.summary?.Demolition?.row_count ?? 0})`}
           </button>
-        ))}
-        <button className="rd-btn rd-btn-secondary rd-btn-sm" style={{ marginLeft: 'auto' }}
-          onClick={() => setShowDemo((v) => !v)}>
-          {showDemo ? 'Hide demolition rows' : `Show demolition rows (${meta.summary?.Demolition?.row_count ?? 0})`}
-        </button>
-      </div>
+        </div>
+      )}
       <div style={{ overflowX: 'auto' }}>
         <table className="rd-table">
-          <thead><tr><th>Tag</th><th>Description</th><th>Category</th><th>List sheet</th><th>On SLD</th><th>Status</th><th>Reason</th></tr></thead>
+          <thead><tr><th>Tag</th><th>Description</th>{showCategory && <th>Category</th>}<th>List sheet</th><th>On SLD</th><th>Status</th>{showReason && <th>Reason</th>}</tr></thead>
           <tbody>
             {visible.map((r, i) => (
               <tr key={i}>
                 <td className="rd-mono">{r.tag}{r.subline && <div className="rd-text-muted" style={{ fontSize: 'var(--rd-text-caption)' }}>{r.subline}</div>}</td>
                 <td>{r.description}</td>
-                <td>{r.category}</td>
+                {showCategory && <td>{r.category}</td>}
                 <td>{r.listSheet}</td>
                 <td>{r.onSld}</td>
                 <td><span className={`rd-pill ${EQ_STATUS_PILL[r.status] || 'rd-pill-neutral'}`}>{EQ_STATUS_LABEL[r.status] || r.status}</span></td>
-                <td className="rd-text-muted">{r.reason}</td>
+                {showReason && <td className="rd-text-muted">{r.reason}</td>}
               </tr>
             ))}
           </tbody>
@@ -844,7 +848,7 @@ function EquipmentTable({ rows, meta }) {
   );
 }
 
-function LoadTable({ rows, meta }) {
+export function LoadTable({ rows, meta }) {
   return (
     <div style={{ display: 'grid', gap: 8 }}>
       <p className="rd-text-muted" style={{ margin: 0, fontSize: 'var(--rd-text-caption)' }}>
@@ -891,7 +895,7 @@ const EQLOAD_STATUS_LABEL = {
   'board-covered': 'Board covered', 'board-not-covered': 'Board not covered',
 };
 
-function EqLoadTable({ rows, meta }) {
+export function EqLoadTable({ rows, meta }) {
   return (
     <div style={{ display: 'grid', gap: 8 }}>
       <p className="rd-text-muted" style={{ margin: 0, fontSize: 'var(--rd-text-caption)' }}>
@@ -920,7 +924,7 @@ function EqLoadTable({ rows, meta }) {
   );
 }
 
-function DraftingTable({ rows, meta }) {
+export function DraftingTable({ rows, meta }) {
   return (
     <div style={{ display: 'grid', gap: 8 }}>
       <p className="rd-text-muted" style={{ margin: 0, fontSize: 'var(--rd-text-caption)' }}>
@@ -943,7 +947,7 @@ function DraftingTable({ rows, meta }) {
   );
 }
 
-function SimpleTable({ rows, cols, keys, subtitle }) {
+export function SimpleTable({ rows, cols, keys, subtitle }) {
   return (
     <div style={{ display: 'grid', gap: 8 }}>
       <p className="rd-text-muted" style={{ margin: 0, fontSize: 'var(--rd-text-caption)' }}>{subtitle}</p>
@@ -962,7 +966,7 @@ function SimpleTable({ rows, cols, keys, subtitle }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Previous analyses
 // ═══════════════════════════════════════════════════════════════════════════
-function PreviousAnalyses({ project, reload, onView }) {
+export function PreviousAnalyses({ project, reload, onView }) {
   const [list, setList] = useState(null);
   const load = useCallback(async () => {
     const d = await sldService.listAnalyses(project.project_id);

@@ -141,7 +141,7 @@ export default function DrawingViewer({ imageUrl, imageLoading = false, imageErr
                 aria-label={`Finding ${finding.displayId ?? `F${finding.number}`}`}
                 onClick={() => onSelect?.(finding.id)}
               >
-                {finding.number}
+                {finding.displayId ?? finding.number}
               </button>
             ))}
           </div>

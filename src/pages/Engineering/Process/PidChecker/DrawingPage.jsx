@@ -145,6 +145,9 @@ function normalizeFinding(issue, drawing) {
   return {
     id: issue.id,
     number: issue.sl_no ?? issue.id,
+    // Checklist-serial label from the backend ('9.1', '9.1-2'…); falls back
+    // to F<sl_no> for findings with no checklist mapping or old caches.
+    displayId: issue.display_id ?? `F${issue.sl_no ?? issue.id}`,
     title: cleanLineText(issue.issue_observed ?? 'Finding'),
     status: issue.status,
     severity: issue.severity,
@@ -153,7 +156,11 @@ function normalizeFinding(issue, drawing) {
     found: cleanLineText(issue.evidence) || null,
     expected: null,
     basis: issue.action_required ?? null,
-    checklist: issue.rule_id ?? null,
+    // Checklist serial(s) the finding maps to (AI-PID-02 item numbers via
+    // report_meta.checklist_items); the rule code stays in ruleId.
+    checklist: (issue.report && Array.isArray(issue.report.checklist_items) && issue.report.checklist_items.length
+      ? issue.report.checklist_items.join(' / ')
+      : null) ?? issue.rule_id ?? null,
     pageIndex: drawing?.page_index ?? 0,
     locations,
     bbox: issue.bbox ?? null, // percent, as sent by the API (pc-ring takes percent)
@@ -380,7 +387,9 @@ export default function DrawingPage() {
   const findings = useMemo(
     () => drawings
       .filter(d => (d.page_index ?? 0) === currentPage)
-      .flatMap(d => (d.issues || []).map(issue => normalizeFinding(issue, d))),
+      // Only checklist-mapped findings are shown (2 Nov 2026 alignment) —
+      // in_checklist is absent on old payloads, so filter only on explicit false.
+      .flatMap(d => (d.issues || []).filter(issue => issue.in_checklist !== false).map(issue => normalizeFinding(issue, d))),
     [drawings, currentPage],
   )
 
@@ -1298,7 +1307,12 @@ function ExtractionRow({ item, kind, onPatch, onShowOnDrawing }) {
         <Pill label={flagLabel} tone={flagTone} />
         {item.finding_ids?.length > 0 && (
           <span className="pc-faint" style={{ marginLeft: '0.375rem', fontSize: 'var(--rd-text-caption)' }}>
-            {item.finding_ids.map(id => `F${id}`).join(' ')}
+            {/* finding_nos carries the checklist-serial labels (e.g. '9.1-2')
+                from the backend; fall back to ids for old payloads. */}
+            {item.finding_ids.map((id, i) => {
+              const lbl = item.finding_nos?.[i] ?? id
+              return typeof lbl === 'number' ? `F${lbl}` : lbl
+            }).join(' ')}
           </span>
         )}
       </td>
@@ -1705,11 +1719,17 @@ function ChecklistRow({ item, expanded, onToggle, onPatch, onAddInput, onShowFin
         <td>
           {item.finding_ids?.length > 0 && (
             <span style={{ display: 'inline-flex', gap: '0.25rem', flexWrap: 'wrap' }}>
-              {item.finding_ids.map(fid => (
-                <button key={fid} type="button" className="rd-btn rd-btn-ghost rd-btn-sm" onClick={() => onShowFinding?.(fid)} aria-label={`Open finding F${fid}`}>
-                  F{fid}
-                </button>
-              ))}
+              {/* Show the checklist-serial label used in the Findings list
+                  (finding_labels, e.g. '9.1-2'); fall back to sl_no, then id. */}
+              {item.finding_ids.map((fid, i) => {
+                const label = item.finding_labels?.[i] ?? null
+                const n = item.finding_nos?.[i] ?? fid
+                return (
+                  <button key={fid} type="button" className="rd-btn rd-btn-ghost rd-btn-sm" onClick={() => onShowFinding?.(n)} aria-label={`Open finding ${label ?? `F${n}`}`}>
+                    {label ?? `F${n}`}
+                  </button>
+                )
+              })}
             </span>
           )}
         </td>
@@ -1798,7 +1818,7 @@ function StepFindings({ drawingId, findings, errorCount, queryCount, openCount, 
     selectFinding(filtered[Math.min(idx + 1, filtered.length - 1)] ?? selected)
   }
 
-  const markers = findings.map(f => ({ id: f.id, number: f.number, status: markerStatus(f), locations: f.locations }))
+  const markers = findings.map(f => ({ id: f.id, number: f.number, displayId: f.displayId, status: markerStatus(f), locations: f.locations }))
   const marked = markers.filter(m => m.locations.length > 0).length
 
   // ── 2D | 3D viewer (spec §4.1) ────────────────────────────────────────
@@ -2109,7 +2129,7 @@ function StepFindings({ drawingId, findings, errorCount, queryCount, openCount, 
                     className={`pc-flist-item${selected?.id === f.id ? ' pc-flist-item-selected' : ''}`}
                     onClick={() => selectFinding(f)}
                   >
-                    <span className="pc-flist-num">F{f.number}</span>
+                    <span className="pc-flist-num">{f.displayId}</span>
                     <span className="pc-flist-title">{f.title}</span>
                     <Pill label={findingLabel(f)} />
                   </button>

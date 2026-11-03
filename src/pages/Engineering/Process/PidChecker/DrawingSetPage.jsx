@@ -114,7 +114,9 @@ function normalizeFinding(issue, drawing, doc) {
   return {
     id: issue.id,
     number,
-    displayId: `${prefix}${number}`,
+    // Prefer the backend checklist-serial label ('9.1', '9.1-2'…); fall
+    // back to the legacy prefix+number scheme when absent (old caches).
+    displayId: issue.display_id ?? `${prefix}${number}`,
     prefix,
     isPair: pair,
     docId: doc?.id ?? null,
@@ -130,7 +132,11 @@ function normalizeFinding(issue, drawing, doc) {
     pfdValue: issue.pfd_value ?? (pair ? issue.expected ?? null : null),
     pidValue: issue.pid_value ?? (pair ? issue.evidence ?? null : null),
     basis: issue.action_required ?? null,
-    checklist: issue.rule_id ?? null,
+    // Checklist serial(s) the finding maps to (AI-PID-02 item numbers via
+    // report_meta.checklist_items); the rule code stays in ruleId.
+    checklist: (issue.report && Array.isArray(issue.report.checklist_items) && issue.report.checklist_items.length
+      ? issue.report.checklist_items.join(' / ')
+      : null) ?? issue.rule_id ?? null,
     pageIndex: drawing?.page_index ?? 0,
     locations: locationsFor(issue, drawing?.metadata?.tag_positions),
     raw: issue,
@@ -343,7 +349,8 @@ export default function DrawingSetPage() {
   // ── derived lists (single source of truth, spec §5) ──────────────────
   const findings = useMemo(() => members.flatMap(m => {
     const res = resultsByDoc[m.id]
-    return (res?.drawings || []).flatMap(d => (d.issues || []).map(issue => normalizeFinding(issue, d, m)))
+    // Only checklist-mapped findings (in_checklist absent on old payloads).
+    return (res?.drawings || []).flatMap(d => (d.issues || []).filter(issue => issue.in_checklist !== false).map(issue => normalizeFinding(issue, d, m)))
   }), [members, resultsByDoc])
   const openFindings = useMemo(() => findings.filter(isOpen), [findings])
   const errorCount = openFindings.filter(isErrorSev).length

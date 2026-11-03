@@ -52,7 +52,7 @@ export default function FindingDetailCard({
   return (
     <article className="pc-finding-card">
       <div className="pc-finding-head">
-        <h3 className="pc-finding-title">F{finding.number} — {finding.title}</h3>
+        <h3 className="pc-finding-title">{finding.displayId ?? `F${finding.number}`} — {finding.title}</h3>
         <Pill label={finding.status || 'Open'} />
       </div>
 
@@ -127,7 +127,8 @@ export default function FindingDetailCard({
           <dt>Found</dt><dd>{finding.found ?? '—'}</dd>
           <dt>Expected</dt><dd>{finding.expected ?? '—'}</dd>
           <dt>Basis</dt><dd>{finding.basis ?? '—'}</dd>
-          <dt>Checklist</dt><dd>{finding.checklist ?? '—'}</dd>
+          <dt>Checklist item</dt><dd>{finding.checklist ?? '—'}</dd>
+          <dt>Rule</dt><dd>{finding.ruleId ?? '—'}</dd>
         </dl>
       )}
 

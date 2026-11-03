@@ -1,0 +1,165 @@
+/* SLD Checker — styles for the comparison reskin. Everything else reuses
+ * pidchecker.css (.pc-*) and the RADAI tokens (--rd-*). No gradients,
+ * no emoji, nothing under 11px, no horizontal scroll at 1280px/390px. */
+
+/* ── shared bits ─────────────────────────────────────────────────────── */
+.sc-toasts { position: fixed; right: 1rem; bottom: 1rem; display: flex; flex-direction: column; gap: 0.5rem; z-index: 60; max-width: 360px; }
+.sc-toasts .pc-note { background: var(--rd-surface); border: 1px solid var(--rd-border); box-shadow: var(--rd-shadow-card); }
+.sc-menu {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 70;
+  min-width: 200px;
+  background: var(--rd-surface); border: 1px solid var(--rd-border);
+  border-radius: var(--rd-radius-control); box-shadow: var(--rd-shadow-overlay);
+  padding: 0.25rem;
+}
+.sc-menu-item {
+  display: block; width: 100%; text-align: left;
+  min-height: 36px; padding: 0 0.75rem;
+  background: none; border: 0; border-radius: var(--rd-radius-control);
+  color: var(--rd-text); font-size: var(--rd-text-table); cursor: pointer;
+}
+.sc-menu-item:hover, .sc-menu-item:focus-visible { background: var(--rd-surface-subtle); outline: none; box-shadow: var(--rd-focus); }
+.sc-menu-item:disabled { color: var(--rd-text-faint); cursor: not-allowed; }
+
+/* ── comparison overview SLD (B: ComparisonSld) ──────────────────────── */
+.sc-csld-scroll { overflow-x: auto; }
+.sc-csld-incomer {
+  position: absolute;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1px; padding: 2px 4px;
+  background: var(--rd-surface); border: 2px solid var(--rd-text-faint);
+  border-radius: var(--rd-radius-control); cursor: pointer;
+  color: var(--rd-text);
+}
+.sc-csld-incomer:hover, .sc-csld-incomer:focus-visible { outline: none; box-shadow: var(--rd-focus); }
+.sc-csld-code { font-weight: 700; font-size: var(--rd-text-table); line-height: 1.1; }
+.sc-csld-name { font-size: 11px; color: var(--rd-text-muted); line-height: 1.15; text-align: center; }
+.sc-csld-feeder {
+  position: absolute;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 0.5rem 0.25rem;
+  background: var(--rd-surface); border: 2px solid var(--rd-border);
+  border-radius: var(--rd-radius-control); cursor: pointer;
+  color: var(--rd-text);
+}
+.sc-csld-feeder:hover:not(:disabled), .sc-csld-feeder:focus-visible { outline: none; box-shadow: var(--rd-focus); }
+.sc-csld-feeder:disabled { cursor: not-allowed; }
+.sc-csld-fname { font-size: 11px; color: var(--rd-text-muted); text-align: center; line-height: 1.2; min-height: 26px; }
+.sc-csld-fvalue { font-size: var(--rd-text-body); font-weight: 700; color: var(--rd-text); }
+.sc-csld-fsub { font-size: 11px; color: var(--rd-text-faint); text-align: center; line-height: 1.2; }
+
+/* ── overview right panel ────────────────────────────────────────────── */
+.sc-opanel { display: flex; flex-direction: column; gap: 0.75rem; border-left: 1px solid var(--rd-border-soft); padding-left: 1rem; }
+.sc-opanel-title { font-size: var(--rd-text-caption); font-weight: 600; color: var(--rd-text-muted); margin: 0; text-transform: uppercase; letter-spacing: 0.04em; }
+.sc-otiles { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+.sc-orow { display: flex; align-items: center; gap: 0.5rem; min-height: 32px; font-size: var(--rd-text-table); color: var(--rd-text); }
+.sc-orow-locked { color: var(--rd-text-faint); }
+
+/* ── layout: diagram + side panel; inputs + noticed ──────────────────── */
+.sc-overview { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 1rem; padding: 1rem; }
+.sc-duo { display: grid; grid-template-columns: 1.25fr 1fr; gap: 0.875rem; align-items: start; }
+
+/* ── inputs card rows ────────────────────────────────────────────────── */
+.sc-inputs.sc-inputs-drag { border-color: var(--rd-primary); box-shadow: var(--rd-focus); }
+.sc-inrow {
+  display: flex; align-items: center; gap: 0.625rem;
+  min-height: 64px; padding: 0.375rem 0.5rem;
+  border: 1px solid var(--rd-border-soft); border-radius: var(--rd-radius-control);
+}
+.sc-intile {
+  flex: 0 0 40px; width: 40px; height: 40px; border-radius: var(--rd-radius-control);
+  display: grid; place-items: center;
+  color: #fff; font-weight: 700; font-size: var(--rd-text-table);
+}
+.sc-inbody { flex: 1 1 auto; min-width: 0; }
+.sc-inhead { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.sc-inchips { display: flex; gap: 0.25rem; flex-wrap: wrap; margin-top: 0.25rem; max-height: 44px; overflow: hidden; }
+.sc-chip {
+  display: inline-block; padding: 0 0.45rem; min-height: 20px; line-height: 20px;
+  background: var(--rd-surface-subtle); border: 1px solid var(--rd-border-soft);
+  border-radius: 10px; font-size: 11px; color: var(--rd-text-muted);
+}
+.sc-chip-amber { background: var(--rd-warning-soft); color: var(--rd-warning); border-color: color-mix(in srgb, var(--rd-warning) 35%, transparent); }
+.sc-chip-link { background: var(--rd-primary-soft); color: var(--rd-accent); border-color: color-mix(in srgb, var(--rd-accent) 30%, transparent); cursor: pointer; }
+.sc-chip-link:hover, .sc-chip-link:focus-visible { outline: none; box-shadow: var(--rd-focus); }
+
+/* ── noticed card ────────────────────────────────────────────────────── */
+.sc-notice { display: flex; gap: 0.5rem; align-items: flex-start; }
+.sc-dot { flex: 0 0 10px; width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; }
+.sc-dot-amber { background: var(--rd-warning); }
+.sc-dot-blue { background: var(--rd-info); }
+
+/* ── results step 4: detail card ─────────────────────────────────────── */
+.sc-detail-grid { display: grid; grid-template-columns: auto 1fr auto 1fr; gap: 0.375rem 0.625rem; font-size: var(--rd-text-table); }
+.sc-detail-grid dt { color: var(--rd-text-muted); font-weight: 500; }
+.sc-detail-grid dd { margin: 0; color: var(--rd-text); min-width: 0; overflow-wrap: anywhere; }
+.sc-detail-diff { color: var(--rd-danger); font-weight: 600; }
+.sc-board-chips { display: flex; gap: 0.25rem; flex-wrap: wrap; }
+
+/* ── results table: no wrapping tags/boards/pills (B: issue 8) ───────── */
+.sc-results-table td:first-child, .sc-results-table th:first-child { min-width: 130px; white-space: nowrap; }
+.sc-results-table td:nth-child(3), .sc-results-table td:nth-child(4) { white-space: nowrap; }
+.sc-results-table .rd-pill { white-space: nowrap; }
+.sc-results-table td:nth-child(2) { width: 100%; } /* description takes the remaining width */
+
+/* ── detail card comparison grid (rows = fields, cols = List vs SLD) ─── */
+.sc-cmp { width: 100%; border-collapse: collapse; font-size: var(--rd-text-table); }
+.sc-cmp th, .sc-cmp td { text-align: left; padding: 0.25rem 0.375rem; border-bottom: 1px solid var(--rd-border-soft); vertical-align: top; }
+.sc-cmp thead th { color: var(--rd-text-muted); font-weight: 600; font-size: var(--rd-text-caption); }
+.sc-cmp tbody th { color: var(--rd-text-muted); font-weight: 500; }
+.sc-cmp td { color: var(--rd-text); overflow-wrap: anywhere; }
+.sc-detail-diff { color: var(--rd-danger); font-weight: 600; }
+
+/* ── 2D alignment view ───────────────────────────────────────────────── */
+.sc-al-scroll { overflow: auto; max-height: 560px; margin: 0.5rem 1rem 0; }
+.sc-al-table { border-collapse: separate; border-spacing: 0; }
+.sc-al-table thead th { position: sticky; top: 0; background: var(--rd-surface); z-index: 3; }
+.sc-al-tagcol { position: sticky; left: 0; background: var(--rd-surface); z-index: 2; min-width: 130px; white-space: nowrap; }
+.sc-al-table thead .sc-al-tagcol { z-index: 4; }
+.sc-al-group {
+  position: sticky; top: 33px; z-index: 2;
+  background: var(--rd-surface-subtle);
+  font-weight: 700; font-size: var(--rd-text-caption); color: var(--rd-text-muted);
+  padding: 0.375rem 0.5rem;
+}
+.sc-al-cell {
+  display: inline-flex; align-items: center; gap: 0.375rem;
+  padding: 0.2rem 0.5rem; border-radius: 8px;
+  font-size: 11px; line-height: 1.35;
+  max-width: 100%;
+}
+.sc-al-dot { flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.sc-al-sub { display: block; font-size: 11px; opacity: 0.8; }
+.sc-al-ok { background: var(--rd-success-soft); color: var(--rd-success); }
+.sc-al-diff { background: var(--rd-danger-soft); color: var(--rd-danger); }
+.sc-al-only { background: var(--rd-warning-soft); color: var(--rd-warning); }
+.sc-al-demo { background: var(--rd-surface-sunken, var(--rd-surface-subtle)); color: var(--rd-text-muted); }
+.sc-al-none { background: var(--rd-surface-muted, var(--rd-surface-subtle)); color: var(--rd-text-faint); }
+.sc-al-legend {
+  display: flex; gap: 0.5rem; flex-wrap: wrap;
+  margin: 0; padding: 0.625rem 1rem 1rem;
+}
+
+/* ── 3D docs view callouts ───────────────────────────────────────────── */
+.sc-3d-callouts {
+  position: absolute; top: 3.25rem; left: 0.75rem; z-index: 5;
+  display: flex; flex-direction: column; gap: 0.375rem; pointer-events: none;
+  max-width: min(420px, 70%);
+}
+.sc-3d-callout {
+  padding: 0.25rem 0.625rem;
+  background: rgba(10, 24, 48, 0.88); color: #e2e8f0;
+  border: 1px solid rgba(90, 130, 190, 0.45); border-radius: var(--rd-radius-control);
+  font-size: 11px; font-weight: 600;
+}
+
+/* ── analyse button: RADAI primary, standard disabled style ──────────── */
+.sc-analyse.rd-btn-primary:not(:disabled) { background: var(--rd-primary); border-color: var(--rd-primary); }
+.sc-analyse.rd-btn-primary:not(:disabled):hover { background: var(--rd-primary-hover); }
+
+/* ── breakpoints ─────────────────────────────────────────────────────── */
+@media (max-width: 1100px) {
+  .sc-overview { grid-template-columns: minmax(0, 1fr); }
+  .sc-opanel { border-left: 0; border-top: 1px solid var(--rd-border-soft); padding-left: 0; padding-top: 0.75rem; }
+  .sc-duo { grid-template-columns: minmax(0, 1fr); }
+}
