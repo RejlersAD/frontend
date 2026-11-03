@@ -180,11 +180,9 @@ import ElectricalDocumentsHub from "./pages/Engineering/Electrical/ElectricalDoc
 import ElectricalDatasheetPage from "./pages/Engineering/Electrical/ElectricalDatasheetPage";
 import ElectricalEquipmentDatasheet from "./pages/Engineering/Electrical/ElectricalEquipmentDatasheet";
 import ElectricalDatasheetFormPage from "./pages/Engineering/Electrical/ElectricalDatasheetFormPage";
-import SingleLineDiagram from "./pages/Engineering/Electrical/SLDComparison";
 import SldCheckerProjectsPage from "./pages/Engineering/Electrical/SldChecker/SldCheckerProjectsPage";
 import SldCheckerWorkspacePage from "./pages/Engineering/Electrical/SldChecker/SldCheckerWorkspacePage";
 import SldCheckerDrawingPage from "./pages/Engineering/Electrical/SldChecker/SldCheckerDrawingPage";
-import SldCheckerReviewPage from "./pages/Engineering/Electrical/SldChecker/SldCheckerReviewPage";
 import ElectricalCheckList from "./pages/Engineering/Electrical/ElectricalCheckList";
 import ExcelQualityCheckerPage from "./pages/Engineering/Electrical/ExcelQualityCheckerPage";
 import UnifiedElectricalQualityChecker from "./pages/Engineering/Electrical/UnifiedElectricalQualityChecker";
@@ -1481,23 +1479,15 @@ function App() {
                 </ProtectedRoute>
               }
             />
-            {/* SLD Checker — All SLDs combined project review */}
+            {/* SLD Checker — review scope removed; redirect to the project */}
             <Route
               path="engineering/electrical/sld/projects/:projectId/review"
-              element={
-                <ProtectedRoute>
-                  <SldCheckerReviewPage />
-                </ProtectedRoute>
-              }
+              element={<Navigate to="../" replace />}
             />
-            {/* SLD Equipment Comparison — classic UI, kept for reference */}
+            {/* Classic SLD comparison removed — old bookmarks land on the checker */}
             <Route
               path="engineering/electrical/sld/classic"
-              element={
-                <ProtectedRoute>
-                  <SingleLineDiagram />
-                </ProtectedRoute>
-              }
+              element={<Navigate to="/engineering/electrical/sld" replace />}
             />
             {/* SOFT-CODED: Electrical Check List - NEW FEATURE */}
             <Route

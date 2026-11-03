@@ -1,42 +1,29 @@
 /**
- * SLD Checker — projects list. Mirrors the P&ID checker ProjectsPage:
- * filter chips with counts, KPI tiles, project cards, New project drawer.
- * Every count is derived from the same project + state lists at render
- * time — nothing is invented.
+ * SLD Checker — Projects. Cards 3–4 per row: name · n/3 files · last
+ * analysis date · Matched m/t · Conflicts c (from the latest analysis
+ * headline — never invented). New Project keeps the existing createProject
+ * with unique case-insensitive names.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import * as svc from './sldChecker.service'
-import { PageHeader, KpiTile, Pill, Drawer, EmptyState } from '../../Process/PidChecker/shared'
+import svc from './sldChecker.service'
+import { PageHeader, Pill, Drawer, EmptyState } from '../../Process/PidChecker/shared'
 import '../../Process/PidChecker/pidchecker.css'
 import './sldchecker.css'
 
 const BASE = '/engineering/electrical/sld'
 
 const fmtDate = iso => {
-  if (!iso) return '—'
+  if (!iso) return null
   try {
-    return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+    return new Date(iso).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
   } catch {
-    return '—'
+    return null
   }
 }
-
-function normalizeProject(p = {}) {
-  return {
-    id: p.project_id ?? p.id ?? null,
-    name: p.project_name ?? p.name ?? 'Untitled project',
-    description: p.description ?? '',
-    updatedAt: p.updated_at ?? p.modified_at ?? p.created_at ?? null,
-    raw: p,
-  }
-}
-
-// ── New project drawer ──────────────────────────────────────────────────
 
 function NewProjectDrawer({ open, onClose, onCreated, existingNames }) {
   const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
 
@@ -50,9 +37,9 @@ function NewProjectDrawer({ open, onClose, onCreated, existingNames }) {
     setBusy(true)
     setError(null)
     try {
-      const p = await svc.createProject({ projectName: trimmed, description: description.trim() })
-      onCreated(normalizeProject(p.project_id ? p : { ...p, project_id: p.project_id ?? p.id, project_name: trimmed }))
-      setName(''); setDescription('')
+      const p = await svc.createProject({ projectName: trimmed })
+      onCreated({ id: p.project_id ?? p.id, name: p.project_name ?? trimmed })
+      setName('')
     } catch (err) {
       setError(err?.response?.data?.error || 'The project could not be created. Please retry.')
     } finally {
@@ -78,36 +65,22 @@ function NewProjectDrawer({ open, onClose, onCreated, existingNames }) {
         <label className="pc-label" htmlFor="sc-np-name">Project name</label>
         <input id="sc-np-name" className="pc-input" value={name} onChange={e => setName(e.target.value)} />
       </div>
-      <div className="pc-field">
-        <label className="pc-label" htmlFor="pc-np-desc">Description</label>
-        <textarea
-          id="pc-np-desc"
-          className="pc-input"
-          style={{ minHeight: 72, padding: '0.5rem 0.625rem' }}
-          value={description}
-          onChange={e => setDescription(e.target.value)}
-        />
-      </div>
       {error && <p className="pc-error" role="alert">{error}</p>}
       <p className="pc-note" style={{ margin: 0 }}>
-        After creating the project, add the required inputs: the SLD drawing, the Equipment List,
-        the Load List, the legend and checklist AI-SLD-01.
+        Upload the SLD drawing, the Equipment List and the Load List, then analyse.
       </p>
     </Drawer>
   )
 }
-
-// ── page ────────────────────────────────────────────────────────────────
 
 export default function SldCheckerProjectsPage() {
   const navigate = useNavigate()
   const [projects, setProjects] = useState(null)
   const [stateByProject, setStateByProject] = useState({})
   const [error, setError] = useState(null)
-  const [filter, setFilter] = useState('All')
   const [showNew, setShowNew] = useState(false)
   const [deleting, setDeleting] = useState(null)
-  const [notice, setNotice] = useState(null) // { text, tone }
+  const [notice, setNotice] = useState(null)
   const [reloadTick, setReloadTick] = useState(0)
 
   useEffect(() => {
@@ -115,16 +88,12 @@ export default function SldCheckerProjectsPage() {
     ;(async () => {
       try {
         const data = await svc.listProjects()
-        const list = (Array.isArray(data) ? data : (data?.projects || data?.results || [])).map(normalizeProject)
+        const raw = Array.isArray(data) ? data : (data?.projects || data?.results || [])
+        const list = raw.map(p => ({ id: p.project_id ?? p.id, name: p.project_name ?? p.name ?? 'Untitled project' }))
         if (!alive) return
         setProjects(list)
-        // Real per-project staged state drives every count on this screen.
         const entries = await Promise.all(list.map(async p => {
-          try {
-            return [p.id, await svc.getState(p.id)]
-          } catch {
-            return [p.id, null] // unknown — tiles show "—", never invented
-          }
+          try { return [p.id, await svc.getState(p.id)] } catch { return [p.id, null] }
         }))
         if (!alive) return
         setStateByProject(Object.fromEntries(entries))
@@ -135,124 +104,41 @@ export default function SldCheckerProjectsPage() {
     return () => { alive = false }
   }, [reloadTick])
 
-  const statesLoaded = useMemo(
-    () => (projects || []).length > 0 && (projects || []).every(p => stateByProject[p.id] !== undefined),
-    [projects, stateByProject],
-  )
-
-  const statusOf = state => {
-    if (!state) return 'Draft'
-    return (state.analyses_count ?? 0) > 0 ? 'Analysed' : 'Draft'
-  }
-
-  const kpis = useMemo(() => {
-    const list = projects || []
-    if (!statesLoaded) return { projects: list.length, files: null, analysed: null, byok: null }
-    const states = list.map(p => stateByProject[p.id]).filter(Boolean)
-    return {
-      projects: list.length,
-      files: states.reduce((n, s) => n + (s.files?.length ?? 0), 0),
-      analysed: states.filter(s => (s.analyses_count ?? 0) > 0).length,
-      byok: states.filter(s => s.byok).length,
-    }
-  }, [projects, stateByProject, statesLoaded])
-
-  const chips = useMemo(() => {
-    const list = projects || []
-    const analysed = list.filter(p => (stateByProject[p.id]?.analyses_count ?? 0) > 0).length
-    return [
-      { name: 'All', count: list.length },
-      { name: 'Analysed', count: statesLoaded ? analysed : null },
-      { name: 'Draft', count: statesLoaded ? list.length - analysed : null },
-    ]
-  }, [projects, stateByProject, statesLoaded])
-
-  const visible = useMemo(() => (projects || []).filter(p => {
-    if (filter === 'All') return true
-    return statusOf(stateByProject[p.id]) === filter
-  }), [projects, filter, stateByProject])
-
   return (
     <div className="pc-page">
       <PageHeader
-        title="SLD Checker"
-        subtitle="Check single line diagrams against the Equipment List, the Load List, the legend and checklist AI-SLD-01."
+        title="SLD Checker — Projects"
+        subtitle="Compare the single line diagram with the Equipment List and Load List before issue."
         actions={(
-          <>
-            <button
-              type="button"
-              className="rd-btn rd-btn-secondary"
-              onClick={() => navigate(`${BASE}/classic`)}
-            >
-              Classic comparison
-            </button>
-            <button type="button" className="rd-btn rd-btn-primary" onClick={() => setShowNew(true)}>
-              New project
-            </button>
-          </>
+          <button type="button" className="rd-btn rd-btn-primary" onClick={() => setShowNew(true)}>
+            New Project
+          </button>
         )}
       />
-
-      <div className="pc-chips" role="group" aria-label="Filter projects">
-        {chips.map(chip => (
-          <button
-            key={chip.name}
-            type="button"
-            className={`pc-chip${filter === chip.name ? ' pc-chip-active' : ''}`}
-            aria-pressed={filter === chip.name}
-            onClick={() => setFilter(chip.name)}
-          >
-            {chip.name}
-            {chip.count != null && <span className="pc-chip-count">{chip.count}</span>}
-          </button>
-        ))}
-      </div>
-
-      <div className="pc-kpi-grid">
-        <KpiTile label="Projects" value={kpis.projects} />
-        <KpiTile
-          label="Files uploaded"
-          value={kpis.files ?? '—'}
-          meta={kpis.files == null ? 'Available once the project states are loaded' : 'SLD drawings, Equipment Lists and Load Lists'}
-        />
-        <KpiTile
-          label="Analysed"
-          value={kpis.analysed ?? '—'}
-          meta={kpis.analysed != null ? 'projects with at least one analysis' : null}
-        />
-        <KpiTile
-          label="AI key connected"
-          value={kpis.byok ?? '—'}
-          meta={kpis.byok != null ? 'projects with a personal key (BYOK)' : null}
-        />
-      </div>
 
       {error && <p className="pc-error" role="alert">{error}</p>}
       {!error && projects === null && (
         <div className="pc-card-grid" aria-label="Loading projects">
-          {[0, 1, 2].map(i => <div key={i} className="pc-skeleton" style={{ height: 140 }} />)}
+          {[0, 1, 2].map(i => <div key={i} className="pc-skeleton" style={{ height: 120 }} />)}
         </div>
       )}
 
-      {projects !== null && visible.length === 0 && (
+      {projects !== null && projects.length === 0 && (
         <EmptyState
-          title={filter === 'All' ? 'No projects yet.' : `No ${filter.toLowerCase()} projects.`}
-          action={(
-            <button type="button" className="rd-btn rd-btn-primary" onClick={() => setShowNew(true)}>
-              New project
-            </button>
-          )}
+          title="No projects yet."
+          action={<button type="button" className="rd-btn rd-btn-primary" onClick={() => setShowNew(true)}>New Project</button>}
         >
-          Create a project to upload the SLD, the Equipment List and the Load List and start the check run.
+          Create a project to upload the SLD, the Equipment List and the Load List.
         </EmptyState>
       )}
 
-      <div className="pc-card-grid">
-        {visible.map(project => {
-          const state = stateByProject[project.id]
-          const files = state?.files?.length ?? 0
-          const analyses = state?.analyses_count ?? 0
-          const status = statusOf(state)
+      <div className="pc-card-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+        {(projects || []).map(project => {
+          const st = stateByProject[project.id]
+          const files = st?.files?.length ?? null
+          const latest = st?.latest_analysis ?? null
+          const h = latest?.headline ?? null
+          const lastDate = fmtDate(latest?.created_at)
           return (
             <div
               key={project.id}
@@ -264,18 +150,20 @@ export default function SldCheckerProjectsPage() {
             >
               <div className="pc-project-card-top">
                 <h2 className="pc-project-name">{project.name}</h2>
-                <Pill label={status} tone={status === 'Analysed' ? 'success' : 'warning'} />
+                {latest && <Pill label={latest.status === 'completed' ? 'Analysed' : (latest.status ?? 'Draft')} tone={latest.status === 'completed' ? 'success' : 'warning'} />}
               </div>
-              {project.description && <p className="pc-project-desc">{project.description}</p>}
               <div className="pc-pillrow">
-                <Pill label={`${files} of 3 files`} tone={files >= 2 ? 'info' : 'neutral'} />
-                <Pill label={`${analyses} analyses`} tone="neutral" />
-                {state?.byok && <Pill label="AI: my key (BYOK)" tone="ai" />}
+                <Pill label={`${files ?? '—'}/3 files`} tone={files != null && files >= 2 ? 'info' : 'neutral'} />
+                {st?.byok && <Pill label="AI: my key" tone="ai" />}
               </div>
               <span className="pc-project-meta">
-                {analyses > 0 ? `Latest analysis ${state?.latest_analysis?.id ?? ''}` : 'Not analysed yet'}
-                {' · '}updated {fmtDate(project.updatedAt)}
+                {lastDate ? `Last analysis ${lastDate}` : 'Not analysed yet'}
               </span>
+              {h && (
+                <span className="pc-project-meta">
+                  Matched {h.matched ?? 0}/{h.matchedTotal ?? 0} · Conflicts {h.loadConflicts ?? 0}
+                </span>
+              )}
               <span
                 className="pc-project-actions"
                 onClick={e => e.stopPropagation()}
@@ -283,17 +171,15 @@ export default function SldCheckerProjectsPage() {
               >
                 {deleting?.id === project.id ? (
                   <>
-                    <span className="pc-faint" style={{ fontSize: 'var(--rd-text-caption)' }}>
-                      Delete this project and its files?
-                    </span>
+                    <span className="pc-faint" style={{ fontSize: 'var(--rd-text-caption)' }}>Delete this project and its files?</span>
                     <button type="button" className="rd-btn rd-btn-primary rd-btn-sm" style={{ background: 'var(--rd-danger)', borderColor: 'var(--rd-danger)' }} onClick={async () => {
                       try {
                         await svc.deleteProject(project.id)
                         setDeleting(null)
-                        setNotice({ text: `${project.name} deleted.`, tone: 'success' })
+                        setNotice(`${project.name} deleted.`)
                         setReloadTick(t => t + 1)
                       } catch (err) {
-                        setNotice({ text: err?.response?.data?.error || 'The project could not be deleted.', tone: 'danger' })
+                        setNotice(err?.response?.data?.error || 'The project could not be deleted.')
                         setDeleting(null)
                       }
                     }}>Confirm</button>
@@ -308,20 +194,13 @@ export default function SldCheckerProjectsPage() {
         })}
       </div>
 
-      {notice && (
-        <p className={`pc-note ${notice.tone === 'danger' ? 'pc-note-danger' : 'pc-note-success'}`} role="status" style={{ marginTop: '0.75rem' }}>
-          {notice.text}
-        </p>
-      )}
+      {notice && <p className="pc-note pc-note-success" role="status" style={{ marginTop: '0.75rem' }}>{notice}</p>}
 
       <NewProjectDrawer
         open={showNew}
         onClose={() => setShowNew(false)}
         existingNames={(projects || []).map(p => p.name.toLowerCase())}
-        onCreated={project => {
-          setShowNew(false)
-          navigate(`${BASE}/projects/${project.id}`)
-        }}
+        onCreated={project => { setShowNew(false); navigate(`${BASE}/projects/${project.id}`) }}
       />
     </div>
   )
