@@ -33,6 +33,7 @@ const noticeLabels = {
 const sourceFields = [
   ["organization_name", "Customer"], ["customer_name", "Customer"],
   ["tender_reference", "Tender reference"], ["procurement_reference", "Procurement reference"],
+  ["organization_reference", "Organization reference"], ["document_reference", "Document reference"],
   ["pr_reference", "PR reference"], ["source_portal", "Portal"],
   ["due_date", "Proposal deadline"], ["deadline_time", "Submission time"],
   ["deadline_timezone", "Submission timezone"], ["scope_summary", "Scope summary"],
@@ -118,6 +119,8 @@ function EmailDetails({ data }) {
     ["Received", text(data.received_at) ? timestamp(data.received_at) : ""],
     ["Mailbox", text(data.source_mailbox_address)],
     ["Tender reference", text(analysis.tender_reference) || text(identity.tender_reference)],
+    ["Organization reference", text(analysis.organization_reference)],
+    ["Document reference", text(analysis.document_reference)],
     ["Procurement reference", text(analysis.procurement_reference)],
     ["PR reference", text(analysis.pr_reference)],
     ["Portal", text(analysis.source_portal) || text(identity.source_portal)],
@@ -182,4 +185,3 @@ export default function SalesOpportunityHistory({ events = [] }) {
   </section>;
 }
 SalesOpportunityHistory.propTypes = { events: PropTypes.array };
-

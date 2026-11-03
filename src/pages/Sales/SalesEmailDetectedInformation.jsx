@@ -74,6 +74,8 @@ export default function SalesEmailDetectedInformation({ information, subject }) 
   const requestCode = valueText(detected.request_type_code);
   const agreementReference = emailContextReference(detected, "agreement_reference");
   const correspondenceReference = emailContextReference(detected, "correspondence_reference");
+  const organizationReference = emailContextReference(detected, "organization_reference");
+  const documentReference = emailContextReference(detected, "document_reference");
   const actionDeadline = emailActionDeadline(detected);
   const fields = [
     ["title", "Title (Subject)", valueText(detected.title) || subject],
@@ -84,6 +86,8 @@ export default function SalesEmailDetectedInformation({ information, subject }) 
 .includes(requestCode) ? requestCode : ""],
     ...(agreementReference ? [["agreement_reference", "WO agreement reference", agreementReference.value]] : []),
     ...(correspondenceReference ? [["correspondence_reference", "Correspondence reference", `${correspondenceReference.value} · Requires review`]] : []),
+    ...(organizationReference ? [["organization_reference", "Organization reference", `${organizationReference.value} · Requires review`]] : []),
+    ...(documentReference ? [["document_reference", "Document reference", `${documentReference.value} · Requires review`]] : []),
     ...(actionDeadline ? [["action_deadline", "Action deadline", actionDeadline.value]] : []),
   ];
   const evidenceFields = versionTwo ? [...fields, ["customer_domain", "Customer domain", domain?.status === "detected" ? valueText(detected.customer_domain) : ""]] : fields;
@@ -120,4 +124,3 @@ SalesEmailDetectedInformation.propTypes = {
 SalesEmailDetectedInformation.defaultProps = { information: null, subject: "" };
 ClassificationQuotes.propTypes = { evidence: PropTypes.any, sources: PropTypes.any };
 SuggestedClassification.propTypes = { classification: PropTypes.any, sources: PropTypes.any };
-

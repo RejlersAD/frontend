@@ -77,6 +77,8 @@ export default function SalesEmailContextSummary({ information, senderName, send
   const portal = sourcedField(information, "source_portal");
   const agreementReference = emailContextReference(information, "agreement_reference");
   const correspondenceReference = emailContextReference(information, "correspondence_reference");
+  const organizationReference = emailContextReference(information, "organization_reference");
+  const documentReference = emailContextReference(information, "document_reference");
   const dueDate = information?.detection_version === 2 && facts.dueLabel === "Due date" && /^\d{4}-\d{2}-\d{2}(?: · Requires verification)?$/.test(facts.dueDate);
   const deadlineSources = information?.field_sources?.due_date;
   const sharesDeadlineSource = (key) => supportedSources(information, deadlineSources) &&
@@ -93,6 +95,8 @@ export default function SalesEmailContextSummary({ information, senderName, send
     ...(tenderReference ? [["Tender status", "Not verified"]] : []),
     ...(agreementReference ? [["WO agreement reference", agreementReference.value]] : []),
     ...(correspondenceReference ? [["Correspondence reference", `${correspondenceReference.value} · Requires review`]] : []),
+    ...(organizationReference ? [["Organization reference", `${organizationReference.value} · Requires review`]] : []),
+    ...(documentReference ? [["Document reference", `${documentReference.value} · Requires review`]] : []),
     [facts.dueLabel, facts.dueDate],
     ...(validTime ? [["Submission time", [validTime, timezone].filter(Boolean).join(" · ")]] : []),
     ["Opportunity", facts.opportunity],
@@ -113,4 +117,3 @@ SalesEmailContextSummary.propTypes = {
   senderEmail: PropTypes.string, sentAt: PropTypes.string, receivedAt: PropTypes.string, converted: PropTypes.bool, classificationCode: PropTypes.string,
 };
 SalesEmailContextSummary.defaultProps = { information: null, senderName: "", senderEmail: "", sentAt: "", receivedAt: "", converted: false, classificationCode: "" };
-

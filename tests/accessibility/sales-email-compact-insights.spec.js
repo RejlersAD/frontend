@@ -23,7 +23,7 @@ const ready = async (page, options = {}) => {
   const state = await prepare(page, {
     shell: true, messages: listing([first(), second()]), details: emailDetail(first()), ...options,
   })
-  await expect(insights(page).getByRole('heading', { name: 'AI insights', exact: true })).toBeVisible()
+  await expect(insights(page).getByRole('heading', { name: 'Email insights', exact: true })).toBeVisible()
   return state
 }
 const mockAssistant = async (page, wait = Promise.resolve()) => {

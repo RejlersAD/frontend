@@ -1,5 +1,31 @@
 # Email Intake reference design and AI actions
 
+## Rules-based review and local archive matching - 3 November 2026
+
+The panel now reads Email insights and states that routine review is rules-based.
+Opening/refreshing/batch-analyzing email does not invoke paid AI or reuse old AI
+interpretation. Ask RADAI remains explicit and optional; its question/action
+controls disclose that submission may use paid credits. Merely opening its tab,
+typing or choosing Reply does not submit a provider request.
+
+Source-validated organization/document references appear separately in Summary
+and Extracted details, and retained source facts remain readable in opportunity
+history. They do not prefill the tender/client reference form field. Invalid
+source IDs, outgoing/draft evidence and missing quotes are not promoted.
+
+Imported `onedrive-test:` sources can explicitly check for an existing
+opportunity. A unique exact sourced client/reference match requires human
+classification and link confirmation; it never creates another opportunity.
+Unmatched/ambiguous sources remain manual review. Current permissions,
+freshness, idempotency and audit checks belong to the backend. Matching and
+archive handoff are opt-in local-test features, not production ingestion.
+
+The corresponding backend must be deployed before these additive fields and
+actions are relied on. No sidebar/shared shell, schema, dependencies, provider
+key, autonomous save or production deployment is changed. Synthetic desktop/
+mobile browser checks, scoped lint and production builds passed before upstream
+alignment. Final aligned validation and migration limits are recorded in the PR.
+
 Email Intake follows the latest September 2026 reference: a compact toolbar,
 purple AI actions, lavender selection, sender avatars and separate inbox,
 reader and AI insights cards. The large title, breadcrumb, subtitle and AI badge

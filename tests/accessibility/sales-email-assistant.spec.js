@@ -124,6 +124,8 @@ test('Ask RADAI waits for an explicit question and uses only the selected source
   const state = await ready(page)
   const calls = await assistantRoute(page)
   await expect(ask(page)).toBeDisabled()
+  await expect(panel(page)).toContainText('may use paid credits')
+  await expect(panel(page)).toContainText('Routine detection uses local rules')
   await expect(question(page)).toHaveAttribute('maxlength', '2000')
   await question(page).fill('Which revision is requested?')
   expect(calls).toHaveLength(0)

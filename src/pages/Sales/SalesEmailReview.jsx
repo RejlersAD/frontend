@@ -100,7 +100,7 @@ export default function SalesEmailReview({
   return <section className={`sales-email-review sales-email-insights${collapsed ? " sales-email-insights--collapsed" : ""}`} aria-label="Email review details" ref={nextStepRef} tabIndex={-1}>
     <header className="sales-email-review__header sales-email-insights__header">
       <Sparkles className="sales-email-insights__sparkle" size={26} aria-hidden="true" />
-      <div><h3 className="sales-email-context__heading">AI insights</h3><p>Selected email</p></div>
+      <div><h3 className="sales-email-context__heading">Email insights</h3><p>Rules-based review. AI only on request.</p></div>
       <button type="button" className="sales-email-insights__collapse" aria-label={collapsed ? "Expand AI insights" : "Collapse AI insights"}
         aria-expanded={!collapsed} aria-controls={`${selectId}-insights-body`} onClick={() => setCollapsed((value) => !value)}>
         <ChevronDown size={18} aria-hidden="true" />
@@ -205,4 +205,3 @@ SalesEmailReview.propTypes = {
   activeTab: PropTypes.oneOf(["summary", "evidence", "ask"]),
   onTabChange: PropTypes.func,
 };
-

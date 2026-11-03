@@ -308,6 +308,7 @@ class SalesService {
           ...(cursor ? { cursor } : {}),
           ...(storage === "radai" ? { storage } : {}),
         },
+
       },
     );
     return response.data;
@@ -1457,6 +1458,14 @@ class SalesService {
 
   async getEmailIntake(intakeId) {
     return (await apiClient.get(`${BASE_URL}/email-intakes/${intakeId}/`)).data;
+  }
+
+  async getEmailOpportunityMatches(intakeId) {
+    return (await apiClient.get(`${BASE_URL}/email-intakes/${encodeURIComponent(intakeId)}/opportunity-matches/`)).data;
+  }
+
+  async linkEmailOpportunity(intakeId, payload) {
+    return (await apiClient.post(`${BASE_URL}/email-intakes/${encodeURIComponent(intakeId)}/link-opportunity/`, payload)).data;
   }
 
   async askEmailIntake(intakeId, payload) {
