@@ -150,7 +150,8 @@ export default function SldCheckerWorkspacePage() {
       else pushToast('Upload the SLD drawing first — the legend is built from it.')
       return
     }
-    inputBus.current.openPicker?.(id)
+    const kind = { sld: 'sld', el: 'equipment', ll: 'load' }[id] ?? id
+    inputBus.current.openPicker?.(kind)
   }
 
   const onFeeder = tab => {
@@ -186,17 +187,17 @@ export default function SldCheckerWorkspacePage() {
 
   // Incomer states for the overview diagram.
   const incomers = useMemo(() => {
-    const file = (kind, code, name) => ({
-      id: kind, code, name,
+    const file = (id, kind, code, name) => ({
+      id, code, name,
       status: { state: byKind[kind] ? 'closed' : 'missing' },
       ariaLabel: `${name}, ${byKind[kind] ? 'uploaded' : 'missing'}, ${byKind[kind] ? 'replace' : 'upload'}`,
     })
     const aiState = stages.notNeeded ? 'not-needed' : state?.byok ? 'closed' : 'connect'
     const lgState = stages.notNeeded ? 'not-needed' : state?.stage_state?.['3'] === 'needs-recheck' ? 'recheck' : state?.legend?.source ? 'closed' : 'missing'
     return [
-      file('sld', 'SLD', 'SLD drawing'),
-      file('el', 'EL', 'Equipment List'),
-      file('ll', 'LL', 'Load List'),
+      file('sld', 'sld', 'SLD', 'SLD drawing'),
+      file('el', 'equipment', 'EL', 'Equipment List'),
+      file('ll', 'load', 'LL', 'Load List'),
       {
         id: 'ai', code: 'AI', name: 'RADAI AI Engine',
         status: { state: aiState },
