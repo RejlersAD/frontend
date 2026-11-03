@@ -64,7 +64,7 @@ function evidencedSources(information, ids) {
 }
 
 export function emailContextReference(information, key) {
-  if (information?.detection_version !== 2 || !["agreement_reference", "correspondence_reference"].includes(key)) return null;
+  if (information?.detection_version !== 2 || !["agreement_reference", "correspondence_reference", "organization_reference", "document_reference"].includes(key)) return null;
   const value = reviewText(information[key]);
   const evidence = reviewText(information.evidence?.[key]);
   const sourceIds = information.field_sources?.[key];

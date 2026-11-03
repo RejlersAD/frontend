@@ -103,6 +103,7 @@ test('agreement action deadline never prefills proposal fields and source reload
   await dialog.getByLabel('Scope type', { exact: true }).selectOption('other')
   await dialog.getByLabel('Client reference', { exact: true }).fill('Reviewed commercial reference')
   await dialog.getByLabel('Scope summary', { exact: true }).fill('My reviewed scope remains')
+  await dialog.getByLabel('Opportunity type', { exact: true }).selectOption('other')
   await create(dialog).click()
   await expect(dialog.getByRole('alert')).toBeVisible()
   const writes = state.requests.filter(request => request.method === 'POST')

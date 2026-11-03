@@ -122,6 +122,18 @@ test('opportunity desktop history presents readable retained email facts and col
   clean(state)
 })
 
+test('typed company and document references remain separate in retained email history', async ({ page }) => {
+  const event = emailEvent()
+  Object.assign(event.data.reviewed_email_analysis, {
+    organization_reference: 'TEN/REF/2026/123', document_reference: 'TEN-PRJ-001-MEC-DS-0001',
+  })
+  const state = await prepare(page, { record: opportunity([event]) })
+  await expect(value(history(page), 'Organization reference')).toHaveText('TEN/REF/2026/123')
+  await expect(value(history(page), 'Document reference')).toHaveText('TEN-PRJ-001-MEC-DS-0001')
+  await expect(value(history(page), 'Tender reference')).toHaveText('Tender_SYN38669')
+  clean(state)
+})
+
 test('360px opportunity history wraps long scope and source evidence without horizontal overflow', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 360, height: 800 })
   const event = emailEvent()

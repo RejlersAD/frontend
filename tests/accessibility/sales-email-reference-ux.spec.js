@@ -74,7 +74,7 @@ const ready = async (page, overrides = {}) => {
     clients: paginated([canonicalClient({ company_name: 'OQ', legal_name: 'OQ' })]),
     details: opportunityDetails({ ...oqMessage(), body_text: body, extracted_information: information() }), ...overrides,
   })
-  await expect(review(page).getByRole('heading', { name: 'AI insights', exact: true })).toBeVisible()
+  await expect(review(page).getByRole('heading', { name: 'Email insights', exact: true })).toBeVisible()
   return state
 }
 const noHorizontalOverflow = async page => expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1)
@@ -205,7 +205,7 @@ test('mobile stacks the cards and keeps review, source disclosures and reader ta
   await page.keyboard.press('Enter')
   await expect(review(page).getByRole('region', { name: 'Email review details', exact: true })).toBeFocused()
   await expect(card(page, 'Email Summary')).toBeInViewport()
-  const contextHeading = await review(page).getByRole('heading', { name: 'AI insights', exact: true }).boundingBox()
+  const contextHeading = await review(page).getByRole('heading', { name: 'Email insights', exact: true }).boundingBox()
   expect(contextHeading.y).toBeGreaterThanOrEqual(mainBounds.y - 1)
   expect(contextHeading.y).toBeLessThan(200)
   expect((await positions(page)).document).toBe(documentScroll)

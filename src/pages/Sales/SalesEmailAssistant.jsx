@@ -207,7 +207,7 @@ export default function SalesEmailAssistant({ source, disabled = false, informat
         {currentState.pending ? <Loader2 className="sales-email-assistant-spinner" aria-hidden="true" /> : <Send aria-hidden="true" />}
       </button>
     </form>
-    <p id={`${id}-hint`} className="sales-email-assistant-hint">{unavailable ? "Select an available email to ask RADAI." : "Answers use the available email content. Review AI suggestions before use."}</p>
+    <p id={`${id}-hint`} className="sales-email-assistant-hint">{unavailable ? "Select an available email to ask RADAI." : "Optional AI: submitting a question or choosing an action may use paid credits. Routine detection uses local rules. Review AI suggestions before use."}</p>
     {currentState.pending && <p role="status" className="sales-email-assistant-hint">Reviewing the selected email…</p>}
     {currentState.error && <p id={`${id}-error`} role="alert" className="sales-email-assistant-error">{currentState.error}</p>}
     {result && <div className="sales-email-assistant-result">
@@ -239,4 +239,3 @@ SalesEmailAssistant.propTypes = {
   information: PropTypes.object,
   onUnavailable: PropTypes.func,
 };
-

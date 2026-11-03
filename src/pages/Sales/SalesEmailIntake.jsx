@@ -23,6 +23,7 @@ import SalesEmailReader from "./SalesEmailReader";
 import SalesEmailPageHeader from "./SalesEmailPageHeader";
 import SalesEmailMessageHeader from "./SalesEmailMessageHeader";
 import SalesEmailAssistant from "./SalesEmailAssistant";
+import SalesEmailArchiveMatch from "./SalesEmailArchiveMatch";
 import SalesEmailReview from "./SalesEmailReview";
 import { isOpportunityClassification } from "./salesEmailReviewState";
 import SalesEmailOpportunityForm from "./SalesEmailOpportunityForm";
@@ -614,6 +615,12 @@ function ImportedEmailIntakes() {
                     </section>
 
                     <aside className="sales-email-source-panel" aria-label="Email review" tabIndex={0}>
+                      {selected.source_message_id?.startsWith("onedrive-test:") && !selected.opportunity &&
+                        selected.can_create_opportunity === true && ["received", "under_review"].includes(selected.status) && (
+                        <SalesEmailArchiveMatch key={`archive-match:${selected.id}:${reviewVersion}`} intake={selected}
+                          classification={confirmedClassification} disabled={reviewBlocked || sourceReloadRequired}
+                          onLinked={() => { setDetailRevision((current) => current + 1); }} />
+                      )}
                       <SalesEmailReview key={`${selected.id}:${reviewVersion}`} information={extracted} subject={selected.subject}
                         nextStepRef={insightsRef} receivedAt={selected.received_at}
                         activeTab={insightsView.id === selected.id ? insightsView.tab : "summary"} onTabChange={(tab) => setInsightsView({ id: selected.id, tab })}
@@ -761,4 +768,3 @@ function ImportedEmailIntakes() {
     </div>
   );
 }
-
