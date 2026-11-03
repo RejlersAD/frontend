@@ -97,7 +97,7 @@ const sldService = {
   async exportAnalysis(projectId, analysisId, format = 'workbook') {
     const { data } = await apiClient.get(
       `${BASE}/${projectId}/analyses/${analysisId}/export/`, {
-        params: { format }, responseType: 'blob', timeout: 120000,
+        params: { fmt: format }, responseType: 'blob', timeout: 120000,
       })
     const url = window.URL.createObjectURL(new Blob([data]))
     const a = document.createElement('a')
