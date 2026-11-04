@@ -4,9 +4,11 @@ import SalesEmailBody from "./SalesEmailBody";
 import SalesEmailDetectedInformation from "./SalesEmailDetectedInformation";
 import SalesEmailAnalysis from "./SalesEmailAnalysis";
 import { Paperclip, Reply } from "lucide-react";
+import salesService from "../../services/sales.service";
 
-export default function SalesEmailReader({ information, subject, bodyText, bodyContent, saved, hasAttachments, onReply, children }) {
+export default function SalesEmailReader({ information, subject, bodyText, bodyContent, saved, hasAttachments, attachments = [], intakeId, onReply, children }) {
   const [tab, setTab] = useState("email");
+  const [attachmentError, setAttachmentError] = useState("");
   const id = useId();
   const tabs = [["email", "Email"], ["thread", "Thread"], ["attachments", "Attachments"], ["details", "Extracted details"]];
   return <>
@@ -32,7 +34,17 @@ export default function SalesEmailReader({ information, subject, bodyText, bodyC
         {saved && <p className="sales-email-preview-note">Preview from the imported email.</p>}
         {children}
       </> : tab === "thread" ? <SalesEmailAnalysis analysis={information?.analysis} savedContent={saved} />
-        : tab === "attachments" ? <div className="sales-email-attachment-state"><Paperclip aria-hidden="true" /><h4>Attachments</h4><p>{hasAttachments ? "This email has attachments. Open the original email in your mailbox to view them." : "No attachments are reported for this email."}</p>{hasAttachments && <p>Attachment contents have not been included in this review.</p>}</div>
+        : tab === "attachments" ? <div className="sales-email-attachment-state"><Paperclip aria-hidden="true" /><h4>Attachments</h4>
+          {attachments.length ? <><p>{attachments.length} file(s) received with this email.</p><ul className="mt-4 space-y-3">{attachments.map(file => <li key={file.id} className="rounded-md border border-slate-200 p-3">
+            <p className="font-semibold text-slate-800">{file.name}</p><p className="mt-1 text-xs text-slate-600">{file.extraction_status === 'read' ? 'Text extracted' : file.extraction_status === 'partial' ? 'Partially read' : 'Not readable'}{file.extraction_diagnostic ? ` · ${file.extraction_diagnostic.replaceAll('_', ' ')}` : ''}</p>
+            <button type="button" className="mt-2 text-sm font-semibold text-blue-700 underline" onClick={async () => {
+              setAttachmentError('');
+              try { const blob = await salesService.downloadEmailIntakeAttachment(intakeId, file.id); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = file.name; link.click(); URL.revokeObjectURL(url); }
+              catch { setAttachmentError('The attachment could not be downloaded. Refresh the email and try again.'); }
+            }}>Download file</button>
+          </li>)}</ul>{attachmentError && <p role="alert" className="mt-3 text-sm text-rose-700">{attachmentError}</p>}</>
+            : <><p>{hasAttachments ? "Attachments are reported, but the source files were not provided with this imported email." : "No attachments are reported for this email."}</p>{hasAttachments && <p>Ask the mailbox or import owner to resend the original email with its files included.</p>}</>}
+        </div>
         : <SalesEmailDetectedInformation information={information} subject={subject} />}
     </div>
     {onReply && <footer className="sales-email-reader-footer"><span>Review the email before replying.</span><button type="button" className="sales-email-button sales-email-reply" onClick={onReply} title="Prepare a reply with Ask RADAI"><Reply aria-hidden="true" />Reply</button></footer>}
@@ -46,6 +58,8 @@ SalesEmailReader.propTypes = {
   bodyContent: PropTypes.array,
   saved: PropTypes.bool,
   hasAttachments: PropTypes.bool,
+  attachments: PropTypes.array,
+  intakeId: PropTypes.string,
   onReply: PropTypes.func,
   children: PropTypes.node,
 };

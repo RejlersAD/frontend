@@ -1460,6 +1460,13 @@ class SalesService {
     return (await apiClient.get(`${BASE_URL}/email-intakes/${intakeId}/`)).data;
   }
 
+  async downloadEmailIntakeAttachment(intakeId, attachmentId) {
+    return (await apiClient.get(
+      `${BASE_URL}/email-intakes/${encodeURIComponent(intakeId)}/attachments/${encodeURIComponent(attachmentId)}/`,
+      { responseType: 'blob' },
+    )).data;
+  }
+
   async getEmailOpportunityMatches(intakeId) {
     return (await apiClient.get(`${BASE_URL}/email-intakes/${encodeURIComponent(intakeId)}/opportunity-matches/`)).data;
   }

@@ -51,8 +51,9 @@
 .sales-email-reader-footer { display: flex; flex-shrink: 0; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin: 0 20px; padding: 15px 0; border-top: 1px solid var(--email-border); }
 .sales-email-reader-footer > span { color: #627399; font-size: 12px; }
 .sales-email-reader-footer .sales-email-reply { min-height: 40px; padding: 8px 16px; border-color: #9d85ff; color: #5130ef; background: white; }
-.sales-email-source-panel { padding: 0; scrollbar-gutter: auto; }
-.sales-email-source-panel > .sales-email-insights { height: 100%; }
+.sales-email-source-panel { display: flex; flex-direction: column; padding: 0; scrollbar-gutter: auto; }
+.sales-email-source-panel > [aria-label="Existing opportunity match"] { flex: 0 0 auto; }
+.sales-email-source-panel > .sales-email-insights { flex: 1 1 auto; min-height: 0; height: auto; }
 
 @media (min-width: 1024px) {
   .sales-email-grid { min-height: 0; }

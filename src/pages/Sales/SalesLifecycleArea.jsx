@@ -527,7 +527,6 @@ const buildQualificationSpecialNote = (record) => {
     `Event Type: ${eventType}`,
     `Published: ${dateTimeText(publishedAt)}`,
     `Due Date: ${dateTimeText(dueDate)}`,
-    "Special Note: Prioritize this for Monday kickoff.",
   ].join("\n");
 };
 
@@ -1517,7 +1516,7 @@ export default function SalesLifecycleArea() {
           title: "Submit qualification",
           submitLabel: "Submit qualification",
           description:
-            "Submits the opportunity for Internal Sales Review. Missing scope type or attachments are reported as warnings and do not block submission.",
+            "Submits the opportunity for Internal Sales Review. A missing delivery category or attachment is reported as a warning and does not block submission. The SOW workstreams are reviewed separately.",
           fields: [
             {
               name: "special_note",

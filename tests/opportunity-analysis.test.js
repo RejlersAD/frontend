@@ -7,6 +7,22 @@ test('a response for another opportunity is rejected', () => {
   assert.equal(validateAnalysis({ opportunity_id: 'current', status: 'partial' }, 'current').status, 'partial');
 });
 
+test('source facts and citations precede missing inputs in the downloaded assessment', () => {
+  const markdown = analysisMarkdown({ deal_code: 'Q-SOURCE' }, {
+    status: 'ready', result: { manager_review: { tender_evaluation: {
+      opportunity_summary: { project_facts: { project_name: [{
+        value: 'Synthetic ERP Transformation', source_file: 'SOW.pdf', source_page: 'Page 1',
+        source_text: 'Project Name: Synthetic ERP Transformation', confidence: 86, verification_status: 'Source Confirmed',
+      }] }, field_diagnostics: [{ field: 'Payment terms', status: 'Clarification Required', reason: 'Missing from source.' }] },
+      decision: {}, go_no_go_analysis: {}, letter_data: {},
+    } } },
+  });
+  assert.match(markdown, /Synthetic ERP Transformation/);
+  assert.match(markdown, /SOW.pdf, Page 1/);
+  assert.match(markdown, /Source Confirmed/);
+  assert.ok(markdown.indexOf('What we know') < markdown.indexOf('What we need to know'));
+});
+
 test('deadline urgency uses the Dubai calendar day without promoting past evidence', () => {
   const now = new Date('2026-10-15T22:00:00Z');
   assert.equal(analysisDeadline('2026-10-16', now), 'Today');

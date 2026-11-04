@@ -488,8 +488,9 @@ export default function SalesEmailOpportunityForm({
                 {field(
                   "scope_type",
                   "Scope type",
-                  <select
+                  <><select
                     {...fieldProps("scope_type")}
+                    aria-describedby={`${formId}-scope_type-help${errorFor("scope_type") ? ` ${formId}-scope_type-error` : ""}`}
                     name="scope_type"
                     defaultValue={
                       scopeTypes.includes(extracted.scope_type)
@@ -504,7 +505,7 @@ export default function SalesEmailOpportunityForm({
                         {value.replaceAll("_", " ")}
                       </option>
                     ))}
-                  </select>,
+                  </select><p id={`${formId}-scope_type-help`} className="mt-1 text-xs font-normal text-slate-600">Choose a delivery category such as FEED or EPC only when the tender supports it. The detailed SOW workstreams are captured separately.</p></>,
                 )}
                 {manual && (
                   <>

@@ -9,7 +9,7 @@ import { filePreviewType, previewContent } from './salesOpportunityPreview';
 import { OFFICE_PREVIEW_MAX_BYTES } from './salesOfficePreview';
 import './SalesOpportunityFilePreview.css';
 
-export default function SalesOpportunityFilePreview({ recordId, folderKey, storage, file, onClose }) {
+export default function SalesOpportunityFilePreview({ recordId, folderKey, storage, file, initialPage = 1, onClose }) {
   const dialog = useRef(null);
   const closeButton = useRef(null);
   const downloadController = useRef(null);
@@ -23,7 +23,7 @@ export default function SalesOpportunityFilePreview({ recordId, folderKey, stora
   const [renderError, setRenderError] = useState('');
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState('');
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(initialPage);
   const [pages, setPages] = useState(0);
   const [zoom, setZoom] = useState(1);
   useEffect(() => { setRenderError(''); }, [page, zoom]);
@@ -47,7 +47,7 @@ export default function SalesOpportunityFilePreview({ recordId, folderKey, stora
     if (assetUrl.current) URL.revokeObjectURL(assetUrl.current);
     assetUrl.current = '';
     setLoading(true); setError(''); setRenderError(''); setContent(null); setDetail(null); setDownloadError('');
-    setPage(1); setPages(0); setZoom(1);
+    setPage(initialPage); setPages(0); setZoom(1);
     const load = async () => {
       try {
         const current = await salesService.getOpportunityWorkspaceFile(recordId, folderKey, file.id, { signal: controller.signal });
@@ -74,7 +74,7 @@ export default function SalesOpportunityFilePreview({ recordId, folderKey, stora
     };
     void load();
     return () => { disposed = true; controller.abort(); };
-  }, [recordId, folderKey, storage, file.id, retry]);
+  }, [recordId, folderKey, storage, file.id, initialPage, retry]);
 
   const download = async () => {
     if (!detail?.can_download || downloadController.current) return;
@@ -116,5 +116,5 @@ export default function SalesOpportunityFilePreview({ recordId, folderKey, stora
   </dialog>;
 }
 
-SalesOpportunityFilePreview.propTypes = { recordId: PropTypes.string.isRequired, folderKey: PropTypes.string.isRequired, storage: PropTypes.oneOf(['radai', 'sharepoint']).isRequired, file: PropTypes.object.isRequired, onClose: PropTypes.func.isRequired };
+SalesOpportunityFilePreview.propTypes = { recordId: PropTypes.string.isRequired, folderKey: PropTypes.string.isRequired, storage: PropTypes.oneOf(['radai', 'sharepoint']).isRequired, file: PropTypes.object.isRequired, initialPage: PropTypes.number, onClose: PropTypes.func.isRequired };
 

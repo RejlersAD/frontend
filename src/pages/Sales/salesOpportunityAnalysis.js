@@ -32,11 +32,9 @@ export function validateAnalysis(payload, id) {
 export function analysisFailureMessage(data) {
   if (data.status === "blocked")
     return "Analysis stopped because access to this opportunity or a source changed. Review your access before retrying.";
-  if (data.error_code === "ai_not_configured" || data.ai_ready === false)
-    return "The Sales AI provider is not configured for analysis. Your documents are unchanged; ask an administrator to check AI configuration.";
   if (data.error_code === "no_verified_source_results") {
     const failed = data.counts?.chunks_failed || 0;
-    return `${failed ? `${failed} text ${failed === 1 ? "section" : "sections"} failed AI analysis. ` : ""}No findings were verified. Review source coverage and retry incomplete sources.`;
+    return `${failed ? `${failed} text ${failed === 1 ? "section" : "sections"} could not be parsed. ` : ""}No findings were extracted. Review source coverage.`;
   }
   return "AI analysis could not finish. Review source coverage and retry incomplete sources.";
 }
@@ -46,14 +44,15 @@ export function analysisSectionMessage(key, data) {
     brief: "opportunity overview",
     client_need: "client requirements",
     submission: "submission requirements",
+    milestone: "milestones",
     risk: "risk findings",
     action: "suggested actions",
     deadline: "deadlines",
     next_step: "next steps",
   }[key];
   if (data.counts?.partial || data.counts?.failed)
-    return `No ${topic} verified from the available sources. Some sources are incomplete; review source coverage.`;
-  return `No ${topic} detected in the analyzed sources. Review the tender documents or add missing files.`;
+    return `Pending Verification: no ${topic} matched this section yet. Some sources are incomplete; review source coverage.`;
+  return `Pending Verification: no ${topic} was extracted from the available sources.`;
 }
 
 export function analysisSourceError(code) {
@@ -94,8 +93,26 @@ export function analysisMarkdown(record, data) {
     "",
     data.coverage_note || "",
     "",
-    data.result?.review_note || "AI suggestions require review.",
+    data.result?.review_note || "Rules-based tender findings require review.",
   ];
+  const sourceSummary = data.result?.manager_review?.tender_evaluation?.opportunity_summary;
+  if (sourceSummary?.project_facts) {
+    lines.push("", "## What we know — Tender facts");
+    for (const [key, rows] of Object.entries(sourceSummary.project_facts)) {
+      if (!Array.isArray(rows) || !rows.length) continue;
+      lines.push("", `### ${key.replaceAll("_", " ")}`);
+      for (const row of rows) lines.push(
+        `- ${row.value || row.finding || ""}`,
+        `  Source: ${row.source_file || "Source reference not recorded"}, ${row.source_page || "Source location not recorded"}`,
+        `  Evidence: ${row.source_text || row.excerpt || ""}`,
+        `  Confidence: ${row.confidence ?? "Not recorded"}; Verification: ${row.verification_status || "Pending Verification"}`,
+      );
+    }
+    lines.push("", "## What we need to know — Source gaps");
+    for (const row of sourceSummary.field_diagnostics || []) {
+      if (row.status === "Clarification Required") lines.push(`- ${row.field}: ${row.reason}`);
+    }
+  }
   for (const [key, title] of ANALYSIS_SECTIONS) {
     lines.push("", `## ${title}`);
     const items = data.result?.sections?.[key] || [];
@@ -108,7 +125,8 @@ export function analysisMarkdown(record, data) {
     for (const item of items)
       lines.push(
         `- ${decisionText(item.text)}${item.date ? ` (${item.date})` : ""}`,
-        `  Source: ${item.name}, ${item.location}`,
+        `  Confidence: ${item.confidence ?? 86}%; Status: ${item.status === "verified" ? "Verified" : "Pending Verification"}`,
+        `  Source: ${item.name || item.source_name}, ${item.location}`,
         `  Evidence: ${item.excerpt}`,
       );
   }
@@ -140,6 +158,27 @@ export function analysisMarkdown(record, data) {
     }
   }
   else lines.push("", "## Business decision risks", "Sales manager review is not ready; business decision risks have not been assessed.");
+  const evaluation = review?.tender_evaluation;
+  if (evaluation) {
+    lines.push("", "## Executive summary", evaluation.opportunity_summary.summary || "Unknown");
+    lines.push("", "## Go / No-Go management recommendation",
+      evaluation.decision.recommendation || "Unknown",
+      evaluation.decision.decision_rationale || "",
+      ...(evaluation.decision.key_reasons || []).map((reason) => `- ${reason}`),
+      ...(evaluation.decision.conditions || []).map((condition) => `- Condition: ${condition}`),
+    );
+    lines.push("", "## Weighted decision scores",
+      `Weighted total: ${evaluation.go_no_go_analysis.weighted_total ?? "Unknown"}`,
+      ...Object.entries(evaluation.go_no_go_analysis.scores || {}).map(([key, score]) =>
+        `- ${key.replaceAll("_", " ")}: ${score.score ?? "Unknown"} (${score.assessment})`),
+    );
+    lines.push("", "## Critical clarifications");
+    for (const item of evaluation.critical_clarifications || [])
+      lines.push(`- ${item.question}`, `  Why material: ${item.why_material}`);
+    lines.push("", "## Letter template fields", `Template: ${evaluation.letter_data.letter_type || "none"}`);
+    for (const [key, value] of Object.entries(evaluation.letter_data.template_fields || {}))
+      lines.push(`- ${key.replaceAll("_", " ")}: ${value || "Unknown"}`);
+  }
   lines.push("", "## Document relationships");
   for (const relation of data.result?.relationships || [])
     lines.push(
