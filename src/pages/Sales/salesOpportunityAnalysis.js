@@ -29,6 +29,18 @@ export function validateAnalysis(payload, id) {
   return payload;
 }
 
+export function analysisProgress(counts = {}) {
+  const count = (value) => typeof value === 'number' && Number.isFinite(value)
+    ? Math.max(0, Math.floor(value)) : 0;
+  const total = count(counts?.total);
+  const ready = Math.min(total, count(counts?.ready));
+  const partial = Math.min(total - ready, count(counts?.partial));
+  const failed = Math.min(total - ready - partial, count(counts?.failed));
+  const processed = ready + partial + failed;
+  return { total, ready, partial, failed, processed,
+    percent: total ? Math.round(processed / total * 100) : 0 };
+}
+
 export function analysisFailureMessage(data) {
   if (data.status === "blocked")
     return "Analysis stopped because access to this opportunity or a source changed. Review your access before retrying.";
