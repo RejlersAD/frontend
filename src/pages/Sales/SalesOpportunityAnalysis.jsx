@@ -10,7 +10,7 @@ import {
   Sun,
 } from "lucide-react";
 import salesService from "../../services/sales.service";
-import { validateAnalysis } from "./salesOpportunityAnalysis";
+import { validateAnalysis, analysisProgress } from "./salesOpportunityAnalysis";
 import { buildAnalysisContent } from "./salesAnalysisContent";
 import { assessmentCitations } from "./salesAnalysisCitations";
 import { noGoBrief } from "./salesDecisionBrief";
@@ -68,6 +68,7 @@ function scopeSummary(facts, summary) {
 
 export default function SalesOpportunityAnalysis({ record, onAction }) {
   const [data, setData] = useState(null);
+  const [loadError, setLoadError] = useState("");
   const [tab, setTab] = useState(TABS[0]);
   const [dark, setDark] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -92,12 +93,16 @@ export default function SalesOpportunityAnalysis({ record, onAction }) {
         }
         if (cancelled) return;
         setData(response);
+        setLoadError("");
         timer = setTimeout(
           load,
           ["queued", "running"].includes(response.status) ? 8000 : 30000,
         );
       } catch {
-        if (!cancelled) timer = setTimeout(load, 30000);
+        if (!cancelled) {
+          setLoadError("Analysis status could not be loaded. Retrying automatically; use Refresh briefing to retry now.");
+          timer = setTimeout(load, 30000);
+        }
       }
     };
     load();
@@ -107,6 +112,7 @@ export default function SalesOpportunityAnalysis({ record, onAction }) {
     };
   }, [record.id, refreshKey]);
 
+  const progress = analysisProgress(data?.counts);
   const evaluation = data?.result?.manager_review?.tender_evaluation || {};
   const hasEvaluation = Object.keys(evaluation).length > 0;
   const summary = evaluation.opportunity_summary || {};
@@ -368,6 +374,7 @@ export default function SalesOpportunityAnalysis({ record, onAction }) {
         ))}
       </nav>
 
+      {loadError && <p role="alert">{loadError}</p>}
       {data && ["queued", "running"].includes(data.status) && (
         <section className="soa-ref-progress">
           <div className="soa-progress-header">
@@ -375,31 +382,22 @@ export default function SalesOpportunityAnalysis({ record, onAction }) {
               {data.status === "queued" ? "Analysis queued" : "Analyzing documents"}
             </span>
             <span className="soa-progress-pct">
-              {data.counts?.total
-                ? `${Math.round(
-                    (data.counts.ready / data.counts.total) * 100,
-                  )}%`
-                : "0%"}
+              {progress.percent}%
             </span>
           </div>
           <div className="soa-progress-track">
             <div
               className="soa-progress-fill"
               style={{
-                width: data.counts?.total
-                  ? `${Math.round((data.counts.ready / data.counts.total) * 100)}%`
-                  : "0%",
+                width: `${progress.percent}%`,
               }}
             />
           </div>
           <p className="soa-progress-detail">
-            {data.counts?.total
-              ? `${data.counts.ready} of ${data.counts.total}${
-                  data.counts.partial
-                    ? ` · ${data.counts.partial} partial`
-                    : ""
-                } sources processed`
-              : "Waiting for analysis to begin…"}
+            {progress.total
+              ? `${progress.processed} of ${progress.total} sources processed${progress.partial ? `; ${progress.partial} partial` : ""}${progress.failed ? `; ${progress.failed} unreadable` : ""}`
+              : "Waiting for source inventory..."}
+            {data.status === "queued" && " Waiting for the background worker. If this persists, use Refresh briefing to request dispatch again."}
           </p>
           <button
             type="button"
@@ -437,11 +435,11 @@ export default function SalesOpportunityAnalysis({ record, onAction }) {
           <div className="soa-ref-driver-grid">
             <section className="soa-ref-driver-card soa-ref-positive">
               <h4>Decision Drivers ? Tender Evidence</h4>
-              <ul>{content.drivers.map((item) => <li key={item}><Check size={13} aria-hidden="true" /><span>{item}</span></li>)}</ul>
+              <ul>{asList(content.drivers).map((item) => <li key={item}><Check size={13} aria-hidden="true" /><span>{item}</span></li>)}</ul>
             </section>
             <section className="soa-ref-driver-card soa-ref-concerns">
               <h4>Key Concerns</h4>
-              <ul>{content.concerns.map((item) => <li key={item}><HelpCircle size={13} aria-hidden="true" /><span>{item}</span></li>)}</ul>
+              <ul>{asList(content.concerns).map((item) => <li key={item}><HelpCircle size={13} aria-hidden="true" /><span>{item}</span></li>)}</ul>
             </section>
           </div>
           <section className="soa-ref-next">
