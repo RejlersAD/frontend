@@ -106,6 +106,31 @@ test('the imported enquiries route uses the same explicit classification gate an
   expect(state.unexpected).toEqual([])
 })
 
+test('imported EOI keeps confirmation and create controls visible beside existing-opportunity check', async ({ page }) => {
+  const record = {
+    ...message({ id: 'saved-eoi-intake', source_message_id: 'onedrive-test:synthetic', subject: 'Invitation to Participate in EOI3-3000105709' }),
+    status: 'received', can_create_opportunity: true, source_token: 'synthetic-eoi-token',
+    extracted_information: information({ classification: proposal({ code: 'eoi', label: 'EOI' }) }), attachments: [],
+  }
+  const savedPath = '/api/v1/sales/email-intakes/saved-eoi-intake/convert-to-opportunity/'
+  const state = await prepare(page, {
+    view: 'imported', imported: paginated([record]), clients: paginated([canonicalClient()]),
+    allowConversion: true, allowedConversionPath: savedPath,
+    conversion: { intake: { ...record, status: 'converted', opportunity: 'created-eoi-opportunity' }, opportunity: { id: 'created-eoi-opportunity' }, created: true },
+  })
+  await expect(review(page).getByRole('region', { name: 'Existing opportunity match' })).toBeVisible()
+  await expect(emailType(review(page))).toHaveValue('eoi')
+  await expect(confirm(review(page))).toBeInViewport()
+  await confirm(review(page)).click()
+  await expect(create(review(page))).toBeInViewport()
+  await create(review(page)).click()
+  await expect(dialog(page)).toBeVisible()
+  await dialog(page).getByLabel('Client', { exact: true }).selectOption('client-one')
+  await create(dialog(page)).click()
+  await expect(dialog(page)).toHaveCount(0)
+  expect(state.requests.filter(request => request.path === savedPath && request.method === 'POST')).toHaveLength(1)
+})
+
 test('starting review on the same imported email clears classification confirmation', async ({ page }) => {
   const record = { ...message({ id: 'saved-review-intake' }), status: 'received', can_create_opportunity: true, extracted_information: information(), attachments: [] }
   const state = await prepare(page, { view: 'imported', imported: paginated([record]), clients: paginated([canonicalClient()]) })

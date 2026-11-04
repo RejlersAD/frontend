@@ -4,6 +4,7 @@ import { Check, Loader2, Sparkles, X } from 'lucide-react';
 import salesService from '../../services/sales.service';
 import { workspaceError } from './salesOpportunityWorkspace';
 import { classificationState, classificationTone, commandIdentity, verifiedClassification } from './salesDocumentControl';
+import SalesUnifiedEvidenceView from './SalesUnifiedEvidenceView';
 
 const stop = event => event.stopPropagation();
 const sharedProps = { recordId: PropTypes.string.isRequired, folderKey: PropTypes.string.isRequired, file: PropTypes.object.isRequired, onSaved: PropTypes.func.isRequired };
@@ -61,6 +62,10 @@ export default function SalesDocumentType({ recordId, folderKey, file, onSaved }
       {value && <button type="button" className="sdc-ai-button" aria-label={`Automatically classify ${file.name}`} title={pending ? 'Automatic classification is pending' : !value.can_retry ? 'Classification is unavailable with current access' : 'Automatically classify from the filename, content and folder'} disabled={busy || pending || stale || denied || !value.can_retry} onClick={event => { stop(event); classify(); }} onDoubleClick={stop}>{busy || pending ? <Loader2 className="sdc-spin" aria-hidden="true" /> : <Sparkles aria-hidden="true" />}</button>}
     </div>
     <span className="sdc-type-state" role={busy || pending ? 'status' : undefined}>{busy ? 'Starting classification…' : classificationState(value)}</span>
+    {value?.unified_evidence?.selected && <details className="mt-2" onClick={stop}>
+      <summary className="cursor-pointer text-xs font-semibold text-blue-800">Shared extracted evidence</summary>
+      <SalesUnifiedEvidenceView evidence={value.unified_evidence} title="Document evidence" />
+    </details>}
     {error && <p className="sdc-inline-error" role="alert">{error}</p>}
     {(stale || denied) && <button type="button" className="sdc-inline-refresh" disabled={busy} onClick={event => { stop(event); refresh(); }} onDoubleClick={stop}>Refresh classification</button>}
     {notice && <span className="sdc-inline-notice" role="status">{notice}</span>}

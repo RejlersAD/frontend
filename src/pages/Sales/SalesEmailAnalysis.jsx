@@ -1,5 +1,6 @@
 import PropTypes from "prop-types";
 import SalesEmailThreadRole from "./SalesEmailThreadRole";
+import SalesUnifiedEvidenceView from "./SalesUnifiedEvidenceView";
 
 const text = (value) => typeof value === "string" ? value.trim() : "";
 const object = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : null;
@@ -133,6 +134,7 @@ export default function SalesEmailAnalysis({ analysis, savedContent, nextStepRef
       <h4>What this email means</h4>
       <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-800">{text(detected.summary) || "No supported summary was detected."}</p>
     </section>
+    <SalesUnifiedEvidenceView evidence={detected.unified_evidence} />
     <section aria-label="Key points">
       <h4>Key points</h4>
       {points.length ? <dl className="mt-2 space-y-3">{points.map((point, index) => <div key={index}>

@@ -7,6 +7,8 @@ import {
 import PropTypes from "prop-types";
 import {
   AlertCircle,
+  Check,
+  Copy,
   Download,
   ExternalLink,
   FileText,
@@ -18,7 +20,6 @@ import {
   RefreshCw,
 } from "lucide-react";
 import "./SalesLetterPreview.css";
-import { letterExtractionStatus } from "./salesLetterExtraction";
 
 export default function SalesLetterPreview({
   letter,
@@ -38,6 +39,7 @@ export default function SalesLetterPreview({
   const iframeRef = useRef(null);
 
   const [pdfLoaded, setPdfLoaded] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [pdfError, setPdfError] = useState(null);
   const [verifiedPreview, setVerifiedPreview] = useState(null);
   const currentPreview = `${previewKey}-${pdfUrl}`;
@@ -108,6 +110,18 @@ export default function SalesLetterPreview({
 
   const handleDownload = () => {
     onDownload?.();
+  };
+
+  const handleCopy = async () => {
+    const content = [letter?.subject, letter?.body].filter(Boolean).join("\n\n");
+    if (!content || !navigator.clipboard?.writeText) return;
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setCopied(false);
+    }
   };
 
   const handlePrint = () => {
@@ -202,6 +216,16 @@ export default function SalesLetterPreview({
         </div>
 
         <div className="sl-preview-actions">
+          <button
+            type="button"
+            className="sl-btn sl-btn--ghost"
+            onClick={handleCopy}
+            disabled={!letter?.body}
+            title={copied ? "Copied" : "Copy letter content"}
+          >
+            {copied ? <Check size={16} /> : <Copy size={16} />}
+            {copied ? "Copied" : "Copy"}
+          </button>
           {regenerating && (
             <button
               className="sl-btn sl-btn--ghost"
@@ -280,7 +304,6 @@ export default function SalesLetterPreview({
         </div>
       </div>
 
-      <p className="sl-preview-source" role="status">{letterExtractionStatus(letter)}</p>
       <div className="sl-preview-content">
         {(error || pdfError) && (
           <div className="sl-preview-error">

@@ -690,7 +690,7 @@ export default function SalesOpportunityDetailPanel({
                     present(record.project_duration_months),
                   ],
                   [
-                    "Scope type",
+                    "Delivery category",
                     lookup(scopeLabels, record.scope_type) ||
                       words(record.scope_type),
                   ],

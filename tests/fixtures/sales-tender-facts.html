@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Tender facts test</title></head>
+  <body>
+    <main id="root"></main>
+    <script type="module">
+      import React from 'react';
+      import { createRoot } from 'react-dom/client';
+      import SalesOpportunityAnalysis from '../../src/pages/Sales/SalesOpportunityAnalysis.jsx';
+      createRoot(document.getElementById('root')).render(React.createElement(SalesOpportunityAnalysis, {
+        record: { id: 'synthetic-tender', bid_decision: 'pending', stage: 'lead' },
+      }));
+    </script>
+  </body>
+</html>

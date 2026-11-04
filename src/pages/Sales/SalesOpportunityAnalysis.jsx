@@ -1,607 +1,633 @@
-import { decisionText } from '../../utils/salesDecisionTerminology.js';
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import PropTypes from "prop-types";
 import {
-  AlertCircle,
   ArrowRight,
-  BarChart3,
-  CalendarDays,
-  CheckCircle2,
-  ChevronDown,
-  Download,
-  FileText,
-  ListChecks,
-  Loader2,
+  Check,
+  HelpCircle,
   Moon,
   RefreshCw,
-  ShieldAlert,
   Sparkles,
   Sun,
-  Target,
 } from "lucide-react";
 import salesService from "../../services/sales.service";
-import {
-  analysisDeadline,
-  analysisFailureMessage,
-  analysisMarkdown,
-  analysisSectionMessage,
-  analysisSourceError,
-  validateAnalysis,
-} from "./salesOpportunityAnalysis";
+import { validateAnalysis } from "./salesOpportunityAnalysis";
+import { buildAnalysisContent } from "./salesAnalysisContent";
+import { assessmentCitations } from "./salesAnalysisCitations";
+import { noGoBrief } from "./salesDecisionBrief";
+import SalesOpportunityFilePreview from "./SalesOpportunityFilePreview";
 import "./SalesOpportunityAnalysis.css";
 
-const views = [
-  "Manager review",
-  "Brief",
-  "Submissions",
-  "Risks",
-  "Actions",
-  "Timeline",
-  "Sources",
+const TABS = [
+  "Assessment",
+  "Opportunity Summary",
+  "Clarifications",
+  "Correspondence",
 ];
-const reviewDimensions = [
-  ["capability_fit", "Scope vs capabilities"],
-  ["strategic_fit", "Strategic fit"],
-  ["resources", "Resources"],
-  ["execution_risk", "Execution risk"],
-  ["commercial", "Commercial attractiveness"],
-  ["schedule", "Schedule"],
-];
-const message = (error) =>
-  typeof error?.response?.data?.detail === "string"
-    ? error.response.data.detail
-    : error.message || "Analysis could not be loaded. Please retry.";
+const asList = (value) => (Array.isArray(value) ? value.filter(Boolean) : []);
+const values = (rows) =>
+  asList(rows)
+    .map((row) => (typeof row === "string" ? row : row?.value || row?.finding))
+    .filter(Boolean);
+const isMissing = (value) =>
+  !value ||
+  /^(unknown|not provided|not available|further client clarification required)$/i.test(
+    String(value).trim(),
+  );
+const decisionLabel = (value) =>
+  ({
+    go: "GO",
+    bid: "GO",
+    no_go: "NO-GO",
+    no_bid: "NO-GO",
+    conditional_go: "CONDITIONAL GO",
+    conditional_bid: "CONDITIONAL GO",
+    insufficient_evidence: "INSUFFICIENT EVIDENCE",
+  })[String(value || "").toLowerCase()] || "INSUFFICIENT EVIDENCE";
+
+function scopeSummary(facts, summary) {
+  const text = [...values(facts.scope), ...values(facts.technologies)]
+    .join(" ")
+    .toLowerCase();
+  const areas = [];
+  if (/\b(?:erp|sap|s\/4hana|oneerp)\b/.test(text))
+    areas.push("ERP transformation");
+  if (/\b(?:gbs|global business services|operating model)\b/.test(text))
+    areas.push("GBS operating model design");
+  if (/\binfrastructure\b/.test(text)) areas.push("infrastructure design");
+  if (/\bcyber(?:security| security)\b/.test(text)) areas.push("cybersecurity");
+  if (areas.length)
+    return (
+      "The opportunity centers on " +
+      areas.join(", ") +
+      " across the client's operations."
+    );
+  if (!isMissing(summary.project_type))
+    return "The opportunity covers " + summary.project_type + " services.";
+  return "Review the tender scope with the client and bid team.";
+}
 
 export default function SalesOpportunityAnalysis({ record, onAction }) {
   const [data, setData] = useState(null);
-  const [error, setError] = useState("");
-  const [view, setView] = useState("Manager review");
-  const [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState(TABS[0]);
   const [dark, setDark] = useState(false);
-  const [openSections, setOpenSections] = useState({
-    brief: true,
-    client_need: true,
-    next_step: true,
-    submission: true,
-    action: true,
-    deadline: true,
-  });
-  const [sources, setSources] = useState([]);
-  const [nextOffset, setNextOffset] = useState(null);
-  const [sourceError, setSourceError] = useState("");
-  const [sourcesBusy, setSourcesBusy] = useState(false);
-  const [sourcePage, setSourcePage] = useState(0);
-  const generation = useRef(0);
-  const operation = useRef(null);
-  const [reload, setReload] = useState(0);
-  const reportId = data?.id;
-  const managerReview = data?.result?.manager_review;
-  const sourceStale = data?.stale;
-  const sourceUpdatedAt = data?.updated_at;
-
-  const toggleSection = (key) => setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
-  const fmtDate = (value) => {
-    if (!value) return "Unconfirmed date";
-    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-      return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`));
-    }
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "Unconfirmed date";
-    return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Dubai" }).format(date);
-  };
-  const sectionBlock = (key, title, Icon, deadline = false) => {
-    const items = data?.result?.sections?.[key] || [];
-    const open = openSections[key] !== false;
-    return (
-      <section className="cp-insight glass" aria-label={title}>
-        <button type="button" className="cp-insight-head" aria-expanded={open} onClick={() => toggleSection(key)}>
-          <span className="cp-insight-title">
-            <Icon size={16} aria-hidden="true" />
-            {title}
-          </span>
-          <span className="cp-count">{items.length}</span>
-          <ChevronDown size={15} aria-hidden="true" className={open ? "cp-flip" : ""} />
-        </button>
-        {open && (
-          items.length ? (
-            <ul className="cp-findings">
-              {items.map((item, index) => (
-                <li key={`${item.source_id || "s"}-${index}`} className="cp-finding">
-                  <p className="cp-finding-text">{decisionText(item.text)}</p>
-                  {deadline && item.date && (
-                    <span className="cp-chip">
-                      <CalendarDays size={12} aria-hidden="true" />
-                      {fmtDate(item.date)} · {analysisDeadline(item.date)}
-                    </span>
-                  )}
-                  {(item.name || item.location) && (
-                    <details className="cp-evidence">
-                      <summary>
-                        <FileText size={13} aria-hidden="true" />
-                        {item.name || "Source"}
-                        {item.location ? ` · ${item.location}` : ""}
-                      </summary>
-                      {item.excerpt && <blockquote>{item.excerpt}</blockquote>}
-                    </details>
-                  )}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="cp-missing">{analysisSectionMessage(key, data)}</p>
-          )
-        )}
-      </section>
-    );
-  };
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [letters, setLetters] = useState([]);
+  const [letterMessage, setLetterMessage] = useState("");
+  const [previewSource, setPreviewSource] = useState(null);
 
   useEffect(() => {
-    const current = ++generation.current;
-    const controller = new AbortController();
+    let cancelled = false;
     let timer;
-    operation.current = controller;
-    setData(null);
-    setError("");
-    setBusy(true);
     const load = async () => {
       try {
-        let result = validateAnalysis(
-          await salesService.getOpportunityAnalysis(record.id, controller.signal),
+        let response = validateAnalysis(
+          await salesService.getOpportunityAnalysis(record.id),
           record.id,
         );
-        if (result.status === "not_started" || result.stale) {
-          result = validateAnalysis(
-            await salesService.startOpportunityAnalysis(record.id, false, controller.signal),
+        if (response.status === "not_started" || response.stale) {
+          response = validateAnalysis(
+            await salesService.startOpportunityAnalysis(record.id, false),
             record.id,
           );
         }
-        if (current !== generation.current || controller.signal.aborted) return;
-        setData(result);
-        setError("");
-        setBusy(false);
+        if (cancelled) return;
+        setData(response);
         timer = setTimeout(
           load,
-          ["queued", "running"].includes(result.status) ? 4000 : 15000,
+          ["queued", "running"].includes(response.status) ? 8000 : 30000,
         );
-      } catch (failure) {
-        if (current !== generation.current || controller.signal.aborted) return;
-        setData(null);
-        setError(message(failure));
-        setBusy(false);
+      } catch {
+        if (!cancelled) timer = setTimeout(load, 30000);
       }
     };
     load();
     return () => {
-      generation.current = current + 1;
-      controller.abort();
+      cancelled = true;
       clearTimeout(timer);
     };
-  }, [record.id, reload]);
+  }, [record.id, refreshKey]);
+
+  const evaluation = data?.result?.manager_review?.tender_evaluation || {};
+  const hasEvaluation = Object.keys(evaluation).length > 0;
+  const summary = evaluation.opportunity_summary || {};
+  const facts = summary.project_facts || {};
+  const sourceDocuments = evaluation.source_documents || {};
+  const content = buildAnalysisContent(record, evaluation);
+  const officialDecision =
+    { bid: "GO", conditional_bid: "CONDITIONAL GO", no_bid: "NO-GO" }[
+      record.bid_decision
+    ] || "";
+  const recommendation = officialDecision || (hasEvaluation
+    ? decisionLabel(evaluation.decision?.recommendation)
+    : "INSUFFICIENT EVIDENCE");
+  const client = isMissing(summary.client_name)
+    ? record.client_name
+    : summary.client_name;
+  const opportunity = isMissing(summary.project_name)
+    ? record.deal_name
+    : summary.project_name;
+  const nextSteps =
+    recommendation === "NO-GO"
+      ? [
+          "Approve the regret response",
+          "Close the pursuit in the opportunity register",
+        ]
+      : [
+          "Validate capability and qualification evidence",
+          "Confirm named resources and commercial guardrails",
+          officialDecision
+            ? "Prepare the EOI response"
+            : "Record the governed bid decision",
+        ];
+  const scope = scopeSummary(facts, summary);
+  const narrative = !hasEvaluation
+    ? "Review the tender and internal bid position before committing. Confirm the key scope and commercial requirements before recording a decision."
+    : recommendation === "NO-GO"
+      ? scope + " The recorded decision is to decline the pursuit."
+      : recommendation === "INSUFFICIENT EVIDENCE"
+        ? scope + " Rejlers' capability, qualification compliance, named resources, commercial position and win probability require approved internal evidence before a bid recommendation."
+      : scope +
+        (recommendation === "GO"
+          ? " Proceed with the bid."
+          : " Pursue the opportunity after specialist capacity, resource availability, and commercial acceptance are confirmed.");
 
   useEffect(() => {
-    if (!reportId || sourceStale) {
-      setSources([]);
-      setNextOffset(null);
-      setSourcesBusy(false);
-      setSourcePage(0);
-      return undefined;
-    }
-    if (view !== "Sources") return undefined;
-    const controller = new AbortController();
-    setSourcesBusy(true);
-    setSourceError("");
-    salesService
-      .getOpportunityAnalysisSources(record.id, sourcePage, controller.signal)
-      .then((payload) => {
-        const result = validateAnalysis(payload, record.id);
-        if (controller.signal.aborted) return;
-        setSources(result.sources || []);
-        setNextOffset(result.next_offset ?? null);
-      })
-      .catch((failure) => {
-        if (!controller.signal.aborted) {
-          setSources([]);
-          setSourceError(message(failure));
-          if ([403, 404].includes(failure?.response?.status)) {
-            setData(null);
-            setError(message(failure));
-          }
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setSourcesBusy(false);
-      });
-    return () => controller.abort();
-  }, [view, record.id, sourceUpdatedAt, sourceStale, sourcePage, reportId]);
+    if (tab !== "Correspondence" || !officialDecision) return undefined;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const response = await salesService.getLetters(record.id);
+        if (!cancelled)
+          setLetters(
+            Array.isArray(response) ? response : asList(response?.results),
+          );
+      } catch {
+        if (!cancelled) setLetters([]);
+      }
+    };
+    load();
+    const timer = setInterval(load, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [tab, officialDecision, record.id, refreshKey]);
+  const letterType = officialDecision === "NO-GO" ? "regret" : "eoi";
+  const savedLetter = [...letters]
+    .filter(
+      (letter) =>
+        letter.status !== "archived" &&
+        (letterType === "regret"
+          ? String(letter.letter_type || "").startsWith("regret")
+          : letter.letter_type === "eoi"),
+    )
+    .sort((left, right) =>
+      String(right.created_at || "").localeCompare(
+        String(left.created_at || ""),
+      ),
+    )[0];
 
-  const retry = async () => {
-    if (busy) return;
-    setBusy(true);
-    setError("");
-    const current = generation.current;
+  const openDecision = () => {
+    if (record.stage === "qualified") onAction?.("bid_decision");
+    else if (record.stage === "lead") onAction?.("qualify");
+  };
+
+  const refreshAnalysis = async () => {
     try {
-      const result = validateAnalysis(
-        await salesService.startOpportunityAnalysis(record.id, true, operation.current?.signal),
-        record.id,
+      await salesService.startOpportunityAnalysis(record.id, true);
+    } catch {
+      // Analysis may already be running; the polling effect will pick up the status.
+    }
+    setRefreshKey((value) => value + 1);
+  };
+  const openLetter = () => {
+    if (record.bid_decision === "no_bid") setTab("Correspondence");
+    else if (["bid", "conditional_bid"].includes(record.bid_decision))
+      onAction?.("prepare_letter_eoi");
+    else openDecision();
+  };
+  const copyLetter = async () => {
+    if (!savedLetter?.body || !navigator.clipboard?.writeText) return;
+    try {
+      await navigator.clipboard.writeText(
+        [savedLetter.subject, savedLetter.body].filter(Boolean).join("\n\n"),
       );
-      if (current === generation.current) {
-        setData(result);
-        setReload((value) => value + 1);
-      }
-    } catch (failure) {
-      if (current === generation.current && !operation.current?.signal.aborted) {
-        setData(null);
-        setSources([]);
-        setError(message(failure));
-      }
-    } finally {
-      if (current === generation.current) setBusy(false);
+      setLetterMessage("Letter copied.");
+    } catch {
+      setLetterMessage("Copy could not be completed.");
     }
   };
-  const download = () => {
-    const url = URL.createObjectURL(
-      new Blob([analysisMarkdown(record, data)], {
-        type: "text/markdown;charset=utf-8",
-      }),
-    );
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${record.deal_code || "opportunity"}-analysis.md`;
-    link.click();
-    URL.revokeObjectURL(url);
+  const downloadLetter = async () => {
+    if (!savedLetter?.id) return;
+    try {
+      const { blob, filename } = await salesService.downloadLetterPdf(
+        record.id,
+        savedLetter.id,
+      );
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download =
+        filename ||
+        (record.deal_code || "opportunity") + "-" + letterType + ".pdf";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setLetterMessage("Letter downloaded.");
+    } catch {
+      setLetterMessage("Download could not be completed.");
+    }
   };
 
-  const counts = data?.counts || {};
-  const sourcesNeedingReview = (counts.partial || 0) + (counts.failed || 0);
-  const fullResult = data?.result || {};
-  const result =
-    view === "Brief"
-      ? {
-          ...fullResult,
-          sections: fullResult.sections
-            ? Object.fromEntries(
-                Object.entries(fullResult.sections).map(([key, items]) => [
-                  key,
-                  items.slice(0, 3),
-                ]),
-              )
-            : undefined,
-        }
-      : fullResult;
-  const processing = ["queued", "running"].includes(data?.status);
-  const hasResult =
-    !data?.stale &&
-    (managerReview?.status === "ready" ||
-      (["ready", "partial"].includes(data?.status) && Object.values(result.sections || {}).some(
-        (items) => Array.isArray(items) && items.length > 0,
-      )));
+  const actionLabel =
+    officialDecision === "NO-GO"
+      ? "Prepare regret"
+      : officialDecision
+        ? "Prepare EOI"
+        : record.stage === "lead"
+          ? "Continue qualification"
+          : "Record decision";
+  const matchingRationale =
+    hasEvaluation &&
+    decisionLabel(evaluation.decision?.recommendation) === officialDecision
+      ? evaluation.decision?.decision_rationale
+      : "";
+  const decisionJustification =
+    record.bid_decision_reason ||
+    matchingRationale ||
+    (officialDecision === "NO-GO"
+      ? "The recorded No-Go decision requires a reason that matches the selected regret template."
+      : officialDecision === "CONDITIONAL GO"
+        ? "Specialist capacity and commercial terms remain conditions of the recorded pursuit decision."
+        : officialDecision === "GO"
+          ? "The opportunity has a recorded Go decision."
+          : "The advisory assessment supports an internal Go / No-Go decision before client correspondence.");
+  const noGoRecommendation =
+    officialDecision === "NO-GO"
+      ? noGoBrief(record.bid_decision_reason, scope)
+      : null;
+  const correspondenceDescription =
+    officialDecision === "GO"
+      ? "Prepare an Expression of Interest using the approved Rejlers template."
+      : officialDecision === "CONDITIONAL GO"
+        ? "Prepare an Expression of Interest after the pursuit conditions are reviewed."
+        : officialDecision === "NO-GO"
+          ? "Prepare a regret response using the approved reason-specific template."
+          : "Record the Go / No-Go decision before preparing client correspondence.";
+
+  const tenderBasis = (keys) => {
+    const citations = assessmentCitations(facts, sourceDocuments, keys);
+    if (!citations.length) return null;
+    return (
+      <div className="soa-ref-citations">
+        <span>Sources</span>
+        {citations.map((citation, index) => {
+          const canOpen =
+            citation.page &&
+            citation.fileId &&
+            citation.folder &&
+            /\.pdf$/i.test(citation.name) &&
+            ["radai", "sharepoint"].includes(citation.provider);
+          const sourceLabel = `${citation.name} · ${citation.location}`;
+          const label = citation.page
+            ? `Page ${citation.page}`
+            : citation.location;
+          return canOpen ? (
+            <button
+              type="button"
+              key={`${sourceLabel}:${index}`}
+              title={`Open ${sourceLabel}`}
+              aria-label={`Open ${sourceLabel}`}
+              onClick={() => setPreviewSource(citation)}
+            >
+              {label}
+            </button>
+          ) : (
+            <span
+              className="soa-ref-citation-text"
+              key={`${sourceLabel}:${index}`}
+              title={sourceLabel}
+            >
+              <span aria-hidden="true">{label}</span>
+              <span className="sr-only">{sourceLabel}</span>
+            </span>
+          );
+        })}
+      </div>
+    );
+  };
+  const sectionSources = {
+    "Scope vs. Capabilities": [
+      "scope",
+      "technologies",
+      "disciplines",
+      "deliverables",
+    ],
+    "Strategic Fit": ["client", "project_name", "locations"],
+    "Resource Requirements": ["disciplines", "locations", "timeline"],
+    "Execution & Schedule Risk": ["key_risks", "timeline", "technologies"],
+  };
 
   return (
-    <section className={`soa soa-Radai ${dark ? "soa-dark" : ""}`} aria-label="Opportunity Intelligence Sales review">
-      <header className="soa-hero glass">
-        <div className="soa-title">
-          <span className="soa-mark" aria-hidden="true">
-            <Sparkles size={18} />
-          </span>
-          <div className="soa-heading">
-            <h2>Opportunity Intelligence</h2>
-            {data && <div className="soa-hero-meta" role="status">
-              <span className={`soa-analysis-state ${data.status === "failed" || data.status === "blocked" ? "soa-analysis-state-error" : ""}`}>
-                {processing ? <Loader2 className="soa-spin" size={13} aria-hidden="true" />
-                  : data.status === "ready" ? <CheckCircle2 size={13} aria-hidden="true" />
-                    : <AlertCircle size={13} aria-hidden="true" />}
-                {processing
-                  ? `Analyzing ${counts.chunks_done || 0} of ${counts.chunks_total || 0} sections`
-                  : data.status === "ready"
-                    ? `${counts.chunks_done || 0} sections analyzed`
-                    : data.status === "partial"
-                      ? `${counts.chunks_done || 0} sections analyzed`
-                      : "Analysis needs attention"}
-              </span>
-              {sourcesNeedingReview > 0 && <button type="button" className="soa-coverage-link" onClick={() => setView("Sources")}>
-                {sourcesNeedingReview} {sourcesNeedingReview === 1 ? "source" : "sources"} need review <ArrowRight size={12} aria-hidden="true" />
-              </button>}
-            </div>}
-          </div>
+    <section
+      className={"soa soa-Radai soa-reference" + (dark ? " soa-dark" : "")}
+      aria-label="Management opportunity briefing"
+    >
+      <header className="soa-ref-header">
+        <span className="soa-ref-mark" aria-hidden="true">
+          <Sparkles size={19} />
+        </span>
+        <div className="soa-ref-heading">
+          <h2>Opportunity Analysis</h2>
+          <p>
+            {client || "Opportunity review"} ·{" "}
+            {opportunity || "New opportunity"}
+          </p>
         </div>
-        <div className="soa-hero-actions">
+        <div className="soa-ref-tools">
           <button
             type="button"
-            className="soa-icon-button"
-            aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
-            aria-pressed={dark}
-            onClick={() => setDark((value) => !value)}
+            aria-label="Refresh briefing"
+            onClick={refreshAnalysis}
           >
-            {dark ? <Sun size={16} /> : <Moon size={16} />}
-          </button>
-          <button
-            type="button"
-            className="soa-icon-button"
-            aria-label="Refresh analysis"
-            onClick={() => setReload((value) => value + 1)}
-            disabled={busy}
-          >
-            <RefreshCw size={16} />
+            <RefreshCw size={15} />
           </button>
         </div>
       </header>
-      {error && (
-        <div className="soa-alert" role="alert">
-          <AlertCircle size={18} />
-          <div>
-            {error}
-            <button type="button" onClick={() => setReload((value) => value + 1)}>
-              Try again
-            </button>
+      <nav className="soa-ref-tabs" aria-label="Management briefing">
+        {TABS.map((item) => (
+          <button
+            type="button"
+            key={item}
+            aria-current={tab === item ? "page" : undefined}
+            onClick={() => setTab(item)}
+          >
+            {item}
+          </button>
+        ))}
+      </nav>
+
+      {data && ["queued", "running"].includes(data.status) && (
+        <section className="soa-ref-progress">
+          <div className="soa-progress-header">
+            <span className="soa-progress-label">
+              {data.status === "queued" ? "Analysis queued" : "Analyzing documents"}
+            </span>
+            <span className="soa-progress-pct">
+              {data.counts?.total
+                ? `${Math.round(
+                    (data.counts.ready / data.counts.total) * 100,
+                  )}%`
+                : "0%"}
+            </span>
           </div>
-        </div>
-      )}
-      {busy && !data && (
-        <div className="cp-skeleton" role="status" aria-label="Loading Radai workspace">
-          <div className="cp-sk-hero glass">
-            <div className="cp-sk-ring" aria-hidden="true" />
-            <div className="cp-sk-lines">
-              <div className="cp-sk-line cp-sk-w60" />
-              <div className="cp-sk-line cp-sk-w40" />
-            </div>
+          <div className="soa-progress-track">
+            <div
+              className="soa-progress-fill"
+              style={{
+                width: data.counts?.total
+                  ? `${Math.round((data.counts.ready / data.counts.total) * 100)}%`
+                  : "0%",
+              }}
+            />
           </div>
-          {[0, 1, 2].map((index) => (
-            <div key={index} className="cp-sk-card glass" aria-hidden="true">
-              <div className="cp-sk-line cp-sk-w40" />
-              <div className="cp-sk-line" />
-              <div className="cp-sk-line cp-sk-w70" />
-            </div>
-          ))}
-          <span className="cp-sr">Radai is reading your documents…</span>
-        </div>
+          <p className="soa-progress-detail">
+            {data.counts?.total
+              ? `${data.counts.ready} of ${data.counts.total}${
+                  data.counts.partial
+                    ? ` · ${data.counts.partial} partial`
+                    : ""
+                } sources processed`
+              : "Waiting for analysis to begin…"}
+          </p>
+          <button
+            type="button"
+            className="soa-progress-refresh"
+            aria-label="Refresh analysis status"
+            onClick={() => setRefreshKey((value) => value + 1)}
+          >
+            <RefreshCw size={14} className="soa-spin" />
+          </button>
+        </section>
       )}
-      {data && (
-        <>
-          <nav className="soa-nav cp-nav" aria-label="Analysis sections">
-            {views.map((item) => (
-              <button type="button" key={item} onClick={() => setView(item)} aria-current={view === item ? "page" : undefined}>
-                {item === "Manager review" ? (
-                  <>
-                    <Sparkles size={13} aria-hidden="true" />
-                    Sales review
-                  </>
-                ) : (
-                  item
-                )}
-              </button>
-            ))}
-          </nav>
-          {view === "Manager review" && managerReview?.status === "ready" && (
-            <div className="soa-manager-review">
-              <section className="soa-review-conclusion glass">
-                <p className="soa-review-kicker">Advisory recommendation</p>
-                <h3 className={`soa-verdict soa-verdict-${managerReview.recommendation}`}>
-                  {({ go: "Go", conditional_go: "Conditional Go", no_go: "No-Go", insufficient_evidence: "More information needed" })[managerReview.recommendation] || "Review unavailable"}
-                </h3>
-                <p>{managerReview.rationale}</p>
-                {managerReview.rationale_evidence?.map((source, index) => <details className="cp-evidence" key={`${source.source_id}-${index}`}>
-                  <summary><FileText size={13} aria-hidden="true" />{source.name} · {source.location}</summary>
-                  <blockquote>{source.excerpt}</blockquote>
-                </details>)}
-                <p className="soa-review-note">{managerReview.review_note}</p>
-                {record.bid_decision === "pending" && record.stage === "qualified" && managerReview.recommendation !== "insufficient_evidence" &&
-                  <button type="button" className="soa-review-action" onClick={() => onAction?.("bid_decision")}>Open Go / No-Go decision</button>}
-                {record.bid_decision === "pending" && record.stage === "lead" && managerReview.recommendation !== "insufficient_evidence" &&
-                  <button type="button" className="soa-review-action" onClick={() => onAction?.("qualify")}>Continue qualification before recording a decision</button>}
-                {record.bid_decision !== "pending" &&
-                  <p className="soa-review-note">Recorded decision: {record.bid_decision === "no_bid" ? "No-Go" : record.bid_decision === "conditional_bid" ? "Conditional Go" : "Go"}. Review the advisory recommendation before preparing correspondence.</p>}
-                {(managerReview.recommendation === "go" || managerReview.recommendation === "conditional_go") &&
-                  record.stage === "proposal" && (record.bid_decision === "bid" || record.bid_decision === "conditional_bid") &&
-                  <button type="button" className="soa-review-action" onClick={() => onAction?.("prepare_letter_eoi")}>Prepare EOI from saved template</button>}
-                {record.stage === "no_bid" && record.bid_decision === "no_bid" && (
-                  managerReview.recommendation === "no_go" && managerReview.suggested_letter === "regret_expertise" ? (
-                    <button type="button" className="soa-review-action" onClick={() => onAction?.("prepare_letter_regret_expertise")}>Prepare expertise regret from saved template</button>
-                  ) : managerReview.recommendation === "no_go" && managerReview.suggested_letter === "regret_manpower" ? (
-                    <button type="button" className="soa-review-action" onClick={() => onAction?.("prepare_letter_regret_manpower")}>Prepare manpower regret from saved template</button>
-                  ) : (
-                    <div className="soa-letter-choice">
-                      <p>The recorded No-Go has no cited expertise or manpower reason. Choose the saved wording to review:</p>
-                      <button type="button" onClick={() => onAction?.("prepare_letter_regret_expertise")}>Expertise template</button>
-                      <button type="button" onClick={() => onAction?.("prepare_letter_regret_manpower")}>Manpower template</button>
-                    </div>
-                  )
-                )}
-              </section>
-              <div className="soa-review-grid">
-                {reviewDimensions.map(([key, title]) => {
-                  const item = managerReview.dimensions?.find((row) => row.dimension === key);
-                  return <section className="cp-insight glass soa-review-dimension" key={key} aria-label={title}>
-                    <h3>{title}<span className={`soa-assessment soa-assessment-${item?.assessment || "unknown"}`}>{item?.assessment || "unknown"}</span></h3>
-                    <p>{item?.summary || "No verified assessment available."}</p>
-                    {item?.evidence?.map((source, index) => <details className="cp-evidence" key={`${source.source_id}-${index}`}>
-                      <summary><FileText size={13} aria-hidden="true" />{source.name} · {source.location}</summary>
-                      <blockquote>{source.excerpt}</blockquote>
-                    </details>)}
-                  </section>;
-                })}
-              </div>
-              {managerReview.clarifications?.length > 0 && <section className="cp-insight glass soa-review-clarifications">
-                <h3>Clarifications to raise with the client</h3>
-                <ul>{managerReview.clarifications.map((item, index) => <li key={index}>
-                  <p>{item.text}</p>
-                  {item.evidence?.map((source, evidenceIndex) => <details className="cp-evidence" key={`${source.source_id}-${evidenceIndex}`}>
-                    <summary><FileText size={13} aria-hidden="true" />{source.name} · {source.location}</summary><blockquote>{source.excerpt}</blockquote>
-                  </details>)}
-                </li>)}</ul>
-              </section>}
-              <p className="soa-review-note">EOI and regret drafts use the saved company template. Only project-specific fields are populated; standard wording is preserved.</p>
-            </div>
-          )}
-          {view === "Manager review" && managerReview?.status !== "ready" && hasResult && (
-            <div className="cp-empty glass"><h3>Sales manager review is not ready</h3>
-              <p>{managerReview?.error_code ? "The recommendation could not be verified. Review source coverage and retry." : processing ? "The review will appear when source analysis completes." : "No manager recommendation is available in this report. Retry the analysis and review source coverage."}</p>
-              {!processing && <button type="button" onClick={() => setView("Sources")}>Review source coverage</button>}
-            </div>
-          )}
-          {!hasResult && view !== "Sources" && (
-            <div className="cp-empty glass">
-              {processing ? <Sparkles size={26} aria-hidden="true" className="cp-pulse" /> : <BarChart3 size={28} aria-hidden="true" />}
-              <h3>
-                {counts.total === 0 && !processing
-                  ? "No attached sources yet"
-                  : processing
-                    ? "Radai is reading your documents"
-                    : data.status === "failed" || data.status === "blocked"
-                      ? "Analysis could not verify these documents"
-                      : "No source-supported findings yet"}
-              </h3>
-              <p>
-                {processing
-                  ? "Source findings and the Sales manager review appear here as processing completes."
-                  : data.status === "failed" || data.status === "blocked"
-                    ? analysisFailureMessage(data)
-                    : counts.total === 0
-                      ? "Attach readable tender documents to prepare the Sales manager review."
-                      : "No findings were verified. Review source coverage or attach additional files."}
-              </p>
-              {!processing && counts.total > 0 && (
-                <button type="button" onClick={() => setView("Sources")}>
-                  Review source coverage
-                </button>
-              )}
-            </div>
-          )}
-          {hasResult && view === "Brief" && (
-            <div className="cp-insights">
-              {sectionBlock("brief", "What is this opportunity?", Sparkles)}
-              {sectionBlock("client_need", "What does the client want?", ListChecks)}
-              {sectionBlock("next_step", "What should we do next?", ArrowRight)}
-              {result.relationships?.length > 0 && (
-                <section className="cp-insight glass" aria-label="Document relationships">
-                  <h3>Document relationships</h3>
-                  <ul>{result.relationships.map((relation, index) => (
-                    <li key={index}>{relation.reference || relation.kind}
-                      {relation.sources?.length ? ` — ${relation.sources.map((source) => source.name).filter(Boolean).join(', ')}` : ''}
-                    </li>
-                  ))}</ul>
-                </section>
-              )}
-            </div>
-          )}
-          {hasResult && view === "Submissions" && (
-            <div className="cp-insights">{sectionBlock("submission", "What do we need to submit?", FileText)}</div>
-          )}
-          {hasResult && view === "Risks" && (
-            <div className="cp-insights">
-              <section className="cp-insight glass" aria-label="Business decision risks">
-                <h3 className="soa-risk-heading"><ShieldAlert size={16} aria-hidden="true" />Business decision risks</h3>
-                <p className="cp-missing">Factors that may affect attractiveness, profitability, winnability or commercial exposure.</p>
-                {managerReview?.status === "ready" ? (
-                  managerReview.business_risks?.length ? <ul className="cp-findings">
-                    {managerReview.business_risks.map((item, index) => <li className="cp-finding" key={`${item.category}-${index}`}>
-                      <span className="soa-risk-category">{item.category.replaceAll("_", " ")}</span>
-                      <p className="cp-finding-text">{item.risk}</p>
-                      <p className="soa-risk-impact"><strong>Decision impact:</strong> {item.decision_impact}</p>
-                      {item.evidence?.map((source, evidenceIndex) => <details className="cp-evidence" key={`${source.source_id}-${evidenceIndex}`}>
-                        <summary><FileText size={13} aria-hidden="true" />{source.name} · {source.location}</summary>
-                        <blockquote>{source.excerpt}</blockquote>
-                      </details>)}
-                    </li>)}
-                  </ul> : <p className="cp-missing">No cited business decision risk was identified. Commercial terms and internal guardrails still need Sales review.</p>
-                ) : <p className="cp-missing">Business decision risks will appear when the Sales manager review is ready.</p>}
-              </section>
-            </div>
-          )}
-          {hasResult && view === "Actions" && (
-            <div className="cp-insights">
-              {sectionBlock("action", "What actions are pending?", Target)}
-              {sectionBlock("next_step", "What should we do next?", ArrowRight)}
-            </div>
-          )}
-          {hasResult && view === "Timeline" && (
-            <div className="cp-insights">{sectionBlock("deadline", "Which deadlines are approaching?", CalendarDays, true)}</div>
-          )}
-          {view === "Sources" && (
-            <section className="soa-section">
-              <h3>Source coverage</h3>
-              <p className="soa-coverage-note">
-                {counts.total || 0} sources inventoried · {counts.ready || 0} ready · {counts.partial || 0} partial.
-              </p>
-              {!hasResult && result.relationships?.length > 0 && (
-                <p className="soa-coverage-note">
-                  Shared document references were detected during text extraction, but no AI findings were verified. These references are not an executive brief.
-                </p>
-              )}
-              <p className="soa-coverage-note">
-                {data.coverage_note} Budget: 32 MiB and 2 million text characters per file. Scanned pages need OCR; partial sources remain marked.
-              </p>
-              {sourceError && <p role="alert">{sourceError}</p>}
-              {sourcesBusy && <p role="status">Loading sources…</p>}
-              <ul className="soa-sources">
-                {sources.map((source) => (
-                  <li key={source.id}>
-                    <details>
-                      <summary>
-                        <FileText size={16} />
-                        <span>
-                          {source.name}
-                          <small>
-                            {source.provider} · {source.status}
-                            {source.diagnostic ? ` · ${source.diagnostic.replaceAll("_", " ")}` : ""}
-                          </small>
-                          {source.analysis_error && (
-                            <small className="soa-source-error">{analysisSourceError(source.analysis_error)}</small>
-                          )}
-                        </span>
-                      </summary>
-                      {source.claims?.length ? (
-                        source.claims.map((claim, index) => (
-                          <div className="soa-source-claim" key={index}>
-                            <p>{decisionText(claim.text)}</p>
-                            <blockquote>{claim.excerpt}</blockquote>
-                            <small>{claim.location}</small>
-                          </div>
-                        ))
-                      ) : (
-                        <p className="soa-missing">
-                          {source.analysis_error
-                            ? "No verified findings from this source. Review the error above and retry."
-                            : "No verified findings for this source yet."}
-                        </p>
-                      )}
-                    </details>
-                  </li>
-                ))}
-              </ul>
-              <div className="soa-pages">
-                <button type="button" disabled={!sourcePage || sourcesBusy} onClick={() => setSourcePage((value) => Math.max(0, value - 25))}>
-                  Previous sources
-                </button>
-                <span>
-                  {sourcePage + 1}–{sourcePage + sources.length}
-                </span>
-                <button type="button" disabled={nextOffset === null || sourcesBusy} onClick={() => setSourcePage(nextOffset)}>
-                  More sources
-                </button>
-              </div>
+      {tab === "Assessment" && (
+        <div className="soa-ref-assessment">
+          <section
+            className={
+              "soa-ref-recommendation soa-ref-" +
+              recommendation.toLowerCase().replaceAll(" ", "_")
+            }
+            aria-labelledby="soa-recommendation"
+          >
+            <p>{officialDecision ? "Recorded bid decision" : "Executive recommendation"}</p>
+            <h3 id="soa-recommendation">{recommendation}</h3>
+            <div>{narrative}{data?.source_gaps?.length > 0 && (
+              <> Source review is incomplete: {data.source_gaps.map((gap) =>
+                `${gap.name} (${String(gap.reason || gap.status || "incomplete").replaceAll("_", " ")})`).join("; ")}.</>
+            )}</div>
+            {tenderBasis([
+              "scope",
+              "technologies",
+              "deliverables",
+              "key_risks",
+              "timeline",
+            ])}
+          </section>
+          <div className="soa-ref-driver-grid">
+            <section className="soa-ref-driver-card soa-ref-positive">
+              <h4>Decision Drivers ? Tender Evidence</h4>
+              <ul>{content.drivers.map((item) => <li key={item}><Check size={13} aria-hidden="true" /><span>{item}</span></li>)}</ul>
             </section>
+            <section className="soa-ref-driver-card soa-ref-concerns">
+              <h4>Key Concerns</h4>
+              <ul>{content.concerns.map((item) => <li key={item}><HelpCircle size={13} aria-hidden="true" /><span>{item}</span></li>)}</ul>
+            </section>
+          </div>
+          <section className="soa-ref-next">
+            <h4>Next Action</h4>
+            <ol>
+              {nextSteps.map((step) => (
+                <li key={step}>
+                  <span className="soa-ref-step-icon">
+                    <ArrowRight size={13} aria-hidden="true" />
+                  </span>
+                  <span>{step}</span>
+                </li>
+              ))}
+            </ol>
+            <button
+              type="button"
+              onClick={officialDecision ? openLetter : openDecision}
+              disabled={
+                !officialDecision &&
+                !["lead", "qualified"].includes(record.stage)
+              }
+            >
+              {actionLabel}
+            </button>
+          </section>
+          <section className="soa-ref-content soa-ref-detail">
+            <h3>Comprehensive Assessment</h3>
+            {content.detailedSections.map((section) => (
+              <div key={section.title}>
+                <h4>{section.title}</h4>
+                <ul>
+                  {section.bullets.map((bullet) => (
+                    <li key={bullet}>{bullet}</li>
+                  ))}
+                </ul>
+                {tenderBasis(sectionSources[section.title] || [])}
+              </div>
+            ))}
+          </section>
+        </div>
+      )}
+
+      {tab === "Opportunity Summary" && (
+        <section className="soa-ref-content">
+          <p className="soa-ref-kicker">Project information</p>
+          <h3>Opportunity Summary</h3>
+          <div className="soa-summary-table-wrap">
+            <table className="soa-summary-table">
+              <thead>
+                <tr>
+                  <th scope="col">Property</th>
+                  <th scope="col">Details</th>
+                </tr>
+              </thead>
+              <tbody>
+                {content.summaryRows.map(([property, detail]) => (
+                  <tr key={property}>
+                    <th scope="row">{property}</th>
+                    <td>{detail}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+      {tab === "Clarifications" && (
+        <section className="soa-ref-content">
+          <p className="soa-ref-kicker">Before bid submission</p>
+          <h3>Critical Clarifications</h3>
+          {content.clarificationRows.length ? (
+            <ol className="soa-ref-questions">
+              {content.clarificationRows.map((item) => (
+                <li key={item.title + item.request}>
+                  <strong>{item.title}:</strong>
+                  <div>
+                    <em>Clarification Request:</em> {item.request}
+                  </div>
+                  {item.evidence?.map((source, index) => (
+                    <small key={`${source.source_file}:${source.source_page}:${index}`}>
+                      {source.source_file} · {source.source_page}: {source.source_text || source.excerpt}
+                    </small>
+                  ))}
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p>No material client clarification is currently identified.</p>
           )}
-          <footer className="soa-footer">
-            <p>
-              {data.updated_at
-                ? `Updated ${new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Dubai" }).format(
-                    new Date(data.updated_at),
-                  )} (Dubai)`
-                : "Waiting for processing"}
-              · Updates automatically when sources change.
-            </p>
-            <div>
-              <button type="button" onClick={retry} disabled={busy || processing}>
-                <RefreshCw size={14} />
-                Retry incomplete analysis
-              </button>
-              <button type="button" onClick={download} disabled={!hasResult}>
-                <Download size={14} />
-                Download brief
-              </button>
+        </section>
+      )}
+      {tab === "Correspondence" && (
+        <section className="soa-ref-content soa-correspondence">
+          <p className="soa-ref-kicker">
+            {noGoRecommendation
+              ? "Final recommendation"
+              : "Decision correspondence"}
+          </p>
+          <h3>{officialDecision || "Decision required"}</h3>
+          {noGoRecommendation ? (
+            <div className="soa-no-go-brief">
+              <p>{noGoRecommendation.rationale}</p>
+              {noGoRecommendation.tenderContext && (
+                <p>{noGoRecommendation.tenderContext}</p>
+              )}
+              <p>
+                <strong>Recommendation:</strong> {noGoRecommendation.nextAction}
+              </p>
             </div>
-          </footer>
-        </>
+          ) : (
+            <>
+              <p className="soa-correspondence-description">
+                {correspondenceDescription}
+              </p>
+              <div className="soa-correspondence-justification">
+                <span>Justification</span>
+                <p>{decisionJustification}</p>
+              </div>
+            </>
+          )}
+          <div className="soa-ref-letter-actions">
+            {["bid", "conditional_bid"].includes(record.bid_decision) && (
+              <button
+                type="button"
+                onClick={() => onAction?.("prepare_letter_eoi")}
+              >
+                Prepare EOI
+              </button>
+            )}
+            {record.bid_decision === "no_bid" && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => onAction?.("prepare_letter_regret_expertise")}
+                >
+                  Regret · Expertise
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onAction?.("prepare_letter_regret_manpower")}
+                >
+                  Regret · Resources
+                </button>
+              </>
+            )}
+            {!officialDecision && (
+              <button type="button" onClick={openDecision}>
+                {record.stage === "lead"
+                  ? "Continue qualification"
+                  : "Record decision"}
+              </button>
+            )}
+            {savedLetter && (
+              <button
+                type="button"
+                onClick={() =>
+                  onAction?.("prepare_letter_" + savedLetter.letter_type)
+                }
+              >
+                Preview saved letter
+              </button>
+            )}
+            {savedLetter && (
+              <button type="button" onClick={copyLetter}>
+                Copy letter
+              </button>
+            )}
+            {savedLetter && (
+              <button type="button" onClick={downloadLetter}>
+                Download letter
+              </button>
+            )}
+          </div>
+          {letterMessage && <p role="status">{letterMessage}</p>}
+        </section>
+      )}
+      {previewSource && (
+        <SalesOpportunityFilePreview
+          key={`${record.id}:${previewSource.fileId}:${previewSource.page}`}
+          recordId={String(record.id)}
+          folderKey={previewSource.folder}
+          storage={previewSource.provider}
+          file={{ id: previewSource.fileId, name: previewSource.name }}
+          initialPage={previewSource.page}
+          onClose={() => setPreviewSource(null)}
+        />
       )}
     </section>
   );

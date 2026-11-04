@@ -370,6 +370,12 @@ function ImportedEmailIntakes() {
     event.preventDefault();
     if (!selected || selected.can_create_opportunity !== true || reviewBlocked || sourceReloadRequired || clients.loading || clients.error || !isOpportunityClassification(confirmedClassification)) return;
     const form = new FormData(event.currentTarget);
+    const dealName = form.get("deal_name")?.toString().trim() || "";
+    if (!dealName) {
+      setConversionFieldErrors({ deal_name: "Opportunity name is required." });
+      setError("Opportunity name is required.");
+      return;
+    }
     const createClient = clientChoice === "__new__";
     if (createClient && !suggestedClientName) {
       setError("A client name could not be detected from this email.");
@@ -391,10 +397,9 @@ function ImportedEmailIntakes() {
                 company_name: suggestedClientName,
               }
             : undefined,
-        deal_name: form.get("deal_name"),
+        deal_name: dealName,
         ...registrationFields(form),
         scope_type: form.get("scope_type"),
-        location: form.get("location"),
         client_reference: form.get("client_reference"),
         description: form.get("description"),
       });
@@ -595,7 +600,7 @@ function ImportedEmailIntakes() {
 
                   <div className="sales-email-detail-grid">
                     <section className="sales-email-reading-pane" aria-label="Email content" tabIndex={0}>
-                      <SalesEmailReader key={selected.id} information={extracted} subject={selected.subject} bodyText={selected.body_preview || "No email preview was supplied."} saved hasAttachments={selected.has_attachments}
+                      <SalesEmailReader key={selected.id} information={extracted} subject={selected.subject} bodyText={selected.body_preview || "No email preview was supplied."} saved hasAttachments={selected.has_attachments} attachments={selected.attachments || []} intakeId={selected.id}
                         onReply={() => {
                           insightsRef.current?.querySelector('button[aria-label="Expand AI insights"]')?.click();
                           setInsightsView({ id: selected.id, tab: "ask" });
