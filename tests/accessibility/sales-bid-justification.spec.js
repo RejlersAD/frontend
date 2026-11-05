@@ -156,3 +156,32 @@ test('redesigned bid dialog is accessible at desktop and mobile widths', async (
     expect(await dialog(page).evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
   }
 });
+
+
+test('long email links cannot widen the decision dialog or hide No-Go and insights', async ({ page }) => {
+  const longLink = 'https://eur01.safelinks.protection.outlook.com/?url=' + 'encodedTenderReference%2F'.repeat(100);
+  await prepare(page, { text: `Review this tender evidence before recording a decision: ${longLink}` });
+  await choose(page, 'No-Go Decline this pursuit');
+  await expect(dialog(page).locator('.sbd-source')).toHaveText('Backend AI');
+  for (const width of [1519, 1024, 390]) {
+    await page.setViewportSize({ width, height: 965 });
+    const measurements = await dialog(page).evaluate(element => {
+      const body = element.querySelector('.sbd-body');
+      const bounds = element.getBoundingClientRect();
+      return { overflow: body.scrollWidth - body.clientWidth, left: bounds.left, right: bounds.right };
+    });
+    expect(measurements.overflow).toBeLessThanOrEqual(1);
+    expect(measurements.left).toBeGreaterThanOrEqual(0);
+    expect(measurements.right).toBeLessThanOrEqual(width);
+    for (const selector of ['.sbd-nogo', '.sbd-insights', '.sbd-text']) {
+      const fits = await dialog(page).locator(selector).evaluate(element => {
+        const parent = element.closest('.sbd-body').getBoundingClientRect();
+        const bounds = element.getBoundingClientRect();
+        return bounds.left >= parent.left && bounds.right <= parent.right;
+      });
+      expect(fits).toBe(true);
+    }
+  }
+  await dialog(page).getByRole('button', { name: 'Edit', exact: true }).click();
+  await expect(reason(page)).toHaveValue(`Review this tender evidence before recording a decision: ${longLink}`);
+});
