@@ -185,76 +185,32 @@ export function decisionSignals(record = {}) {
  * Pass `intelligence` (from intelligenceOf(analysis)) to ground the draft in
  * RADAI Opportunity Intelligence findings instead of generic statements.
  * Signature stays backward compatible: 4th arg is optional. */
+export const JUSTIFICATION_MAX_WORDS = 60;
+
+// Reject raw correspondence and oversized generated paragraphs rather than
+// cutting off a sentence and accidentally losing its qualification or negation.
+export function conciseGeneratedJustification(value, fallback = '') {
+  const candidate = decisionText(text(value)).replace(/\s+/g, ' ');
+  if (!candidate || wordCount(candidate) > JUSTIFICATION_MAX_WORDS || candidate.length > 600
+      || /https?:|www\.|safelinks|%[0-9a-f]{2}|\b(?:message id|from|subject|realm):|<[^>]+>/i.test(candidate)) return fallback;
+  return candidate;
+}
+
 export function generateBidJustification(record = {}, decision, variant = 0, intelligence = null) {
-  const client = clientNameOf(record) || 'the client';
-  const oppType = typeLabel(record.opportunity_type);
-  const services = serviceLineOf(record) || 'our core consulting capabilities';
-  const value = formatMoney(record.estimated_value, record.currency);
-  const winProb = num(record.win_probability);
-  const winLabel = winProb === null ? 'as currently assessed' : `${winProb}%`;
-  const deadline = displayDate(record.submission_due_date);
-  const stage = stageLabel(record.stage);
-  const signals = decisionSignals(record);
-  const title = text(record.deal_name) || text(record.deal_code) || 'this opportunity';
-  const dueNote =
-    signals.daysLeft === null
-      ? ''
-      : signals.daysLeft < 0
-        ? `overdue by ${Math.abs(signals.daysLeft)} days`
-        : signals.daysLeft === 0
-          ? 'due today'
-          : `in ${signals.daysLeft} days`;
-  // RADAI Opportunity Intelligence grounding (only when analysis is ready).
-  const intelNeed = intelligence?.available
-    ? intelClause(intelligence.needs, 'RADAI analysis of the client requirement confirms')
-    : '';
-  const intelDelivery = intelligence?.available
-    ? intelClause(intelligence.submissions, 'On deliverables, intelligence highlights')
-      || intelClause(intelligence.deadlines, 'On timing, intelligence notes')
-    : '';
-  const intelRisk = intelligence?.available
-    ? intelClause(intelligence.risks, 'RADAI-flagged risks include')
-    : '';
-  if (decision === GO) {
-    const openers = [
-      `This opportunity (${title}) with ${client} aligns with our strategic objectives and ${services} capability.`,
-      `Proceeding with ${title} for ${client} is strategically sound and commercially justified.`,
-      `A Go decision is recommended for ${title} with ${client} following commercial and capability review.`,
-    ];
-    const commercial = signals.highValue
-      ? `The estimated value of ${value} represents significant commercial potential with a win probability of ${winLabel}.`
-      : `The estimated value of ${value} with a win probability of ${winLabel} supports investment in proposal development.`;
-    const strategic = signals.strategicClient
-      ? 'As a strategically important client relationship, a Go decision strengthens long-term positioning and repeat business.'
-      : `The ${oppType} requirement at ${stage} stage fits our service-line strategy and client-relationship goals.`;
-    const intelRiskGo = intelRisk
-      ? intelRisk.replace('RADAI-flagged risks include', 'Known risks to manage during pursuit include')
-      : '';
-    const delivery = signals.closeDeadline
-      ? `With submission due ${deadline} (${dueNote}), proposal resourcing must be ring-fenced immediately and delivery risk actively managed.`
-      : `With submission due ${deadline}, the current window allows controlled proposal development and governance review.`;
-    const pipeline = signals.isEOI
-      ? 'As an EOI, participation also builds future pipeline potential beyond this immediate pursuit.'
-      : '';
-    const closer = 'Based on available information, it is recommended to proceed with Go submission.';
-    return decisionText(joinSentences([openers[variant % openers.length], strategic, intelNeed, commercial, intelDelivery, delivery, intelRiskGo, pipeline, closer]));
-  }
-  const openers = [
-    `Following evaluation, ${title} with ${client} does not currently provide sufficient strategic or commercial justification to proceed.`,
-    `A No-Go is recommended for ${title} with ${client} after assessment of value, risk, and resourcing.`,
-  ];
-  const reasons = [];
-  if (signals.lowWinProb) reasons.push(`the win probability of ${winLabel} indicates a low likelihood of return on Go investment`);
-  if (!signals.hasValue) reasons.push('the commercial value is unconfirmed');
-  else if (!signals.highValue) reasons.push(`the estimated value of ${value} is limited relative to anticipated pursuit cost`);
-  if (signals.closeDeadline) reasons.push('deadline pressure');
-  if (intelRisk) reasons.push(intelRisk.replace(/^RADAI-flagged risks include\s*/i, '').replace(/\.$/, ''));
-  const reasonText = reasons.length
-    ? `Key considerations include ${reasons.slice(0, 3).join('; ')}.`
-    : `The ${oppType} requirement at ${stage} stage offers limited strategic fit against current priorities.`;
-  const resource = 'Given identified constraints, redeploying proposal capacity protects margin and focus.';
-  const closer = 'A No-Go decision is therefore recommended and logged for pipeline monitoring.';
-  return decisionText(joinSentences([openers[variant % openers.length], intelNeed, intelDelivery, reasonText, resource, closer]));
+  const opening = decision === GO
+    ? ['Proceed with this opportunity, subject to confirming delivery capability and commercial terms.',
+      'Pursue this opportunity after confirming capability, resources and commercial acceptance.'][variant % 2]
+    : ['Do not pursue this opportunity.', 'Decline this pursuit.'][variant % 2];
+  const observations = [];
+  if (num(record.estimated_value) === null) observations.push('Commercial value is unconfirmed.');
+  const risk = intelligence?.available ? intelligence.risks?.map(item =>
+    conciseGeneratedJustification(item.text)).find(value => value && wordCount(value) <= 18 && value.length <= 180) : '';
+  if (risk) observations.push(`Review the reported risk: ${risk.replace(/[.!?]$/, '')}.`);
+  const closing = decision === NO_GO
+    ? 'Confirm the specific reason for declining before saving.'
+    : 'Verify the bid conditions before committing resources.';
+  return conciseGeneratedJustification(joinSentences([opening, ...observations.slice(0, 1), closing]),
+    joinSentences([opening, closing]));
 }
 
 export function wordCount(value) {
@@ -303,12 +259,6 @@ export function intelligenceOf(data) {
     coverageNote: typeof data.coverage_note === 'string' ? data.coverage_note : '',
   };
 }
-
-const intelClause = (items, prefix) => {
-  if (!items.length) return '';
-  const points = items.slice(0, 2).map((item) => item.text.replace(/\.$/, ''));
-  return `${prefix} ${points.join('; ')}.`;
-};
 
 export function goInsights() {
   return [

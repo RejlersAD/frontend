@@ -17,6 +17,7 @@ import {
   NO_GO,
   businessToday,
   currentUserName,
+  conciseGeneratedJustification,
   displayDateTime,
   generateBidJustification,
   goInsights,
@@ -62,7 +63,7 @@ export default function SalesBidDecisionDialog({ record, busy, error, onClose, o
         // If a draft is already on screen, re-ground it in the fresh findings.
         if (decision) {
           const grounded = generateBidJustification(record, decision, variant, digest);
-          if (grounded && grounded.trim() && aiSource !== 'ai') {
+          if (grounded && grounded.trim() && aiSource !== 'ai' && !record.bid_decision_reason && !editing) {
             setJustification(grounded);
           }
         }
@@ -85,19 +86,12 @@ export default function SalesBidDecisionDialog({ record, busy, error, onClose, o
     setRefining(true);
     setRefineError('');
     try {
-      const intelSummary = intel?.available
-        ? [
-          intel.needs.slice(0, 2).map((i) => i.text).join('; '),
-          intel.submissions.slice(0, 2).map((i) => i.text).join('; '),
-          intel.risks.slice(0, 2).map((i) => i.text).join('; '),
-        ].filter(Boolean).join('\n')
-        : '';
       const result = await salesService.draftBidDecisionJustification(record.id, {
         decision: BACKEND_DECISION[activeDecision],
-        text: [instantText, intelSummary ? `RADAI Opportunity Intelligence:\n${intelSummary}` : ''].filter(Boolean).join('\n\n').slice(0, AI_LIMIT),
+        text: instantText.slice(0, AI_LIMIT),
       });
       if (run !== runId.current) return;
-      const backendText = typeof result?.text === 'string' ? decisionText(result.text).trim() : '';
+      const backendText = conciseGeneratedJustification(result?.text);
       const context = result?.source_context;
       if (String(context?.opportunity_id) !== String(record.id)
           || context?.decision !== BACKEND_DECISION[activeDecision]

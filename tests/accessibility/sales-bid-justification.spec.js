@@ -162,7 +162,14 @@ test('long email links cannot widen the decision dialog or hide No-Go and insigh
   const longLink = 'https://eur01.safelinks.protection.outlook.com/?url=' + 'encodedTenderReference%2F'.repeat(100);
   await prepare(page, { text: `Review this tender evidence before recording a decision: ${longLink}` });
   await choose(page, 'No-Go Decline this pursuit');
-  await expect(dialog(page).locator('.sbd-source')).toHaveText('Backend AI');
+  await expect(dialog(page).getByRole('button', { name: 'Regenerate', exact: true })).toBeEnabled();
+  await expect(dialog(page).locator('.sbd-source')).toHaveText('Record-based draft');
+  await expect(dialog(page).locator('.sbd-text')).not.toContainText('https://');
+  expect((await dialog(page).locator('.sbd-text').innerText()).split(/\s+/).length).toBeLessThanOrEqual(60);
+  // Manual wording remains editable and is not shortened behind the user's back.
+  await dialog(page).getByRole('button', { name: 'Edit', exact: true }).click();
+  await reason(page).fill(`Review this tender evidence before recording a decision: ${longLink}`);
+  await dialog(page).getByRole('button', { name: 'Done', exact: true }).click();
   for (const width of [1519, 1024, 390]) {
     await page.setViewportSize({ width, height: 965 });
     const measurements = await dialog(page).evaluate(element => {
