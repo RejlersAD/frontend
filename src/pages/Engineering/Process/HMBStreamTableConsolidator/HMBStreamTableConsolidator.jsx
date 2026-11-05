@@ -36,6 +36,7 @@ import {
 } from "./compare.ts";
 import { useCases } from "./useCases";
 import { MASTER_REVIEW_ROWS } from "./template.ts";
+import SeparatorSizingPanel from "./SeparatorSizingPanel";
 import useRadaiChatPage from "../../../../hooks/useRadaiChatPage";
 import "./HMBStreamTableConsolidator.css";
 
@@ -640,7 +641,7 @@ function ReviewView({ caseData, onToggleStream, onSetCell }) {
   );
 }
 
-function ComparisonView({ cases }) {
+function ComparisonView({ cases, onComparisonStream }) {
   const [query, setQuery] = useState("");
   const [firstColumnFilter, setFirstColumnFilter] = useState("all");
   const [highlight, setHighlight] = useState(true);
@@ -767,9 +768,10 @@ function ComparisonView({ cases }) {
                   <select
                     aria-label="Filter by stream or property"
                     value={firstColumnFilter}
-                    onChange={(event) =>
-                      setFirstColumnFilter(event.target.value)
-                    }
+                    onChange={(event) => {
+                      setFirstColumnFilter(event.target.value);
+                      onComparisonStream?.(event.target.value.startsWith("stream:") ? event.target.value.slice(7) : "");
+                    }}
                   >
                     <option value="all">All streams / properties</option>
                     <optgroup label="Streams">
@@ -1321,7 +1323,7 @@ function ArchiveHistoryPanel({
   );
 }
 
-export default function HMBStreamTableConsolidator() {
+export default function HMBStreamTableConsolidator({ automaticSizing = true }) {
   const casesState = useCases();
   const [view, setView] = useState("review");
   const [exportOpen, setExportOpen] = useState(false);
@@ -1335,6 +1337,10 @@ export default function HMBStreamTableConsolidator() {
   const [archiveError, setArchiveError] = useState("");
   const [archiveRecords, setArchiveRecords] = useState([]);
   const [openingArchiveId, setOpeningArchiveId] = useState("");
+  const [separatorProjectId, setSeparatorProjectId] = useState(readActiveProjectId);
+  const [separatorSession, setSeparatorSession] = useState(0);
+  const [equipmentActionHost, setEquipmentActionHost] = useState(null);
+  const [comparisonStream, setComparisonStream] = useState("");
   const includedStreamCount = useMemo(
     () =>
       casesState.cases.reduce(
@@ -1394,6 +1400,7 @@ export default function HMBStreamTableConsolidator() {
 
   const reset = () => {
     casesState.resetAll();
+    setSeparatorSession((value) => value + 1);
     setView("review");
     setResetOpen(false);
   };
@@ -1450,6 +1457,7 @@ export default function HMBStreamTableConsolidator() {
         },
       });
       saveActiveProject(created);
+      setSeparatorProjectId(created.project_id);
       setShowProjectModal(false);
       toast.success(`Project ${created?.name || ""} created.`);
       await saveArchive(created.project_id);
@@ -1566,7 +1574,7 @@ export default function HMBStreamTableConsolidator() {
   };
 
   return (
-    <div className="hmbc-page">
+    <div className={`hmbc-page${view === "separator" ? " is-separator-view" : ""}`}>
       <header className="hmbc-page-header">
         <div className="hmbc-title-row">
           <div>
@@ -1603,6 +1611,7 @@ export default function HMBStreamTableConsolidator() {
                 type="button"
                 onClick={() => saveArchive()}
                 disabled={savingArchive || !casesState.cases.length}
+                hidden={view === "separator"}
               >
                 <Save />
                 {savingArchive ? "Saving..." : "Save"}
@@ -1612,6 +1621,7 @@ export default function HMBStreamTableConsolidator() {
                 type="button"
                 onClick={() => setResetOpen(true)}
                 disabled={!casesState.cases.length}
+                hidden={view === "separator"}
               >
                 <RotateCcw />
                 Reset
@@ -1621,11 +1631,12 @@ export default function HMBStreamTableConsolidator() {
                 type="button"
                 onClick={() => setExportOpen(true)}
                 disabled={!casesState.cases.length}
+                hidden={view === "separator"}
               >
                 <Download />
                 Export Excel
               </button>
-              <div className="hmbc-more-wrap">
+              <div className="hmbc-more-wrap" hidden={view === "separator"}>
                 <button
                   className="hmbc-button hmbc-more-button"
                   type="button"
@@ -1691,6 +1702,38 @@ export default function HMBStreamTableConsolidator() {
           formError={projectModalError}
         />
       ) : null}
+      {view === "separator" ? (
+        <div className="hmbc-workspace-toolbar">
+          <div className="hmbc-tabs" role="tablist" aria-label="HMB workspace views">
+            <button type="button" role="tab" aria-selected={false} onClick={() => setView("review")}>Review</button>
+            <button type="button" role="tab" aria-selected={false} onClick={() => setView("compare")}>Compare</button>
+            <button type="button" role="tab" aria-selected={true}>Equipment Sizing</button>
+            <button type="button" role="tab" aria-selected={false} onClick={() => setView("saved")}>Saved</button>
+          </div>
+          <div ref={setEquipmentActionHost} />
+        </div>
+      ) : casesState.cases.length === 0 ? (
+        <button type="button" className="hmbc-button" onClick={() => setView("separator")}>Open Equipment Sizing</button>
+      ) : null}
+      <div
+        className="hmbc-separator-scroll"
+        hidden={view !== "separator"}
+        role="region"
+        aria-label="Separator sizing canvas"
+        tabIndex={0}
+      >
+        <SeparatorSizingPanel
+          key={separatorSession}
+          cases={casesState.cases}
+          active={view === "separator"}
+          projectId={separatorProjectId}
+          onRefreshProject={() => setSeparatorProjectId(readActiveProjectId())}
+          actionHost={equipmentActionHost}
+          preferredStream={comparisonStream}
+          automatic={automaticSizing}
+        />
+      </div>
+      <div hidden={view === "separator"}>
       {casesState.cases.length === 0 ? (
         <EmptyState
           importing={casesState.importing}
@@ -1751,6 +1794,15 @@ export default function HMBStreamTableConsolidator() {
                   <button
                     type="button"
                     role="tab"
+                    aria-selected={view === "separator"}
+                    onClick={() => setView("separator")}
+                  >
+                    <FileSpreadsheet />
+                    Equipment Sizing
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
                     aria-selected={view === "saved"}
                     onClick={() => setView("saved")}
                   >
@@ -1802,7 +1854,7 @@ export default function HMBStreamTableConsolidator() {
                 }
               />
             )}
-            {view === "compare" && <ComparisonView cases={casesState.cases} />}
+            {view === "compare" && <ComparisonView cases={casesState.cases} onComparisonStream={setComparisonStream} />}
             {view === "saved" && (
               <ArchiveHistoryPanel
                 records={archiveRecords}
@@ -1816,6 +1868,7 @@ export default function HMBStreamTableConsolidator() {
           </main>
         </div>
       )}
+      </div>
       <ExportDialog
         cases={casesState.cases}
         open={exportOpen}
