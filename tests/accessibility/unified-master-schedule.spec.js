@@ -211,6 +211,14 @@ async function recoveryHarness(page, options = {}) {
     },
     async handleRequest({ path, route, state, reply, record }) {
       const method = route.request().method()
+      if (method === 'GET' && path.endsWith('/schedule-versions/91/')) {
+        await reply(route, record.versionWorkspaces[91].version)
+        return true
+      }
+      if (method === 'GET' && path.endsWith('/jobs/812/') && state.activeScheduleJob) {
+        await reply(route, state.activeScheduleJob)
+        return true
+      }
       if (!['POST', 'PATCH'].includes(method)) return false
       const operation = path.match(/\/schedule-versions\/91\/([^/]+)\/$/)?.[1]
       if (!['recover-draft', 'calculate', 'run-assurance', 'approve-assurance', 'approve', 'baseline'].includes(operation)) return false
@@ -228,6 +236,7 @@ async function recoveryHarness(page, options = {}) {
         })
         else workspace.version.planning_target_finish = '2026-12-28'
         workspace.version.status = 'draft'
+        workspace.version.calculated_at = null
         Object.assign(record.versions[0], workspace.version)
         await reply(route, { changed: true, version: workspace.version })
         return true
@@ -235,6 +244,7 @@ async function recoveryHarness(page, options = {}) {
       if (operation === 'calculate') {
         workspace.version.status = 'calculated'
         workspace.version.calculated_finish = '2026-12-28'
+        workspace.version.calculated_at = '2026-09-15T06:30:00Z'
         Object.assign(record.versions[0], workspace.version)
       }
       if (operation === 'run-assurance') workspace.schedule_assurance = {
@@ -265,7 +275,11 @@ async function recoveryHarness(page, options = {}) {
 }
 
 test('one baseline action prepares calculation and authorized reviews with warnings', async ({ page }) => {
-  const state = await recoveryHarness(page)
+  const state = await recoveryHarness(page, { prepare(current) {
+    const workspace = current.records[17].versionWorkspaces[91]
+    workspace.version.planning_target_finish = '2026-12-20'
+    workspace.planning_package = { contractual_finish: '2026-12-20' }
+  } })
   await expectMaster(page)
   await page.locator('.pw-actions').getByRole('button', { name: 'Baseline', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Enter details', exact: true })
@@ -273,10 +287,51 @@ test('one baseline action prepares calculation and authorized reviews with warni
   await dialog.getByRole('button', { name: 'Confirm', exact: true }).click()
   await expect(page.getByText('Baseline created and locked.', { exact: true })).toBeVisible()
   expect(state.recoveryWrites.map(row => row.operation)).toEqual([
-    'calculate', 'run-assurance', 'approve-assurance', 'approve', 'baseline',
+    'calculate', 'recover-draft', 'calculate', 'run-assurance',
+    'approve-assurance', 'approve', 'baseline',
   ])
   expect(state.recoveryWrites.at(-1).body.name).toBe('Reviewed planning baseline')
   expect(state.records[17].planningProject.planned_end_date).toBe('2026-12-20')
+  expect(state.unknown).toEqual([])
+  expect(state.pageErrors).toEqual([])
+})
+
+test('an active schedule job blocks edits, recalculation, approval, baseline and target recovery', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('radai-schedule-job-71', '812'))
+  const state = await recoveryHarness(page, { prepare(current) {
+    current.records[17].versionWorkspaces[91].activities[0].total_float_days = -2
+    current.activeScheduleJob = {
+      id: 812, project: current.records[17].planningProject.id,
+      job_type: 'calculate', status: 'running', progress: 20,
+      message: 'Validating activity network and calendars', result_data: {},
+      api_contract_version: 4,
+    }
+  } })
+  await expectMaster(page)
+  const actions = page.locator('.pw-actions')
+  await expect(actions.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
+  await expect(actions.getByRole('button', { name: 'Recalculate CPM', exact: true })).toBeDisabled()
+  await expect(actions.getByRole('button', { name: 'Approve', exact: true })).toBeDisabled()
+  await expect(actions.getByRole('button', { name: 'Baseline', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Adjust planning target & recalculate', exact: true })).toBeDisabled()
+  await expect(page.getByText('Validating activity network and calendars', { exact: true })).toBeVisible()
+
+  state.activeScheduleJob.status = 'succeeded'
+  state.activeScheduleJob.terminal = true
+  state.activeScheduleJob.progress = 100
+  await expect(actions.getByRole('button', { name: 'Recalculate CPM', exact: true })).toBeEnabled({ timeout: 10000 })
+  await expect(page.getByText('Validating activity network and calendars', { exact: true })).toHaveCount(0)
+  clean(state)
+})
+
+test('running assurance does not approve the assurance review automatically', async ({ page }) => {
+  const state = await recoveryHarness(page)
+  await expectMaster(page)
+  await plannerArea(page, 'Schedule Assurance').click()
+  await page.getByRole('button', { name: 'Run Phase 3 assurance', exact: true }).click()
+  await expect(page.getByText('Schedule recalculated and Phase 3 assurance completed.', { exact: true })).toBeVisible()
+  expect(state.recoveryWrites.map(row => row.operation)).toEqual(['calculate', 'run-assurance'])
+  expect(state.records[17].versionWorkspaces[91].schedule_assurance.status).toBe('ready')
   expect(state.unknown).toEqual([])
   expect(state.pageErrors).toEqual([])
 })
@@ -296,7 +351,9 @@ test('confirmed numeric IDs and planning target actions preserve source and cont
   await expect(page.getByRole('status', { name: 'Schedule action status' })).toContainText('2026-12-28')
   expect(state.records[17].versionWorkspaces[91].activities[0].metadata.original_external_id).toBe('ENG-001')
   expect(state.records[17].planningProject.planned_end_date).toBe('2026-12-20')
-  expect(state.recoveryWrites.map(row => row.operation)).toEqual(['recover-draft', 'calculate', 'recover-draft', 'calculate'])
+  expect(state.recoveryWrites.map(row => row.operation)).toEqual([
+    'recover-draft', 'calculate', 'calculate', 'recover-draft', 'calculate',
+  ])
   expect(state.unknown).toEqual([])
   expect(state.pageErrors).toEqual([])
 })

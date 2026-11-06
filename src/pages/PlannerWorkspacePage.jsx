@@ -280,6 +280,13 @@ const PlannerWorkspacePage = ({
   const [calculationPhase, setCalculationPhase] = useState("");
   const [initializationRevision, setInitializationRevision] = useState(0);
   const [metadataNotice, setMetadataNotice] = useState("");
+  const { activeJob: scheduleJob, runJob: runScheduleJob } = usePlanningJob({
+    storageKey: `radai-schedule-job-${projectId}`,
+  });
+  const scheduleJobActive =
+    ["calculate", "assurance"].includes(scheduleJob?.job_type) &&
+    ["queued", "running"].includes(scheduleJob?.status);
+  const scheduleActionBusy = Boolean(busy) || scheduleJobActive;
   const workspaceRequest = useRef(0);
   const contextRef = useRef(null);
   contextRef.current = {
@@ -289,7 +296,7 @@ const PlannerWorkspacePage = ({
     workspace,
     draftActivities,
     dirtyIds,
-    busy,
+    busy: scheduleActionBusy,
     onSelectionChange,
     onWorkspaceChanged,
     onDirtyChange,
@@ -324,10 +331,6 @@ const PlannerWorkspacePage = ({
       versionId: Number(versionId),
     });
   }, [scheduleId, versionId, versions]);
-  const { activeJob: scheduleJob, runJob: runScheduleJob } = usePlanningJob({
-    storageKey: `radai-schedule-job-${projectId}`,
-  });
-
   const selectTab = (next) => {
     setTab(next);
     onTabChange?.(next);
@@ -434,8 +437,13 @@ const PlannerWorkspacePage = ({
       setCalculationPhase(
         scheduleJob.message || "Background scheduling job in progress",
       );
+      return;
     }
-  }, [scheduleJob]);
+    if (!busy && calculationProgress < 100) {
+      setCalculationProgress(0);
+      setCalculationPhase("");
+    }
+  }, [scheduleJob, busy, calculationProgress]);
 
   useEffect(() => {
     if (!["save-calculate", "rebuild-calculate"].includes(busy))
@@ -1238,15 +1246,23 @@ const PlannerWorkspacePage = ({
     // calculation, so always recalculate before preparing approval.
     await calculate();
     ensureActionContext(requestedVersionId);
-    if (stats.planningTargetVariance > 0) {
-      const calculated =
-        await planningIntelligenceService.getScheduleVersion(
-          requestedVersionId,
-        );
+    const calculated = await planningIntelligenceService.getScheduleWorkspace(
+      requestedVersionId,
+    );
+    const forecastFinish = calculated.version?.calculated_finish;
+    const planningTarget =
+      calculated.version?.planning_target_finish ||
+      calculated.planning_package?.contractual_finish ||
+      calculated.project?.planned_end_date;
+    if (
+      forecastFinish &&
+      planningTarget &&
+      dateValue(forecastFinish) > dateValue(planningTarget)
+    ) {
       const result = await planningIntelligenceService.recoverScheduleDraft(
         requestedVersionId,
         "extend_planning_target",
-        calculated.updated_at,
+        calculated.version.updated_at,
       );
       ensureActionContext(requestedVersionId);
       if (result?.changed) await calculate();
@@ -1900,7 +1916,8 @@ const PlannerWorkspacePage = ({
     </button>
   );
 
-  const immutable = !workspace?.can_edit || Boolean(busy) || loading;
+  const immutable =
+    !workspace?.can_edit || scheduleActionBusy || loading;
   const unconfirmedDependencies = (
     workspace?.dependency_assumptions || []
   ).some((item) => item.requires_confirmation);
@@ -1912,12 +1929,12 @@ const PlannerWorkspacePage = ({
     workspace?.version?.can_prepare_approval ??
     (workspace?.version?.can_approve === true ||
       workspace?.version?.can_baseline === true);
-  const saveDisabledReason = busy
+  const saveDisabledReason = scheduleActionBusy
     ? "A schedule action is in progress."
     : immutable
       ? "This schedule version is read-only. Create a new revision to edit it."
       : "";
-  const approvalDisabledReason = busy
+  const approvalDisabledReason = scheduleActionBusy
     ? "A schedule action is in progress."
     : ["approved", "baselined"].includes(workspace?.version?.status)
       ? "This version is already approved."
@@ -1926,7 +1943,7 @@ const PlannerWorkspacePage = ({
         : "";
   const baselineDisabledReason =
     [
-      [Boolean(busy), "A schedule action is in progress."],
+      [scheduleActionBusy, "A schedule action is in progress."],
       [
         workspace?.version?.status === "baselined",
         "This version is already baselined.",
@@ -2243,7 +2260,7 @@ const PlannerWorkspacePage = ({
               </button>
               <button
                 onClick={saveAndCalculate}
-                disabled={Boolean(busy) || immutable}
+                disabled={scheduleActionBusy || immutable}
                 className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold disabled:opacity-40"
               >
                 {busy === "save-calculate"
@@ -2255,7 +2272,7 @@ const PlannerWorkspacePage = ({
               <button
                 type="button"
                 onClick={rebuildLogicAndCalculate}
-                disabled={Boolean(busy) || immutable || dirtyIds.size > 0}
+                disabled={scheduleActionBusy || immutable || dirtyIds.size > 0}
                 title={
                   dirtyIds.size
                     ? "Save activity changes first."
@@ -2396,7 +2413,10 @@ const PlannerWorkspacePage = ({
                     <strong>Warning:</strong> {item.message}
                   </span>
                 ))}
-              {!immutable &&
+              {workspace?.can_edit &&
+                !["approved", "baselined", "superseded"].includes(
+                  workspace.version?.status,
+                ) &&
                 (stats.planningTargetVariance > 0 ||
                   draftActivities.some(
                     (item) => Number(item.total_float_days) < 0,
@@ -2404,6 +2424,12 @@ const PlannerWorkspacePage = ({
                   <button
                     type="button"
                     onClick={() => recoverDraft("extend_planning_target")}
+                    disabled={scheduleActionBusy || loading}
+                    title={
+                      scheduleActionBusy || loading
+                        ? "Wait for the current schedule action to finish."
+                        : "Set the draft planning target to the current CPM forecast and recalculate. The contractual finish will not change."
+                    }
                   >
                     Adjust planning target &amp; recalculate
                   </button>
@@ -3060,18 +3086,6 @@ const PlannerWorkspacePage = ({
                         await savePendingForAction(versionId);
                         ensureActionContext(versionId);
                         await calculateAndRunAssurance(versionId);
-                        const latest =
-                          await planningIntelligenceService.getScheduleWorkspace(
-                            versionId,
-                          );
-                        if (
-                          latest.schedule_assurance?.can_approve === true &&
-                          !latest.schedule_assurance.blockers?.length &&
-                          latest.schedule_assurance.status !== "approved"
-                        )
-                          await planningIntelligenceService.approveScheduleAssurance(
-                            versionId,
-                          );
                       },
                       "Schedule recalculated and Phase 3 assurance completed.",
                     )
