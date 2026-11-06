@@ -62,7 +62,8 @@ export default function PidExtractionWorkspace({ project, onBack, onManageLegend
   const [files, setFiles] = useState({ pid: null, iolist: null, vendor: [] })
   const [slotInfo, setSlotInfo] = useState({ pid: null, iolist: null, vendorDcs: null, vendorEsd: null })
   const [stageState, setStageState] = useState({})
-  const [docInfo, setDocInfo] = useState({ docNo: '', revision: '', rejlersNumber: '' })
+  const [docInfo, setDocInfo] = useState({ docNo: '', revision: '', contractorNumber: '', rejlersNumber: '', sheet: '' })
+  const [templateInfo, setTemplateInfo] = useState(null)   // { template, tagPadding, includeReviewSheets }
   const [rulesOnly, setRulesOnly] = useState(false)
   const [extracting, setExtracting] = useState(false)
   const [extraction, setExtraction] = useState(null)   // { id, status, summary }
@@ -105,6 +106,14 @@ export default function PidExtractionWorkspace({ project, onBack, onManageLegend
   }, [project.id])
 
   useEffect(() => { refreshHistory() }, [refreshHistory])
+
+  const refreshTemplate = useCallback(async () => {
+    try {
+      setTemplateInfo(await ioExtractionService.getExportTemplate(project.id))
+    } catch { /* the export button stays disabled until this loads */ }
+  }, [project.id])
+
+  useEffect(() => { refreshTemplate() }, [refreshTemplate])
 
   const openExtraction = async (extId) => {
     setError('')
@@ -291,14 +300,21 @@ export default function PidExtractionWorkspace({ project, onBack, onManageLegend
           <button onClick={onBack} className="rd-btn text-sm flex items-center gap-1">
             <ChevronLeft className="w-4 h-4" /> Back to projects
           </button>
-          {extraction && (
-            <button className="rd-btn text-sm flex items-center gap-1"
-                    onClick={() => ioExtractionService.exportWorkbook(project.id, extraction.id)
-                      .then((fn) => showToast(`Exporting ${fn} · IO list + review sheets in one workbook`))
-                      .catch((err) => setError(err.response?.data?.error || 'Export failed'))}>
-              <Download className="w-4 h-4" /> Export IO list (.xlsx)
-            </button>
-          )}
+          {(() => {
+            const disabledReason = !extraction
+              ? 'Run the extraction first'
+              : (!templateInfo?.template ? 'Upload the export template in project settings' : '')
+            return (
+              <button className="rd-btn text-sm flex items-center gap-1 disabled:opacity-50"
+                      disabled={!!disabledReason} title={disabledReason}
+                      onClick={() => ioExtractionService.exportWorkbook(project.id, extraction.id, 'standard')
+                        .then(({ filename, rows }) => showToast(
+                          `Exporting ${filename} · Standard Template${rows != null ? ` · ${rows} rows` : ''}`))
+                        .catch((err) => setError(err.response?.data?.error || 'Export failed'))}>
+                <Download className="w-4 h-4" /> Export IO list (.xlsx)
+              </button>
+            )
+          })()}
         </div>
       </div>
 
@@ -379,28 +395,45 @@ export default function PidExtractionWorkspace({ project, onBack, onManageLegend
                         </div>
                       )}
                       {open && n === 3 && (
-                        <div className="mt-2 flex flex-wrap items-end gap-2 text-xs">
-                          <label className="flex flex-col gap-0.5">
-                            <span className="text-slate-500">Document number *</span>
-                            <input className="rd-input" value={docInfo.docNo}
-                                   onChange={(e) => setDocInfo((d) => ({ ...d, docNo: e.target.value }))}
-                                   placeholder={slotInfo.iolist?.document || '13-IE-363-70001'} />
-                          </label>
-                          <label className="flex flex-col gap-0.5">
-                            <span className="text-slate-500">Revision *</span>
-                            <input className="rd-input w-20" value={docInfo.revision}
-                                   onChange={(e) => setDocInfo((d) => ({ ...d, revision: e.target.value }))}
-                                   placeholder={slotInfo.iolist?.revision || 'Q1'} />
-                          </label>
-                          <label className="flex flex-col gap-0.5">
-                            <span className="text-slate-500">Rejlers number</span>
-                            <input className="rd-input" value={docInfo.rejlersNumber}
-                                   onChange={(e) => setDocInfo((d) => ({ ...d, rejlersNumber: e.target.value }))} />
-                          </label>
-                          <button className="rd-btn bg-blue-600 text-white text-xs" disabled={!docInfo.docNo || !docInfo.revision}
-                                  onClick={saveDocInfo}>
-                            Save and continue
-                          </button>
+                        <div className="mt-2 space-y-3 text-xs">
+                          <div className="flex flex-wrap items-end gap-2">
+                            <label className="flex flex-col gap-0.5">
+                              <span className="text-slate-500">Document number *</span>
+                              <input className="rd-input" value={docInfo.docNo}
+                                     onChange={(e) => setDocInfo((d) => ({ ...d, docNo: e.target.value }))}
+                                     placeholder={slotInfo.iolist?.document || '13-IE-363-70001'} />
+                            </label>
+                            <label className="flex flex-col gap-0.5">
+                              <span className="text-slate-500">Revision *</span>
+                              <input className="rd-input w-20" value={docInfo.revision}
+                                     onChange={(e) => setDocInfo((d) => ({ ...d, revision: e.target.value }))}
+                                     placeholder={slotInfo.iolist?.revision || 'Q1'} />
+                            </label>
+                            <label className="flex flex-col gap-0.5">
+                              <span className="text-slate-500">Sheet</span>
+                              <input className="rd-input w-20" value={docInfo.sheet}
+                                     onChange={(e) => setDocInfo((d) => ({ ...d, sheet: e.target.value }))}
+                                     placeholder="09/23" />
+                            </label>
+                            <label className="flex flex-col gap-0.5">
+                              <span className="text-slate-500">Contractor number</span>
+                              <input className="rd-input" value={docInfo.contractorNumber}
+                                     onChange={(e) => setDocInfo((d) => ({ ...d, contractorNumber: e.target.value }))}
+                                     placeholder="PA-31011-13-IE-363-70001" />
+                            </label>
+                            <label className="flex flex-col gap-0.5">
+                              <span className="text-slate-500">Rejlers number</span>
+                              <input className="rd-input" value={docInfo.rejlersNumber}
+                                     onChange={(e) => setDocInfo((d) => ({ ...d, rejlersNumber: e.target.value }))} />
+                            </label>
+                            <button className="rd-btn bg-blue-600 text-white text-xs" disabled={!docInfo.docNo || !docInfo.revision}
+                                    onClick={saveDocInfo}>
+                              Save and continue
+                            </button>
+                          </div>
+                          <ExportTemplatePanel projectId={project.id} templateInfo={templateInfo}
+                                               onChanged={refreshTemplate} onError={setError}
+                                               showToast={showToast} />
                         </div>
                       )}
                       {open && n === 4 && (
@@ -489,6 +522,75 @@ function Ready({ ok, label }) {
       {ok ? <CheckCircle2 className="w-3.5 h-3.5" /> : <span className="w-3.5 h-3.5 rounded-full border border-slate-300 inline-block" />}
       {label}
     </span>
+  )
+}
+
+/* Stage 3 — the "Export template (I/O List)" setting. The organisation
+   uploads Standard_Template.xlsx once; a project can override it. Uploads
+   are validated server-side (both sheets, the 53 row-2 headers, the cover
+   cells I3/J4/L4/I6/I8). */
+function ExportTemplatePanel({ projectId, templateInfo, onChanged, onError, showToast }) {
+  const [busy, setBusy] = useState(false)
+  const tpl = templateInfo?.template
+  const includeReview = templateInfo?.includeReviewSheets !== false
+
+  const onUpload = async (file, scope) => {
+    if (!file) return
+    setBusy(true)
+    try {
+      await ioExtractionService.uploadExportTemplate(projectId, file, scope)
+      showToast(`Export template stored (${scope === 'organisation' ? 'organisation default' : 'project override'})`)
+      onChanged()
+    } catch (err) {
+      onError(err.response?.data?.error || 'Template upload failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const onToggleReview = async (checked) => {
+    try {
+      await ioExtractionService.patchExportSettings(projectId, { includeReviewSheets: checked })
+      onChanged()
+    } catch (err) {
+      onError(err.response?.data?.error || 'Saving the setting failed')
+    }
+  }
+
+  const pick = (scope) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.xlsx'
+    input.onchange = () => onUpload(input.files?.[0], scope)
+    input.click()
+  }
+
+  return (
+    <div className="rounded border border-slate-200 dark:border-slate-700 p-2 space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-slate-500">Export template:</span>
+        {tpl ? (
+          <Pill tone="green">{tpl.name} · {tpl.columns} columns{tpl.scope === 'project' ? ' · project override' : ''}</Pill>
+        ) : (
+          <Pill tone="amber">No template stored</Pill>
+        )}
+        <button type="button" className="rd-btn text-xs" disabled={busy}
+                title="Upload the organisation-level Standard Template"
+                onClick={() => pick('organisation')}>
+          {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+          {tpl ? ' Replace (organisation)' : ' Upload (organisation)'}
+        </button>
+        <button type="button" className="rd-btn text-xs" disabled={busy}
+                title="Override the template for this project only"
+                onClick={() => pick('project')}>
+          Project override…
+        </button>
+      </div>
+      <label className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
+        <input type="checkbox" checked={includeReview} onChange={(e) => onToggleReview(e.target.checked)} />
+        Include review sheets in export
+      </label>
+    </div>
   )
 }
 
@@ -675,6 +777,7 @@ function ResultsView({ summary, activeTab, setActiveTab, tabData, sheetFilter, s
     ['Vendor cells filled', summary.vendorCells, `${summary.vendorMatched || 0} rows matched`],
     ['Vendor conflicts', summary.vendorConflicts, ''],
   ]
+  const coverage = summary.coverage || null
   return (
     <div className="space-y-4">
       {/* KPI tiles */}
@@ -687,6 +790,44 @@ function ResultsView({ summary, activeTab, setActiveTab, tabData, sheetFilter, s
           </div>
         ))}
       </div>
+
+      {/* P&ID coverage vs baseline — missing tags usually mean missing drawings */}
+      {coverage && (
+        <div className="rd-card border-l-4 border-blue-500 p-3 text-sm space-y-1">
+          <div className="flex items-center gap-2">
+            <FileText className="w-4 h-4 text-blue-500" />
+            <span className="font-medium text-slate-700 dark:text-slate-200">P&ID coverage</span>
+            <span className="text-slate-500">
+              — the uploaded drawings cover {coverage.uploadedDrawings?.length || 0} P&amp;ID
+              {coverage.uploadedDrawings?.length === 1 ? '' : 's'} with {summary.coverageRows || 0} baseline
+              rows; <b>{summary.coverageFound || 0} of those tags were read</b> from the drawings.
+            </span>
+          </div>
+          {(summary.notUploadedRows || 0) > 0 && (
+            <details className="text-xs text-slate-500">
+              <summary className="cursor-pointer text-amber-600 dark:text-amber-400">
+                {summary.notUploadedRows} baseline rows belong to {coverage.notUploaded?.length || 0} drawings
+                that were not uploaded — upload them to extract those tags
+              </summary>
+              <div className="mt-1 max-h-32 overflow-y-auto grid grid-cols-2 md:grid-cols-4 gap-x-4">
+                {(coverage.notUploaded || []).map((d) => (
+                  <span key={d.drawing}>{d.drawing} ({d.baselineRows})</span>
+                ))}
+              </div>
+            </details>
+          )}
+          {(coverage.onUploadedDrawings || []).some((d) => d.missing.length > 0) && (
+            <details className="text-xs text-slate-500">
+              <summary className="cursor-pointer">Baseline tags not read on the uploaded drawings</summary>
+              <div className="mt-1 max-h-32 overflow-y-auto">
+                {(coverage.onUploadedDrawings || []).filter((d) => d.missing.length > 0).map((d) => (
+                  <div key={d.drawing}><b>{d.drawing}</b>: {d.missing.join(', ')}</div>
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
+      )}
 
       {/* Review banner */}
       {(summary.aiTags > 0 || summary.vendorConflicts > 0) && (

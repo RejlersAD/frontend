@@ -72,8 +72,9 @@ export const ioExtractionService = {
     return data
   },
 
-  /** Authenticated workbook download (a plain <a href> carries no JWT). */
-  async exportWorkbook(projectId, extractionId, format) {
+  /** Authenticated workbook download (a plain <a href> carries no JWT).
+   * format defaults to 'standard' (the Standard Template workbook). */
+  async exportWorkbook(projectId, extractionId, format = 'standard') {
     const params = format ? { fmt: format } : {}
     const { data, headers } = await apiClient.get(
       `${BASE}/projects/${projectId}/extractions/${extractionId}/export/`,
@@ -88,8 +89,38 @@ export const ioExtractionService = {
     document.body.appendChild(a)
     a.click()
     a.remove()
-    URL.revokeObjectURL(url)
-    return filename
+    setTimeout(() => URL.revokeObjectURL(url), 10000)
+    return {
+      filename,
+      rows: parseInt(headers?.['x-export-rows'] || '', 10) || null,
+      template: headers?.['x-export-template'] || '',
+    }
+  },
+
+  /** Export template (I/O List) setting: effective template + settings. */
+  async getExportTemplate(projectId) {
+    const { data } = await apiClient.get(`${BASE}/projects/${projectId}/export-template/`)
+    return data
+  },
+
+  async uploadExportTemplate(projectId, file, scope = 'project') {
+    const fd = new FormData()
+    fd.append('file', file)
+    fd.append('scope', scope)
+    const { data } = await apiClient.post(
+      `${BASE}/projects/${projectId}/export-template/`, fd,
+      { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 })
+    return data
+  },
+
+  async deleteExportTemplate(projectId) {
+    const { data } = await apiClient.delete(`${BASE}/projects/${projectId}/export-template/`)
+    return data
+  },
+
+  async patchExportSettings(projectId, payload) {
+    const { data } = await apiClient.patch(`${BASE}/projects/${projectId}/export-settings/`, payload)
+    return data
   },
 }
 
