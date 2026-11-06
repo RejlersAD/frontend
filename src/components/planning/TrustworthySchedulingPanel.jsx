@@ -16,8 +16,8 @@ export default function TrustworthySchedulingPanel({ assurance, versionStatus, b
       <div className="rounded-2xl border border-blue-200 bg-blue-50 p-6">
         <h3 className="text-xl font-bold text-slate-950">Phase 3 — Trustworthy scheduling</h3>
         <p className="mt-2 max-w-3xl text-sm text-slate-600">Run assurance after CPM calculation to validate network quality, contract fit, resource concurrency, and changes against the parent version or baseline. The analysis never shortens activities or changes logic automatically.</p>
-        <button type="button" onClick={onRun} disabled={busy || !canControl || versionStatus !== 'calculated'} className="mt-5 rounded-xl bg-blue-700 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-40">{busy ? 'Running assurance…' : 'Run Phase 3 assurance'}</button>
-        {versionStatus !== 'calculated' && <p className="mt-2 text-xs text-amber-700">Calculate the current draft before running assurance.</p>}
+        <button type="button" onClick={onRun} disabled={busy || !canControl} className="mt-5 rounded-xl bg-blue-700 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-40">{busy ? 'Running assurance…' : 'Run Phase 3 assurance'}</button>
+        {versionStatus !== 'calculated' && <p className="mt-2 text-xs text-slate-600">The draft will be calculated automatically before assurance runs.</p>}
       </div>
     </div>
   )
@@ -33,7 +33,7 @@ export default function TrustworthySchedulingPanel({ assurance, versionStatus, b
     <div className="flex flex-wrap items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-5">
       <div className="mr-auto"><p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-700">Phase 3 assurance</p><h3 className="mt-1 text-xl font-bold text-slate-950">Exact calculated state review</h3><p className="mt-1 text-sm text-slate-500">Run #{assurance.calculation_run} · calculated {new Date(assurance.calculated_state_at).toLocaleString()}</p></div>
       <span className={`rounded-full px-3 py-1 text-xs font-bold capitalize ${approved ? 'bg-emerald-100 text-emerald-800' : assurance.blockers.length ? 'bg-rose-100 text-rose-800' : 'bg-blue-100 text-blue-800'}`}>{assurance.status}</span>
-      <button type="button" onClick={onRun} disabled={busy || !canControl || versionStatus !== 'calculated'} className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-bold text-blue-700 disabled:opacity-40">Run again</button>
+      <button type="button" onClick={onRun} disabled={busy || !canControl} className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-bold text-blue-700 disabled:opacity-40">Run again</button>
       {!approved && <button type="button" onClick={onApprove} disabled={busy || assurance.can_approve !== true || assurance.blockers.length > 0} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-40">Approve assurance</button>}
     </div>
 

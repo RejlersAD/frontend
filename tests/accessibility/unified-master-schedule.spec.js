@@ -103,6 +103,217 @@ function clean(state) {
   expect(state.requests.filter(request => request.method !== 'GET')).toEqual([])
 }
 
+test('quality warnings keep save and approval preparation available', async ({ page }) => {
+  const state = await harness(page, { prepare(current) {
+    const workspace = current.records[17].versionWorkspaces[91]
+    workspace.version = { ...workspace.version, status: 'calculated', can_prepare_approval: true, can_approve: false, can_baseline: false }
+    workspace.schedule_assurance = { ...workspace.schedule_assurance, status: 'ready', can_approve: true,
+      blockers: [], warnings: [{ code: 'resource_overallocation', severity: 'warning', message: '3 resources exceed daily capacity.' }],
+    }
+  }, async handleRequest({ path, route, reply }) {
+    if (!path.endsWith('/resources/plan/')) return false
+    await reply(route, { resources: [], activities: [], assignments: [],
+      permissions: { can_manage_resources: false, can_allocate: false } })
+    return true
+  } })
+  await expectMaster(page)
+  const actions = page.locator('.pw-actions')
+  await expect(actions.getByRole('button', { name: 'Save', exact: true })).toBeEnabled()
+  await actions.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.getByText('All activity changes are already saved.', { exact: true })).toBeVisible()
+  await expect(actions.getByRole('button', { name: 'Approve', exact: true })).toBeEnabled()
+  await expect(actions.getByRole('button', { name: 'Baseline', exact: true })).toBeEnabled()
+  await expect(page.getByRole('status', { name: 'Schedule action status' })).toContainText('3 resources exceed daily capacity.')
+  await page.getByRole('button', { name: 'Review resource allocations', exact: true }).click()
+  await expect(plannerArea(page, 'Resources')).toHaveAttribute('aria-current', 'page')
+  clean(state)
+})
+
+for (const status of ['calculated', 'approved']) {
+  test(`assured ${status} version enables authorized approval preparation`, async ({ page }) => {
+    const state = await harness(page, { prepare(current) {
+      const workspace = current.records[17].versionWorkspaces[91]
+      workspace.version = { ...workspace.version, status, can_approve: status === 'calculated', can_baseline: status === 'approved' }
+    } })
+    await expectMaster(page)
+    const actions = page.locator('.pw-actions')
+    if (status === 'calculated') {
+      await expect(actions.getByRole('button', { name: 'Approve', exact: true })).toBeEnabled()
+      await expect(actions.getByRole('button', { name: 'Baseline', exact: true })).toBeEnabled()
+    } else {
+      await expect(actions.getByRole('button', { name: 'Approve', exact: true })).toBeDisabled()
+      await expect(actions.getByRole('button', { name: 'Baseline', exact: true })).toBeEnabled()
+    }
+    clean(state)
+  })
+}
+
+test('long workflow IDs stay inside their column and activity edits enable Save', async ({ page }) => {
+  const id = 'PKG-6889F5F2C2A3-100'
+  const state = await harness(page, { prepare(current) {
+    current.records[17].versionWorkspaces[91].activities[0].external_id = id
+  } })
+  await expectMaster(page)
+  const editor = page.getByRole('textbox', { name: `${id} activity name`, exact: true })
+  const row = editor.locator('xpath=ancestor::tr')
+  const identifier = row.locator('.planner-activity-id')
+  await expect(identifier).toHaveText(id)
+  await expect(identifier).toHaveAttribute('title', id)
+  const resize = page.getByRole('button', { name: 'Resize ID column', exact: true })
+  const handle = await resize.boundingBox()
+  await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(handle.x - 120, handle.y + handle.height / 2)
+  await page.mouse.up()
+  for (const width of [1328, 390]) {
+    await page.setViewportSize({ width, height: 768 })
+    const bounds = await identifier.boundingBox()
+    const cell = await row.locator('td').first().boundingBox()
+    expect(bounds.x).toBeGreaterThanOrEqual(cell.x)
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(cell.x + cell.width + 1)
+    expect((await row.boundingBox()).height).toBeLessThanOrEqual(41)
+  }
+  await editor.fill('Reviewed process design basis')
+  await expect(page.locator('.pw-actions').getByRole('button', { name: 'Save', exact: true })).toBeEnabled()
+  await expect(page.getByText('1 unsaved', { exact: true })).toBeVisible()
+  clean(state)
+})
+
+test('approval permissions remain enforced after assurance is approved', async ({ page }) => {
+  const state = await harness(page, { prepare(current) {
+    const workspace = current.records[17].versionWorkspaces[91]
+    workspace.version = { ...workspace.version, status: 'calculated', can_approve: false, can_baseline: false }
+    current.records[17].governance = { items: [], comments: [], reviews: [], audit_events: [], members: [],
+      summary: { open_items: 0, critical_items: 0, pending_reviews: 0, unresolved_comments: 0 },
+      can_manage: false,
+    }
+  } })
+  await expectMaster(page)
+  await expect(page.locator('.pw-actions').getByRole('button', { name: 'Approve', exact: true })).toBeDisabled()
+  await expect(page.getByRole('status', { name: 'Schedule action status' })).toContainText('project approval permissions')
+  await page.getByRole('button', { name: 'Review approval blockers', exact: true }).click()
+  await expect(plannerArea(page, 'Governance')).toHaveAttribute('aria-current', 'page')
+  clean(state)
+})
+
+async function recoveryHarness(page, options = {}) {
+  return harness(page, {
+    prepare(current) {
+      const record = current.records[17]
+      const workspace = record.versionWorkspaces[91]
+      workspace.version = { ...workspace.version, status: 'draft', can_prepare_approval: true,
+        can_approve: false, can_baseline: false, calculated_finish: null }
+      workspace.schedule_assurance = null
+      workspace.can_edit = true
+      current.recoveryWrites = []
+      current.recoveryJobs = {}
+      options.prepare?.(current)
+    },
+    async handleRequest({ path, route, state, reply, record }) {
+      const method = route.request().method()
+      if (!['POST', 'PATCH'].includes(method)) return false
+      const operation = path.match(/\/schedule-versions\/91\/([^/]+)\/$/)?.[1]
+      if (!['recover-draft', 'calculate', 'run-assurance', 'approve-assurance', 'approve', 'baseline'].includes(operation)) return false
+      const body = route.request().postDataJSON()
+      state.recoveryWrites.push({ operation, body })
+      const workspace = record.versionWorkspaces[91]
+      if (options.rejectCalculation && operation === 'calculate') {
+        await reply(route, { error: 'The network contains a dependency cycle.', code: 'dependency_cycle' }, 409)
+        return true
+      }
+      if (operation === 'recover-draft') {
+        if (body.operation === 'renumber_activity_ids') workspace.activities.forEach((row, index) => {
+          row.metadata = { ...row.metadata, original_external_id: row.external_id }
+          row.external_id = String(100 + index * 10)
+        })
+        else workspace.version.planning_target_finish = '2026-12-28'
+        workspace.version.status = 'draft'
+        Object.assign(record.versions[0], workspace.version)
+        await reply(route, { changed: true, version: workspace.version })
+        return true
+      }
+      if (operation === 'calculate') {
+        workspace.version.status = 'calculated'
+        workspace.version.calculated_finish = '2026-12-28'
+        Object.assign(record.versions[0], workspace.version)
+      }
+      if (operation === 'run-assurance') workspace.schedule_assurance = {
+        status: 'ready', can_approve: true, blockers: [],
+        warnings: [{ code: 'resource_overallocation', severity: 'warning', message: '3 resources exceed daily capacity.' }],
+        calculated_state_at: '2026-09-15T06:30:00Z',
+      }
+      if (['calculate', 'run-assurance'].includes(operation)) {
+        const job = { id: 7000 + state.recoveryWrites.length, project: record.planningProject.id,
+          job_type: operation === 'calculate' ? 'calculate' : 'assurance', status: 'succeeded', terminal: true,
+          progress: 100, result_data: {}, created_at: '2026-09-15T06:30:00Z', updated_at: '2026-09-15T06:30:00Z' }
+        state.recoveryJobs[job.id] = job
+        await reply(route, job, 202)
+        return true
+      }
+      if (operation === 'approve-assurance') workspace.schedule_assurance.status = 'approved'
+      if (operation === 'approve') workspace.version.status = 'approved'
+      if (operation === 'baseline') {
+        workspace.version.status = 'baselined'
+        workspace.can_edit = false
+        workspace.version.can_prepare_approval = false
+      }
+      Object.assign(record.versions[0], workspace.version)
+      await reply(route, workspace.version)
+      return true
+    },
+  })
+}
+
+test('one baseline action prepares calculation and authorized reviews with warnings', async ({ page }) => {
+  const state = await recoveryHarness(page)
+  await expectMaster(page)
+  await page.locator('.pw-actions').getByRole('button', { name: 'Baseline', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Enter details', exact: true })
+  await dialog.getByRole('textbox', { name: 'Baseline name', exact: true }).fill('Reviewed planning baseline')
+  await dialog.getByRole('button', { name: 'Confirm', exact: true }).click()
+  await expect(page.getByText('Baseline created and locked.', { exact: true })).toBeVisible()
+  expect(state.recoveryWrites.map(row => row.operation)).toEqual([
+    'calculate', 'run-assurance', 'approve-assurance', 'approve', 'baseline',
+  ])
+  expect(state.recoveryWrites.at(-1).body.name).toBe('Reviewed planning baseline')
+  expect(state.records[17].planningProject.planned_end_date).toBe('2026-12-20')
+  expect(state.unknown).toEqual([])
+  expect(state.pageErrors).toEqual([])
+})
+
+test('confirmed numeric IDs and planning target actions preserve source and contract dates', async ({ page }) => {
+  const state = await recoveryHarness(page)
+  await expectMaster(page)
+  await page.getByRole('button', { name: 'Numeric IDs', exact: true }).click()
+  await page.getByRole('dialog', { name: 'Confirm action', exact: true }).getByRole('button', { name: 'Confirm', exact: true }).click()
+  await expect(page.getByText('Numeric activity IDs applied and CPM recalculated. Original IDs are retained.', { exact: true })).toBeVisible()
+  await expect(page.getByRole('textbox', { name: '100 activity name', exact: true })).toHaveValue('Process design basis')
+  await page.getByRole('button', { name: 'Adjust planning target & recalculate', exact: true }).click()
+  const confirm = page.getByRole('dialog', { name: 'Confirm action', exact: true })
+  await expect(confirm).toContainText('2026-12-28')
+  await confirm.getByRole('button', { name: 'Confirm', exact: true }).click()
+  await expect(page.getByText('Draft planning target:', { exact: true })).toBeVisible()
+  await expect(page.getByRole('status', { name: 'Schedule action status' })).toContainText('2026-12-28')
+  expect(state.records[17].versionWorkspaces[91].activities[0].metadata.original_external_id).toBe('ENG-001')
+  expect(state.records[17].planningProject.planned_end_date).toBe('2026-12-20')
+  expect(state.recoveryWrites.map(row => row.operation)).toEqual(['recover-draft', 'calculate', 'recover-draft', 'calculate'])
+  expect(state.unknown).toEqual([])
+  expect(state.pageErrors).toEqual([])
+})
+
+test('integrity failure offers a correction action without approving or baselining', async ({ page }) => {
+  const state = await recoveryHarness(page, { rejectCalculation: true })
+  await expectMaster(page)
+  await page.locator('.pw-actions').getByRole('button', { name: 'Approve', exact: true }).click()
+  await page.getByRole('dialog', { name: 'Confirm action', exact: true }).getByRole('button', { name: 'Confirm', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('Action needs attention')
+  await page.getByRole('button', { name: 'Open Logic', exact: true }).click()
+  await expect(plannerArea(page, 'Logic')).toHaveAttribute('aria-current', 'page')
+  expect(state.recoveryWrites.map(row => row.operation)).toEqual(['calculate'])
+  expect(state.unknown).toEqual([])
+  expect(state.pageErrors).toEqual([])
+})
+
 test('Schedule opens the original populated master on desktop and mobile without creating a replacement draft', async ({ page }, testInfo) => {
   const state = await harness(page, { prepare(current) {
     current.records[17].versionWorkspaces[91].scheduling_configuration = {
@@ -277,7 +488,7 @@ test('an unsaved master activity survives Performance and document navigation an
 test('a denied master workspace exposes retry and never substitutes an empty editable draft', async ({ page }) => {
   const message = 'You do not have access to this schedule version.'
   const state = await harness(page, { prepare(current) { current.workspaceErrors[91] = { status: 403, message } } })
-  await expect(page.getByText(message, { exact: true })).toBeVisible()
+  await expect(page.getByRole('alert')).toContainText(message)
   await expect(page.locator('input[value="Piping isometrics package"]')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Add Activity', exact: true })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Recalculate CPM', exact: true })).toBeDisabled()
@@ -295,7 +506,7 @@ test('a failed revision load removes the previous version values and retries the
   await showActivities(page)
   state.workspaceErrors[90] = { status: 503, message: 'Selected revision is temporarily unavailable.' }
   await selectRetainedScheduleVersion(page, '90')
-  await expect(page.getByText('Selected revision is temporarily unavailable.', { exact: true })).toBeVisible()
+  await expect(page.getByRole('alert')).toContainText('Selected revision is temporarily unavailable.')
   await expect(activityName(page)).toHaveCount(0)
   await expectRetainedScheduleVersion(page, '90')
   await expect(page.getByRole('button', { name: 'Export schedule', exact: true })).toBeDisabled()
@@ -371,7 +582,7 @@ for (const conflicting of [false, true]) {
     await resourcePlan.getByRole('button', { name: 'Edit MAYA', exact: true }).click()
     await resourcePlan.getByRole('textbox', { name: 'Resource name', exact: true }).fill('Reviewed process lead')
     await resourcePlan.getByRole('button', { name: 'Save resource', exact: true }).click()
-    await expect(resourcePlan.getByRole('status')).toContainText('Resource saved.')
+    await expect(resourcePlan.getByRole('status').filter({ hasText: 'Resource saved.' })).toContainText('Resource saved.')
     if (conflicting) await expect(page.getByRole('alert')).toContainText('The schedule changed while you had unsaved activity edits.')
     await showActivities(page, 'Locally reviewed piping package')
     await expect(page.getByRole('spinbutton', { name: 'PIP-014 duration in days', exact: true })).toHaveValue('45')
