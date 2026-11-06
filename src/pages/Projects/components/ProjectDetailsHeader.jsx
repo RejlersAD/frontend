@@ -57,7 +57,7 @@ export default function ProjectDetailsHeader({ projects, selectedProject, select
   const initials = manager === 'Not assigned' ? '—' : manager.split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase()
   const baselineKnown = Object.prototype.hasOwnProperty.call(project?.portfolio || {}, 'baseline')
   const baseline = project?.portfolio?.baseline
-  const approved = baseline?.approved === true
+  const approved = baseline?.approved === true || Boolean(baseline?.id)
   const health = model?.health
   const status = project?.custom_fields?.control_setup?.operational_status_confirmed === false ? 'Status to confirm' : STATUS[project?.status] || 'Not specified'
   const busy = loading || performance?.loading
@@ -91,13 +91,15 @@ export default function ProjectDetailsHeader({ projects, selectedProject, select
   const actionCount = model?.actions?.length ?? 0
   const scheduleDataDate = schedulePerformance?.model?.generationId || schedulePerformance?.model?.analysisRunId ? null : schedulePerformance?.model?.dataDate || model?.dataDate
   const HealthIcon = health?.tone === 'success' ? CheckCircle2 : AlertTriangle
+  const scheduleDate = scheduleDataDate && !Number.isNaN(Date.parse(scheduleDataDate)) ? new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(scheduleDataDate)).replace(/ (\d{4})$/, '$1') : 'Not set'
   return <header className={`pd-header${isSchedule ? ' pd-schedule-header' : ''}`} aria-label="Project details">
     <div className="pd-heading-content">
-      <div className="pd-location"><button type="button" aria-label={isSchedule ? 'Back to projects' : undefined} onClick={() => onNavigate('/projects')}><ArrowLeft size={16} />{!isSchedule && 'Back to projects'}</button>{!isSchedule && <span className="pd-location-divider" aria-hidden="true" />}
+      <div className="pd-location"><button type="button" aria-label={isSchedule ? 'Back to projects' : undefined} onClick={() => onNavigate('/projects')}>{isSchedule ? <Home size={16} /> : <ArrowLeft size={16} />}{!isSchedule && 'Back to projects'}</button>{!isSchedule && <span className="pd-location-divider" aria-hidden="true" />}
         <nav aria-label="Breadcrumb"><span>Project Control</span><span aria-hidden="true">/</span><button type="button" onClick={() => onNavigate('/projects')}>Portfolio</button><span aria-hidden="true">/</span><span aria-current={isSchedule ? undefined : 'page'}>{project?.code || 'Project details'}</span>{isSchedule && <><span aria-hidden="true">/</span><span aria-current="page">Schedule</span></>}</nav>
       </div>
       <h1 title={project?.name}>{project?.name || (loading ? 'Loading project…' : 'Select a project')}</h1>
       <div className="pd-header-actions">
+        {isSchedule && scheduleMode === 'planner' && <div ref={onScheduleControlsMount} className="pd-schedule-controls-host" />}
         {isRisk || isEstimates || isDocuments ? <details className="pd-menu pd-add-menu" ref={addMenu}><summary className="pd-button pd-primary" aria-label={addLabel} aria-disabled={addDisabled} onClick={event => { if (addDisabled) event.preventDefault() }}><Plus size={16} />{isEstimates ? 'New estimate' : 'Add'}<ChevronDown size={14} /></summary><div className="pd-menu-content">
           {isRisk && [['risk', 'Add risk', ShieldCheck], ['issue', 'Add issue', AlertTriangle], ['change_request', 'Add change', FileText]].map(([type, label, Icon]) => <button type="button" key={type} onClick={() => add(() => onAddRiskRecord(type))}><Icon size={15} />{label}</button>)}
           {isEstimates && [['create', 'Blank estimate'], ['copy', 'Copy version'], ['import', 'Import Excel']].map(([type, label]) => <button type="button" key={type} disabled={type === 'copy' && !activeModel?.canCopy} onClick={() => add(() => onNewEstimate(type))}><FileText size={15} />{label}</button>)}
@@ -106,6 +108,7 @@ export default function ProjectDetailsHeader({ projects, selectedProject, select
         {!isSchedule && <button type="button" className="pd-button" onClick={() => onOpenDialog('actions')} disabled={!model || busy}><AlertCircle size={17} />{actionCount ? `Resolve ${actionCount} ${actionCount === 1 ? 'issue' : 'issues'}` : 'Review issues'}</button>}
         <button type="button" className="pd-button pd-export-action" aria-label={exportLabel} onClick={exportAction} disabled={exportDisabled} title={exportLabel === 'Export' ? 'Print or save the project report as PDF' : exportLabel}><Download size={18} />Export</button>
         <details className="pd-menu" ref={menu}><summary className="pd-button pd-icon-button" aria-label="More project actions"><MoreHorizontal size={19} /></summary><div className="pd-menu-content">
+          {isSchedule && <p className="pd-menu-note">Client: {project?.client_name || 'Not recorded'}<br />Overall health: {health?.label || 'Not assessed'}</p>}
           <div className="pd-switch-project"><ProjectSelector compact projects={projects} value={selectedProjectId} onChange={id => run(() => onSelectProject(id))} loading={loading} error={error} label="Active Project" /></div>
           <button type="button" disabled={busy} onClick={() => run(onRefresh)}><RefreshCw size={15} />Refresh project</button>
           <button type="button" disabled={!project} onClick={() => run(onEdit)}><Pencil size={15} />Edit project details</button>
@@ -124,13 +127,13 @@ export default function ProjectDetailsHeader({ projects, selectedProject, select
         <div className="pd-manager"><span className="pd-fact-label">Project manager:</span><strong>{manager}</strong></div>
         <div className="pd-status"><span className="pd-fact-label">Status</span><span className={`pd-pill pd-status-${project.status}`}>{status}</span></div>
         <div className="pd-health"><span className="pd-fact-label">Overall health</span><span className={`pd-pill pd-health-${health?.tone || 'neutral'}`}>{health && <HealthIcon size={13} />}{health?.label || 'Not assessed'}</span></div>
-        <div className="pd-baseline"><span className="pd-fact-label">Baseline</span><span className={`pd-pill ${approved ? 'pd-baseline-approved' : 'pd-baseline-unavailable'}`}>{approved ? 'Approved' : baselineKnown ? 'Not approved' : 'Unavailable'}</span></div>
-        <div className="pd-report-date"><span className="pd-fact-label">Data date</span><span className="pd-pill pd-data-date">{formatDate(scheduleDataDate, 'Not set')}</span></div>
-      </div>{scheduleMode === 'planner' && <div ref={onScheduleControlsMount} className="pd-schedule-controls-host" />}</div> : project && <div className="pd-project-facts">
+        <div className="pd-baseline"><span className="pd-fact-label">Baseline</span><span className={`pd-pill ${approved ? 'pd-baseline-approved' : 'pd-baseline-unavailable'}`}>{!approved && <AlertTriangle size={13} />}{approved ? 'Baseline approved' : baselineKnown ? 'Baseline not created' : 'Baseline unavailable'}</span></div>
+        <div className="pd-report-date"><span className="pd-fact-label">Data date</span><span className="pd-pill pd-data-date">{scheduleDate}</span></div>
+      </div></div> : project && <div className="pd-project-facts">
         <div className="pd-project-code">{project.code || 'Code not recorded'}</div>
         <div className="pd-client">Client: <strong>{project.client_name || 'Not recorded'}</strong></div>
         <div className="pd-manager"><span className="pd-person-avatar" aria-hidden="true">{initials}</span><span><strong>{manager}</strong><small>{managerRole}</small></span></div>
-        <div className="pd-baseline"><CalendarDays size={21} /><span><small>Baseline</small><strong className={!approved ? 'pd-unavailable' : undefined}>{approved ? (baseline.start_date && baseline.finish_date ? `${formatDate(baseline.start_date)} – ${formatDate(baseline.finish_date)}` : 'Dates not recorded') : baselineKnown ? 'Baseline not approved' : 'Baseline unavailable'}</strong></span></div>
+        <div className="pd-baseline"><CalendarDays size={21} /><span><small>Baseline</small><strong className={!approved ? 'pd-unavailable' : undefined}>{approved ? (baseline.start_date && baseline.finish_date ? `${formatDate(baseline.start_date)} – ${formatDate(baseline.finish_date)}` : 'Dates not recorded') : baselineKnown ? 'Baseline not created' : 'Baseline unavailable'}</strong></span></div>
         <div className="pd-status"><small>Status</small><span className={`pd-pill pd-status-${project.status}`}>{status}</span></div>
         <div className="pd-health"><small>Overall health</small><span className={`pd-pill pd-health-${health?.tone || 'neutral'}`}>{health && <HealthIcon size={15} />}{health?.label || 'Not assessed'}</span></div>
         <div className="pd-report-date"><CalendarDays size={21} /><span><small>{model?.workingFallback ? 'Working data date' : 'Last reporting date'}</small><strong>{formatDate(model?.dataDate, 'Not recorded')}</strong></span></div>

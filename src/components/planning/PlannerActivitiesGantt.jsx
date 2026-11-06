@@ -1,18 +1,20 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import PropTypes from 'prop-types'
-import { ChevronDown, ChevronRight, Columns, GitBranch, Layers, Printer, Trash2 } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { ChevronDown, ChevronRight, Columns, GitBranch, Maximize, Printer, Trash2 } from 'lucide-react'
 
 const DAY_MS = 86400000
-const SUMMARY_HEIGHT = 44
-const ACTIVITY_HEIGHT = 40
+const SUMMARY_HEIGHT = 28
+const FIRST_SUMMARY_HEIGHT = 34
+const ACTIVITY_HEIGHT = 28
 const PRINT_ROWS_PER_PAGE = 40
 const PRINT_DETAILS_WIDTH = 650
 const PRINT_TIMELINE_WIDTH = 780
 const PRINT_ROW_HEIGHT = 23
 
-const COLUMN_LABELS = ['ID', 'Deliverable / workflow activity', 'Stage', 'Dur.', 'CPM Start', 'CPM Finish', 'Float', 'Pred.', 'Responsible', '']
-const DEFAULT_COLUMN_WIDTHS = [180, 270, 125, 62, 82, 82, 52, 45, 120, 30]
-const MIN_COLUMN_WIDTHS = [84, 160, 90, 58, 82, 82, 50, 45, 100, 30]
+const COLUMN_LABELS = ['WBS / ID', 'Activity', 'Stage', 'Days', 'Start', 'Finish', 'Float', 'Pred.', 'Responsible', 'Actions']
+const DEFAULT_COLUMN_WIDTHS = [100, 272, 88, 64, 106, 106, 52, 45, 120, 30]
+const MIN_COLUMN_WIDTHS = [84, 160, 65, 58, 82, 82, 50, 45, 100, 30]
 const MAX_COLUMN_WIDTHS = [260, 520, 220, 110, 130, 130, 100, 90, 260, 46]
 
 const clampWidth = (value, index) => Math.min(MAX_COLUMN_WIDTHS[index], Math.max(MIN_COLUMN_WIDTHS[index], value))
@@ -24,6 +26,8 @@ const contentWidth = (values, index) => {
 const dayValue = value => value ? new Date(`${value}T00:00:00Z`).getTime() : null
 const dayDiff = (start, end) => Math.round((end - start) / DAY_MS)
 const shortDate = value => new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', timeZone: 'UTC' }).format(new Date(value))
+const displayDate = value => value ? new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${value}T00:00:00Z`)).replace(/ (\d{4})$/, '$1') : '—'
+const stageLabel = stage => ({ COMPANY_REVIEW: 'REVIEW', COMPANY_APPROVAL: 'APPR', FINAL_ISSUE: 'FINAL' }[stage] || stage)
 const dayLabel = value => Number.isInteger(Number(value)) ? `${Number(value)}d` : `${Number(value).toFixed(1)}d`
 
 const STAGE_COLORS = {
@@ -46,7 +50,6 @@ const stageTone = stage => ({
 }[stage] || 'bg-slate-100 text-slate-600')
 
 const barColor = item => {
-  if (item.is_critical) return '#ef4444'
   return STAGE_COLORS[item.metadata?.workflow_stage_code]
     || DISCIPLINE_COLORS[item.discipline?.toLowerCase()]
     || '#3b82f6'
@@ -55,10 +58,15 @@ const barColor = item => {
 export default function PlannerActivitiesGantt({
   activities, summaries, relationships, search, discipline, criticalOnly,
   immutable, dirtyIds, onUpdate, onDelete, projectName, scheduleName,
-  versionLabel, dataDate, calculatedFinish,
+  versionLabel, dataDate, calculatedFinish, toolbarTarget,
 }) {
   const [expanded, setExpanded] = useState(new Set())
-  const [zoom, setZoom] = useState('month')
+  const [zoom, setZoom] = useState('week')
+  const [fitTimeline, setFitTimeline] = useState(false)
+  const [viewportWidth, setViewportWidth] = useState(1400)
+  const [visibleColumns, setVisibleColumns] = useState(new Set([0, 1, 2, 3, 4, 5]))
+  const [selectedId, setSelectedId] = useState(() => activities.find(activity => activity.metadata?.deliverable)?.id || null)
+  const viewportRef = useRef(null)
   const [showLogic, setShowLogic] = useState(true)
   const [columnWidths, setColumnWidths] = useState(DEFAULT_COLUMN_WIDTHS)
   const columnResize = useRef(null)
@@ -74,11 +82,11 @@ export default function PlannerActivitiesGantt({
       byDeliverable.get(key).push(activity)
     })
     const needle = search.trim().toLowerCase()
-    return (summaries || []).map(summary => {
+    return (summaries || []).map((summary, index) => {
       const key = `${summary.discipline}::${summary.deliverable}`
       const children = (byDeliverable.get(key) || []).sort((left, right) => (
-        Number(left.metadata?.workflow_stage_sequence || left.sort_order)
-        - Number(right.metadata?.workflow_stage_sequence || right.sort_order)
+        Number(left.metadata?.workflow_stage_sequence ?? left.sort_order)
+        - Number(right.metadata?.workflow_stage_sequence ?? right.sort_order)
       ))
       const childIds = new Set(children.map(item => item.id))
       const floatValues = children
@@ -92,6 +100,7 @@ export default function PlannerActivitiesGantt({
       )
       return {
         ...summary,
+        display_code: summary.wbs_code || `W${String(index + 1).padStart(2, '0')}`,
         key,
         children,
         duration_days: children.reduce((total, item) => total + Number(item.duration_days || 0), 0),
@@ -107,7 +116,7 @@ export default function PlannerActivitiesGantt({
   }, [activities, summaries, relationships, search, discipline, criticalOnly])
 
   useEffect(() => {
-    setExpanded(current => current.size ? current : new Set(groups.slice(0, 2).map(group => group.key)))
+    setExpanded(current => current.size ? current : new Set(groups.slice(0, 3).map(group => group.key)))
   }, [groups])
 
   const milestoneRows = useMemo(() => activities.filter(activity => (
@@ -127,7 +136,15 @@ export default function PlannerActivitiesGantt({
     return result
   }, [expanded, groups, milestoneRows])
 
-  const detailsWidth = useMemo(() => columnWidths.reduce((sum, width) => sum + width, 0), [columnWidths])
+  const displayWidths = columnWidths.map((width, index) => visibleColumns.has(index) ? width : 0)
+  const detailsWidth = displayWidths.reduce((sum, width) => sum + width, 0)
+  useEffect(() => {
+    const element = viewportRef.current
+    if (!element) return undefined
+    const observer = new ResizeObserver(entries => setViewportWidth(entries[0].contentRect.width))
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
 
   const fitColumns = () => {
     const values = COLUMN_LABELS.map(label => [label])
@@ -172,22 +189,23 @@ export default function PlannerActivitiesGantt({
       const item = row.kind === 'summary' ? row : row.activity
       return [dayValue(item.planned_start), dayValue(item.planned_finish)].filter(value => value !== null)
     })
+    const calculatedEnd = dayValue(calculatedFinish)
+    if (Number.isFinite(calculatedEnd) && calculatedEnd !== null) dates.push(calculatedEnd)
     if (!dates.length) return null
     const start = Math.min(...dates)
     const finish = Math.max(...dates)
     return { start, finish, span: Math.max(1, dayDiff(start, finish) + 1) }
-  }, [rows])
+  }, [rows, calculatedFinish])
 
   const timelineWidth = useMemo(() => {
-    if (!range) return 760
-    if (zoom === 'day') return Math.max(900, range.span * 30)
-    if (zoom === 'week') return Math.max(820, Math.ceil(range.span / 7) * 92)
-    return Math.max(760, Math.ceil(range.span / 30) * 145)
-  }, [range, zoom])
+    const available = Math.max(360, viewportWidth - detailsWidth - 16)
+    if (!range || fitTimeline) return available
+    return Math.max(available, range.span * (zoom === 'day' ? 30 : zoom === 'week' ? 6.7 : 3.6))
+  }, [range, zoom, fitTimeline, viewportWidth, detailsWidth])
 
   const scaleTicks = useMemo(() => {
     if (!range) return []
-    const interval = zoom === 'day' ? 1 : zoom === 'week' ? 7 : 14
+    const interval = zoom === 'day' ? 1 : zoom === 'week' ? 14 : 28
     const result = []
     for (let offset = 0; offset < range.span; offset += interval) {
       const coveredDays = Math.min(interval, range.span - offset)
@@ -203,8 +221,8 @@ export default function PlannerActivitiesGantt({
   const geometry = useMemo(() => {
     let top = 0
     const activityMap = new Map()
-    const rowGeometry = rows.map(row => {
-      const height = row.kind === 'summary' ? SUMMARY_HEIGHT : ACTIVITY_HEIGHT
+    const rowGeometry = rows.map((row, index) => {
+      const height = row.kind === 'summary' ? (index === 0 ? FIRST_SUMMARY_HEIGHT : SUMMARY_HEIGHT) : ACTIVITY_HEIGHT
       const entry = { row, top, height, center: top + height / 2 }
       if (row.kind === 'activity') activityMap.set(row.activity.id, entry)
       top += height
@@ -213,10 +231,10 @@ export default function PlannerActivitiesGantt({
     return { rows: rowGeometry, activityMap, height: top }
   }, [rows])
 
-  const dateX = (value, finishEdge = false) => {
+  const dateX = useCallback((value, finishEdge = false) => {
     if (!range || value === null) return 0
     return ((dayDiff(range.start, value) + (finishEdge ? 1 : 0)) / range.span) * timelineWidth
-  }
+  }, [range, timelineWidth])
 
   const logicLines = useMemo(() => {
     if (!range || !showLogic) return []
@@ -255,7 +273,7 @@ export default function PlannerActivitiesGantt({
         successorLabel: successorItem.external_id,
       }
     }).filter(Boolean)
-  }, [geometry, range, relationships, showLogic, timelineWidth])
+  }, [geometry, range, relationships, showLogic, dateX])
 
   const predecessorCounts = useMemo(() => relationships.reduce((result, link) => {
     result[link.successor] = (result[link.successor] || 0) + 1
@@ -324,8 +342,22 @@ export default function PlannerActivitiesGantt({
     return ticks
   }, [range, zoom])
 
+  const toolbar = <div className="pg-toolbar">
+    <details className="pg-menu"><summary><Columns size={16} />Columns</summary><div className="pg-menu-panel">
+      {COLUMN_LABELS.map((label, index) => <label key={label}><input type="checkbox" checked={visibleColumns.has(index)} disabled={index < 2} onChange={() => setVisibleColumns(current => { const next = new Set(current); if (next.has(index)) next.delete(index); else next.add(index); return next })} />{label}</label>)}
+      <button type="button" onClick={fitColumns}>Fit columns to content</button>
+
+      <button type="button" onClick={printGantt}><Printer size={15} />Print Gantt</button>
+      <button type="button" onClick={() => setExpanded(new Set(groups.map(group => group.key)))}>Expand all</button>
+      <button type="button" onClick={() => setExpanded(new Set())}>Collapse all</button>
+    </div></details>
+    <button type="button" className="pg-logic" aria-pressed={showLogic} onClick={() => setShowLogic(value => !value)}><GitBranch size={16} />{showLogic ? 'Logic on' : 'Logic off'}</button>
+    <div className="pg-scale" role="group" aria-label="Timeline scale">{['day', 'week', 'month'].map(value => <button key={value} type="button" aria-pressed={zoom === value} onClick={() => { setZoom(value); setFitTimeline(false) }}>{value[0].toUpperCase() + value.slice(1)}</button>)}</div>
+    <button type="button" aria-pressed={fitTimeline} onClick={() => setFitTimeline(value => !value)}><Maximize size={16} />Fit timeline</button>
+
+  </div>
   return (
-    <div className="planner-gantt-print-root">
+    <div className="planner-gantt-print-root" data-table-typography="preserve" data-visible-columns={[...visibleColumns].join(" ")}>
       <style>{`
         .planner-gantt-print-document { display: none; }
         @media print {
@@ -333,58 +365,40 @@ export default function PlannerActivitiesGantt({
           body * { visibility: hidden !important; }
           .planner-gantt-print-root, .planner-gantt-print-root * { visibility: visible !important; }
           .planner-gantt-print-root { position: absolute !important; inset: 0 auto auto 0 !important; background: white !important; }
-          .planner-gantt-screen, .planner-gantt-no-print { display: none !important; }
+          .planner-gantt-screen, .pg-legend, .pg-toolbar-fallback, .planner-gantt-no-print { display: none !important; }
           .planner-gantt-print-document { display: block !important; width: ${PRINT_DETAILS_WIDTH + PRINT_TIMELINE_WIDTH}px; }
           .planner-gantt-print-page { break-after: page; page-break-after: always; }
           .planner-gantt-print-page:last-child { break-after: auto; page-break-after: auto; }
           .planner-gantt-print-root * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
       `}</style>
-      <div className="planner-gantt-no-print flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50/70 px-3 py-2">
-        <div className="flex items-center gap-2 text-xs text-slate-600"><Layers className="h-4 w-4 text-violet-600"/><b>{groups.length}</b> deliverables · <b>{activities.length}</b> detailed activities</div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="hidden items-center gap-3 text-xs font-semibold text-slate-500 2xl:flex">
-            <span><i className="mr-1 inline-block h-2.5 w-4 rounded-sm bg-blue-600"/>IFR</span>
-            <span><i className="mr-1 inline-block h-2.5 w-4 rounded-sm bg-amber-500"/>Review</span>
-            <span><i className="mr-1 inline-block h-2.5 w-4 rounded-sm bg-indigo-600"/>IFA</span>
-            <span><i className="mr-1 inline-block h-2.5 w-4 rounded-sm bg-violet-500"/>Approval</span>
-            <span><i className="mr-1 inline-block h-2.5 w-4 rounded-sm bg-emerald-500"/>Final</span>
-            <span><i className="mr-1 inline-block h-2.5 w-4 rounded-sm bg-red-500"/>Critical</span>
+      {toolbarTarget ? createPortal(toolbar, toolbarTarget) : <div className="pg-toolbar-fallback">{toolbar}</div>}
+      <div ref={viewportRef} className="planner-gantt-screen" role="region" aria-label="Activity table and Gantt timeline" tabIndex={0}>
+        <div className="sticky top-0 z-50 flex shadow-sm" style={{ width: detailsWidth + timelineWidth, minWidth: detailsWidth + timelineWidth, height: 33 }}>
+          <div className="planner-grid-header grid shrink-0 border-b border-r border-slate-400 bg-slate-100 text-xs font-semibold text-slate-600" style={{ width: detailsWidth, minWidth: detailsWidth, height: 33, gridTemplateColumns: displayWidths.map(width => `${width}px`).join(' ') }}>
+            {COLUMN_LABELS.map((label, index) => <div key={`${label}-${index}`} style={{ display: visibleColumns.has(index) ? undefined : "none", gridColumn: index + 1 }} className="relative flex min-w-0 items-center overflow-hidden px-2"><span className="truncate">{label}</span>{index < COLUMN_LABELS.length - 1 && <button type="button" aria-label={`Resize ${label || 'action'} column`} title="Drag to resize column" onPointerDown={event => startColumnResize(event, index)} className="absolute -right-1 top-0 z-10 h-full w-2 cursor-col-resize touch-none border-r border-transparent hover:border-violet-500"/>}</div>)}
           </div>
-          <button type="button" onClick={() => setShowLogic(value => !value)} className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-bold ${showLogic ? 'border-slate-700 bg-slate-700 text-white' : 'border-slate-200 bg-white text-slate-600'}`}><GitBranch className="h-3.5 w-3.5"/>{showLogic ? 'Logic on' : 'Logic off'}</button>
-          <button type="button" onClick={fitColumns} title="Resize columns to fit the visible data" className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-600 hover:border-violet-300 hover:text-violet-700"><Columns className="h-3.5 w-3.5"/>Fit columns</button>
-          <button type="button" onClick={printGantt} title="Print the filtered Gantt chart or save it as PDF" className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-xs font-bold text-violet-700 hover:bg-violet-100"><Printer className="h-3.5 w-3.5"/>Print Gantt</button>
-          <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">{['day', 'week', 'month'].map(value => <button key={value} type="button" onClick={() => setZoom(value)} className={`rounded-md px-2 py-1 text-xs font-bold capitalize ${zoom === value ? 'bg-violet-600 text-white' : 'text-slate-500'}`}>{value}</button>)}</div>
-          <button type="button" onClick={() => setExpanded(new Set(groups.map(group => group.key)))} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-600">Expand all</button>
-          <button type="button" onClick={() => setExpanded(new Set())} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-600">Collapse all</button>
-        </div>
-      </div>
-      <div className="planner-gantt-screen max-h-[70vh] overflow-auto">
-        <div className="sticky top-0 z-50 flex shadow-sm" style={{ width: detailsWidth + timelineWidth, minWidth: detailsWidth + timelineWidth, height: 36 }}>
-          <div className="planner-grid-header grid shrink-0 border-b border-r border-slate-400 bg-slate-100 text-xs font-semibold text-slate-600" style={{ width: detailsWidth, minWidth: detailsWidth, height: 36, gridTemplateColumns: columnWidths.map(width => `${width}px`).join(' ') }}>
-            {COLUMN_LABELS.map((label, index) => <div key={`${label}-${index}`} className="relative flex min-w-0 items-center overflow-hidden px-2"><span className="truncate">{label}</span>{index < COLUMN_LABELS.length - 1 && <button type="button" aria-label={`Resize ${label || 'action'} column`} title="Drag to resize column" onPointerDown={event => startColumnResize(event, index)} className="absolute -right-1 top-0 z-10 h-full w-2 cursor-col-resize touch-none border-r border-transparent hover:border-violet-500"/>}</div>)}
-          </div>
-          <div className="shrink-0 overflow-hidden border-b border-slate-400 bg-white" style={{ width: timelineWidth, minWidth: timelineWidth, height: 36 }}>
-            {range ? <div style={{ position: 'relative', height: 36 }}>{scaleTicks.map(tick => <div key={tick.offset} className="flex items-center justify-center overflow-hidden whitespace-nowrap border-r border-slate-300 px-1 text-xs font-extrabold text-slate-800" style={{ position: 'absolute', top: 0, height: 36, left: tick.x, width: tick.width }}>{tick.label}</div>)}</div> : <div className="flex h-full items-center px-3 text-xs text-slate-500">Calculate the schedule to display the Gantt chart</div>}
+          <div className="shrink-0 overflow-hidden border-b border-slate-400 bg-white" style={{ width: timelineWidth, minWidth: timelineWidth, height: 33 }}>
+            {range ? <div style={{ position: 'relative', height: 33 }}>{scaleTicks.map(tick => <div key={tick.offset} className="flex items-center justify-center overflow-hidden whitespace-nowrap border-r border-slate-300 px-1 text-xs font-extrabold text-slate-800" style={{ position: 'absolute', top: 0, height: 33, left: tick.x, width: tick.width }}>{tick.label}</div>)}</div> : <div className="flex h-full items-center px-3 text-xs text-slate-500">Calculate the schedule to display the Gantt chart</div>}
           </div>
         </div>
 
         <div className="flex w-max flex-row items-start">
         <table className="planner-grid-table shrink-0 table-fixed border-r border-slate-300 text-xs" style={{ width: detailsWidth, minWidth: detailsWidth }}>
-          <colgroup>{columnWidths.map((width, index) => <col key={index} style={{ width }}/>)}</colgroup>
-          <tbody>{rows.map(row => {
+          <colgroup>{columnWidths.map((width, index) => visibleColumns.has(index) && <col key={index} style={{ width }}/>)}</colgroup>
+          <tbody>{rows.map((row, rowIndex) => {
             if (row.kind === 'summary') {
               const open = expanded.has(row.key)
               const color = DISCIPLINE_COLORS[row.discipline?.toLowerCase()] || '#6d28d9'
-              return <tr key={row.key} className="h-11 border-t border-violet-100 bg-violet-50/70"><td className="border-l-4 px-2 font-mono font-bold text-violet-700" style={{ borderLeftColor: color }}>WBS</td><td className="overflow-hidden px-2"><button type="button" onClick={() => toggle(row.key)} className="flex w-full min-w-0 items-center gap-2 overflow-hidden text-left font-bold text-slate-900">{open ? <ChevronDown className="h-4 w-4 shrink-0"/> : <ChevronRight className="h-4 w-4 shrink-0"/>}<span className="truncate">{row.deliverable}</span></button></td><td className="px-2"><span className="rounded-full bg-white px-2 py-1 font-bold text-violet-700">{row.task_count} tasks</span></td><td className="px-2 font-semibold text-slate-700">{dayLabel(row.duration_days)}</td><td className="px-2 whitespace-nowrap font-semibold">{row.planned_start || '—'}</td><td className="px-2 whitespace-nowrap font-semibold">{row.planned_finish || '—'}</td><td className={`px-2 font-semibold ${Number(row.total_float_days) <= 0 ? 'text-rose-600' : 'text-slate-500'}`}>{row.total_float_days ?? '—'}</td><td className="px-2 text-center font-bold text-slate-600">{row.predecessor_count}</td><td className="px-2 capitalize text-slate-500">{row.discipline}</td><td/></tr>
+              return <tr key={row.key} className="pg-summary-row" style={{ height: rowIndex === 0 ? FIRST_SUMMARY_HEIGHT : SUMMARY_HEIGHT }}><td className="border-l-4 px-2 font-mono font-bold text-violet-700" style={{ borderLeftColor: color }}><button type="button" className="pg-wbs-toggle" aria-label={`${expanded.has(row.key) ? "Collapse" : "Expand"} ${row.deliverable}`} onClick={() => toggle(row.key)}>{open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}{row.display_code}</button></td><td className="overflow-hidden px-2"><button type="button" onClick={() => toggle(row.key)} className="flex w-full min-w-0 items-center gap-2 overflow-hidden text-left font-bold text-slate-900"><span className="truncate">{row.deliverable}</span></button></td><td className="px-2"><span title={`${row.task_count} tasks`}>–</span></td><td className="px-2 font-semibold text-slate-700">{Number(row.duration_days).toFixed(1)}</td><td className="px-2 whitespace-nowrap font-semibold">{displayDate(row.planned_start)}</td><td className="px-2 whitespace-nowrap font-semibold">{displayDate(row.planned_finish)}</td><td className={`px-2 font-semibold ${Number(row.total_float_days) <= 0 ? 'text-rose-600' : 'text-slate-500'}`}>{row.total_float_days ?? '—'}</td><td className="px-2 text-center font-bold text-slate-600">{row.predecessor_count}</td><td className="px-2 capitalize text-slate-500">{row.discipline}</td><td/></tr>
             }
             const activity = row.activity
             const stage = activity.metadata?.workflow_stage_code
             const color = barColor(activity)
-            return <tr key={activity.id} className={`h-10 border-t border-slate-100 ${activity.is_critical ? 'bg-rose-50/60' : dirtyIds.has(activity.id) ? 'bg-amber-50' : 'hover:bg-slate-50'}`}>
+            return <tr key={activity.id} onClick={() => setSelectedId(activity.id)} style={{ height: ACTIVITY_HEIGHT }} className={`pg-activity-row ${selectedId === activity.id ? 'is-selected' : ''} ${dirtyIds.has(activity.id) ? 'is-dirty' : ''}`}>
               <td className="overflow-hidden border-l-4 px-2 font-mono font-semibold text-slate-600" style={{ borderLeftColor: color }}><span className="planner-activity-id block truncate" title={activity.external_id}>{activity.external_id}</span></td>
-              <td className="overflow-hidden px-2"><div className="flex min-w-0 items-center"><i className="mr-2 h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: color }}/><input aria-label={`${activity.external_id} activity name`} title={activity.name} disabled={immutable} value={activity.name} onChange={event => onUpdate(activity.id, 'name', event.target.value)} className={`min-w-0 flex-1 rounded border-0 bg-transparent px-1 py-1 focus:ring-1 focus:ring-violet-400 disabled:text-slate-700 ${row.standalone ? 'font-semibold' : ''}`}/></div></td>
-              <td className="overflow-hidden px-2">{stage ? <span className={`inline-block max-w-full truncate rounded-full px-2 py-1 text-xs font-bold ${stageTone(stage)}`}>{stage.replaceAll('_', ' ')}</span> : activity.is_milestone ? <span className="font-bold text-amber-700">MILESTONE</span> : '—'}</td><td className="px-2"><input aria-label={`${activity.external_id} duration in days`} disabled={immutable || activity.is_milestone} type="number" min="0" step="0.25" value={activity.duration_days} onChange={event => onUpdate(activity.id, 'duration_days', event.target.value)} className="w-full rounded bg-transparent px-1 disabled:text-slate-500"/></td><td className="px-2 whitespace-nowrap">{activity.planned_start || '—'}</td><td className="px-2 whitespace-nowrap">{activity.planned_finish || '—'}</td><td className={`px-2 font-semibold ${Number(activity.total_float_days) <= 0 ? 'text-rose-600' : 'text-slate-500'}`}>{activity.total_float_days ?? '—'}</td><td className="px-2 text-center font-bold text-slate-500">{predecessorCounts[activity.id] || 0}</td><td className="overflow-hidden px-2"><input aria-label={`${activity.external_id} responsible role`} disabled={immutable} value={activity.responsible_role || ''} onChange={event => onUpdate(activity.id, 'responsible_role', event.target.value)} className="w-full min-w-0 rounded bg-transparent px-1"/></td><td className="px-2"><button type="button" aria-label={`Delete ${activity.external_id}`} disabled={immutable} onClick={() => onDelete(activity)} className="text-slate-300 hover:text-rose-600 disabled:opacity-30"><Trash2 className="h-4 w-4"/></button></td></tr>
+              <td className="overflow-hidden px-2"><div className="flex min-w-0 items-center"><input aria-label={`${activity.external_id} activity name`} title={activity.name} disabled={immutable} value={activity.name} onChange={event => onUpdate(activity.id, 'name', event.target.value)} className={`min-w-0 flex-1 rounded border-0 bg-transparent px-1 py-1 focus:ring-1 focus:ring-violet-400 disabled:text-slate-700 ${row.standalone ? 'font-semibold' : ''}`}/></div></td>
+              <td className="overflow-hidden px-2">{stage ? <span className={`inline-block max-w-full truncate rounded-full px-2 py-1 text-xs font-bold ${stageTone(stage)}`}>{stageLabel(stage)}</span> : activity.is_milestone ? <span className="font-bold text-amber-700">MILESTONE</span> : '—'}</td><td className="px-2"><input aria-label={`${activity.external_id} duration in days`} disabled={immutable || activity.is_milestone} type="number" min="0" step="0.25" value={activity.duration_days} onChange={event => onUpdate(activity.id, 'duration_days', event.target.value)} className="w-full rounded bg-transparent px-1 disabled:text-slate-500"/></td><td className="px-2 whitespace-nowrap">{displayDate(activity.planned_start)}</td><td className="px-2 whitespace-nowrap">{displayDate(activity.planned_finish)}</td><td className={`px-2 font-semibold ${Number(activity.total_float_days) <= 0 ? 'text-rose-600' : 'text-slate-500'}`}>{activity.total_float_days ?? '—'}</td><td className="px-2 text-center font-bold text-slate-500">{predecessorCounts[activity.id] || 0}</td><td className="overflow-hidden px-2"><input aria-label={`${activity.external_id} responsible role`} disabled={immutable} value={activity.responsible_role || ''} onChange={event => onUpdate(activity.id, 'responsible_role', event.target.value)} className="w-full min-w-0 rounded bg-transparent px-1"/></td><td className="px-2"><button type="button" aria-label={`Delete ${activity.external_id}`} disabled={immutable} onClick={() => onDelete(activity)} className="text-slate-300 hover:text-rose-600 disabled:opacity-30"><Trash2 className="h-4 w-4"/></button></td></tr>
           })}</tbody>
         </table>
 
@@ -400,13 +414,13 @@ export default function PlannerActivitiesGantt({
               const color = row.kind === 'summary'
                 ? (DISCIPLINE_COLORS[row.discipline?.toLowerCase()] || '#6d28d9')
                 : barColor(row.activity)
-              const gridSize = Math.max(1, timelineWidth / Math.max(1, scaleTicks.length))
-              return <div key={row.kind === 'summary' ? row.key : row.activity.id} className={`absolute left-0 border-b border-slate-300 ${row.kind === 'summary' ? 'bg-violet-50/50' : 'bg-white'}`} style={{ top, height, width: timelineWidth, backgroundImage: `repeating-linear-gradient(to right, transparent 0, transparent ${gridSize - 1}px, rgba(100,116,139,.28) ${gridSize - 1}px, rgba(100,116,139,.28) ${gridSize}px)` }}>
+              const gridSize = Math.max(1, timelineWidth / Math.max(1, range?.span || 1) * 7)
+              return <div key={row.kind === 'summary' ? row.key : row.activity.id} className={`absolute left-0 border-b border-slate-300 ${row.kind === 'summary' ? 'pg-timeline-summary' : selectedId === row.activity.id ? 'pg-timeline-selected' : 'pg-timeline-activity'}`} style={{ top, height, width: timelineWidth, backgroundImage: `repeating-linear-gradient(to right, transparent 0, transparent ${gridSize - 1}px, rgba(100,116,139,.28) ${gridSize - 1}px, rgba(100,116,139,.28) ${gridSize}px)` }}>
                 {start !== null && finish !== null && (milestone
                   ? <div title={`${item.name}: ${item.planned_start}`} className="absolute z-10 h-4 w-4 rotate-45 border border-amber-700 bg-amber-400 shadow-sm" style={{ left: left - 8, top: (height - 16) / 2 }}/>
                   : row.kind === 'summary'
-                    ? <div title={`${item.deliverable}: ${item.planned_start} – ${item.planned_finish}`} className="absolute z-10 h-3" style={{ left, top: 16, width: Math.max(5, right - left) }}><span className="absolute left-0 right-0 top-0 h-[2px] bg-slate-950"/><span className="absolute left-0 top-0 h-2 w-[2px] bg-slate-950"/><span className="absolute right-0 top-0 h-2 w-[2px] bg-slate-950"/><span className="absolute left-0 top-[6px] h-[2px] w-2 origin-left rotate-45 bg-slate-950"/><span className="absolute right-0 top-[6px] h-[2px] w-2 origin-right -rotate-45 bg-slate-950"/></div>
-                    : <><div title={`${item.name}: ${item.planned_start} – ${item.planned_finish}`} className="absolute z-10 h-4 rounded-[1px] shadow-sm" style={{ left, top: 12, width: Math.max(3, right - left), backgroundColor: color, border: item.is_critical ? '1px solid #991b1b' : '1px solid rgba(15,23,42,.35)' }}/>{right - left > 58 && <span className="absolute z-20 truncate px-1 text-[9px] font-bold text-white" style={{ left: left + 2, top: 14, maxWidth: right - left - 4 }}>{item.external_id}</span>}</>)}
+                    ? <div title={`${item.deliverable}: ${item.planned_start} – ${item.planned_finish}`} className="absolute z-10 h-3" style={{ left, top: (height - 8) / 2, width: Math.max(5, right - left) }}><span className="absolute left-0 right-0 top-0 h-[2px] bg-slate-950"/><span className="absolute left-0 top-0 h-2 w-[2px] bg-slate-950"/><span className="absolute right-0 top-0 h-2 w-[2px] bg-slate-950"/><span className="absolute left-0 top-[6px] h-[2px] w-2 origin-left rotate-45 bg-slate-950"/><span className="absolute right-0 top-[6px] h-[2px] w-2 origin-right -rotate-45 bg-slate-950"/></div>
+                    : <><div title={`${item.name}: ${item.planned_start} – ${item.planned_finish}`} className="absolute z-10 h-4 rounded-[1px] shadow-sm" style={{ left, top: (height - 17) / 2, width: Math.max(3, right - left), backgroundColor: color, border: item.is_critical ? '2px solid #ff152c' : '1px solid rgba(15,23,42,.35)' }}/>{right - left > 58 && <span className="absolute z-20 truncate px-1 text-[9px] font-bold text-white pg-bar-label" style={{ left: left + 2, top: (height - 16) / 2, maxWidth: right - left - 4 }}>{item.external_id}</span>}</>)}
               </div>
             })}
 
@@ -428,6 +442,9 @@ export default function PlannerActivitiesGantt({
         </div>
       </div>
 
+      <div className="pg-legend" aria-label="Schedule stage legend"><strong>Legend:</strong>{[
+        ['IFR', 'Issue for review', '#2783ff'], ['Review', 'Company review', '#eda638'], ['IFA', 'Issue for approval', '#6260ff'], ['Approval', 'Company approval', '#9b67ee'], ['Final', 'Final issue', '#27b69c'], ['Critical', 'Critical path', null],
+      ].map(([name, description, color]) => <span key={name}><i className={color ? '' : 'pg-critical-key'} style={color ? { background: color } : undefined} /><b>{name}</b> {'\u2013'} {description}</span>)}</div>
       <div className="planner-gantt-print-document">
         {printPages.map((pageRows, pageIndex) => {
           const activityPositions = new Map()
@@ -502,7 +519,7 @@ PlannerActivitiesGantt.propTypes = {
   onDelete: PropTypes.func.isRequired,
   projectName: PropTypes.string,
   scheduleName: PropTypes.string,
-  versionLabel: PropTypes.string,
+  versionLabel: PropTypes.string, toolbarTarget: PropTypes.object,
   dataDate: PropTypes.string,
   calculatedFinish: PropTypes.string,
 }

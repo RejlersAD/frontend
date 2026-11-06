@@ -7,24 +7,27 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   AlertTriangle,
   ArrowLeft,
-  Baseline,
   CalendarDays,
   Check,
   ChevronLeft,
+  ChevronDown,
   ClipboardList,
   Database,
   Download,
   ChevronRight,
+  Plus,
   PlusCircle,
   GitBranch,
   LayoutList,
   Loader2,
+  MoreHorizontal,
+  RotateCcw,
   MessageSquare,
   Network,
   RefreshCw,
   Save,
   Search,
-  Settings2,
+  Settings,
   ShieldCheck,
   Trash2,
   TrendingUp,
@@ -39,6 +42,7 @@ import IntegrationsExportsPanel from "../components/planning/IntegrationsExports
 import EnterpriseReadinessPanel from "../components/planning/EnterpriseReadinessPanel";
 import PlannerActivitiesGantt from "../components/planning/PlannerActivitiesGantt";
 import PlannerLogicAssurance from "../components/planning/PlannerLogicAssurance";
+import PipingGuidancePanel from "../components/planning/PipingGuidancePanel";
 import SchedulingDefaultsApprovalPanel from "../components/planning/SchedulingDefaultsApprovalPanel";
 import TrustworthySchedulingPanel from "../components/planning/TrustworthySchedulingPanel";
 import PlanningResourcePlan from "../components/planning/PlanningResourcePlan";
@@ -49,6 +53,7 @@ import GenerationEvidenceWorkspace from "../components/planning/GenerationEviden
 import planningIntelligenceService from "../services/planningIntelligence.service";
 import usePlanningJob from "../hooks/usePlanningJob";
 import "./PlannerWorkspacePage.css";
+import "./PlannerScheduleReference.css";
 
 const TABS = [
   { id: "activities", label: "Activities & Gantt", icon: LayoutList },
@@ -91,6 +96,9 @@ const unwrapError = (error, fallback) =>
 const dateValue = (value) =>
   value ? new Date(`${value}T00:00:00Z`).getTime() : null;
 const dateDays = (start, end) => Math.round((end - start) / 86400000);
+const scheduleDateLabel = (value) => value && Number.isFinite(dateValue(value))
+  ? new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(dateValue(value))).replace(/ (\d{4})$/, "$1")
+  : value;
 
 const StatusBadge = ({ status }) => {
   const styles = {
@@ -217,6 +225,7 @@ const PlannerWorkspacePage = ({
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [ganttToolbarTarget, setGanttToolbarTarget] = useState(null);
   const settingsTriggerRef = useRef(null);
   const settingsSelectionFocusPending = useRef(false);
   const restoreSettingsFocus = useCallback(() => {
@@ -280,6 +289,13 @@ const PlannerWorkspacePage = ({
   const [calculationPhase, setCalculationPhase] = useState("");
   const [initializationRevision, setInitializationRevision] = useState(0);
   const [metadataNotice, setMetadataNotice] = useState("");
+  const { activeJob: scheduleJob, runJob: runScheduleJob } = usePlanningJob({
+    storageKey: `radai-schedule-job-${projectId}`,
+  });
+  const scheduleJobActive =
+    ["calculate", "assurance"].includes(scheduleJob?.job_type) &&
+    ["queued", "running"].includes(scheduleJob?.status);
+  const scheduleActionBusy = Boolean(busy) || scheduleJobActive;
   const workspaceRequest = useRef(0);
   const contextRef = useRef(null);
   contextRef.current = {
@@ -289,7 +305,7 @@ const PlannerWorkspacePage = ({
     workspace,
     draftActivities,
     dirtyIds,
-    busy,
+    busy: scheduleActionBusy,
     onSelectionChange,
     onWorkspaceChanged,
     onDirtyChange,
@@ -324,10 +340,6 @@ const PlannerWorkspacePage = ({
       versionId: Number(versionId),
     });
   }, [scheduleId, versionId, versions]);
-  const { activeJob: scheduleJob, runJob: runScheduleJob } = usePlanningJob({
-    storageKey: `radai-schedule-job-${projectId}`,
-  });
-
   const selectTab = (next) => {
     setTab(next);
     onTabChange?.(next);
@@ -434,8 +446,13 @@ const PlannerWorkspacePage = ({
       setCalculationPhase(
         scheduleJob.message || "Background scheduling job in progress",
       );
+      return;
     }
-  }, [scheduleJob]);
+    if (!busy && calculationProgress < 100) {
+      setCalculationProgress(0);
+      setCalculationPhase("");
+    }
+  }, [scheduleJob, busy, calculationProgress]);
 
   useEffect(() => {
     if (!["save-calculate", "rebuild-calculate"].includes(busy))
@@ -1195,6 +1212,30 @@ const PlannerWorkspacePage = ({
       );
   };
 
+  const calculateAndRunAssurance = async (requestedVersionId) => {
+    const calculate = () =>
+      runScheduleJob(() =>
+        planningIntelligenceService.calculateScheduleVersion(
+          requestedVersionId,
+        ),
+      );
+    const assure = () =>
+      runScheduleJob(() =>
+        planningIntelligenceService.runScheduleAssurance(requestedVersionId),
+      );
+    const current =
+      await planningIntelligenceService.getScheduleVersion(requestedVersionId);
+    if (current.status !== "calculated" || !current.calculated_at)
+      await calculate();
+    try {
+      await assure();
+    } catch (error) {
+      if ((error?.response?.status ?? error?.status) !== 409) throw error;
+      await calculate();
+      await assure();
+    }
+  };
+
   const prepareAndApproveVersion = async () => {
     const requestedVersionId = versionId;
     await savePendingForAction(requestedVersionId);
@@ -1204,28 +1245,43 @@ const PlannerWorkspacePage = ({
         requestedVersionId,
       );
     if (latest.version.status === "approved") return;
-    if (latest.version.status !== "calculated") {
-      await runScheduleJob(() =>
+    const calculate = () =>
+      runScheduleJob(() =>
         planningIntelligenceService.calculateScheduleVersion(
           requestedVersionId,
         ),
       );
-      ensureActionContext(requestedVersionId);
-      latest =
-        await planningIntelligenceService.getScheduleWorkspace(
-          requestedVersionId,
-        );
-    }
-    if (!latest.schedule_assurance) {
-      await runScheduleJob(() =>
-        planningIntelligenceService.runScheduleAssurance(requestedVersionId),
+    // The backend rejects approval when accepted inputs changed after the last
+    // calculation, so always recalculate before preparing approval.
+    await calculate();
+    ensureActionContext(requestedVersionId);
+    const calculated = await planningIntelligenceService.getScheduleWorkspace(
+      requestedVersionId,
+    );
+    const forecastFinish = calculated.version?.calculated_finish;
+    const planningTarget =
+      calculated.version?.planning_target_finish ||
+      calculated.planning_package?.contractual_finish ||
+      calculated.project?.planned_end_date;
+    if (
+      forecastFinish &&
+      planningTarget &&
+      dateValue(forecastFinish) > dateValue(planningTarget)
+    ) {
+      const result = await planningIntelligenceService.recoverScheduleDraft(
+        requestedVersionId,
+        "extend_planning_target",
+        calculated.version.updated_at,
       );
       ensureActionContext(requestedVersionId);
-      latest =
-        await planningIntelligenceService.getScheduleWorkspace(
-          requestedVersionId,
-        );
+      if (result?.changed) await calculate();
     }
+    await calculateAndRunAssurance(requestedVersionId);
+    ensureActionContext(requestedVersionId);
+    latest =
+      await planningIntelligenceService.getScheduleWorkspace(
+        requestedVersionId,
+      );
     if (latest.schedule_assurance?.status !== "approved") {
       await planningIntelligenceService.approveScheduleAssurance(
         requestedVersionId,
@@ -1258,10 +1314,7 @@ const PlannerWorkspacePage = ({
           await planningIntelligenceService.getScheduleVersion(
             requestedVersionId,
           );
-        if (
-          operation === "extend_planning_target" &&
-          latest.status !== "calculated"
-        ) {
+        if (operation === "extend_planning_target") {
           await runScheduleJob(() =>
             planningIntelligenceService.calculateScheduleVersion(
               requestedVersionId,
@@ -1450,7 +1503,7 @@ const PlannerWorkspacePage = ({
           <dl className="gew-metrics" aria-label="Selected analysis summary">
             {evidenceCounts.map(([label, value]) => (
               <div key={label}>
-                <dt>{label}</dt>
+                <dt>{label === "WBS Nodes" ? "WBS" : label === "Logic Ties" ? "ties" : label.toLowerCase()}</dt>
                 <dd>{value}</dd>
               </div>
             ))}
@@ -1862,7 +1915,7 @@ const PlannerWorkspacePage = ({
       aria-expanded={settingsOpen}
       onClick={() => setSettingsOpen(true)}
     >
-      <Settings2 size={16} aria-hidden="true" />
+      <Settings size={18} aria-hidden="true" />
       <span>Schedule settings</span>
       <small>
         {selectedVersion
@@ -1872,7 +1925,8 @@ const PlannerWorkspacePage = ({
     </button>
   );
 
-  const immutable = !workspace?.can_edit || Boolean(busy) || loading;
+  const immutable =
+    !workspace?.can_edit || scheduleActionBusy || loading;
   const unconfirmedDependencies = (
     workspace?.dependency_assumptions || []
   ).some((item) => item.requires_confirmation);
@@ -1884,12 +1938,12 @@ const PlannerWorkspacePage = ({
     workspace?.version?.can_prepare_approval ??
     (workspace?.version?.can_approve === true ||
       workspace?.version?.can_baseline === true);
-  const saveDisabledReason = busy
+  const saveDisabledReason = scheduleActionBusy
     ? "A schedule action is in progress."
     : immutable
       ? "This schedule version is read-only. Create a new revision to edit it."
       : "";
-  const approvalDisabledReason = busy
+  const approvalDisabledReason = scheduleActionBusy
     ? "A schedule action is in progress."
     : ["approved", "baselined"].includes(workspace?.version?.status)
       ? "This version is already approved."
@@ -1898,7 +1952,7 @@ const PlannerWorkspacePage = ({
         : "";
   const baselineDisabledReason =
     [
-      [Boolean(busy), "A schedule action is in progress."],
+      [scheduleActionBusy, "A schedule action is in progress."],
       [
         workspace?.version?.status === "baselined",
         "This version is already baselined.",
@@ -1908,7 +1962,9 @@ const PlannerWorkspacePage = ({
         "Baseline creation is unavailable. Review Governance and your project approval permissions.",
       ],
     ].find(([blocked]) => blocked)?.[1] || "";
-  const correctionTab = /cycle|predecessor|relationship/i.test(
+  const correctionTab = /piping.*guidance|guidance.*piping/i.test(notice?.message || "")
+    ? "logic"
+    : /cycle|predecessor|relationship/i.test(
     notice?.message || "",
   )
     ? "logic"
@@ -1921,7 +1977,7 @@ const PlannerWorkspacePage = ({
           : null;
   return (
     <div
-      className={`project-control-workspace planner-workspace ${embedded ? "pw-embedded" : "pw-page"}${compactHeader ? " pw-compact" : ""}`}
+      className={`project-control-workspace planner-workspace ${embedded ? "pw-embedded" : "pw-page"}${compactHeader ? " pw-compact pw-reference" : ""}`}
       role="region"
       aria-label="Master Schedule"
     >
@@ -1988,33 +2044,6 @@ const PlannerWorkspacePage = ({
             </div>
           </dl>
           {schedulingConfiguration}
-          <div className="pw-settings-actions">
-            <button
-              type="button"
-              className="pw-button"
-              onClick={handleOpenGenerationWizard}
-              disabled={Boolean(busy)}
-            >
-              Document Intelligence
-            </button>
-            <button
-              type="button"
-              className="pw-button"
-              onClick={() => setSettingsOpen(false)}
-              disabled={Boolean(busy)}
-            >
-              Done
-            </button>
-          </div>
-        </ScheduleSettingsDialog>
-      )}
-
-      <main className="pw-main">
-        {metadataNotice && (
-          <p role="status" className="pw-metadata-notice">
-            {metadataNotice}
-          </p>
-        )}
         {workspace?.planning_package && (
           <section
             aria-label="Planning package assumptions"
@@ -2059,6 +2088,34 @@ const PlannerWorkspacePage = ({
               </details>
             )}
           </section>
+        )}
+
+          <div className="pw-settings-actions">
+            <button
+              type="button"
+              className="pw-button"
+              onClick={handleOpenGenerationWizard}
+              disabled={Boolean(busy)}
+            >
+              Document Intelligence
+            </button>
+            <button
+              type="button"
+              className="pw-button"
+              onClick={() => setSettingsOpen(false)}
+              disabled={Boolean(busy)}
+            >
+              Done
+            </button>
+          </div>
+        </ScheduleSettingsDialog>
+      )}
+
+      <main className="pw-main">
+        {metadataNotice && (
+          <p role="status" className="pw-metadata-notice">
+            {metadataNotice}
+          </p>
         )}
         {notice && (
           <div
@@ -2137,22 +2194,22 @@ const PlannerWorkspacePage = ({
           </section>
         )}
 
-        {stats.finishVariance > 0 && (
-          <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
-            <span className="font-bold">Contract finish warning:</span> the
-            current CPM network forecasts {stats.finish} against the{" "}
-            {stats.contractualFinish} contractual finish ({stats.finishVariance}{" "}
-            calendar days late). This is advisory and does not block approval.
-            You can confirm an adjusted draft planning target below; the
-            contractual date remains unchanged.
-          </div>
-        )}
+        {stats.finishVariance > 0 &&
+          !["approved", "baselined"].includes(workspace?.version?.status) && (
+            <div className="pw-finish-warning" role="status">
+              <AlertTriangle aria-hidden="true" size={17} />
+              <strong>Finish overrun: {stats.finishVariance} calendar days</strong>
+              <span className="pw-finish-warning-separator" aria-hidden="true">|</span>
+              <span>Forecast <b>{scheduleDateLabel(stats.finish)}</b> · Contract <b>{scheduleDateLabel(stats.contractualFinish)}</b></span>
+              <button type="button" onClick={() => selectTab("assurance")}>View details</button>
+            </div>
+          )}
 
         {!compactHeader && schedulingConfiguration}
 
         <section className="pw-work-area">
           <nav aria-label="Planning workspace areas" className="pw-tabs">
-            {tabs.map((item) => {
+            {tabs.filter(item => !compactHeader || ["activities", "performance", "field", "wbs", "logic", "resources"].includes(item.id)).map((item) => {
               const Icon = item.icon;
               return (
                 <button
@@ -2162,22 +2219,11 @@ const PlannerWorkspacePage = ({
                   onClick={() => selectTab(item.id)}
                 >
                   <Icon aria-hidden="true" size={16} />
-                  {item.label}
+                  {compactHeader && item.id === "field" ? "Updates" : item.label}
                 </button>
               );
             })}
-          </nav>
-          <div className="pw-action-bar">
-            <div className="pw-edit-state">
-              <strong>{tabs.find((item) => item.id === tab)?.label}</strong>
-              <span>
-                {!workspace?.can_edit
-                  ? "Read-only schedule version"
-                  : dirtyIds.size
-                    ? "Unsaved activity changes"
-                    : "All activity changes saved"}
-              </span>
-            </div>
+            {compactHeader && <details className="pw-more-tabs"><summary>More <ChevronDown size={15} /></summary><div>{tabs.filter(item => !["activities", "performance", "field", "wbs", "logic", "resources"].includes(item.id)).map(item => { const Icon = item.icon; return <button key={item.id} type="button" aria-current={tab === item.id ? "page" : undefined} onClick={event => { selectTab(item.id); event.currentTarget.closest("details").removeAttribute("open"); }}><Icon size={16} />{item.label}</button> })}</div></details>}
             {compactHeader && (
               <dl
                 className="pw-inline-metrics"
@@ -2185,7 +2231,7 @@ const PlannerWorkspacePage = ({
               >
                 {summaryCounts.map(([label, value]) => (
                   <div key={label}>
-                    <dt>{label}</dt>
+                    <dt>{label === "WBS Nodes" ? "WBS" : label === "Logic Ties" ? "ties" : label.toLowerCase()}</dt>
                     <dd
                       className={
                         label === "Critical" && Number(value) > 0
@@ -2199,6 +2245,11 @@ const PlannerWorkspacePage = ({
                 ))}
               </dl>
             )}
+          </nav>
+          <div className="pw-action-bar">
+            <div className="pw-footer-state" role="status" aria-live="polite">
+              {calculationProgress > 0 ? <><div><Loader2 size={19} className={calculationProgress < 100 ? "animate-spin" : ""} /><span>{calculationPhase || "Background scheduling job running..."}</span><b>{calculationProgress}%</b></div><div className="pw-footer-progress" role="progressbar" aria-label="CPM calculation progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={calculationProgress}><i style={{ width: `${calculationProgress}%` }} /></div></> : <div><Check size={18} /><span>{dirtyIds.size ? `${dirtyIds.size} unsaved activity changes` : "All activity changes saved"}</span></div>}
+            </div>
             <div className="pw-actions">
               {dirtyIds.size > 0 && (
                 <span className="text-xs text-amber-600">
@@ -2206,39 +2257,16 @@ const PlannerWorkspacePage = ({
                 </span>
               )}
               <button
-                onClick={saveActivities}
-                title={saveDisabledReason || "Save activity changes"}
-                disabled={Boolean(saveDisabledReason)}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-violet-600 text-white text-sm font-semibold disabled:opacity-40"
-              >
-                <Save className="w-4 h-4" /> Save
-              </button>
-              <button
                 onClick={saveAndCalculate}
-                disabled={Boolean(busy) || immutable}
-                className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold disabled:opacity-40"
+                disabled={scheduleActionBusy || immutable}
+                className="pw-footer-recalculate"
               >
+                <RefreshCw size={16} />
                 {busy === "save-calculate"
                   ? "Calculating…"
                   : dirtyIds.size
                     ? "Save & Calculate"
                     : "Recalculate CPM"}
-              </button>
-              <button
-                type="button"
-                onClick={rebuildLogicAndCalculate}
-                disabled={Boolean(busy) || immutable || dirtyIds.size > 0}
-                title={
-                  dirtyIds.size
-                    ? "Save activity changes first."
-                    : "Replace all predecessors with the latest generated network, then calculate CPM. Use only when you want to discard manual logic edits."
-                }
-                className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800 disabled:opacity-40"
-              >
-                <GitBranch className="h-4 w-4" />
-                {busy === "rebuild-calculate"
-                  ? "Resetting…"
-                  : "Reset logic & calculate"}
               </button>
               <button
                 title={
@@ -2259,9 +2287,9 @@ const PlannerWorkspacePage = ({
                   }
                 }}
                 disabled={Boolean(approvalDisabledReason)}
-                className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold disabled:opacity-40"
+                className="pw-footer-approve"
               >
-                Approve
+                <Check size={16} /> Approve Schedule
               </button>
               <button
                 onClick={async () => {
@@ -2289,9 +2317,33 @@ const PlannerWorkspacePage = ({
                   "Calculate, prepare required approvals and create a baseline"
                 }
                 disabled={Boolean(baselineDisabledReason)}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 text-white text-sm font-semibold disabled:opacity-40"
+                className="pw-footer-baseline"
               >
-                <Baseline className="w-4 h-4" /> Baseline
+                <Save className="w-4 h-4" /> Save Baseline
+              </button>
+              <button
+                type="button"
+                onClick={rebuildLogicAndCalculate}
+                disabled={scheduleActionBusy || immutable || dirtyIds.size > 0}
+                title={
+                  dirtyIds.size
+                    ? "Save activity changes first."
+                    : "Replace all predecessors with the latest generated network, then calculate CPM. Use only when you want to discard manual logic edits."
+                }
+                className="pw-footer-reset"
+              >
+                <RotateCcw className="h-4 w-4" />
+                {busy === "rebuild-calculate"
+                  ? "Resetting…"
+                  : "Reset"}
+              </button>
+              <details className="pw-footer-more"><summary aria-label="More schedule actions"><MoreHorizontal size={18} /></summary><div onClick={event => { if (event.target.closest("button")) event.currentTarget.closest("details").removeAttribute("open"); }}>              <button
+                onClick={saveActivities}
+                title={saveDisabledReason || "Save activity changes"}
+                disabled={Boolean(saveDisabledReason)}
+                className="pw-footer-save"
+              >
+                <Save className="w-4 h-4" /> Save
               </button>
               <button
                 type="button"
@@ -2301,14 +2353,8 @@ const PlannerWorkspacePage = ({
               >
                 Numeric IDs
               </button>
-            </div>
-          </div>
           {!busy && workspace?.version?.status !== "baselined" && (
-            <div
-              role="status"
-              aria-label="Schedule action status"
-              className="pw-action-status"
-            >
+            <details className="pw-schedule-details"><summary>Schedule details</summary><div role="status" aria-label="Schedule action status" className="pw-action-status">
               {stats.planningTarget && (
                 <span>
                   <strong>Draft planning target:</strong> {stats.planningTarget}
@@ -2368,7 +2414,10 @@ const PlannerWorkspacePage = ({
                     <strong>Warning:</strong> {item.message}
                   </span>
                 ))}
-              {!immutable &&
+              {workspace?.can_edit &&
+                !["approved", "baselined", "superseded"].includes(
+                  workspace.version?.status,
+                ) &&
                 (stats.planningTargetVariance > 0 ||
                   draftActivities.some(
                     (item) => Number(item.total_float_days) < 0,
@@ -2376,44 +2425,22 @@ const PlannerWorkspacePage = ({
                   <button
                     type="button"
                     onClick={() => recoverDraft("extend_planning_target")}
+                    disabled={scheduleActionBusy || loading}
+                    title={
+                      scheduleActionBusy || loading
+                        ? "Wait for the current schedule action to finish."
+                        : "Set the draft planning target to the current CPM forecast and recalculate. The contractual finish will not change."
+                    }
                   >
                     Adjust planning target &amp; recalculate
                   </button>
                 )}
-            </div>
+            </div></details>
           )}
 
-          {calculationProgress > 0 && (
-            <div
-              className="border-b border-blue-200 bg-blue-50 px-4 py-3"
-              role="status"
-              aria-live="polite"
-            >
-              <div className="mb-1.5 flex items-center justify-between gap-3 text-xs font-semibold text-blue-800">
-                <span className="inline-flex items-center gap-2">
-                  <Loader2
-                    className={`h-4 w-4 ${calculationProgress < 100 ? "animate-spin" : ""}`}
-                  />
-                  {calculationPhase}
-                </span>
-                <span>{calculationProgress}%</span>
-              </div>
-              <div
-                className="h-2 overflow-hidden rounded-full bg-blue-100"
-                role="progressbar"
-                aria-label="CPM calculation progress"
-                aria-valuemin="0"
-                aria-valuemax="100"
-                aria-valuenow={calculationProgress}
-              >
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-blue-600 to-violet-600 transition-all duration-500"
-                  style={{ width: `${calculationProgress}%` }}
-                />
-              </div>
+</div></details>
             </div>
-          )}
-
+          </div>
           {!workspace ? (
             <p className="pw-content-empty">
               {versions.length
@@ -2424,7 +2451,7 @@ const PlannerWorkspacePage = ({
             <>
               {tab === "activities" && (
                 <div>
-                  <div className="p-3 border-b border-slate-200 flex flex-wrap gap-2 items-center">
+                  <div className="pw-activity-filters">
                     <div className="relative min-w-[240px] flex-1 max-w-md">
                       <Search
                         aria-hidden="true"
@@ -2437,7 +2464,7 @@ const PlannerWorkspacePage = ({
                         id="activity-search"
                         value={search}
                         onChange={(event) => setSearch(event.target.value)}
-                        placeholder="Search ID or activity name"
+                        placeholder="Search ID or activity"
                         className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm"
                       />
                     </div>
@@ -2465,10 +2492,11 @@ const PlannerWorkspacePage = ({
                       </button>
                       <button
                         type="button"
+                        aria-label="Flat activities"
                         onClick={() => setActivityView("activities")}
                         className={`rounded-md px-3 py-1.5 text-xs font-bold ${activityView === "activities" ? "bg-white text-violet-700 shadow-sm" : "text-slate-500"}`}
                       >
-                        Flat activities
+                        Flat
                       </button>
                     </div>
                     <label className="inline-flex items-center gap-2 text-sm text-slate-600">
@@ -2483,12 +2511,14 @@ const PlannerWorkspacePage = ({
                       Critical only
                     </label>
                     <button
+                      aria-label="Add Activity"
                       onClick={() => setShowNewActivity((value) => !value)}
                       disabled={immutable}
                       className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-violet-200 text-violet-700 text-sm font-semibold disabled:opacity-40"
                     >
-                      <PlusCircle className="w-4 h-4" /> Add Activity
+                      <Plus className="w-4 h-4" /> Activity
                     </button>
+                    <div className="pw-timeline-tools" ref={setGanttToolbarTarget} />
                   </div>
                   {showNewActivity && (
                     <form
@@ -2542,6 +2572,7 @@ const PlannerWorkspacePage = ({
                   )}
                   {activityView === "deliverables" ? (
                     <PlannerActivitiesGantt
+                      toolbarTarget={ganttToolbarTarget}
                       activities={draftActivities}
                       summaries={workspace?.deliverable_summaries || []}
                       relationships={workspace?.relationships || []}
@@ -2830,6 +2861,21 @@ const PlannerWorkspacePage = ({
               )}
 
               {tab === "logic" && (
+                <PipingGuidancePanel
+                  key={versionId}
+                  versionId={versionId}
+                  canApply={!immutable}
+                  busy={scheduleActionBusy || loading}
+                  dirty={dirtyIds.size > 0}
+                  onApply={token => runAction("piping-guidance", async () => {
+                    const requestedVersionId = versionId;
+                    ensureActionContext(requestedVersionId);
+                    await planningIntelligenceService.applyPipingGuidance(requestedVersionId, token);
+                    ensureActionContext(requestedVersionId);
+                  }, "Piping guidance applied. Recalculate CPM, then review schedule assurance and the 90% piping deadline.")}
+                />
+              )}
+              {tab === "logic" && (
                 <PlannerLogicAssurance
                   configuration={workspace?.scheduling_configuration}
                   assumptions={workspace?.dependency_assumptions || []}
@@ -3029,20 +3075,11 @@ const PlannerWorkspacePage = ({
                     runAction(
                       "assurance",
                       async () => {
-                        if (workspace?.version?.status !== "calculated") {
-                          await runScheduleJob(() =>
-                            planningIntelligenceService.calculateScheduleVersion(
-                              versionId,
-                            ),
-                          );
-                        }
-                        await runScheduleJob(() =>
-                          planningIntelligenceService.runScheduleAssurance(
-                            versionId,
-                          ),
-                        );
+                        await savePendingForAction(versionId);
+                        ensureActionContext(versionId);
+                        await calculateAndRunAssurance(versionId);
                       },
-                      "Phase 3 schedule assurance completed.",
+                      "Schedule recalculated and Phase 3 assurance completed.",
                     )
                   }
                   onApprove={() =>
