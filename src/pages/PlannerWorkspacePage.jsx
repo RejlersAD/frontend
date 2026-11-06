@@ -3028,12 +3028,20 @@ const PlannerWorkspacePage = ({
                   onRun={() =>
                     runAction(
                       "assurance",
-                      () =>
-                        runScheduleJob(() =>
+                      async () => {
+                        if (workspace?.version?.status !== "calculated") {
+                          await runScheduleJob(() =>
+                            planningIntelligenceService.calculateScheduleVersion(
+                              versionId,
+                            ),
+                          );
+                        }
+                        await runScheduleJob(() =>
                           planningIntelligenceService.runScheduleAssurance(
                             versionId,
                           ),
-                        ),
+                        );
+                      },
                       "Phase 3 schedule assurance completed.",
                     )
                   }
