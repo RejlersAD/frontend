@@ -1195,6 +1195,30 @@ const PlannerWorkspacePage = ({
       );
   };
 
+  const calculateAndRunAssurance = async (requestedVersionId) => {
+    const calculate = () =>
+      runScheduleJob(() =>
+        planningIntelligenceService.calculateScheduleVersion(
+          requestedVersionId,
+        ),
+      );
+    const assure = () =>
+      runScheduleJob(() =>
+        planningIntelligenceService.runScheduleAssurance(requestedVersionId),
+      );
+    const current =
+      await planningIntelligenceService.getScheduleVersion(requestedVersionId);
+    if (current.status !== "calculated" || !current.calculated_at)
+      await calculate();
+    try {
+      await assure();
+    } catch (error) {
+      if ((error?.response?.status ?? error?.status) !== 409) throw error;
+      await calculate();
+      await assure();
+    }
+  };
+
   const prepareAndApproveVersion = async () => {
     const requestedVersionId = versionId;
     await savePendingForAction(requestedVersionId);
@@ -1204,28 +1228,35 @@ const PlannerWorkspacePage = ({
         requestedVersionId,
       );
     if (latest.version.status === "approved") return;
-    if (latest.version.status !== "calculated") {
-      await runScheduleJob(() =>
+    const calculate = () =>
+      runScheduleJob(() =>
         planningIntelligenceService.calculateScheduleVersion(
           requestedVersionId,
         ),
       );
-      ensureActionContext(requestedVersionId);
-      latest =
-        await planningIntelligenceService.getScheduleWorkspace(
+    // The backend rejects approval when accepted inputs changed after the last
+    // calculation, so always recalculate before preparing approval.
+    await calculate();
+    ensureActionContext(requestedVersionId);
+    if (stats.planningTargetVariance > 0) {
+      const calculated =
+        await planningIntelligenceService.getScheduleVersion(
           requestedVersionId,
         );
-    }
-    if (!latest.schedule_assurance) {
-      await runScheduleJob(() =>
-        planningIntelligenceService.runScheduleAssurance(requestedVersionId),
+      const result = await planningIntelligenceService.recoverScheduleDraft(
+        requestedVersionId,
+        "extend_planning_target",
+        calculated.updated_at,
       );
       ensureActionContext(requestedVersionId);
-      latest =
-        await planningIntelligenceService.getScheduleWorkspace(
-          requestedVersionId,
-        );
+      if (result?.changed) await calculate();
     }
+    await calculateAndRunAssurance(requestedVersionId);
+    ensureActionContext(requestedVersionId);
+    latest =
+      await planningIntelligenceService.getScheduleWorkspace(
+        requestedVersionId,
+      );
     if (latest.schedule_assurance?.status !== "approved") {
       await planningIntelligenceService.approveScheduleAssurance(
         requestedVersionId,
@@ -1258,10 +1289,7 @@ const PlannerWorkspacePage = ({
           await planningIntelligenceService.getScheduleVersion(
             requestedVersionId,
           );
-        if (
-          operation === "extend_planning_target" &&
-          latest.status !== "calculated"
-        ) {
+        if (operation === "extend_planning_target") {
           await runScheduleJob(() =>
             planningIntelligenceService.calculateScheduleVersion(
               requestedVersionId,
@@ -3029,20 +3057,23 @@ const PlannerWorkspacePage = ({
                     runAction(
                       "assurance",
                       async () => {
-                        if (workspace?.version?.status !== "calculated") {
-                          await runScheduleJob(() =>
-                            planningIntelligenceService.calculateScheduleVersion(
-                              versionId,
-                            ),
-                          );
-                        }
-                        await runScheduleJob(() =>
-                          planningIntelligenceService.runScheduleAssurance(
+                        await savePendingForAction(versionId);
+                        ensureActionContext(versionId);
+                        await calculateAndRunAssurance(versionId);
+                        const latest =
+                          await planningIntelligenceService.getScheduleWorkspace(
                             versionId,
-                          ),
-                        );
+                          );
+                        if (
+                          latest.schedule_assurance?.can_approve === true &&
+                          !latest.schedule_assurance.blockers?.length &&
+                          latest.schedule_assurance.status !== "approved"
+                        )
+                          await planningIntelligenceService.approveScheduleAssurance(
+                            versionId,
+                          );
                       },
-                      "Phase 3 schedule assurance completed.",
+                      "Schedule recalculated and Phase 3 assurance completed.",
                     )
                   }
                   onApprove={() =>
