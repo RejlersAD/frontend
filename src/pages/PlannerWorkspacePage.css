@@ -47,6 +47,8 @@
 .planner-workspace .pw-edit-state span { color: var(--pw-muted); font-size: var(--text-caption-size, .75rem); }
 .planner-workspace .pw-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
 .planner-workspace .pw-actions button { min-height: 34px; font-size: var(--text-caption-size, .75rem); }
+.planner-workspace .pw-action-status { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 16px; padding: 8px 14px; border-bottom: 1px solid var(--pw-border); background: #f8fafc; color: #475569; font-size: var(--text-caption-size, .75rem); overflow-wrap: anywhere; }
+.planner-workspace .pw-action-status button { color: #174ea6; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
 .planner-workspace .pw-performance { padding: 14px; }
 .planner-workspace .pw-content-empty { margin: 0; padding: 32px 20px; color: var(--pw-muted); text-align: center; font-size: var(--text-table-size, .8125rem); }
 .planner-workspace .pw-metadata-notice { margin: 0; padding: 10px 14px; border: 1px solid #e8d8b4; border-radius: 7px; color: #79531a; background: #fff9ed; font-size: var(--text-caption-size, .75rem); }

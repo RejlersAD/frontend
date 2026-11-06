@@ -64,8 +64,8 @@ async function expectSharedHeader(page, project, activeLabel, view) {
   await expect(header(page)).toContainText(project.code)
   await expect(header(page)).toContainText(project.client_name)
   const baseline = header(page).locator('.pd-baseline')
-  await expect(baseline.getByText('Baseline', { exact: true })).toBeVisible()
-  await expect(baseline.getByText(view === 'plan-baseline' ? 'Not approved' : 'Baseline not approved', { exact: true })).toBeVisible()
+  if (view !== 'plan-baseline') await expect(baseline.getByText('Baseline', { exact: true })).toBeVisible()
+  await expect(baseline.getByText('Baseline not created', { exact: true })).toBeVisible()
   await expect(page.locator('header.pp-header')).toHaveCount(0)
   await expect(page.locator('nav.pp-tabs')).toHaveCount(0)
   for (const title of ['Project Performance', 'Schedule Performance', 'Cost & Commercial Performance', 'Milestone Control', 'Risk & Change Control', 'Project Estimates', 'Project Documents']) {
@@ -96,8 +96,8 @@ test('all project work areas retain the project header and the same eight naviga
   for (const [label, view] of AREAS.slice(1)) {
     await goTo(page, project, label, view)
     if (view === 'plan-baseline') {
-      await expect(page.getByRole('heading', { name: 'Master Schedule', exact: true })).toBeVisible()
-      await expect(header(page).getByRole('button', { name: 'Save draft', exact: true })).toBeEnabled()
+      await expect(page.getByRole('region', { name: 'Master Schedule', exact: true })).toBeVisible()
+      await expect(header(page).getByRole('button', { name: 'Schedule settings', exact: true })).toBeEnabled()
     }
   }
   await goTo(page, project, 'Overview', 'project-dashboard')
@@ -147,7 +147,7 @@ test('shared header keeps the area controls and opens their existing dialogs wit
   await page.keyboard.press('Escape')
 
   await goTo(page, project, 'Schedule', 'plan-baseline')
-  await expect(header(page).getByRole('button', { name: 'Save draft', exact: true })).toBeEnabled()
+  await expect(header(page).getByRole('button', { name: 'Schedule settings', exact: true })).toBeEnabled()
   await expect(header(page).getByRole('button', { name: 'Add milestone', exact: true })).toHaveCount(0)
   expectReadOnly(state)
 })

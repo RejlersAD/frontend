@@ -1,14 +1,22 @@
 import { test, expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
-import { masterScheduleHarness } from '../fixtures/master-schedule.fixture'
-import { scheduleArea } from '../fixtures/schedule-controls'
+import { planningInputsHarness } from '../fixtures/planning-inputs.fixture'
 
 test.setTimeout(60000)
 
-async function open(page, readOnly = false) {
-  const resources = [], assignments = [], writes = []
-  const state = await masterScheduleHarness(page, {
-    decorateSnapshot: plan => ({ ...plan, version_id: 91, ...(readOnly ? { viewing_history: true } : {}) }),
+async function open(page, readOnly = false, populated = false) {
+  const resources = populated ? [
+    ['CIVIL_ENGINEER', 'Civil Engineer'], ['COMPANY', 'Company'], ['DISCIPLINE_ENGINEER', 'Discipline Engineer'],
+    ['DOCUMENT_CONTROL', 'Document Control'], ['ELECTRICAL_ENGINEER', 'Electrical Engineer'],
+    ['INSTRUMENTATION_ENGINEER', 'Instrumentation Engineer'], ['LEAD_PIPING_ENGINEER', 'Lead Piping Engineer'],
+    ['LEAD_PROCESS_ENGINEER', 'Lead Process Engineer'], ['MECHANICAL_ENGINEER', 'Mechanical Engineer'], ['PROJECT_MANAGER', 'Project Manager'],
+  ].map(([code, name], index) => ({ id: index + 1, code, name, resource_type: 'labor', unit: 'hour', capacity_units_per_day: '8.00', productivity_rate: null, can_edit: true })) : []
+  const assignments = populated ? [{ id: 11, resource: '1', activity: 501, planned_units: '8.00', planned_output_quantity: null, required_units: null }] : []
+  const writes = []
+  const state = await planningInputsHarness(page, {
+    harnessPath: '/tests/fixtures/project-performance-harness.jsx',
+    query: 'project=17&view=plan-baseline&scheduleTab=resources&shell=true',
+    prepare(current) { current.records[17].workspace.can_edit = !readOnly },
     async handleRequest({ route, path, reply }) {
       const method = route.request().method()
       if (path.endsWith('/resources/plan/')) {
@@ -32,9 +40,9 @@ async function open(page, readOnly = false) {
       return false
     },
   })
-  await scheduleArea(page, 'resources')
   const panel = page.getByRole('region', { name: 'Resource planning', exact: true })
-  await expect(panel.getByText('No resources recorded.', { exact: true })).toBeVisible()
+  if (!populated) await expect(panel.getByText('No resources recorded.', { exact: true })).toBeVisible()
+  else await expect(panel.getByRole('button', { name: 'Edit CIVIL_ENGINEER', exact: true })).toBeVisible()
   return { panel, writes, state }
 }
 
@@ -73,4 +81,43 @@ test('Baseline resource plan is read only and does not offer allocations', async
   await expect(panel.getByRole('button', { name: 'Add resource', exact: true })).toHaveCount(0)
   await expect(panel.getByRole('button', { name: 'Allocate resource', exact: true })).toHaveCount(0)
   expect(writes).toEqual([])
+})
+
+
+test('retained Resources tab has full-width separated columns and an accessible inline editor', async ({ page }) => {
+  await page.setViewportSize({ width: 1672, height: 941 })
+  const { panel, writes, state } = await open(page, false, true)
+  const table = panel.locator('.prp-resource-table')
+  const bounds = await panel.boundingBox()
+  expect((await table.boundingBox()).width).toBeGreaterThan(bounds.width - 12)
+  const cells = await table.locator('tbody tr').first().locator('td').evaluateAll(items => items.map(cell => ({ x: cell.getBoundingClientRect().x, width: cell.getBoundingClientRect().width, padding: parseFloat(getComputedStyle(cell).paddingLeft) })))
+  cells.forEach((cell, index) => {
+    expect(cell.padding).toBeGreaterThanOrEqual(12)
+    if (index) expect(cell.x).toBeGreaterThanOrEqual(cells[index - 1].x + cells[index - 1].width - 1)
+  })
+  await expect(panel.getByRole('button', { name: 'Delete CIVIL_ENGINEER', exact: true })).toBeDisabled()
+  await expect(panel.getByRole('button', { name: 'Delete COMPANY', exact: true })).toBeEnabled()
+  const edit = panel.getByRole('button', { name: 'Edit CIVIL_ENGINEER', exact: true })
+  await edit.click()
+  const form = panel.getByRole('form', { name: 'Resource details', exact: true })
+  await expect(form.getByLabel('Resource code', { exact: true })).toBeFocused()
+  expect((await form.boundingBox()).y).toBeLessThan((await table.boundingBox()).y)
+  await form.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(edit).toBeFocused()
+  expect(writes).toEqual([])
+  expect(state.pageErrors).toEqual([])
+  const scan = await new AxeBuilder({ page }).include('.planning-resource-plan').analyze()
+  expect(scan.violations).toEqual([])
+  await panel.screenshot({ path: '../artifacts/resources-tab-desktop.png' })
+  await page.setViewportSize({ width: 390, height: 844 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
+  const scroll = panel.getByRole('region', { name: 'Project resource catalog table', exact: true })
+  expect(await scroll.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true)
+  await panel.getByRole('button', { name: 'Add resource', exact: true }).click()
+  const mobileForm = panel.getByRole('form', { name: 'Resource details', exact: true })
+  const formBounds = await mobileForm.boundingBox()
+  expect(formBounds.x).toBeGreaterThanOrEqual(0)
+  expect(formBounds.x + formBounds.width).toBeLessThanOrEqual(391)
+  await expect(mobileForm.getByLabel('Resource code', { exact: true })).toBeFocused()
+  await panel.screenshot({ path: '../artifacts/resources-tab-mobile.png' })
 })

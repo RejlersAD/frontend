@@ -276,6 +276,19 @@ export const planningIntelligenceService = {
   ).data,
   deleteDailyFieldUpdate: async id => apiClient.delete(PLANNING_ENDPOINTS.dailyFieldUpdate(id)),
   getScheduleGovernance: async (versionId) => (await planningGet(PLANNING_ENDPOINTS.scheduleGovernance(versionId), { suppressErrorToast: true })).data,
+  recoverScheduleDraft: async (versionId, operation, expectedUpdatedAt) => (
+    await apiClient.patch(`${PLANNING_ENDPOINTS.scheduleVersion(versionId)}recover-draft/`, {
+      operation, expected_updated_at: expectedUpdatedAt,
+    }, { suppressErrorToast: true })
+  ).data,
+  previewPipingGuidance: async (versionId) => (
+    await planningGet(`${PLANNING_ENDPOINTS.scheduleVersion(versionId)}piping-guidance/`, { suppressErrorToast: true })
+  ).data,
+  applyPipingGuidance: async (versionId, previewToken) => (
+    await apiClient.post(`${PLANNING_ENDPOINTS.scheduleVersion(versionId)}piping-guidance/`, {
+      preview_token: previewToken,
+    }, { suppressErrorToast: true })
+  ).data,
   createGovernanceItem: async (versionId, payload) => (
     await apiClient.post(PLANNING_ENDPOINTS.governanceItems(versionId), payload)
   ).data,
