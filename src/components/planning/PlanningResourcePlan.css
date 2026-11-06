@@ -1,16 +1,65 @@
-.planning-resource-plan { color: #243449; padding-bottom: 1.5rem; }
-.planning-resource-plan header, .planning-resource-plan .prp-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .65rem; margin: .8rem 0; }
-.planning-resource-plan h3, .planning-resource-plan h4 { font-weight: 650; margin: .4rem 0; }
-.planning-resource-plan p, .planning-resource-plan small { font-size: .82rem; margin: .3rem 0; }
-.planning-resource-plan button { padding: .5rem .7rem; border: 1px solid #bbc8d5; border-radius: .35rem; background: #fff; color: #243449; margin: .15rem; font-size: .82rem; }
+.planning-resource-plan { min-width: 0; padding: 20px 4px 24px; color: #172b4d; font-size: 14px; }
+.planning-resource-plan > header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 16px; margin: 0 0 18px; }
+.planning-resource-plan > header > div:first-child { flex: 1 1 320px; }
+.planning-resource-plan h2 { margin: 0; color: #14243e; font-size: 16px; line-height: 24px; font-weight: 650; }
+.planning-resource-plan h3 { margin: 0 0 14px; color: #14243e; font-size: 15px; font-weight: 600; }
+.planning-resource-plan p { margin: 5px 0 0; font-size: 13px; line-height: 20px; }
+.planning-resource-plan > header p { max-width: 740px; color: #576984; }
+.planning-resource-plan .prp-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 8px; }
+.planning-resource-plan .prp-header-actions { flex: 0 1 auto; justify-content: flex-end; }
+.planning-resource-plan button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; margin: 0; padding: 6px 11px; border: 1px solid #c8d4e5; border-radius: 5px; background: #fff; color: #243d62; font-family: inherit; font-size: 13px; font-weight: 500; line-height: 20px; cursor: pointer; white-space: nowrap; }
+.planning-resource-plan button svg { flex-shrink: 0; }
+.planning-resource-plan button:hover:not(:disabled) { border-color: #9cb6df; background: #f1f6ff; }
+.planning-resource-plan button.prp-primary { border-color: #0751ff; background: #0751ff; color: #fff; }
+.planning-resource-plan button.prp-primary:hover:not(:disabled) { border-color: #0041d9; background: #0041d9; }
 .planning-resource-plan button:disabled { opacity: .55; cursor: not-allowed; }
-.planning-resource-plan button:focus-visible, .planning-resource-plan input:focus-visible, .planning-resource-plan select:focus-visible { outline: 2px solid #1d4ed8; outline-offset: 2px; }
-.planning-resource-plan caption { text-align: left; padding: .7rem 0; font-weight: 650; }
-.planning-resource-plan .sc-secondary-table th { color: #475569; }
-.planning-resource-plan form { margin-top: 1rem; padding: 1rem; border: 1px solid #cbd5e1; border-radius: .5rem; }
-.planning-resource-plan fieldset { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 1rem; border: 0; padding: .5rem 0; }
-.planning-resource-plan label { display: flex; flex-direction: column; gap: .35rem; font-size: .84rem; }
-.planning-resource-plan input, .planning-resource-plan select { min-width: 0; width: 100%; min-height: 2.3rem; border: 1px solid #94a3b8; border-radius: .3rem; padding: .45rem; background: #fff; }
-.planning-resource-plan .prp-help { color: #475569; margin-top: .8rem; }
-.planning-resource-plan .prp-error { padding: .7rem; background: #fff1f2; border: 1px solid #fda4af; color: #9f1239; }
-@media (max-width: 600px) { .planning-resource-plan fieldset { grid-template-columns: 1fr; } }
+.planning-resource-plan :is(button,input,select):focus-visible { outline: 2px solid #0751ff; outline-offset: 2px; }
+.planning-resource-plan .prp-notice, .planning-resource-plan .prp-error { margin: 0 0 14px; padding: 10px 12px; border: 1px solid #d3e0f3; border-radius: 5px; background: #f4f8ff; color: #34577f; font-size: 13px; line-height: 20px; }
+.planning-resource-plan .prp-error { border-color: #fecdd3; background: #fff1f2; color: #a3122c; }
+.planning-resource-plan .prp-table-wrap { width: 100%; max-width: 100%; max-height: 560px; margin-top: 18px; overflow: auto; border: 1px solid #d4deeb; border-radius: 7px; background: #fff; scrollbar-width: thin; scrollbar-color: #b6c4d8 #f2f5fa; }
+.planning-resource-plan table { width: 100%; min-width: 860px; table-layout: fixed; border-collapse: separate; border-spacing: 0; color: #253b58; font-size: 13px; line-height: 20px; }
+.planning-resource-plan caption { padding: 13px 16px; border-bottom: 1px solid #d4deeb; color: #172b4d; background: #fff; text-align: left; font-size: 14px; font-weight: 600; }
+.planning-resource-plan .prp-count { float: right; margin-left: 12px; padding: 1px 8px; border-radius: 4px; background: #eef3fa; color: #506783; font-size: 12px; font-weight: 500; }
+.planning-resource-plan th, .planning-resource-plan td { padding: 12px 16px; border-bottom: 1px solid #e4eaf2; text-align: left; vertical-align: middle; overflow-wrap: anywhere; }
+.planning-resource-plan th { position: sticky; top: 0; z-index: 1; border-bottom-color: #d4deeb; background: #f3f6fb; color: #4e6380; font-size: 12px; font-weight: 600; line-height: 18px; }
+.planning-resource-plan tbody tr:last-child td { border-bottom: 0; }
+.planning-resource-plan tbody tr:hover { background: #f8fbff; }
+.planning-resource-plan td > strong { display: block; color: #162d4b; font-weight: 600; }
+.planning-resource-plan td > p.prp-code { margin: 2px 0 0; color: #576984; font-size: 11px; line-height: 16px; }
+.planning-resource-plan .prp-resource-table th:nth-child(1) { width: 27%; }
+.planning-resource-plan .prp-resource-table th:nth-child(2) { width: 11%; }
+.planning-resource-plan .prp-resource-table th:nth-child(3) { width: 9%; }
+.planning-resource-plan .prp-resource-table th:nth-child(4) { width: 17%; }
+.planning-resource-plan .prp-resource-table th:nth-child(5) { width: 18%; }
+.planning-resource-plan .prp-resource-table th:nth-child(6) { width: 18%; }
+.planning-resource-plan .prp-resource-table :is(th,td):nth-child(4) { text-align: right; font-variant-numeric: tabular-nums; }
+.planning-resource-plan .prp-resource-type { display: inline-flex; padding: 2px 8px; border-radius: 4px; background: #eaf2ff; color: #285b9b; font-size: 12px; font-weight: 500; text-transform: capitalize; }
+.planning-resource-plan .prp-resource-type[data-type=equipment] { color: #695097; background: #f1edfa; }
+.planning-resource-plan .prp-resource-type[data-type=material] { color: #28735e; background: #e9f6ef; }
+.planning-resource-plan .prp-muted { color: #576984; }
+.planning-resource-plan .prp-row-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.planning-resource-plan .prp-row-actions button { min-height: 30px; padding: 4px 8px; font-size: 12px; line-height: 18px; }
+.planning-resource-plan .prp-row-actions .prp-delete:hover:not(:disabled) { color: #b4233d; border-color: #f1b9c2; background: #fff4f5; }
+.planning-resource-plan .prp-action-note { display: block; margin-top: 4px; color: #576984; font-size: 11px; line-height: 16px; }
+.planning-resource-plan .prp-allocation-table { min-width: 980px; }
+.planning-resource-plan .prp-allocation-table th:nth-child(1) { width: 30%; }
+.planning-resource-plan .prp-allocation-table th:nth-child(2) { width: 16%; }
+.planning-resource-plan .prp-allocation-table th:nth-child(n+3):nth-child(-n+5) { width: 12%; text-align: right; }
+.planning-resource-plan .prp-allocation-table td:nth-child(n+3):nth-child(-n+5) { text-align: right; font-variant-numeric: tabular-nums; }
+.planning-resource-plan .prp-allocation-table th:last-child { width: 18%; }
+.planning-resource-plan .prp-empty { height: 100px; color: #576984; text-align: center; }
+.planning-resource-plan .prp-help { display: flex; align-items: flex-start; gap: 7px; margin-top: 12px; color: #576984; font-size: 12px; line-height: 19px; }
+.planning-resource-plan .prp-help svg { flex-shrink: 0; margin-top: 2px; }
+.planning-resource-plan form { margin: 0 0 18px; padding: 18px; border: 1px solid #cbd9ee; border-radius: 7px; background: #f8faff; scroll-margin-top: 70px; }
+.planning-resource-plan fieldset { display: grid; grid-template-columns: repeat(auto-fit,minmax(210px,1fr)); gap: 16px; min-width: 0; margin: 0 0 16px; padding: 0; border: 0; }
+.planning-resource-plan label { display: flex; flex-direction: column; gap: 6px; min-width: 0; color: #3e5677; font-size: 13px; font-weight: 500; }
+.planning-resource-plan :is(input,select) { min-width: 0; width: 100%; min-height: 36px; padding: 7px 10px; border: 1px solid #bdcde3; border-radius: 4px; background: #fff; color: #172b4d; font: inherit; font-weight: 400; }
+.planning-resource-plan small { color: #576984; font-size: 12px; font-weight: 400; line-height: 18px; }
+@media (max-width: 700px) {
+  .planning-resource-plan { padding: 16px 0; }
+  .planning-resource-plan > header { gap: 12px; }
+  .planning-resource-plan .prp-header-actions { justify-content: flex-start; }
+  .planning-resource-plan .prp-table-wrap { margin-top: 14px; }
+  .planning-resource-plan form { padding: 14px; }
+  .planning-resource-plan fieldset { grid-template-columns: 1fr; gap: 12px; }
+}

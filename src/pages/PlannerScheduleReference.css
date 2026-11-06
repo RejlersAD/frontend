@@ -1,0 +1,125 @@
+/* Main-content schedule reference. No application-shell or sidebar selectors. */
+.planner-workspace.pw-reference { --pw-border: #cbd7e9; color: #14192f; background: #fff; font: 14px/1.35 'IBM Plex Sans', 'Segoe UI', Arial, sans-serif; border: 0; border-radius: 0; overflow: visible; }
+.planner-workspace.pw-reference .pw-main { display: block; padding: 0; background: #fff; }
+.planner-workspace.pw-reference .pw-work-area { display: flex; flex-direction: column; position: relative; border: 0; border-radius: 0; overflow: visible; }
+.planner-workspace.pw-reference .pw-tabs { display: flex; align-items: center; gap: 0; min-height: 44px; overflow: visible; padding: 0; background: #fff; border-bottom: 1px solid #bfcde3; }
+.planner-workspace.pw-reference .pw-tabs > button { gap: 8px; min-height: 44px; padding: 8px 12px; font-size: 14px; font-weight: 500; color: #20233e; border-bottom: 3px solid transparent; background: #fff; }
+.planner-workspace.pw-reference .pw-tabs > button:first-child { padding-left: 8px; }
+.planner-workspace.pw-reference .pw-tabs > button[aria-current=page] { color: #0047ff; border-bottom-color: #0047ff; font-weight: 600; }
+.planner-workspace.pw-reference .pw-tabs svg { width: 18px; height: 18px; color: #465778; }
+.planner-workspace.pw-reference .pw-tabs > button[aria-current=page] svg { color: #0047ff; }
+.planner-workspace.pw-reference .pw-inline-metrics { display: flex; flex: 0 1 auto; align-items: center; gap: 0; margin: 0 0 0 auto; white-space: nowrap; }
+.planner-workspace.pw-reference .pw-inline-metrics > div { display: flex; flex-direction: row-reverse; gap: 5px; padding: 0 10px; border-left: 1px solid #8a94a9; }
+.planner-workspace.pw-reference .pw-inline-metrics > div:first-child { border-left: 0; }
+.planner-workspace.pw-reference .pw-inline-metrics > div:last-child { display: none; }
+.planner-workspace.pw-reference .pw-inline-metrics :is(dt,dd) { margin: 0; color: #1e2540; font-size: 13px; font-weight: 400; line-height: 15px; }
+.planner-workspace.pw-reference .pw-inline-metrics dd { font-weight: 600; }
+.pw-more-tabs, .pg-menu, .pw-footer-more, .pw-schedule-details { position: relative; }
+.pw-more-tabs > summary, .pw-footer-more > summary, .pg-menu > summary { display: flex; align-items: center; justify-content: center; gap: 5px; list-style: none; cursor: pointer; }
+.pw-more-tabs > summary { padding: 10px; white-space: nowrap; }
+.pw-more-tabs summary::-webkit-details-marker, .pg-menu summary::-webkit-details-marker, .pw-footer-more summary::-webkit-details-marker { display: none; }
+.pw-more-tabs > div, .pg-menu-panel, .pw-footer-more > div { position: absolute; z-index: 90; top: calc(100% + 4px); right: 0; min-width: 220px; max-height: 60vh; overflow: auto; display: flex; flex-direction: column; padding: 6px; border: 1px solid #cad6e8; border-radius: 5px; background: #fff; box-shadow: 0 6px 18px #15264c24; }
+.pw-more-tabs > div > button, .pg-menu-panel > button { display: flex; align-items: center; gap: 8px; padding: 8px; background: #fff; border: 0; border-radius: 3px; color: #202d49; text-align: left; }
+.pw-more-tabs > div > button:hover, .pg-menu-panel > button:hover { background: #edf4ff; }
+.planner-workspace.pw-reference .pw-finish-warning { display: flex; align-items: center; gap: 13px; min-height: 40px; margin: 0 0 4px; padding: 7px 14px; border: 1px solid #ffacb6; border-radius: 5px; background: #fff0f3; color: #cf0920; font-size: 14px; }
+.pw-finish-warning > svg { flex-shrink: 0; }
+.pw-finish-warning > strong { white-space: nowrap; font-size: 15px; }
+.pw-finish-warning > span { color: #15182d; font-family: ui-monospace, Consolas, monospace; }
+.pw-finish-warning > span b { font-weight: 500; }
+.pw-finish-warning > button { margin-left: auto; padding: 0; border: 0; color: #0047ff; background: none; text-decoration: underline; white-space: nowrap; }
+.planner-workspace.pw-reference .pw-activity-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-height: 56px; padding: 10px 0; background: #fff; }
+.planner-workspace.pw-reference .pw-activity-filters > div:first-child { flex: 0 1 235px; min-width: 160px; }
+.planner-workspace.pw-reference .pw-activity-filters > :is(select,button), .planner-workspace.pw-reference .pw-activity-filters > div:first-child input { height: 33px; min-height: 0; border-radius: 4px; font-size: 13px; }
+.planner-workspace.pw-reference .pw-activity-filters input:not([type=checkbox]) { border-color: #c9d5e8; padding-block: 4px; }
+.planner-workspace.pw-reference .pw-activity-filters select { padding: 4px 8px; border-color: #c9d5e8; color: #171e36; }
+.planner-workspace.pw-reference .pw-activity-filters > .inline-flex { border-radius: 4px; font-size: 13px; }
+.planner-workspace.pw-reference .pw-activity-filters > .inline-flex > button { padding: 2px 12px; height: 26px; font-weight: 500; }
+.planner-workspace.pw-reference .pw-activity-filters button.text-violet-700 { color: #0047ff; background: #dceaff; }
+.planner-workspace.pw-reference .pw-activity-filters > button { padding: 4px 10px; color: #721bff; border-color: #cdb5ff; }
+.planner-workspace.pw-reference .pw-activity-filters > label { gap: 6px; color: #1c2340; font-size: 13px; }
+.pw-timeline-tools { margin-left: auto; }
+.pg-toolbar { display: flex; align-items: center; gap: 10px; color: #20243e; font-size: 13px; }
+.planner-workspace .pg-toolbar :is(button,summary) { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 32px; padding: 5px 10px; border: 1px solid #cdd8e8; border-radius: 4px; background: #fff; color: #171d33; font-size: 13px; font-weight: 500; white-space: nowrap; cursor: pointer; box-shadow: 0 1px 2px #1d34550c; }
+.planner-workspace .pg-toolbar .pg-logic[aria-pressed=true] { color: #fff; border-color: #25344a; background: #25344a; }
+.pg-scale { display: flex; padding: 2px; border: 1px solid #cdd8e8; border-radius: 4px; background: #f6f8fb; }
+.planner-workspace.pw-reference .pg-scale button { height: 26px; padding: 2px 12px; border: 0; background: transparent; box-shadow: none; font-weight: 400; }
+.planner-workspace .pg-scale button[aria-pressed=true] { background: #064bff; color: #fff; font-weight: 600; box-shadow: 0 1px 3px #074bff40; }
+.pg-menu-panel { gap: 3px; }
+.pg-menu-panel > label { display: flex; gap: 7px; align-items: center; padding: 4px; font-size: 13px; }
+.pg-menu-panel input { accent-color: #0751ff; }
+.pg-toolbar-fallback { display: flex; justify-content: flex-end; padding: 8px; }
+.planner-workspace.pw-reference .planner-gantt-print-root { min-width: 0; }
+.planner-workspace.pw-reference .planner-gantt-screen { height: max(260px, calc(100dvh - 485px)); max-height: none; overflow: auto; border: 1px solid #cbd7e9; border-radius: 3px; background: #fff; scrollbar-color: #bfc7d1 #f3f5f9; scrollbar-width: thin; }
+.planner-workspace.pw-reference .planner-grid-header { position: sticky; left: 0; z-index: 60; border-color: #cbd7e9; background: #f1f5fa; color: #222d41; font-size: 13px; }
+.planner-workspace.pw-reference .planner-grid-header > div { padding: 0 10px; border-right: 1px solid #cbd7e9; }
+.planner-workspace.pw-reference .planner-grid-table { position: sticky; left: 0; z-index: 25; background: #fff; color: #131b30; font-size: 14px; line-height: 20px; border-collapse: collapse; }
+.planner-workspace.pw-reference .planner-grid-table td { padding: 0 10px; border: 1px solid #cdd9e9; border-left-width: 1px; color: #131b30; white-space: nowrap; overflow: hidden; }
+.planner-workspace.pw-reference .planner-grid-table tr { box-sizing: border-box; }
+.planner-workspace.pw-reference .planner-grid-table input { height: 25px; padding: 1px 0; border: 1px solid transparent; border-radius: 3px; font: inherit; color: #131b30; }
+.planner-workspace.pw-reference .planner-grid-table input:focus { border-color: #0751ff; outline: 0; box-shadow: 0 0 0 1px #abc4ff; background: #fff; }
+.planner-workspace.pw-reference .planner-grid-table input:disabled { color: #131b30; opacity: 1; }
+.planner-workspace.pw-reference .planner-grid-table td:nth-child(n+4):nth-child(-n+6) { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+.planner-workspace.pw-reference .planner-grid-table td:nth-child(4) { text-align: right; }
+.planner-workspace.pw-reference .planner-grid-table td:nth-child(3) > span { padding: 1px 7px; border-radius: 4px; line-height: 19px; font-size: 12px; }
+.planner-workspace.pw-reference .pg-summary-row { background: #f8faff; font-weight: 600; }
+.planner-workspace.pw-reference .pg-summary-row td:first-child { color: #141a2d; }
+.planner-workspace.pw-reference .planner-grid-table td:first-child { border-left-color: #cdd9e9 !important; }
+.planner-workspace.pw-reference .pg-timeline-summary span { background: #566377; }
+.planner-workspace.pw-reference .pg-wbs-toggle { display: flex; align-items: center; gap: 12px; background: none; border: 0; color: #141a2d; font: 600 14px 'IBM Plex Sans', 'Segoe UI', sans-serif; }
+.planner-workspace.pw-reference .pg-activity-row td:first-child { padding-left: 29px; font-family: inherit; font-weight: 400; }
+.planner-workspace.pw-reference .pg-activity-row.is-selected { background: #e3edff; }
+.planner-workspace.pw-reference .pg-activity-row.is-selected td:nth-child(2) { box-shadow: inset 0 0 0 1px #0751ff; border-radius: 3px; }
+.planner-workspace.pw-reference .pg-activity-row.is-dirty { background: #fff8e6; }
+.planner-workspace.pw-reference .planner-gantt-screen .pg-timeline-summary { background-color: #f8faff; }
+.planner-workspace.pw-reference .planner-gantt-screen .pg-timeline-activity { background-color: #fff; }
+.planner-workspace.pw-reference .planner-gantt-screen .pg-timeline-selected { background-color: #e3edff; }
+.planner-workspace.pw-reference .pg-bar-label { font-size: 12px; line-height: 16px; font-weight: 600; }
+.planner-workspace.pw-reference .pg-legend { display: flex; align-items: center; flex-wrap: wrap; gap: 9px 15px; min-height: 42px; padding: 8px 3px; color: #20243b; font-size: 12px; }
+.pg-legend > strong { margin-right: 8px; }
+.pg-legend > span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.pg-legend i { display: inline-block; width: 22px; height: 13px; border-radius: 3px; margin-right: 3px; }
+.pg-legend .pg-critical-key { border: 1.5px solid #ff0d22; border-radius: 2px; background: #fff; }
+.planner-workspace.pw-reference .pw-action-bar { order: 10; display: flex; align-items: center; flex-wrap: nowrap; gap: 10px; min-height: 60px; padding: 8px 2px; background: #fff; border-top: 1px solid #cbd7e9; border-bottom: 0; }
+.pw-footer-state { flex: 1; min-width: 180px; color: #20243b; font-size: 13px; }
+.pw-footer-state > div:first-child { display: flex; align-items: center; gap: 10px; }
+.pw-footer-state svg, .pw-footer-state b { color: #0047ff; }
+.pw-footer-progress { max-width: 335px; height: 7px; margin: 7px 0 0 35px; border-radius: 5px; background: #d4deef; overflow: hidden; }
+.pw-footer-progress > i { display: block; height: 100%; border-radius: inherit; background: #0047ff; }
+.planner-workspace.pw-reference .pw-actions { gap: 10px; flex-wrap: nowrap; margin: 0; }
+.planner-workspace.pw-reference .pw-actions button, .pw-footer-more > summary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 34px; padding: 6px 12px; border: 1px solid #cbd5e5; border-radius: 4px; background: #fff; color: #18203d; font-size: 13px; font-weight: 500; white-space: nowrap; box-shadow: 0 1px 2px #122a4b0c; }
+.planner-workspace.pw-reference .pw-actions .pw-footer-recalculate { color: #0047ff; border-color: #3973ff; }
+.planner-workspace.pw-reference .pw-actions button:disabled { opacity: 1; color: #96a1b5; background: #f4f5f7; border-color: #d9dfe8; box-shadow: none; }
+.planner-workspace.pw-reference .pw-actions .pw-footer-baseline { margin-left: 4px; }
+.pw-footer-more > div { top: auto; bottom: calc(100% + 8px); }
+.pw-footer-more > summary { min-width: 38px; padding: 5px; font-size: 20px; line-height: 20px; }
+.planner-workspace.pw-reference .pw-schedule-details { position: static; color: #53627b; font-size: 12px; }
+.pw-schedule-details > summary { padding: 8px; cursor: pointer; }
+.pw-schedule-details .pw-action-status { position: static; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; width: 280px; max-width: 75vw; padding: 8px; border: 0; background: #fff; }
+.planner-gantt-print-root:not([data-visible-columns~="6"]) .planner-grid-table td:nth-child(7), .planner-gantt-print-root:not([data-visible-columns~="7"]) .planner-grid-table td:nth-child(8), .planner-gantt-print-root:not([data-visible-columns~="8"]) .planner-grid-table td:nth-child(9), .planner-gantt-print-root:not([data-visible-columns~="9"]) .planner-grid-table td:nth-child(10), .planner-gantt-print-root:not([data-visible-columns~="2"]) .planner-grid-table td:nth-child(3), .planner-gantt-print-root:not([data-visible-columns~="3"]) .planner-grid-table td:nth-child(4), .planner-gantt-print-root:not([data-visible-columns~="4"]) .planner-grid-table td:nth-child(5), .planner-gantt-print-root:not([data-visible-columns~="5"]) .planner-grid-table td:nth-child(6) { display: none; }
+
+/* Shared project header is adjusted only when this schedule is present. */
+.project-performance-workspace.pp-details-workspace:has(.pw-reference) > .pp-body { padding: 0 10px; background: #fff; }
+.project-performance-workspace.pp-details-workspace:has(.pw-reference) .planning-design { gap: 0; }
+.pp-details-workspace:has(.pw-reference) .planning-design > .pln-task-tabs { align-items: center; min-height: 54px; margin: 0; gap: 12px; }
+.pp-details-workspace:has(.pw-reference) .planning-design > .pln-task-tabs button { height: 29px; padding: 4px 16px; color: #20233e; font-size: 13px; }
+.pp-details-workspace:has(.pw-reference) .planning-design > .pln-task-tabs button[aria-pressed=true] { color: #fff; background: #0047ff; }
+.pp-details-workspace:has(.pw-reference) .pd-schedule-header .pd-heading-content { min-height: 97px; padding: 7px 18px 8px; }
+.pp-details-workspace:has(.pw-reference) .pd-schedule-header h1 { margin: 3px 370px 3px 0; font-size: 24px; line-height: 30px; }
+.pp-details-workspace:has(.pw-reference) .pd-schedule-header .pd-header-actions { top: 36px; right: 18px; }
+.pp-details-workspace:has(.pw-reference) .pd-schedule-header .pd-project-facts { gap: 0; overflow: visible; }
+.pp-details-workspace:has(.pw-reference) .pd-schedule-header .pd-project-facts > div { flex-direction: row; align-items: center; gap: 4px; padding: 0 10px; border: 0; font-size: 13px; }
+.pp-details-workspace:has(.pw-reference) .pd-schedule-header .pd-project-facts > div:first-child { padding-left: 0; }
+.pp-details-workspace:has(.pw-reference) .pd-schedule-header .pd-project-facts :is(.pd-client,.pd-health) { display: none; }
+.pp-details-workspace:has(.pw-reference) .pd-schedule-header .pd-project-facts .pd-fact-label { display: none; }
+.pp-details-workspace:has(.pw-reference) .pd-schedule-header .pd-manager::before { content: 'PM'; }
+.pp-details-workspace:has(.pw-reference) .pd-schedule-header .pd-report-date::before { content: 'Data date'; }
+.pp-details-workspace:has(.pw-reference) .pd-schedule-header .pd-pill { border-radius: 4px; font-size: 13px; line-height: 18px; padding: 1px 8px; }
+.pp-details-workspace:has(.pw-reference) .pd-schedule-header .pd-data-date { padding: 0; background: transparent; color: #20243e; }
+.pp-details-workspace:has(.pw-reference) .pd-schedule-controls-host { border: 0; padding: 0; }
+.pp-details-workspace:has(.pw-reference) .pw-settings-trigger { min-height: 36px; gap: 8px; padding: 6px 12px; font-size: 14px; font-weight: 600; }
+.pp-details-workspace:has(.pw-reference) .pw-settings-trigger small { display: none; }
+.pp-details-workspace:has(.pw-reference) .pd-schedule-header .pd-tabs { padding: 0 16px; }
+.pp-details-workspace:has(.pw-reference) .pd-schedule-header .pd-tabs button { font-size: 14px; }
+@media (max-width: 1450px) { .planner-workspace.pw-reference .pw-inline-metrics > div { padding: 0 6px; } .planner-workspace.pw-reference .pw-tabs > button { padding-inline: 8px; font-size: 13px; } .pg-toolbar { gap: 6px; } }
+@media (max-width: 1150px) { .planner-workspace.pw-reference .pw-tabs { flex-wrap: wrap; } .planner-workspace.pw-reference .pw-inline-metrics { width: 100%; padding: 7px 0; } .pw-timeline-tools { margin-left: 0; } .planner-workspace.pw-reference .planner-gantt-screen { height: 450px; } .planner-workspace.pw-reference .pw-action-bar { flex-wrap: wrap; } .planner-workspace.pw-reference .pw-actions { flex-wrap: wrap; } }
+@media (max-width: 700px) { .planner-workspace.pw-reference .pw-tabs { overflow: visible; } .planner-workspace.pw-reference .pw-tabs > button { font-size: 11px; padding-inline: 5px; } .planner-workspace.pw-reference .pw-inline-metrics { flex-wrap: wrap; gap: 7px 0; } .planner-workspace.pw-reference .pw-finish-warning { flex-wrap: wrap; gap: 5px 10px; } .planner-workspace.pw-reference .pw-finish-warning > strong { white-space: normal; } .planner-workspace.pw-reference .pw-activity-filters { padding-block: 8px; } .pg-toolbar { flex-wrap: wrap; } .pp-details-workspace:has(.pw-reference) .pd-schedule-header h1 { margin-right: 0; font-size: 20px; } .pp-details-workspace:has(.pw-reference) .pd-schedule-header .pd-header-actions { position: static; margin-top: 8px; } .pp-details-workspace:has(.pw-reference) .pd-schedule-header .pd-project-facts { flex-wrap: wrap; } }

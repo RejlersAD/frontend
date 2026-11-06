@@ -281,6 +281,14 @@ export const planningIntelligenceService = {
       operation, expected_updated_at: expectedUpdatedAt,
     }, { suppressErrorToast: true })
   ).data,
+  previewPipingGuidance: async (versionId) => (
+    await planningGet(`${PLANNING_ENDPOINTS.scheduleVersion(versionId)}piping-guidance/`, { suppressErrorToast: true })
+  ).data,
+  applyPipingGuidance: async (versionId, previewToken) => (
+    await apiClient.post(`${PLANNING_ENDPOINTS.scheduleVersion(versionId)}piping-guidance/`, {
+      preview_token: previewToken,
+    }, { suppressErrorToast: true })
+  ).data,
   createGovernanceItem: async (versionId, payload) => (
     await apiClient.post(PLANNING_ENDPOINTS.governanceItems(versionId), payload)
   ).data,
