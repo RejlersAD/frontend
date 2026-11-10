@@ -220,7 +220,8 @@ const HMB_STREAM_CONSOLIDATOR_CONTEXT = {
         { heading: '2. Review extracted values', steps: ['Select a case from the case panel.', 'Include or exclude streams using the column checkboxes.', 'Select an extracted value to record a reviewed manual override; overrides are visibly flagged.'] },
         { heading: '3. Compare cases', steps: ['Open Comparison to align streams by case-insensitive name.', 'Filter by stream or property and optionally show only differing rows.', 'Amber rows identify cross-case variation; missing properties remain explicitly blank.', 'Max Liquid, Max Gas and Max Water are complete copies of the governing case column per stream — the case with the highest Light Liquid Act Flow, Std Ideal Gas Vol Flow and Heavy Liquid Flow respectively.'] },
         { heading: '4. Export', steps: ['Choose whether to include the summary sheet, variation formatting, and override formatting.', 'Download the generated XLSX workbook before closing or resetting the session.', 'Review the workbook before using it as an engineering deliverable.'] },
-        { heading: '5. Save and reopen', steps: ['Choose Save project workbook to store only the generated comparison in RADAI private storage.', 'Open Saved project workbook and select Open workbook to rebuild an editable Review session.', 'Reopening restores values from the saved comparison; excluded source-only values and prior override flags are not recreated.'] },
+        { heading: '5. Datasheet', steps: ['Open the Datasheet tab in the Equipment Sizing workspace after running Run sizing.', 'Complete the document information fields — project, client, document number, revision, date, prepared/checked, quantity, design code, sizing basis and internals.', 'The datasheet is assembled automatically: general data with the governing (design) case, operating conditions per case with a DESIGN column, levels and the mechanical summary.', 'Values marked "Not calculated" require a successful Run sizing first; in automatic mode unreported values display as NA.'] },
+        { heading: '6. Save and reopen', steps: ['Choose Save project workbook to store only the generated comparison in RADAI private storage.', 'Open Saved project workbook and select Open workbook to rebuild an editable Review session.', 'Reopening restores values from the saved comparison; excluded source-only values and prior override flags are not recreated.'] },
       ]),
       article('hmb-consolidator-values', 'Extracted values', 'What is read from each workbook and how review works.', [
         { heading: 'What is extracted', steps: ['Every stream column in the HYSYS stream table becomes a stream in the Review view.', 'All properties found in the table (temperature, pressure, flows, composition, etc.) are listed with their units.', 'Properties are matched by name across streams; a property absent from a stream stays explicitly blank.'] },
@@ -230,11 +231,11 @@ const HMB_STREAM_CONSOLIDATOR_CONTEXT = {
         { heading: 'Recommendations', steps: ['Add all operating cases together — the comparison aligns streams across every loaded case.', 'Check the detected sheet and case name after each import before trusting the values.', 'Exclude utility or placeholder streams in Review so the comparison stays focused.', 'Use overrides for corrections, then confirm the comparison before exporting.', 'Download the XLSX before closing or resetting the session — unsaved browser sessions cannot be recovered after a refresh.'] },
       ]),
       article('hmb-consolidator-faq', 'FAQ', 'Common questions about the consolidator.', [
-        { heading: 'Questions', steps: ['Which files can I import? One XLSX, XLSM, XLS, or CSV workbook per operating case; PDF case files are not supported.', 'Are my workbooks uploaded to a server? No — source workbooks and extracted values remain in this browser session unless you explicitly choose Save project workbook.', 'What does an amber row mean? The property value differs between cases — a cross-case variation to review.', 'What if a stream or property is missing in one case? It remains explicitly blank in the comparison rather than being invented.', 'Can I reopen a saved comparison? Yes — Saved project workbook rebuilds an editable Review session; excluded source-only values and prior override flags are not recreated.'] },
+        { heading: 'Questions', steps: ['Which files can I import? One XLSX, XLSM, XLS, or CSV workbook per operating case; PDF case files are not supported.', 'Are my workbooks uploaded to a server? No — source workbooks and extracted values remain in this browser session unless you explicitly choose Save project workbook.', 'What does an amber row mean? The property value differs between cases — a cross-case variation to review.', 'What is the Datasheet tab? In the Equipment Sizing workspace it generates a formatted three-phase separator process datasheet from the sizing results — document information, operating conditions per case with a DESIGN column, levels and mechanical summary. Run sizing first so calculated values are populated.', 'What if a stream or property is missing in one case? It remains explicitly blank in the comparison rather than being invented.', 'Can I reopen a saved comparison? Yes — Saved project workbook rebuilds an editable Review session; excluded source-only values and prior override flags are not recreated.'] },
       ]),
       article('hmb-consolidator-formats', 'File formats', 'Supported inputs and outputs.', [
         { heading: 'Supported formats', steps: ['XLSX / XLSM — excellent; native HYSYS export workbooks.', 'XLS — good; legacy Excel workbooks are detected.', 'CSV — good; single-sheet exports from HYSYS or Excel.', 'PDF — unsupported for case data; export the stream table to Excel or CSV first.'] },
-        { heading: 'Outputs', steps: ['Comparison workbook (XLSX) with optional summary sheet, variation formatting, and override formatting.', 'Saved project workbook stored in RADAI private storage for reopening later.'] },
+        { heading: 'Outputs', steps: ['Comparison workbook (XLSX) with optional summary sheet, variation formatting, and override formatting.', 'Separator datasheet — assembled in the Datasheet tab of Equipment Sizing and included in the exported Excel calculation snapshot.', 'Saved project workbook stored in RADAI private storage for reopening later.'] },
       ]),
       article('hmb-consolidator-troubleshooting', 'Formats and troubleshooting', 'Check supported files, missing values, and archive prerequisites.', [
         { heading: 'Supported files', steps: ['Import XLSX, XLSM, XLS, or CSV case workbooks; PDF case files are not supported here.', 'Export and save the generated comparison as an XLSX workbook.'] },
@@ -356,6 +357,44 @@ const PID_CHECKER_V2_CONTEXT = {
   }),
   searchableArticles: true,
   selectedArticleId: 'pid-v2-workflow',
+}
+
+const PID_VERIFICATION_CONTEXT = {
+  ...context({
+    id: 'engineering.pid-verification',
+    moduleCode: 'engineering',
+    moduleLabel: 'Engineering',
+    featureLabel: 'P&ID QC / Verification',
+    summary: 'Upload P&ID drawings, run AI extraction and quality-rule analysis, review findings and export the report.',
+    articles: [
+      article('pid-verification-workflow', 'Verification workflow', 'Create a project, upload drawings, run AI analysis, review and export.', [
+        { heading: 'Workflow diagram', image: { src: '/assets/images/PIDVerification_Workflow.png', alt: 'P&ID Verification Workflow — Create project, upload P&ID, AI analysis, review results, export report' } },
+        { heading: '1. Create project', steps: ['Click "New Project" in the Project Workspace section.', 'Use a descriptive name — client, area/unit and revision (e.g. "Unit 300 Process Area - Q4 2026").', 'One project holds all sheets of a multi-page P&ID for cross-sheet validation.', 'Projects are saved automatically.'] },
+        { heading: '2. Upload P&ID(s)', steps: ['PDF, DWG, PNG, JPG or TIFF drawings are accepted.', 'Use 300+ DPI, upright, high-contrast scans for best OCR accuracy.', 'Include symbol legend sheets so the AI identifies equipment types and symbols accurately.'] },
+        { heading: '3. AI extraction & analysis', steps: ['AI extracts equipment tags, line numbers and instrument tags from the drawings.', 'The engine validates the drawing against 20+ engineering quality rules.', 'Analysis typically takes 2–5 minutes with real-time progress updates.', 'All processing runs inside your RADAI deployment — drawings are never shared with third parties.'] },
+        { heading: '4. Review results', steps: ['Click any finding to mark it resolved, add comments, or adjust severity.', 'Review extracted tags and apply overrides where the AI needs correction — overrides stay as local drafts until saved.', 'AI detects patterns but needs human validation — review each finding critically before accepting.'] },
+        { heading: '5. Export report', steps: ['Export findings to PDF report, Excel spreadsheet, or JSON for integration with other tools.', 'Archive generated reports for compliance audits and project documentation.'] },
+      ]),
+      article('pid-verification-rules', 'Quality rules', 'The AI engine validates P&IDs against 20+ engineering quality rules.', [
+        { heading: 'Tag Validation (4 checks)', steps: ['Tag format compliance', 'Duplicate tag detection', 'Missing tag identification', 'Tag naming conventions'] },
+        { heading: 'Connectivity (4 checks)', steps: ['Orphaned equipment', 'Open-ended lines', 'Missing connections', 'Valve placement'] },
+        { heading: 'Line Sizing (3 checks)', steps: ['Consistent line sizing', 'Size change notation', 'Branch sizing logic'] },
+        { heading: 'Compliance (3 checks)', steps: ['Industry standards (API, ASME)', 'Symbol consistency', 'Legend alignment'] },
+      ]),
+      article('pid-verification-best-practices', 'Best practices', 'Get the most accurate analysis from every run.', [
+        { heading: 'Recommendations', steps: ['Upload high-quality scans — 300+ DPI, clear, high-contrast images yield better AI results.', 'Include legend sheets — they help the AI identify equipment types and symbols accurately.', 'Use consistent naming — consistent tag patterns help the AI detect anomalies.', 'Review AI findings — AI detects patterns but needs human validation.', 'Export PDF reports — archive quality reports for compliance audits and documentation.', 'Incremental updates — create new project versions when drawings change to maintain an audit trail.'] },
+      ]),
+      article('pid-verification-faq', 'FAQ', 'Common questions about P&ID verification.', [
+        { heading: 'Questions', steps: ['What file formats are supported? PDF, DWG, PNG, JPG, TIFF — PDF and DWG are recommended for best OCR accuracy.', 'How long does AI analysis take? Typically 2–5 minutes depending on drawing complexity, with real-time progress updates.', 'Can I edit findings after analysis? Yes — click any finding to mark it resolved, add comments, or adjust severity levels.', 'Can I correct extracted tags? Yes — apply tag overrides on the review screen; drafts are kept locally until you save them.', 'How accurate is the AI? 92–97% on clear scans; always review findings — AI assists but does not replace engineering judgment.', 'What happens to my drawings? All data is encrypted at rest and in transit, stored securely and never shared with third parties.', 'Can I export findings? Yes — PDF report, Excel spreadsheet, or JSON data format.'] },
+      ]),
+      article('pid-verification-formats', 'File formats', 'Supported inputs and report outputs.', [
+        { heading: 'Supported inputs', steps: ['PDF — recommended; best OCR accuracy.', 'DWG — recommended; native CAD drawings.', 'PNG / JPG / TIFF — accepted; use 300+ DPI upright scans.'] },
+        { heading: 'Report outputs', steps: ['PDF report — formatted quality report for audits.', 'Excel spreadsheet — findings for filtering and tracking.', 'JSON — raw data for integration with other tools.'] },
+      ]),
+    ],
+  }),
+  searchableArticles: true,
+  selectedArticleId: 'pid-verification-workflow',
 }
 
 const CRITICAL_LINE_LIST_CONTEXT = {
@@ -870,6 +909,7 @@ export const HELP_ROUTE_RULES = [
   { id: 'equipment-list', test: path => path === '/engineering/process/equipment-list', resolve: () => EQUIPMENT_LIST_CONTEXT },
   { id: 'line-list', test: path => path === '/engineering/process/line-list', resolve: () => LINE_LIST_CONTEXT },
   { id: 'pid-checker-v2', test: path => path === '/engineering/process/pid-checker-v2', resolve: () => PID_CHECKER_V2_CONTEXT },
+  { id: 'pid-verification', test: path => path.startsWith('/engineering/process/pid-verification'), resolve: () => PID_VERIFICATION_CONTEXT },
   { id: 'critical-line-list', test: path => path === '/engineering/piping/critical-line-list', resolve: () => CRITICAL_LINE_LIST_CONTEXT },
   { id: 'pms-valve-mto', test: path => path === '/engineering/piping/pms' || path.startsWith('/engineering/piping/valve-mto'), resolve: () => PMS_VALVE_MTO_CONTEXT },
   { id: 'instrument-index', test: path => path === '/engineering/instrument/index', resolve: () => INSTRUMENT_INDEX_CONTEXT },

@@ -63,10 +63,11 @@ export default function PidExtractionWorkspace({ project, onBack, onManageLegend
   const [slotInfo, setSlotInfo] = useState({ pid: null, iolist: null, vendorDcs: null, vendorEsd: null })
   const [stageState, setStageState] = useState({})
   const [docInfo, setDocInfo] = useState({ docNo: '', revision: '', contractorNumber: '', rejlersNumber: '', sheet: '' })
-  const [templateInfo, setTemplateInfo] = useState(null)   // { template, tagPadding, includeReviewSheets }
+  const [templateInfo, setTemplateInfo] = useState(null)   // { template, tagPadding }
   const [rulesOnly, setRulesOnly] = useState(false)
   const [extracting, setExtracting] = useState(false)
   const [extraction, setExtraction] = useState(null)   // { id, status, summary }
+  const [aiProgress, setAiProgress] = useState(null)   // { done, total } during the BYOK pass
   const [activeTab, setActiveTab] = useState('io')
   const [tabData, setTabData] = useState(null)
   const [sheetFilter, setSheetFilter] = useState('')
@@ -205,19 +206,23 @@ export default function PidExtractionWorkspace({ project, onBack, onManageLegend
 
   const runExtraction = async () => {
     setExtracting(true)
+    setAiProgress(null)
     setError('')
     try {
       const { extractionId } = await ioExtractionService.startExtraction(project.id, keyInfo?.saved && !rulesOnly)
       pollRef.current = setInterval(async () => {
         try {
           const st = await ioExtractionService.getStatus(project.id, extractionId)
+          setAiProgress(st.aiProgress || null)
           if (st.status === 'completed' || st.status === 'failed') {
             clearInterval(pollRef.current)
             setExtracting(false)
+            setAiProgress(null)
             if (st.status === 'failed') { setError(st.error || 'Extraction failed'); return }
             setExtraction({ id: extractionId, summary: st.summary })
             const s = st.summary || {}
-            showToast(`Extraction complete · ${s.tags || 0} tags · ${s.vendorCells || 0} vendor cells filled · ${s.aiTags || 0} rows to review`)
+            const aiNote = s.aiTotal ? ` · AI reviewed ${s.aiSuggested || 0} of ${s.aiTotal} loops` : ''
+            showToast(`Extraction complete · ${s.tags || 0} tags · ${s.vendorCells || 0} vendor cells filled · ${s.aiTags || 0} rows to review${aiNote}`)
             loadTab('io', extractionId)
             refreshHistory()
           }
@@ -464,7 +469,14 @@ export default function PidExtractionWorkspace({ project, onBack, onManageLegend
                 disabled={!ready || extracting}
                 title={ready ? '' : `Complete Stage ${[1, 2, 3, 4].find((n) => !stageDone[n])} first`}
                 onClick={runExtraction}>
-                {extracting ? <><Loader2 className="w-4 h-4 animate-spin" /> Extracting…</> : <><Upload className="w-4 h-4" /> Upload & extract</>}
+                {extracting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    {aiProgress?.total
+                      ? ` AI review ${aiProgress.done}/${aiProgress.total} loops…`
+                      : ' Extracting…'}
+                  </>
+                ) : <><Upload className="w-4 h-4" /> Upload & extract</>}
               </button>
             </div>
           </div>
@@ -532,7 +544,6 @@ function Ready({ ok, label }) {
 function ExportTemplatePanel({ projectId, templateInfo, onChanged, onError, showToast }) {
   const [busy, setBusy] = useState(false)
   const tpl = templateInfo?.template
-  const includeReview = templateInfo?.includeReviewSheets !== false
 
   const onUpload = async (file, scope) => {
     if (!file) return
@@ -545,15 +556,6 @@ function ExportTemplatePanel({ projectId, templateInfo, onChanged, onError, show
       onError(err.response?.data?.error || 'Template upload failed')
     } finally {
       setBusy(false)
-    }
-  }
-
-  const onToggleReview = async (checked) => {
-    try {
-      await ioExtractionService.patchExportSettings(projectId, { includeReviewSheets: checked })
-      onChanged()
-    } catch (err) {
-      onError(err.response?.data?.error || 'Saving the setting failed')
     }
   }
 
@@ -586,10 +588,6 @@ function ExportTemplatePanel({ projectId, templateInfo, onChanged, onError, show
           Project override…
         </button>
       </div>
-      <label className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
-        <input type="checkbox" checked={includeReview} onChange={(e) => onToggleReview(e.target.checked)} />
-        Include review sheets in export
-      </label>
     </div>
   )
 }
@@ -685,8 +683,9 @@ function StageByok({ keyInfo, rulesOnly, noPid, onRulesOnly, onConnect, onRemove
           <Pill tone="violet">Using your key ••••{keyInfo.last4} · tested {keyInfo.testedAt || ''}</Pill>
         </div>
         <div className="rounded border border-[#4F2BF5]/30 bg-[#4F2BF5]/5 p-2 text-[#4F2BF5]">
-          What goes to the AI step on this run — rows below 0.6 confidence, one cropped
-          image per loop. Rows from the AI stay Suggested until you accept them.
+          AI review runs as part of the main extraction: after the drawing rules finish,
+          every low-confidence loop (&lt;0.6) is reviewed with your key — one call per loop.
+          AI rows stay Suggested until you accept them.
         </div>
         <div className="flex gap-2">
           <button className="rd-btn text-xs text-red-600" onClick={onRemoveKey}><Trash2 className="w-3.5 h-3.5" /> Remove key</button>
@@ -697,8 +696,8 @@ function StageByok({ keyInfo, rulesOnly, noPid, onRulesOnly, onConnect, onRemove
   return (
     <div className="mt-2 space-y-2 text-xs">
       <p className="text-slate-500">
-        The drawing rules run first and cost nothing. Your own key is used only for rows
-        the rules could not settle, with a cropped image of that loop.
+        The drawing rules run first and cost nothing. With a connected key, the AI review
+        then runs inside the same extraction for the loops the rules could not settle.
       </p>
       {!rulesOnly && (
         <div className="rounded border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 p-2 text-blue-700 dark:text-blue-300">
