@@ -43,6 +43,7 @@ function sourcePdf() {
 }
 
 async function prepare(page, options = {}) {
+  const canvasCells = options.traceGrid ? { ...cells, CommodityCode: '', PMSCommodityCode: '', CommodityCodeStatus: 'Blank in PMS', ConfirmedPCMCCode: '' } : cells;
   const state = { saves: [], reviews: [], errors: [], failSave: false, failReview: false, review: '', canonical: {}, sources: {}, ...options };
   page.on('pageerror', error => state.errors.push(error.message));
   const decisions = () => names.map((name, i) => {
@@ -87,7 +88,7 @@ async function prepare(page, options = {}) {
     }
     if (path.endsWith('/workbook/validate/')) return route.fulfill({ json: { issues_total: 1, issues: [{ row_key: 'comp:0', sheet_name: 'PipingCommodityFilter', severity: 'high', column_name: 'FirstSizeFrom', message: 'Size requires engineering review.' }] } });
     if (path.endsWith('/workbook/') && options.emptyResult) return route.fulfill({ json: { workbook: 'spec', sheets: [{ name: 'CustomInterfaces', headers: ['Description'], row_count: 1, rows: [{ row_key: 'tpl:1', cells: { Description: 'Static template definition' }, source: {} }] }] } });
-    if (path.endsWith('/workbook/')) return route.fulfill({ json: { workbook: 'spec', sheets: [{ name: 'PipingCommodityFilter', row_count: 12, headers: Object.keys(cells), rows: names.map((name, i) => ({ row_key: `comp:${i}`, cells: { ...cells, ComponentName: name }, source: { component_id: `component-${i}`, class_id: 'class-1', class_code: `SP-${String(24 + i).padStart(3, '0')}`, reference: state.sources[`decision-${i}`] || (options.highlight && i === 0 ? highlight : undefined) }, match_decision: { id: `decision-${i}` }, provenance: { ComponentName: 'extracted' } })) }] } });
+    if (path.endsWith('/workbook/')) return route.fulfill({ json: { workbook: 'spec', sheets: [{ name: 'PipingCommodityFilter', row_count: 12, headers: Object.keys(canvasCells), rows: names.map((name, i) => ({ row_key: `comp:${i}`, cells: { ...canvasCells, ComponentName: name }, source: { component_id: `component-${i}`, class_id: 'class-1', class_code: `SP-${String(24 + i).padStart(3, '0')}`, reference: state.sources[`decision-${i}`] || (options.highlight && i === 0 ? highlight : undefined) }, match_decision: { id: `decision-${i}` }, provenance: { ComponentName: 'extracted' } })) }] } });
     if (path.endsWith(`/jobs/${jobId}/classes/`)) return route.fulfill({ json: [{ id: 'class-1', class_code: 'CS150', source_pages: [1] }] });
     if (path.endsWith('/classes/class-1/')) return route.fulfill({ json: { id: 'class-1', class_code: 'CS150', source_pages: [1], components: names.map((name, i) => ({ id: `component-${i}`, component_type: name, description: `${name.toUpperCase()}, 2 IN, CL150, WCB, RF` })) } });
     if (path.endsWith('/save/')) return route.fulfill({ json: { id: jobId, project_id: projectId, status: 'completed', saved_at: '2026-10-20T12:00:00Z' } });
@@ -98,6 +99,19 @@ async function prepare(page, options = {}) {
   await expect(page.locator('.s3d-queue tbody tr')).toHaveCount(options.emptyResult ? 0 : 12);
   return state;
 }
+
+test('full workbook grid distinguishes blank PMS and confirmed codes and opens component review', async ({ page }) => {
+  await prepare(page, { traceGrid: true });
+  await page.getByRole('combobox', { name: 'Workbook section' }).selectOption('__grid__');
+  await expect(page.getByRole('columnheader', { name: 'PMS Commodity Code', exact: true })).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: 'Confirmed PCMC Code', exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'PMS catalog traceability' })).toContainText('Blank in PMS');
+  await expect(page.getByRole('region', { name: 'PMS catalog traceability' })).toContainText('Catalog unavailable');
+  await page.getByRole('button', { name: 'Review suggested catalog matches and PDF evidence' }).click();
+  await expect(page.getByRole('heading', { name: 'Review Queue', exact: true })).toBeVisible();
+  await expect(page.getByLabel('PMS Commodity Code', { exact: true })).toHaveValue('Blank in PMS');
+  await expect(page.getByLabel('Confirmed PCMC Code', { exact: true })).toHaveValue('Needs review');
+});
 
 test('PCMC candidates expose unknown attributes and block incomplete size coverage', async ({ page }) => {
   const state = await prepare(page, { pcmc: true });

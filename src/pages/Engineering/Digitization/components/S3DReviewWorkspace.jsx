@@ -753,7 +753,14 @@ const S3DReviewWorkspace = forwardRef(function S3DReviewWorkspace(
     return (
       <div className="s3d-legacy-grid">
         {!openGridDefault && <button type="button" onClick={() => setGrid(false)}>Back to review workspace</button>}
-        <WorkbookCanvas job={job} variant="hub" />
+        <WorkbookCanvas job={job} variant="hub" onReviewRecord={(row, sheetName) => {
+          setSheet(sheetName);
+          setSearch('');
+          setSelectedId(`${sheetName}:${row.row_key}`);
+          const index = data?.sheets?.find((item) => item.name === sheetName)?.rows?.findIndex((item) => item.row_key === row.row_key) ?? 0;
+          setPage(Math.floor(Math.max(0, index) / PAGE_SIZE) + 1);
+          setGrid(false);
+        }} />
       </div>
     );
   return (
@@ -1258,6 +1265,7 @@ const S3DReviewWorkspace = forwardRef(function S3DReviewWorkspace(
                             {item.differences?.map((difference) => <small key={difference.attribute}>{difference.attribute}: PMS {JSON.stringify(difference.source)} / catalog {JSON.stringify(difference.catalog)}</small>)}
                             {item.coverage && <small>Size coverage: {item.coverage.complete ? "Complete" : "Incomplete or unknown"}{item.coverage.gaps?.length > 0 ? `; gaps ${JSON.stringify(item.coverage.gaps)}` : ""}</small>}
                             {item.catalog_row && <small>PCMC catalog row {item.catalog_row}</small>}
+                            {item.code_format_issue && <small>{item.code_format_issue}</small>}
                             {current.decision?.discriminators_matched?.size_coverage && (
                               <small>
                                 Covered sizes: {current.decision.discriminators_matched.size_coverage.covered_sizes?.join(", ") || "none"}
