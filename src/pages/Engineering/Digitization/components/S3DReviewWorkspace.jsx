@@ -506,6 +506,7 @@ const S3DReviewWorkspace = forwardRef(function S3DReviewWorkspace(
   const canConfirm = Boolean(
     current?.decision &&
     candidate &&
+    current.decision.candidates?.find((item) => (item.candidate_id || item.commodity_code) === candidate)?.confirmable !== false &&
     !reviewing &&
     (["unique_match", "ambiguous"].includes(current.decision.state) ||
       (current.decision.state === "unmatched" && current.decision.candidates?.length > 0)) &&
@@ -658,8 +659,11 @@ const S3DReviewWorkspace = forwardRef(function S3DReviewWorkspace(
   });
   if (current?.sheetName === "PipingCommodityFilter") {
     fields.unshift(
-      { label: "PMS Commodity Code", value: String(current.cells?.PMSCommodityCode ?? current.component?.pms_commodity_code ?? "") || "Blank in PMS", column: null },
-      { label: "Confirmed PCMC Code", value: String(current.cells?.ConfirmedPCMCCode || current.decision?.final_commodity_code || "Needs review"), column: null },
+      { label: "PMS Commodity Code", value: current.cells?.CommodityCodeStatus === "Unreadable" || current.component?.source_read_status === "unreadable" ? "Unreadable" : String(current.cells?.PMSCommodityCode ?? current.component?.pms_commodity_code ?? "") || current.cells?.CommodityCodeStatus || (current.component?.source_read_status === "blank" ? "Blank in PMS" : "Unreadable"), column: null },
+      { label: "Confirmed PCMC Code", value: String(current.cells?.ConfirmedPCMCCode ?? current.decision?.final_commodity_code ?? "") || "Needs review", column: null },
+      { label: "Catalog revision", value: current.decision?.catalog_revision || "Not supplied", column: null },
+      { label: "Confirmed by", value: current.decision?.reviewed_by || "Needs review", column: null },
+      { label: "Confirmed at", value: current.decision?.reviewed_at || "Needs review", column: null },
     );
   }
   const sourcePages =
@@ -748,7 +752,7 @@ const S3DReviewWorkspace = forwardRef(function S3DReviewWorkspace(
   if (grid)
     return (
       <div className="s3d-legacy-grid">
-        
+        {!openGridDefault && <button type="button" onClick={() => setGrid(false)}>Back to review workspace</button>}
         <WorkbookCanvas job={job} variant="hub" />
       </div>
     );
@@ -1213,8 +1217,10 @@ const S3DReviewWorkspace = forwardRef(function S3DReviewWorkspace(
                 ) : (
                   <div className="s3d-candidates">
                     <h4>Suggested catalog matches</h4>
+                    {!job.reference_workbook_set && <p>Catalog unavailable. Link the approved project catalog to suggest matches.</p>}
+                    {current.decision?.discriminators_matched?.truncated && <p>Showing the first 30 of {current.decision.candidate_count || current.decision.discriminators_matched.candidate_count} candidates. Refine the engineering attributes before confirmation.</p>}
                     {current.sheetName === "PipingCommodityFilter" && (
-                      <p className="s3d-match-source-code">PMS Commodity Code: {current.cells?.PMSCommodityCode || "Blank in PMS"}</p>
+                      <p className="s3d-match-source-code">PMS Commodity Code: {fields.find((field) => field.label === "PMS Commodity Code")?.value || "Unreadable"}</p>
                     )}
                     {current.decision?.candidates?.length ? (
                       current.decision.candidates.map((item, i) => (
@@ -1224,7 +1230,7 @@ const S3DReviewWorkspace = forwardRef(function S3DReviewWorkspace(
                         >
                           <input
                             type="radio"
-                            disabled={reviewing}
+                            disabled={reviewing || item.confirmable === false}
                             name="s3d-candidate"
                             value={item.candidate_id || item.commodity_code}
                             checked={
@@ -1247,6 +1253,11 @@ const S3DReviewWorkspace = forwardRef(function S3DReviewWorkspace(
                               candidate={item}
                               attributes={normalizedAttributes}
                             />
+                            {item.matched_attributes && <small>Matched: {Object.keys(item.matched_attributes).join(", ") || "No structured attributes confirmed"}</small>}
+                            {item.unknown_attributes?.length > 0 && <small>Unknown: {item.unknown_attributes.join(", ")}</small>}
+                            {item.differences?.map((difference) => <small key={difference.attribute}>{difference.attribute}: PMS {JSON.stringify(difference.source)} / catalog {JSON.stringify(difference.catalog)}</small>)}
+                            {item.coverage && <small>Size coverage: {item.coverage.complete ? "Complete" : "Incomplete or unknown"}{item.coverage.gaps?.length > 0 ? `; gaps ${JSON.stringify(item.coverage.gaps)}` : ""}</small>}
+                            {item.catalog_row && <small>PCMC catalog row {item.catalog_row}</small>}
                             {current.decision?.discriminators_matched?.size_coverage && (
                               <small>
                                 Covered sizes: {current.decision.discriminators_matched.size_coverage.covered_sizes?.join(", ") || "none"}
