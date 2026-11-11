@@ -56,6 +56,7 @@ import {
 } from "@heroicons/react/24/solid";
 
 import specCustomizationAPI from "../../../../services/specCustomizationAPI";
+import PropTypes from 'prop-types';
 import {
   SPEC_CUSTOMIZATION_UI,
   workbookWorkspaceStyle,
@@ -283,7 +284,7 @@ const sourceDisplay = (source = {}) => {
 };
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
-const WorkbookCanvas = ({ job, variant = "default" }) => {
+const WorkbookCanvas = ({ job, variant = "default", onReviewRecord }) => {
   const jobId = job?.id;
   const isHub = variant === "hub";
   const HUB_LABELS = CANVAS_CONFIG.hub.labels;
@@ -822,7 +823,9 @@ const WorkbookCanvas = ({ job, variant = "default" }) => {
 
   // Headers after applying the column-visibility toggle for this sheet.
   const visibleHeaders = useMemo(() => {
-    const headers = activeSheetData?.headers || [];
+    const sourceHeaders = activeSheetData?.headers || [];
+    const headers = activeSheet === 'PipingCommodityFilter'
+      ? sourceHeaders.filter((header) => !['ConfirmedPCMCCode', 'PMSCommodityCode', 'CommodityCodeStatus', 'GeneratedCommodityCode'].includes(header)) : sourceHeaders;
     if (!CANVAS_CONFIG.columnVisibility.enabled) return headers;
     const hidden = hiddenColumns[activeSheet];
     if (!hidden || hidden.size === 0) return headers;
@@ -2803,6 +2806,7 @@ const WorkbookCanvas = ({ job, variant = "default" }) => {
                                     <input
                                       type="text"
                                       value={value}
+                                      placeholder={activeSheet === 'PipingCommodityFilter' && col === 'CommodityCode' ? row.cells?.CommodityCodeStatus || 'Unreadable' : col === 'ConfirmedPCMCCode' ? job.reference_workbook_set ? 'Needs review' : 'Catalog unavailable' : undefined}
                                       onChange={(e) =>
                                         queueSave(
                                           activeSheet,
@@ -3217,7 +3221,8 @@ const WorkbookCanvas = ({ job, variant = "default" }) => {
                                           raw ?? null,
                                         )
                                       }
-                                      readOnly={!editModeEnabled}
+                                      readOnly={!editModeEnabled || activeSheet === 'PipingCommodityFilter' && ['CommodityCode', 'ConfirmedPCMCCode'].includes(col)}
+                                      placeholder={activeSheet === 'PipingCommodityFilter' && col === 'CommodityCode' ? row.cells?.CommodityCodeStatus || 'Unreadable' : col === 'ConfirmedPCMCCode' ? job.reference_workbook_set ? 'Needs review' : 'Catalog unavailable' : undefined}
                                       disabled={!editModeEnabled}
                                       className={`w-full rounded bg-transparent px-1.5 py-1 text-[13px] text-slate-800 outline-none transition disabled:cursor-not-allowed disabled:opacity-60 ${
                                         selected
@@ -3359,6 +3364,17 @@ const WorkbookCanvas = ({ job, variant = "default" }) => {
                 ))}
               </div>
               <div className="flex-1 space-y-3 overflow-y-auto p-4">
+                {activeSheet === 'PipingCommodityFilter' && detailsTab === 'properties' && (
+                  <section aria-label="PMS catalog traceability" className="space-y-2 rounded border border-blue-100 bg-blue-50 p-3 text-xs">
+                    <p><strong>PMS Commodity Code:</strong> {detailsRow.cells?.PMSCommodityCode || detailsRow.cells?.CommodityCodeStatus || 'Unreadable'}</p>
+                    <p><strong>CommodityCode:</strong> {detailsRow.cells?.CommodityCode || 'Needs review'}</p>
+                    {detailsRow.cells?.GeneratedCommodityCode && <p>Generated project code ? catalog review required</p>}
+                    {!job.reference_workbook_set && <p>Catalog unavailable. Link the approved project catalog in Matching.</p>}
+                    <p>Blank in PMS is a source observation. A catalog code requires explicit confirmation.</p>
+                    {detailsRow.source?.reference?.page && <p>PDF page {detailsRow.source.reference.page}, row {detailsRow.source.reference.row || 'not supplied'}</p>}
+                    {onReviewRecord && detailsRow.source?.component_id && <button type="button" className="rounded border border-blue-300 bg-white px-2 py-1 text-blue-700" onClick={() => onReviewRecord(detailsRow, activeSheet)}>Review suggested catalog matches and PDF evidence</button>}
+                  </section>
+                )}
                 {detailsTab === "properties" &&
                   visibleHeaders.map((col) => {
                     const k = editKey(activeSheet, detailsRow.row_key, col);
@@ -3373,6 +3389,7 @@ const WorkbookCanvas = ({ job, variant = "default" }) => {
                         <input
                           type="text"
                           value={value}
+                          placeholder={activeSheet === 'PipingCommodityFilter' && col === 'CommodityCode' ? detailsRow.cells?.CommodityCodeStatus || 'Unreadable' : col === 'ConfirmedPCMCCode' ? 'Needs review' : undefined}
                           onChange={(e) =>
                             queueSave(
                               activeSheet,
@@ -3382,7 +3399,7 @@ const WorkbookCanvas = ({ job, variant = "default" }) => {
                               raw ?? null,
                             )
                           }
-                          readOnly={!editModeEnabled}
+                          readOnly={!editModeEnabled || activeSheet === 'PipingCommodityFilter' && ['CommodityCode', 'ConfirmedPCMCCode'].includes(col)}
                           disabled={!editModeEnabled}
                           className="w-full rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
                         />
@@ -4112,5 +4129,10 @@ const WorkbookCanvas = ({ job, variant = "default" }) => {
   );
 };
 
+WorkbookCanvas.propTypes = {
+  job: PropTypes.shape({ id: PropTypes.string.isRequired, reference_workbook_set: PropTypes.oneOfType([PropTypes.string, PropTypes.object]) }).isRequired,
+  variant: PropTypes.string,
+  onReviewRecord: PropTypes.func,
+};
 export default WorkbookCanvas;
 
