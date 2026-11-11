@@ -134,14 +134,18 @@ const getIssue = (row, findings) => {
   if (["approved", "remapped"].includes(row?.decision?.review_decision))
     return { label: "Approved", tone: "success", issue: false };
   const state = row?.decision?.state;
+  if (state === "conflicting_attributes")
+    return { label: "Needs review", tone: "warning", issue: true };
   if (state === "ambiguous")
     return { label: "Ambiguous", tone: "warning", issue: true };
+  if (row?.decision?.discriminators_matched?.range_review_required)
+    return { label: "Needs review", tone: "warning", issue: true };
   if (state === "unmatched")
-    return { label: "Unmatched", tone: "unmatched", issue: true };
+    return { label: "Needs review", tone: "unmatched", issue: true };
+  if (state === "invalid_reference")
+    return { label: "Catalog unavailable", tone: "error", issue: true };
   if (state === "ineligible")
     return { label: "Ineligible", tone: "warning", issue: true };
-  if (state === "invalid_reference")
-    return { label: "Invalid reference", tone: "error", issue: true };
   if (findings.length)
     return { label: "Warning", tone: "warning", issue: true };
   if (state === "unique_match")
@@ -503,7 +507,8 @@ const S3DReviewWorkspace = forwardRef(function S3DReviewWorkspace(
     current?.decision &&
     candidate &&
     !reviewing &&
-    ["unique_match", "ambiguous"].includes(current.decision.state) &&
+    (["unique_match", "ambiguous"].includes(current.decision.state) ||
+      (current.decision.state === "unmatched" && current.decision.candidates?.length > 0)) &&
     !Object.values(
       current.decision.discriminators_matched?.codelists?.attributes || {},
     ).some((value) =>
@@ -651,6 +656,12 @@ const S3DReviewWorkspace = forwardRef(function S3DReviewWorkspace(
         normalized?.status === "RESOLVED" ? normalized.candidates?.[0] : null,
     };
   });
+  if (current?.sheetName === "PipingCommodityFilter") {
+    fields.unshift(
+      { label: "PMS Commodity Code", value: String(current.cells?.PMSCommodityCode ?? current.component?.pms_commodity_code ?? "") || "Blank in PMS", column: null },
+      { label: "Confirmed PCMC Code", value: String(current.cells?.ConfirmedPCMCCode || current.decision?.final_commodity_code || "Needs review"), column: null },
+    );
+  }
   const sourcePages =
     selectedClass?.source_pages || current?.pipingClass?.source_pages || [];
   const normalizedAttributes = Object.fromEntries(
@@ -663,10 +674,13 @@ const S3DReviewWorkspace = forwardRef(function S3DReviewWorkspace(
   const suppliedReference =
     current?.source?.reference ||
     current?.source_reference ||
-    current?.component?.source_reference ||
-    savedReference;
+    savedReference ||
+    (current?.component?.source_reference?.page
+      ? { page: current.component.source_reference.page, table_id: current.component.source_reference.table_id }
+      : null);
   const sourcePage =
     suppliedReference?.page ||
+    current?.component?.source_reference?.page ||
     sourcePages.find((value) => Number.isInteger(value) && value > 0) ||
     null;
   const sourceReference = useMemo(() => {
@@ -1049,6 +1063,11 @@ const S3DReviewWorkspace = forwardRef(function S3DReviewWorkspace(
                   }
                 />
               </div>
+              {current.sheetName === "PipingCommodityFilter" && current.component?.source_reference && (
+                <p className="s3d-source-locator">
+                  PMS source: page {current.component.source_reference.page}, row {current.component.source_reference.row}
+                </p>
+              )}
               <div
                 className="s3d-detail-tabs"
                 role="tablist"
@@ -1194,6 +1213,9 @@ const S3DReviewWorkspace = forwardRef(function S3DReviewWorkspace(
                 ) : (
                   <div className="s3d-candidates">
                     <h4>Suggested catalog matches</h4>
+                    {current.sheetName === "PipingCommodityFilter" && (
+                      <p className="s3d-match-source-code">PMS Commodity Code: {current.cells?.PMSCommodityCode || "Blank in PMS"}</p>
+                    )}
                     {current.decision?.candidates?.length ? (
                       current.decision.candidates.map((item, i) => (
                         <label
@@ -1220,10 +1242,19 @@ const S3DReviewWorkspace = forwardRef(function S3DReviewWorkspace(
                             <span>
                               {item.description || "Catalog candidate"}
                             </span>
+                            {item.description_similarity != null && <small>Description similarity: {Math.round(item.description_similarity * 100)}%</small>}
                             <S3DCandidateDiffs
                               candidate={item}
                               attributes={normalizedAttributes}
                             />
+                            {current.decision?.discriminators_matched?.size_coverage && (
+                              <small>
+                                Covered sizes: {current.decision.discriminators_matched.size_coverage.covered_sizes?.join(", ") || "none"}
+                                {current.decision.discriminators_matched.size_coverage.gaps?.length
+                                  ? ` · Gaps: ${current.decision.discriminators_matched.size_coverage.gaps.join(", ")}`
+                                  : " · No detected internal size gaps"}
+                              </small>
+                            )}
                           </span>
                           {Number.isFinite(item.ranking_score) && (
                             <span className="s3d-candidate-rank">
@@ -1238,7 +1269,9 @@ const S3DReviewWorkspace = forwardRef(function S3DReviewWorkspace(
                         <Search />
                         <p>
                           {current.decision
-                            ? "No catalog candidates satisfy the supplied criteria."
+                            ? current.decision?.state === "invalid_reference"
+                              ? "Catalog unavailable. This row remains unresolved."
+                              : "No catalog candidates satisfy the supplied criteria. This row remains Needs review."
                             : "Run matching with a reference workbook to see catalog candidates."}
                         </p>
                       </div>
