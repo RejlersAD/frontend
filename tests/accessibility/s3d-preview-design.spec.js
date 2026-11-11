@@ -55,6 +55,10 @@ async function prepare(page, options = {}) {
         PressureRating: { values: ['35'], codes: [35] }, MaterialsGrade: { values: ['40001'], codes: [40001] }, ScheduleThickness: { values: [index ? '50' : '40'], codes: [index ? 50 : 40] } } }))
       .filter(candidate => Object.entries(state.canonical[id] || {}).every(([category, entry]) => candidate.codelists[category]?.codes.includes(entry.code)))
       : [{ commodity_code: 'GAT-150-WCB-RF', description: 'Gate valve, 2 in, Class 150, ASTM A216 WCB, RF', ranking_score: 0.8, discriminators: { end_connection: { matched: false } } }, { commodity_code: 'GAT-150-WCB-NPT', description: 'Gate valve, 2 in, Class 150, ASTM A216 WCB, NPT', ranking_score: 0.6 }];
+    if (options.pcmc) candidates.forEach(candidate => Object.assign(candidate, {
+      confirmable: false, matched_attributes: { component_type: { source: 'valve', catalog: 'valve' } },
+      unknown_attributes: ['schedule'], differences: [], coverage: { complete: false, gaps: [[2, 4]] }, catalog_row: 6,
+    }));
     return { id, pdf_component_name: name, nominal_size: '2 in', pressure_rating: 'Class 150', material_grade: 'ASTM A216 WCB', end_connection: 'RF',
       state: i % 3 === 1 ? 'unmatched' : 'ambiguous', review_decision: i === 0 ? state.review : '', final_commodity_code: i === 0 && state.review === 'approved' ? 'GAT-150-WCB-RF' : '', discriminators_matched: evidence, candidates: i % 3 === 1 ? [] : candidates };
   });
@@ -94,6 +98,17 @@ async function prepare(page, options = {}) {
   await expect(page.locator('.s3d-queue tbody tr')).toHaveCount(options.emptyResult ? 0 : 12);
   return state;
 }
+
+test('PCMC candidates expose unknown attributes and block incomplete size coverage', async ({ page }) => {
+  const state = await prepare(page, { pcmc: true });
+  await expect(page.getByLabel('PMS Commodity Code', { exact: true })).toHaveValue('Unreadable');
+  await expect(page.getByLabel('Confirmed PCMC Code', { exact: true })).toHaveValue('Needs review');
+  await expect(page.getByText('Matched: component_type', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Unknown: schedule', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(/Size coverage: Incomplete or unknown/).first()).toBeVisible();
+  await expect(page.getByRole('radio').first()).toBeDisabled();
+  expect(state.errors).toEqual([]);
+});
 
 test('desktop review design retains shell, saves mapped cells and explicitly approves a candidate', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1672, height: 941 });
