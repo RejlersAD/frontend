@@ -824,8 +824,8 @@ const WorkbookCanvas = ({ job, variant = "default", onReviewRecord }) => {
   // Headers after applying the column-visibility toggle for this sheet.
   const visibleHeaders = useMemo(() => {
     const sourceHeaders = activeSheetData?.headers || [];
-    const headers = activeSheet === 'PipingCommodityFilter' && !sourceHeaders.includes('ConfirmedPCMCCode')
-      ? sourceHeaders.flatMap((header) => header === 'CommodityCode' ? [header, 'ConfirmedPCMCCode'] : [header]) : sourceHeaders;
+    const headers = activeSheet === 'PipingCommodityFilter'
+      ? sourceHeaders.filter((header) => !['ConfirmedPCMCCode', 'PMSCommodityCode', 'CommodityCodeStatus', 'GeneratedCommodityCode'].includes(header)) : sourceHeaders;
     if (!CANVAS_CONFIG.columnVisibility.enabled) return headers;
     const hidden = hiddenColumns[activeSheet];
     if (!hidden || hidden.size === 0) return headers;
@@ -2634,7 +2634,7 @@ const WorkbookCanvas = ({ job, variant = "default", onReviewRecord }) => {
                               style={{ minWidth: CANVAS_CONFIG.cellMinWidthPx }}
                               title={h}
                             >
-                              {activeSheet === 'PipingCommodityFilter' && h === 'CommodityCode' ? 'PMS Commodity Code' : h === 'ConfirmedPCMCCode' ? 'Confirmed PCMC Code' : h}
+                              {h}
                             </th>
                           ))}
                           {/* Actions Column Header */}
@@ -3125,7 +3125,7 @@ const WorkbookCanvas = ({ job, variant = "default", onReviewRecord }) => {
                               className="whitespace-nowrap border-b border-slate-100 px-2 py-2.5 text-left"
                               title={h}
                             >
-                              {activeSheet === 'PipingCommodityFilter' && h === 'CommodityCode' ? 'PMS Commodity Code' : h === 'ConfirmedPCMCCode' ? 'Confirmed PCMC Code' : h}
+                              {h}
                             </th>
                           ))}
                           <th className="w-[120px] border-b border-slate-100 px-2 py-2.5 text-left">
@@ -3367,7 +3367,8 @@ const WorkbookCanvas = ({ job, variant = "default", onReviewRecord }) => {
                 {activeSheet === 'PipingCommodityFilter' && detailsTab === 'properties' && (
                   <section aria-label="PMS catalog traceability" className="space-y-2 rounded border border-blue-100 bg-blue-50 p-3 text-xs">
                     <p><strong>PMS Commodity Code:</strong> {detailsRow.cells?.PMSCommodityCode || detailsRow.cells?.CommodityCodeStatus || 'Unreadable'}</p>
-                    <p><strong>Confirmed PCMC Code:</strong> {detailsRow.cells?.ConfirmedPCMCCode || 'Needs review'}</p>
+                    <p><strong>CommodityCode:</strong> {detailsRow.cells?.CommodityCode || 'Needs review'}</p>
+                    {detailsRow.cells?.GeneratedCommodityCode && <p>Generated project code ? catalog review required</p>}
                     {!job.reference_workbook_set && <p>Catalog unavailable. Link the approved project catalog in Matching.</p>}
                     <p>Blank in PMS is a source observation. A catalog code requires explicit confirmation.</p>
                     {detailsRow.source?.reference?.page && <p>PDF page {detailsRow.source.reference.page}, row {detailsRow.source.reference.row || 'not supplied'}</p>}
@@ -3383,7 +3384,7 @@ const WorkbookCanvas = ({ job, variant = "default", onReviewRecord }) => {
                     return (
                       <div key={col}>
                         <label className="mb-1 block text-xs font-medium text-slate-600">
-                          {activeSheet === 'PipingCommodityFilter' && col === 'CommodityCode' ? 'PMS Commodity Code' : col === 'ConfirmedPCMCCode' ? 'Confirmed PCMC Code' : col}
+                          {col}
                         </label>
                         <input
                           type="text"

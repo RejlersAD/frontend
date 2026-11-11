@@ -660,7 +660,7 @@ const S3DReviewWorkspace = forwardRef(function S3DReviewWorkspace(
   if (current?.sheetName === "PipingCommodityFilter") {
     fields.unshift(
       { label: "PMS Commodity Code", value: current.cells?.CommodityCodeStatus === "Unreadable" || current.component?.source_read_status === "unreadable" ? "Unreadable" : String(current.cells?.PMSCommodityCode ?? current.component?.pms_commodity_code ?? "") || current.cells?.CommodityCodeStatus || (current.component?.source_read_status === "blank" ? "Blank in PMS" : "Unreadable"), column: null },
-      { label: "Confirmed PCMC Code", value: String(current.cells?.ConfirmedPCMCCode ?? current.decision?.final_commodity_code ?? "") || "Needs review", column: null },
+      { label: "CommodityCode", value: String(current.cells?.CommodityCode || "Needs review"), column: null },
       { label: "Catalog revision", value: current.decision?.catalog_revision || "Not supplied", column: null },
       { label: "Confirmed by", value: current.decision?.reviewed_by || "Needs review", column: null },
       { label: "Confirmed at", value: current.decision?.reviewed_at || "Needs review", column: null },

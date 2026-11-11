@@ -43,7 +43,7 @@ function sourcePdf() {
 }
 
 async function prepare(page, options = {}) {
-  const canvasCells = options.traceGrid ? { ...cells, CommodityCode: '', PMSCommodityCode: '', CommodityCodeStatus: 'Blank in PMS', ConfirmedPCMCCode: '' } : cells;
+  const canvasCells = options.traceGrid ? { ...cells, CommodityCode: 'RADCAP10A0600N0050', GeneratedCommodityCode: 'RADCAP10A0600N0050', PMSCommodityCode: '', CommodityCodeStatus: 'Blank in PMS', ConfirmedPCMCCode: '' } : cells;
   const state = { saves: [], reviews: [], errors: [], failSave: false, failReview: false, review: '', canonical: {}, sources: {}, ...options };
   page.on('pageerror', error => state.errors.push(error.message));
   const decisions = () => names.map((name, i) => {
@@ -103,20 +103,20 @@ async function prepare(page, options = {}) {
 test('full workbook grid distinguishes blank PMS and confirmed codes and opens component review', async ({ page }) => {
   await prepare(page, { traceGrid: true });
   await page.getByRole('combobox', { name: 'Workbook section' }).selectOption('__grid__');
-  await expect(page.getByRole('columnheader', { name: 'PMS Commodity Code', exact: true })).toBeVisible();
-  await expect(page.getByRole('columnheader', { name: 'Confirmed PCMC Code', exact: true })).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: 'CommodityCode', exact: true })).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: 'Confirmed PCMC Code', exact: true })).toHaveCount(0);
   await expect(page.getByRole('region', { name: 'PMS catalog traceability' })).toContainText('Blank in PMS');
   await expect(page.getByRole('region', { name: 'PMS catalog traceability' })).toContainText('Catalog unavailable');
   await page.getByRole('button', { name: 'Review suggested catalog matches and PDF evidence' }).click();
   await expect(page.getByRole('heading', { name: 'Review Queue', exact: true })).toBeVisible();
   await expect(page.getByLabel('PMS Commodity Code', { exact: true })).toHaveValue('Blank in PMS');
-  await expect(page.getByLabel('Confirmed PCMC Code', { exact: true })).toHaveValue('Needs review');
+  await expect(page.getByLabel('Confirmed PCMC Code', { exact: true })).toHaveCount(0);
 });
 
 test('PCMC candidates expose unknown attributes and block incomplete size coverage', async ({ page }) => {
   const state = await prepare(page, { pcmc: true });
   await expect(page.getByLabel('PMS Commodity Code', { exact: true })).toHaveValue('Unreadable');
-  await expect(page.getByLabel('Confirmed PCMC Code', { exact: true })).toHaveValue('Needs review');
+  await expect(page.getByLabel('Confirmed PCMC Code', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Matched: component_type', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('Unknown: schedule', { exact: true }).first()).toBeVisible();
   await expect(page.getByText(/Size coverage: Incomplete or unknown/).first()).toBeVisible();
