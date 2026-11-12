@@ -1,6 +1,34 @@
 # Module Catalog and Navigation Contract
 
-Version 0.1 · User-supplied labels preserved · Ownership and behavior proposed
+Version 0.2 · Status reviewed 12 November 2026 · User-supplied labels preserved · Ownership and behavior proposed
+
+## Current implementation status (frontend inspection, 12 November 2026)
+
+This catalog records intended scope. The status below describes frontend navigation/routes inspected in `src/components/Layout/Sidebar.jsx`, `src/App.jsx`, and `src/config/features.config.js`; it does not certify backend completeness, production enablement, authorization correctness, or business-policy approval. “Routed” means a visible destination has a route/component; validate behavior and server enforcement separately. Where the current UI combines or renames catalog pages, retain the catalog identifiers as the intended inventory and record the UI mapping here.
+
+| Catalog area | Current status | Evidence / mapping |
+|---|---|---|
+| Workspace (3) | Routed | Executive overview `/executive`, Dashboard `/dashboard`, Approvals `/approvals`; profile, notifications, and My Requests are additional workspace destinations. |
+| Engineering (7) | Partially routed; no one-to-one leaf page mapping | Sidebar builds disciplines dynamically from `engineeringStructure.config.js`; `App.jsx` contains many specialized engineering routes. The catalog’s seven discipline pages are not each represented by a single catalog-level landing route. |
+| Shared tools (6) | Partially routed | CRS Documents, Multi-Revision, PFD to P&ID, Data Mining, Employee self-service, and My Requests have sidebar entries/routes. CRS meaning and self-service ownership remain policy questions. |
+| Finances (3) | Routed, scope differs | Finance Dashboard `/finance`, Incoming Invoices, Outgoing Invoices are in navigation. Finance Dashboard is an invoice hub; no assertion of approved accounting/payment behavior. |
+| Human Resources (6) | Routed with extra page and feature gate | HR module is enabled by default and can be disabled by `VITE_ENABLE_HR_MODULE`; disabled routes redirect to Dashboard. Sidebar has Dashboard, Employee, Payroll, Attendance, Leave, Onboarding/Offboarding, plus Talent Acquisition. Employee self-service is surfaced under Shared tools. |
+| Sales (8) | Partially routed; labels/count drift | Sidebar has Overview, Opportunity, Proposal, Client, Framework, Forecast, Email Intake, Project Handover. Route definitions include `/sales`, `/sales/email-intake`, proposal preview, and `/sales/:area`; some areas therefore share a parameterized route. The sidebar numbering currently omits 5.7 for Email Intake and assigns 5.6 to Project Handover. |
+| Project Control (2) | Routed as consolidated destinations | Portfolio `/projects`; Plan & Baseline `/projects?view=plan-baseline`. This is a two-destination global navigation model; project-level areas are contextual, per `project-control-product-model.md`. |
+| Procurement (6) | Routed | Dashboard, Project Links, Vendors, Purchase Recommendations, Purchase Orders, and Receipts appear in sidebar and route definitions. |
+| QHSE (4) | Routed | Project Quality, Project Quality Details, Quality Management, Occupational Health & Safety appear in sidebar; routes are rooted at `/qhse`. |
+| Admin (6) | Routed with extra operational pages | Dashboard, Users, Roles & permissions, Wrench Integration, AI Champion, Enquiry Operations appear in sidebar/routes. Additional access requests, AI adoption, reports, replica and API key pages are present. |
+
+Status summary: all nine groups have at least one represented destination; this does not mean all 51 leaf-page behaviors are complete. Detailed page status is not yet verified against API/backend implementation or end-to-end behavior. Current navigation/API access is module-aware in places, but the frontend route guards are not a substitute for server authorization.
+
+## Navigation contract (current frontend)
+
+- Authenticated navigation is rendered by `src/components/Layout/Sidebar.jsx`; `src/config/navigation.config.js` describes public navigation and is not the source of truth for the authenticated module tree.
+- The authenticated tree currently exposes Executive overview, Dashboard, Approvals, then Engineering, Shared tools (labeled CRS in code), Finance, HR, Sales, Project Control, Procurement, QHSE, and Admin. The present visible order differs from the catalog’s numbered sequence because Finance and HR precede Sales/Project Control/Procurement/QHSE/Admin.
+- Module/role checks and enabled flags filter sidebar items. HR additionally has a global `enableHRModule` flag. Some routes use `ModuleProtectedRoute`, some use `ProtectedRoute`, and some use inline module/feature conditions; inspect each route before changing access behavior.
+- Route paths are implementation details, not catalog IDs. Preserve existing paths and redirects unless a separately authorized navigation decision changes them.
+- Catalog-to-sidebar label differences, extra destinations, and consolidated destinations are status facts above, not approval to rename or remove pages. Resolve naming/numbering drift through the applicable product decision (including D-14) before altering the established labels.
+- Responsive sidebar/drawer, active-item selection, and route-level loading/error/access states are implemented in components, but this document’s source inspection did not verify them interactively.
 
 There are **51 leaf pages**: three workspace pages and 48 pages within nine module groups. Numbers below are the supplied navigation identifiers, not database IDs or route requirements. Preserve them during context establishment. Any naming change is a separate UX decision.
 
