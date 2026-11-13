@@ -81,6 +81,45 @@ The server resolves the actor, organization, approval route, totals, and allowed
 
 Map these semantics into existing conventions. Avoid returning database errors, secrets, hidden record names, or stack traces to users.
 
+## RADAI Intelligence AI projects (corrected architecture, 13 November 2026)
+
+The corrected product brief makes an AI project independent of `core.Project`. The authenticated `/api/v1/ai-workspaces/` API allows any active employee to create a private AI project. An optional `enterprise_project_id` may be set only when the owner currently has canonical project membership and `project_control.read`; that link does not grant enterprise document access to AI project members. All AI project operations recheck owner/member access on the server. Owner manages membership and project metadata; owner/editor edits instructions and knowledge; viewers read shared knowledge and create private conversations. Conversation sharing is explicit and read only for a named current project member.
+
+| Path under `/api/v1/ai-workspaces/` | Methods | Contract |
+| --- | --- | --- |
+| `/` and `{id}/` | GET, POST; GET, PATCH, DELETE | List accessible projects, create, inspect, rename/update or archive. Optional folder and enterprise link. |
+| `{id}/members/`, `{id}/members/{user_id}/` | GET, POST; DELETE | Owner adds or removes an active employee as editor/viewer. Revocation immediately blocks project, files and chats. |
+| `{id}/instructions/`, `{id}/activity/` | GET, PUT; GET | Versioned seven-field instructions with expected-version conflict and audit history. |
+| `{id}/knowledge/`, `{id}/knowledge/{document_id}/`, `{id}/knowledge/{document_id}/download/` | GET, POST; GET, DELETE; GET | Upload up to 12 MB of PDF, DOCX, XLSX, CSV or TXT into private storage; extract text, hash bytes, preview, archive and authorized download. Uploads are unverified references. |
+| `{id}/conversations/`, `{id}/conversations/{conversation_id}/` | GET, POST; GET, PATCH, DELETE | Owner-private history, search, resume, rename and archive. Explicitly shared conversations are readable by current named members. |
+| `{id}/conversations/{conversation_id}/share/`, `{id}/conversations/{conversation_id}/send/` | POST, DELETE; POST | Owner shares/unshares with a current member. Chat uses server-side instructions and permission-filtered, hash-checked excerpts, saves citations and usage, and accepts an idempotent UUID request ID. Requires an enabled local model route; no synthetic answer is returned. |
+| `general/conversations/{conversation_id}/attachments/` and `{id}/conversations/{conversation_id}/attachments/` | POST | Owner uploads a private conversation file after creating the conversation. PDF, DOCX, XLSX, CSV and TXT text is extracted on upload; the response includes file hash and extracted page count. A text document with no extractable text returns 400. Project conversation uploads require an unshared owner conversation and current project access. |
+| Corresponding `attachments/{attachment_id}/download/` | GET | Owner-only original download from the exact conversation after hash verification. Attachment IDs supplied to `send/` must belong to that conversation and owner. Private attachments cannot be shared with project members. |
+
+Local Ollama chat uses the existing AI Model Hub provider `ollama` and task route `radai-intelligence-chat` with `data_policy=onprem`. `GET /api/v1/ai-workspaces/models/` lists only enabled, route-eligible local models to authenticated users. Conversation send accepts the selected `model` and `provider: "ollama"`; cloud-provider requests are rejected before a model call. The development command `manage.py configure_ollama_intelligence --model qwen3:8b --endpoint http://localhost:11434/v1` verifies the installed model and configures the existing Hub records. The endpoint must resolve to loopback except for the guarded local-development Docker host address below. Local model usage is recorded with provider `local` and zero cloud cost.
+
+General chat uses `/api/v1/ai-workspaces/general/conversations/` and its `{id}/` and `{id}/send/` paths. These authenticated conversations have no AI project association, are owner-only, and cannot retrieve project instructions or knowledge. Current-conversation private attachments may supply hash-checked page/sheet excerpts and citations. A follow-up message without new attachment IDs reuses attachment references from earlier user messages in that conversation, subject to the same owner and conversation checks. Broad requests select representative pages and mark partial coverage when the full extracted document was not supplied. The same local Model Hub selection, idempotent send, usage record, and audit trail apply. Within the local development Docker backend only, the configuration command may use `http://host.docker.internal:11434/v1` to reach the host Ollama installation; production and nonlocal addresses remain rejected.
+
+The older `/api/v1/projects/{project_id}/ai-*` endpoints remain for legacy canonical-project records and existing engineering integrations; they are not the corrected AI project workflow.
+
+## RADAI Intelligence project workspace (legacy canonical-project B2-B3 implementation)
+
+The authorized implementation brief is the RADAI Intelligence master implementation plan, phases B2-B6. All paths below are under `/api/v1/projects/{project_id}/`; the canonical `core.Project` must be active and accessible to the caller. Project instructions and knowledge require `project_control.read`; edits also require project write membership and `project_control.update`. Conversations additionally require `pid_analysis.read` to create and send. CRS knowledge requires `crs_documents.read`, `pid_analysis.read`, and an existing exact P&ID engineering evidence link to that project and revision.
+
+| Path | Methods | Contract |
+| --- | --- | --- |
+| `ai-instructions/` | GET, PUT | Seven project preference fields; PUT requires `expected_version`, uses optimistic versioning, and writes an audit event. |
+| `ai-activity/` | GET | Last 20 project instruction audit events. |
+| `ai-knowledge/` | GET, POST | Page-based list (`q`, `page`, 20 per page); link exactly one existing same-project `project_document_id` or authorized `crs_revision_id`. Upload files first through existing Project Control document API. |
+| `ai-knowledge/{source_id}/` | GET, DELETE | Preview extracted text or unlink source. Source access and stored SHA-256 are rechecked. The underlying controlled document is not deleted. |
+| `ai-knowledge/{source_id}/process/` | POST | Authorized retry for failed or review-needed deterministic processing. |
+| `ai-compare/` | POST | Compare two ready, linked CRS revisions in the same chain with `left_source_id` and `right_source_id`; returns bounded embedded-text diff and exact source identities. |
+| `ai-conversations/` | GET, POST | Owner-only list/search (`q`, `page`, 20 per page) or create a project conversation. |
+| `ai-conversations/{id}/` | GET, PATCH, DELETE | Resume with messages, rename with `title`, or archive while retaining history. |
+| `ai-conversations/{id}/send/` | POST | Send `question` and optional UUID `request_id`; uses server-side instructions, permission-filtered excerpts, and persisted history. A retry with the same UUID and question replays the saved answer; changed content returns 409. Provider keys are never persisted. |
+
+Knowledge formats are PDF, DOCX, XLSX, CSV, and TXT up to 12 MB. Processing states are `pending`, `processing`, `ready`, `failed`, and `needs_review`; truncated or image-only content needs review. Uploaded files are `unverified` until a controlled workflow establishes approval. Sources returned with a chat answer are source excerpts considered by retrieval, not a claim that the model proved every sentence. Microsoft 365 project connections remain unavailable pending approved delegated tenant consent; Sales mailbox/SharePoint credentials do not authorize this workspace.
+
 ## Lists, files, and long-running work
 
 - Choose the existing cursor or page-based pagination approach. Define stable ordering with a unique tie-breaker, limit caps, count semantics, and supported filters.

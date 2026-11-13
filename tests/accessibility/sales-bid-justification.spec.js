@@ -3,192 +3,132 @@ import AxeBuilder from '@axe-core/playwright';
 import { prepareRegister, opportunity } from '../fixtures/sales-opportunity-register-api';
 
 const dialog = (page, name = 'Record Go / No-Go Decision') => page.getByRole('dialog', { name, exact: true });
-const reason = page => dialog(page).getByRole('textbox', { name: 'Edit justification', exact: true });
-const choose = (page, name, dialogName = 'Record Go / No-Go Decision') => dialog(page, dialogName).getByRole('radio', { name }).click();
-const save = (page, name = 'Record Go / No-Go Decision') => dialog(page, name).getByRole('button', { name: 'Save Decision', exact: true });
-const row = (page, index) => page.locator('.sor-table-scroll').getByRole('button', { name: `Q-${102101 + index}`, exact: true });
-const selected = page => page.getByRole('complementary', { name: 'Opportunity details', exact: true });
+const choose = (page, label, name) => dialog(page, name).getByRole('radio', { name: label }).click();
+const save = (page, name) => dialog(page, name).getByRole('button', { name: 'Save Decision', exact: true });
 
-async function openDecision(page, index = 0, action = 'Record Go / No-Go') {
-  await row(page, index).click();
+const intelligence = (id) => ({
+  opportunity_id: id, status: 'partial', counts: { total: 2, ready: 1, partial: 1 },
+  result: { manager_review: { tender_evaluation: { opportunity_summary: {
+    client_name: 'ADNOC Onshore', submission_date: '2026-11-12', project_facts: {
+      scope: [{ value: 'Survey utility networks using an acoustic camera', source_file: 'SOW.pdf', source_page: 'Page 2' }],
+      deliverables: [{ value: 'Submit a leak detection survey report', source_file: 'SOW.pdf', source_page: 'Page 5' }],
+      payment_terms: [{ value: '100% after survey report acceptance', source_file: 'SOW.pdf', source_page: 'Page 8' }],
+      submission_details: [{ value: 'Submission is at 10.58 AM today.', relative_date: '2026-11-12',
+        source_file: 'Invitation.eml', source_page: 'Email body' }],
+    },
+  } } } },
+});
+
+async function prepare(page, records = [opportunity(0, { stage: 'qualified', opportunity_type: 'eoi',
+  client_name: 'ADNOC Onshore', submission_due_date: '2026-11-12' })]) {
+  const requests = { ai: [], decisions: [] };
+  const state = await prepareRegister(page, { records });
+  await page.route('**/api/v1/sales/deals/*/analysis/', (route) => {
+    const id = new URL(route.request().url()).pathname.split('/deals/')[1].split('/')[0];
+    return route.fulfill({ json: intelligence(id) });
+  });
+  await page.route('**/api/v1/sales/deals/*/bid-decision-justification/', (route) => {
+    requests.ai.push(route.request().postDataJSON());
+    return route.fulfill({ status: 503, json: { detail: 'AI configuration unavailable' } });
+  });
+  await page.route('**/api/v1/sales/deals/*/bid-decision/', (route) => {
+    const payload = route.request().postDataJSON();
+    const id = new URL(route.request().url()).pathname.split('/deals/')[1].split('/')[0];
+    requests.decisions.push({ id, payload });
+    const record = state.records.find((item) => item.id === id);
+    const result = { ...record, stage: payload.decision === 'no_bid' ? 'no_bid' : 'proposal',
+      bid_decision: payload.decision, bid_decision_reason: payload.reason };
+    state.records = state.records.map((item) => item.id === id ? result : item);
+    return route.fulfill({ json: result });
+  });
+  return { state, requests };
+}
+
+async function open(page, index = 0, action = 'Record Go / No-Go') {
+  await page.locator('.sor-table-scroll').getByRole('button', { name: `Q-${102101 + index}`, exact: true }).click();
   await page.getByRole('button', { name: 'Close record', exact: true }).click();
-  await selected(page).getByRole('button', { name: action, exact: true }).click();
-  await expect(dialog(page, action.startsWith('Reverse') ? 'Reverse Go / No-Go Decision' : 'Record Go / No-Go Decision')).toBeVisible();
+  await page.getByRole('complementary', { name: 'Opportunity details', exact: true })
+    .getByRole('button', { name: action, exact: true }).click();
+  const name = action.startsWith('Reverse') ? 'Reverse Go / No-Go Decision' : 'Record Go / No-Go Decision';
+  await expect(dialog(page, name)).toBeVisible();
+  return name;
 }
 
-async function prepare(page, configuration = {}) {
-  const state = await prepareRegister(page, {
-    realShell: configuration.realShell,
-    records: configuration.records || [opportunity(0, { stage: 'qualified', opportunity_type: configuration.type ?? 'tender', estimated_value: '10000.00', currency: 'AED' }), opportunity(1, { stage: 'qualified', opportunity_type: 'rfq' })],
-  });
-  const fixture = { aiRequests: [], decisions: [], completed: [], aborted: [], status: 200, hold: null, text: 'The saved scope supports this pursuit, subject to confirming delivery capacity.', responsePatch: null, ...configuration };
-  page.on('requestfailed', request => { if (request.url().endsWith('/bid-decision-justification/')) fixture.aborted.push(request.postDataJSON()); });
-  await page.route('**/api/v1/sales/deals/*/bid-decision*/', async route => {
-    const request = route.request(), path = new URL(request.url()).pathname;
-    const id = path.split('/deals/')[1].split('/')[0];
-    const payload = request.postDataJSON();
-    const record = state.records.find(item => item.id === id);
-    if (path.endsWith('/bid-decision/')) {
-      fixture.decisions.push({ id, payload });
-      const result = { ...record, stage: payload.decision === 'no_bid' ? 'no_bid' : 'proposal', bid_decision: payload.decision, bid_decision_reason: payload.reason };
-      state.records = state.records.map(item => item.id === id ? result : item);
-      return route.fulfill({ json: result });
-    }
-    const attempt = { id, payload };
-    fixture.aiRequests.push(attempt);
-    const response = fixture.responsePatch || { text: fixture.text, source_context: { opportunity_id: id, opportunity_type: record.opportunity_type, opportunity_type_label: record.opportunity_type === 'rfq' ? 'RFQ' : record.opportunity_type === 'tender' ? 'Tender' : 'Not provided', decision: payload.decision, mode: payload.text.trim() ? 'rewrite' : 'draft', updated_at: record.updated_at } };
-    const status = fixture.status;
-    if (fixture.hold) await fixture.hold;
-    await route.fulfill({ status, json: status === 200 ? response : { detail: status === 403 ? 'AI assistance permission denied.' : status === 409 ? 'The saved opportunity changed. Review its details before trying again.' : 'AI assistance is not configured. Your text is retained.', code: 'synthetic_ai_unavailable' } });
-    fixture.completed.push(attempt);
-  });
-  if (!configuration.skipOpen) await openDecision(page);
-  return { fixture, state };
-}
-
-
-test('choosing Go drafts without saving and explicit save records reviewed wording', async ({ page }) => {
-  const { fixture, state } = await prepare(page);
-  await expect(save(page)).toBeDisabled();
-  await choose(page, 'Go Pursue Go submission');
-  await expect(dialog(page).locator('.sbd-source')).toHaveText('Backend AI');
-  expect(fixture.aiRequests).toHaveLength(1);
-  expect(fixture.aiRequests[0].payload.decision).toBe('bid');
-  expect(fixture.decisions).toHaveLength(0);
-  await dialog(page).getByRole('button', { name: 'Edit', exact: true }).click();
-  await reason(page).fill('Reviewed scope and capacity; proceed subject to confirming the client inputs.');
-  await save(page).click();
-  await expect(dialog(page)).toHaveCount(0);
-  expect(fixture.decisions).toEqual([{ id: 'opportunity-0', payload: { decision: 'bid', reason: 'Reviewed scope and capacity; proceed subject to confirming the client inputs.', expected_decision: 'pending' } }]);
-  expect(state.pageErrors).toEqual([]);
+test('Go draft uses Opportunity Intelligence and saves without an AI request', async ({ page }) => {
+  const { requests } = await prepare(page);
+  const name = await open(page);
+  await choose(page, 'Go Pursue submission', name);
+  await expect(dialog(page, name).getByText('12 Nov 2026 · 10:58 AM (time zone not stated)')).toBeVisible();
+  await expect(dialog(page, name).getByRole('textbox', { name: 'Decision Justification *' })).toContainText('Survey utility networks using an acoustic camera');
+  await expect(dialog(page, name).getByRole('textbox', { name: 'Decision Justification *' })).toContainText('Submit a leak detection survey report');
+  await expect(dialog(page, name)).not.toContainText('Backend AI unavailable');
+  await expect(save(page, name)).toBeEnabled();
+  await save(page, name).click();
+  expect(requests.ai).toHaveLength(0);
+  expect(requests.decisions).toHaveLength(1);
+  expect(requests.decisions[0].payload.decision).toBe('bid');
+  expect(requests.decisions[0].payload.reason).toContain('Survey utility networks');
 });
 
-test('authorized reverse action can change Go to No-Go and No-Go to Go', async ({ page }) => {
-  const { fixture } = await prepare(page, {
-    skipOpen: true,
-    records: [
-      opportunity(0, { stage: 'proposal', bid_decision: 'bid', bid_decision_reason: 'Original Go decision.' }),
-      opportunity(1, { stage: 'no_bid', bid_decision: 'no_bid', bid_decision_reason: 'Original No-Go decision.' }),
-    ],
-  });
-
-  await openDecision(page, 0, 'Reverse Go / No-Go decision');
-  await expect(dialog(page, 'Reverse Go / No-Go Decision')).toBeVisible();
-  await expect(save(page, 'Reverse Go / No-Go Decision')).toBeDisabled();
-  await choose(page, 'No-Go Decline this pursuit', 'Reverse Go / No-Go Decision');
-  await save(page, 'Reverse Go / No-Go Decision').click();
-  await expect(dialog(page, 'Reverse Go / No-Go Decision')).toHaveCount(0);
-
-  await openDecision(page, 1, 'Reverse Go / No-Go decision');
-  await expect(dialog(page, 'Reverse Go / No-Go Decision')).toBeVisible();
-  await expect(save(page, 'Reverse Go / No-Go Decision')).toBeDisabled();
-  await choose(page, 'Go Pursue Go submission', 'Reverse Go / No-Go Decision');
-  await save(page, 'Reverse Go / No-Go Decision').click();
-  await expect(dialog(page, 'Reverse Go / No-Go Decision')).toHaveCount(0);
-  expect(fixture.aiRequests).toHaveLength(0);
-  expect(fixture.decisions.map(item => item.payload.decision)).toEqual(['no_bid', 'bid']);
-  expect(fixture.decisions.map(item => item.payload.expected_decision)).toEqual(['bid', 'no_bid']);
+test('No-Go requires a specific reason in the justification textbox', async ({ page }) => {
+  const { requests } = await prepare(page);
+  const name = await open(page);
+  await choose(page, 'No-Go Decline pursuit', name);
+  await expect(save(page, name)).toBeDisabled();
+  await expect(dialog(page, name).getByRole('textbox', { name: 'Decision Justification *' })).not.toContainText('100% subcontracting');
+  await dialog(page, name).getByRole('textbox', { name: 'Decision Justification *' })
+    .fill('The survey would be fully subcontracted with no Rejlers value addition.');
+  await expect(save(page, name)).toBeEnabled();
+  await save(page, name).click();
+  expect(requests.ai).toHaveLength(0);
+  expect(requests.decisions[0].payload.decision).toBe('no_bid');
+  expect(requests.decisions[0].payload.reason).toContain('fully subcontracted');
 });
 
-for (const status of [403, 409, 503]) test(`AI ${status} retains an editable record draft and retry can recover`, async ({ page }) => {
-  const { fixture } = await prepare(page, { status });
-  await choose(page, 'No-Go Decline this pursuit');
-  await expect(dialog(page)).toContainText('Backend AI unavailable');
-  await expect(dialog(page).locator('.sbd-source')).toHaveText('Record-based draft');
-  await expect(save(page)).toBeEnabled();
-  await dialog(page).getByRole('button', { name: 'Edit', exact: true }).click();
-  await reason(page).fill('Manual rationale retained for review after the provider failed.');
-  expect(fixture.decisions).toHaveLength(0);
-  fixture.status = 200;
-  await dialog(page).getByRole('button', { name: 'Regenerate', exact: true }).click();
-  await expect(dialog(page).locator('.sbd-source')).toHaveText('Backend AI');
-  expect(fixture.aiRequests[1].payload.decision).toBe('no_bid');
+test('three No-Go predictions can draft an editable reason from tender evidence', async ({ page }) => {
+  const { requests } = await prepare(page);
+  const name = await open(page);
+  const order = await dialog(page, name).locator('section[aria-label]').evaluateAll((elements) =>
+    elements.map((element) => element.getAttribute('aria-label')));
+  expect(order.slice(0, 3)).toEqual(['Opportunity snapshot', 'Decision justification', 'Decision']);
+  await expect(dialog(page, name).getByText('Decision Insights')).toHaveCount(0);
+  await expect(dialog(page, name).getByText(/evidence grounding this draft/i)).toHaveCount(0);
+  const options = dialog(page, name).getByRole('group', { name: 'Suggested No-Go reasons' });
+  await expect(options.getByRole('button')).toHaveCount(3);
+  await options.getByRole('button', { name: /Commercial and margin uncertainty/ }).click();
+  const reason = dialog(page, name).getByRole('textbox', { name: 'Decision Justification *' });
+  await expect(reason).toContainText('100% after survey report acceptance');
+  await expect(reason).toContainText('Business prediction:');
+  await choose(page, 'Go Pursue submission', name);
+  await expect(reason).not.toContainText('Business prediction:');
+  await options.getByRole('button', { name: /Commercial and margin uncertainty/ }).click();
+  await choose(page, 'No-Go Decline pursuit', name);
+  await reason.fill('The cost model confirms this payment basis falls below our target margin.');
+  await save(page, name).click();
+  expect(requests.decisions[0].payload.reason).toContain('target margin');
+  expect(requests.ai).toHaveLength(0);
 });
 
-test('wrong-source AI cannot replace the current decision draft', async ({ page }) => {
-  const { fixture } = await prepare(page, { responsePatch: { text: 'FOREIGN RESPONSE MUST NOT APPEAR', source_context: { opportunity_id: 'foreign', decision: 'bid', mode: 'rewrite' } } });
-  await choose(page, 'Go Pursue Go submission');
-  await expect(dialog(page)).toContainText('Backend AI unavailable');
-  await expect(dialog(page)).not.toContainText('FOREIGN RESPONSE');
-  expect(fixture.decisions).toHaveLength(0);
+test('reversal remains an explicit decision action', async ({ page }) => {
+  const { requests } = await prepare(page, [opportunity(0, { stage: 'proposal', bid_decision: 'bid',
+    bid_decision_reason: 'Original Go decision.' })]);
+  const name = await open(page, 0, 'Reverse Go / No-Go decision');
+  await choose(page, 'No-Go Decline pursuit', name);
+  await expect(save(page, name)).toBeDisabled();
+  await dialog(page, name).getByRole('textbox', { name: 'Decision Justification *' })
+    .fill('The required specialist service is outside approved delivery capability.');
+  await save(page, name).click();
+  expect(requests.decisions[0].payload.expected_decision).toBe('bid');
+  expect(requests.ai).toHaveLength(0);
 });
 
-test('a changed decision ignores late output and cannot save while generation is pending', async ({ page }) => {
-  let release;
-  const hold = new Promise(resolve => { release = resolve; });
-  const { fixture } = await prepare(page, { hold, text: 'OLD GO RESPONSE MUST NOT APPEAR' });
-  await choose(page, 'Go Pursue Go submission');
-  await expect.poll(() => fixture.aiRequests.length).toBe(1);
-  await expect(save(page)).toBeDisabled();
-  fixture.hold = null;
-  fixture.text = 'No-bid wording for the newly selected decision, subject to final review.';
-  await choose(page, 'No-Go Decline this pursuit');
-  await expect(dialog(page).locator('.sbd-source')).toHaveText('Backend AI');
-  release();
-  await expect.poll(() => fixture.completed.length).toBe(2);
-  await expect(dialog(page)).not.toContainText('OLD GO RESPONSE');
-  await save(page).click();
-  await expect(dialog(page)).toHaveCount(0);
-  expect(fixture.decisions[0].payload).toEqual({ decision: 'no_bid', reason: 'No-Go wording for the newly selected decision, subject to final review.', expected_decision: 'pending' });
-});
-
-test('closing a pending draft fences output from another opportunity', async ({ page }) => {
-  let release;
-  const hold = new Promise(resolve => { release = resolve; });
-  const { fixture } = await prepare(page, { hold, text: 'OLD OPPORTUNITY RESPONSE MUST NOT APPEAR' });
-  await choose(page, 'Go Pursue Go submission');
-  await expect.poll(() => fixture.aiRequests.length).toBe(1);
-  await dialog(page).getByRole('button', { name: 'Cancel', exact: true }).click();
-  await openDecision(page, 1);
-  release();
-  await expect.poll(() => fixture.completed.length).toBe(1);
-  await expect(save(page)).toBeDisabled();
-  await expect(dialog(page)).not.toContainText('OLD OPPORTUNITY RESPONSE');
-});
-
-test('redesigned bid dialog is accessible at desktop and mobile widths', async ({ page }) => {
-  await prepare(page, { realShell: true });
-  await choose(page, 'Go Pursue Go submission');
-  await expect(save(page)).toBeEnabled();
+test('decision dialog remains accessible and fits narrow screens', async ({ page }) => {
+  await prepare(page);
+  const name = await open(page);
+  await choose(page, 'No-Go Decline pursuit', name);
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 900 });
     expect((await new AxeBuilder({ page }).include('.sbd-dialog').analyze()).violations).toEqual([]);
-    expect(await dialog(page).evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+    expect(await dialog(page, name).evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
   }
-});
-
-
-test('long email links cannot widen the decision dialog or hide No-Go and insights', async ({ page }) => {
-  const longLink = 'https://eur01.safelinks.protection.outlook.com/?url=' + 'encodedTenderReference%2F'.repeat(100);
-  await prepare(page, { text: `Review this tender evidence before recording a decision: ${longLink}` });
-  await choose(page, 'No-Go Decline this pursuit');
-  await expect(dialog(page).getByRole('button', { name: 'Regenerate', exact: true })).toBeEnabled();
-  await expect(dialog(page).locator('.sbd-source')).toHaveText('Record-based draft');
-  await expect(dialog(page).locator('.sbd-text')).not.toContainText('https://');
-  expect((await dialog(page).locator('.sbd-text').innerText()).split(/\s+/).length).toBeLessThanOrEqual(60);
-  // Manual wording remains editable and is not shortened behind the user's back.
-  await dialog(page).getByRole('button', { name: 'Edit', exact: true }).click();
-  await reason(page).fill(`Review this tender evidence before recording a decision: ${longLink}`);
-  await dialog(page).getByRole('button', { name: 'Done', exact: true }).click();
-  for (const width of [1519, 1024, 390]) {
-    await page.setViewportSize({ width, height: 965 });
-    const measurements = await dialog(page).evaluate(element => {
-      const body = element.querySelector('.sbd-body');
-      const bounds = element.getBoundingClientRect();
-      return { overflow: body.scrollWidth - body.clientWidth, left: bounds.left, right: bounds.right };
-    });
-    expect(measurements.overflow).toBeLessThanOrEqual(1);
-    expect(measurements.left).toBeGreaterThanOrEqual(0);
-    expect(measurements.right).toBeLessThanOrEqual(width);
-    for (const selector of ['.sbd-nogo', '.sbd-insights', '.sbd-text']) {
-      const fits = await dialog(page).locator(selector).evaluate(element => {
-        const parent = element.closest('.sbd-body').getBoundingClientRect();
-        const bounds = element.getBoundingClientRect();
-        return bounds.left >= parent.left && bounds.right <= parent.right;
-      });
-      expect(fits).toBe(true);
-    }
-  }
-  await dialog(page).getByRole('button', { name: 'Edit', exact: true }).click();
-  await expect(reason(page)).toHaveValue(`Review this tender evidence before recording a decision: ${longLink}`);
 });

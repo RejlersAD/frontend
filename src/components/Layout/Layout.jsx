@@ -85,7 +85,7 @@ const Layout = () => {
   const isForecastWorkspace = location.pathname === '/sales/forecasts'
   const isFrameworkWorkspace = location.pathname === '/sales/frameworks'
   const isProposalPreview = /^\/sales\/proposals\/[^/]+\/preview\/?$/.test(location.pathname)
-  const isViewportWorkspace = ['/dashboard', '/executive', '/approvals', '/notifications', '/admin/enquiries'].includes(location.pathname) || isOpportunityRegister || isProposalRegister || isProposalPreview || isClientRegister || isForecastWorkspace || isFrameworkWorkspace
+  const isViewportWorkspace = ['/dashboard', '/executive', '/approvals', '/notifications', '/admin/enquiries', '/radai-intelligence'].includes(location.pathname) || isOpportunityRegister || isProposalRegister || isProposalPreview || isClientRegister || isForecastWorkspace || isFrameworkWorkspace
   const isVendorWorkspace = location.pathname === '/procurement/vendors'
   const isFlushWorkspace = ['/profile', '/hr/Employeprofile'].includes(location.pathname)
   const isFinanceCommandWorkspace = ['/finance', '/finance/'].includes(location.pathname)

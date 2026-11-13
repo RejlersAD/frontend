@@ -57,6 +57,7 @@ For approvals, include source revision, route version, resolved approvers, assig
 
 ## Integrity constraints
 
+
 - Canonical record references must exist and belong to compatible scopes.
 - A workflow cannot approve an editable revision that differs from the submitted snapshot.
 - A person cannot create duplicate active approval decisions for the same assignment.
@@ -72,3 +73,13 @@ For approvals, include source revision, route version, resolved approvers, assig
 ## Deletion and retention
 
 Use record-specific rules. Business cancellation does not erase evidence. Retention periods, allowed deletion, archival, and legal holds must come from confirmed policy. Record the decision before implementing scheduled purges. Avoid promising that every record is retained forever or that every record can be hard-deleted.
+
+## RADAI Intelligence AI-project persistence (corrected architecture, 13 November 2026)
+
+`AIWorkspaceConversation.workspace` is nullable for owner-only general chat. A null workspace means no project instructions, project knowledge retrieval, or enterprise-project access; private current-conversation attachments can still produce citations. Project conversations retain their existing workspace foreign key and scoped authorization. Migration `core.0021` changes only that field's nullability. Migration `core.0022` adds private conversation attachments and message references; `core.0023` persists deterministic extracted pages and truncation state on each attachment. Files stay bound to one owner and conversation, with a SHA-256 for download and retrieval integrity checks.
+
+`AIWorkspace` has its own owner, visibility, folder and optional `core.Project` link. `AIWorkspaceMember` grants editor/viewer roles without conveying canonical project permissions. `AIWorkspaceInstructions` is versioned and audited. `AIWorkspaceDocument` stores private files outside `MEDIA_ROOT`, exact file hash, version, extracted page/sheet text and processing state. `AIWorkspaceConversation` is owner-private by default; `AIWorkspaceConversationShare` grants named current members read access, and `AIWorkspaceMessage` records model, citations, instruction version, request identity and token usage. Existing canonical-project Intelligence models remain intact for legacy records; no mappings are inferred.
+
+## RADAI Intelligence project-owned persistence (legacy B2-B3)
+
+`ProjectAIInstructions` is a one-to-one extension of canonical `core.Project`, with seven text preferences, a version, update actor, timestamps, and `rbac.AuditLog` changes. `ProjectKnowledgeSource` links a canonical project to exactly one existing Project Control file or exact live CRS revision; database constraints prevent duplicate project/source links. It stores deterministic extraction locations and text, a file SHA-256, processing state, and link actor. Its approval label is derived from the live CRS chain/revision/document state and never grants approval itself. `IntelligenceConversation` belongs to one canonical project and user and archives without deleting messages. `IntelligenceMessage` records role, timestamp, model/provider metadata, instruction version, exact retrieved source references, and a per-conversation request UUID. A partial unique constraint on conversation, request UUID, and role prevents duplicate stored turns. No AI credentials or Microsoft tokens are stored in these models.

@@ -333,6 +333,15 @@ const Sidebar = ({
       requiresModule: false, // Dashboard is always accessible
     },
     {
+      id: "radaiIntelligence",
+      title: "RADAI Intelligence",
+      icon: SparklesIcon,
+      path: "/radai-intelligence",
+      type: "single",
+      requiresModule: false,
+      description: "Project-aware AI workspace",
+    },
+    {
       id: "approvals",
       title: "Approvals",
       icon: ClipboardDocumentListIcon,
