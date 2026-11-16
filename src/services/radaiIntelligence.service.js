@@ -54,7 +54,7 @@ export const getAIConversation = (id, conversationId) => unwrap(apiClient.get(`$
 export const updateAIConversation = (id, conversationId, title) => unwrap(apiClient.patch(`${aiConversations(id)}${conversationId}/`, { title }))
 export const archiveAIConversation = (id, conversationId) => unwrap(apiClient.delete(`${aiConversations(id)}${conversationId}/`))
 export const shareAIConversation = (id, conversationId, userId) => unwrap(apiClient.post(`${aiProject(id)}conversations/${conversationId}/share/`, { user_id: userId }))
-export const sendAIMessage = (id, conversationId, question, requestId, model, attachmentIds = []) => unwrap(apiClient.post(`${aiConversations(id)}${conversationId}/send/`, { question, request_id: requestId, provider: 'ollama', model, attachment_ids: attachmentIds }, { timeout: 240000 }))
+export const sendAIMessage = (id, conversationId, question, requestId, provider, model, attachmentIds = []) => unwrap(apiClient.post(`${aiConversations(id)}${conversationId}/send/`, { question, request_id: requestId, provider, model, attachment_ids: attachmentIds }, { timeout: 240000 }))
 
 export const uploadAIAttachment = (projectId, conversationId, file) => {
   const body = new FormData()
