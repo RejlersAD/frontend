@@ -4,19 +4,16 @@ import * as Icons from '@heroicons/react/24/outline'
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import ts from '../../../services/timesheet.service'
 import payrollService from '../../../services/payroll.service'
-import { ATT_STANDARD_DAILY_HOURS, empDept, empName, filterEmployeeRow } from '../../../config/hrAttendance.config'
+import { empDept, empName, filterEmployeeRow } from '../../../config/hrAttendance.config'
 import { BRANCHES } from '../../../config/hrLeave.config'
-import { buildOverviewDay, overviewDateKeys, overviewNumber } from './overviewAttendanceModel'
+import { buildOverviewDay, overviewDateKeys } from './overviewAttendanceModel'
 
 const EMPTY = { state: 'loading', data: null }
 const dateObject = value => new Date(`${value}T12:00:00`)
 const dateKey = value => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`
 const dateLabel = value => dateObject(value).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 const format = value => value == null ? '—' : value.toLocaleString('en-US', { maximumFractionDigits: 1 })
-const hours = value => value == null ? '—' : `${format(value)}h`
-const timestamp = value => value && !Number.isNaN(new Date(value).getTime()) ? new Date(value).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'
 const errorMessage = error => error?.response?.status === 403 ? 'Access denied.' : error?.response?.status === 401 ? 'Session expired. Sign in again.' : 'Could not be loaded.'
-const sourceLabel = data => ({ manual_upload: 'Manual upload', manual: 'Manual upload', biometric: 'Biometric records', hybrid: 'Biometric + uploaded hours', mirror: 'Biometric mirror', sqlserver: 'Biometric records' })[data?.attendance_source || data?.variant || data?.hours_mode] || 'Attendance records'
 
 // Keyed reads clear obsolete values immediately and ignore late responses.
 function useOverviewRead(key, loader) {
@@ -34,42 +31,28 @@ function useOverviewRead(key, loader) {
   return result.key === key ? result : EMPTY
 }
 
-async function loadHolidays(year) {
-  const rows = []
-  let count
-  for (let page = 1; page <= 1000; page++) {
-    const response = await payrollService.getPublicHolidays(year, { active_only: 'true', page })
-    if (page === 1 && Array.isArray(response)) return response
-    if (!Array.isArray(response?.results) || !Number.isSafeInteger(response.count) || response.count < 0) throw new Error('Incomplete holidays')
-    if (page === 1) count = response.count
-    if (response.count !== count) throw new Error('Changed holidays')
-    rows.push(...response.results)
-    if (rows.length > count) throw new Error('Incomplete holidays')
-    if (response.next === null) {
-      if (rows.length !== count) throw new Error('Incomplete holidays')
-      return rows
-    }
-    if (typeof response.next !== 'string' || !response.results.length || Number(new URL(response.next, 'https://attendance.invalid').searchParams.get('page')) !== page + 1) throw new Error('Incomplete holidays')
-  }
-  throw new Error('Incomplete holidays')
-}
-
 function PanelState({ resource, label, onRetry, empty }) {
-  if (resource.state === 'loading') return <p className="att-overview-empty" role="status">Loading {label.toLowerCase()}…</p>
+    if (resource.state === 'loading') return <p className="att-overview-empty" role="status">Loading {label.toLowerCase()}...</p>
   if (resource.state === 'error') return <div className="att-overview-empty att-overview-error" role="alert">{label}: {resource.error} <button type="button" className="att-overview-link" onClick={onRetry}>Retry {label.toLowerCase()}</button></div>
   return empty ? <p className="att-overview-empty">{empty}</p> : null
 }
+
+const AttentionCard = ({ title, sub, onClick }) => (
+  <div className="att-attention-card" role="button" tabIndex={0} onClick={onClick} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onClick() } }}>
+    <div className="att-attention-body"><span className="att-attention-title">{title}</span><span className="att-attention-sub">{sub}</span></div>
+    <Icons.ChevronRightIcon className="att-attention-chevron" aria-hidden="true" />
+  </div>
+)
 
 export default function AttendanceOverviewTab({ date, today, onDateChange, onOpenDaily, onOpenMatrix }) {
   const [branch, setBranch] = useState('all')
   const [department, setDepartment] = useState('all')
   const [search, setSearch] = useState('')
   const [refresh, setRefresh] = useState(0)
-  const [attentionExpanded, setAttentionExpanded] = useState(false)
   const [exportBusy, setExportBusy] = useState(false)
   const [exportError, setExportError] = useState('')
   const [week, setWeek] = useState({ key: '', days: {} })
-  const year = Number(date.slice(0, 4)), month = Number(date.slice(5, 7))
+  const year = Number(date.slice(0, 4))
   const weekKey = `${date}:${refresh}`
   const dates = useMemo(() => overviewDateKeys(date), [date])
   const branchYearsKey = [...new Set(dates.map(day => day.slice(0, 4)))].join(',')
@@ -82,7 +65,7 @@ export default function AttendanceOverviewTab({ date, today, onDateChange, onOpe
       ts.fetchDaily(day).then(response => {
         const rows = Array.isArray(response) ? response : response?.rows
         if (response?.configured === false || !Array.isArray(rows)) throw new Error('Attendance unavailable')
-        if (active) setWeek(previous => ({ key: weekKey, days: { ...previous.days, [day]: { state: 'loaded', data: rows.filter(filterEmployeeRow), source: sourceLabel(response) } } }))
+        if (active) setWeek(previous => ({ key: weekKey, days: { ...previous.days, [day]: { state: 'loaded', data: rows.filter(filterEmployeeRow) } } }))
       }).catch(error => {
         if (active) setWeek(previous => ({ key: weekKey, days: { ...previous.days, [day]: { state: 'error', data: null, error: errorMessage(error) } } }))
       })
@@ -90,25 +73,9 @@ export default function AttendanceOverviewTab({ date, today, onDateChange, onOpe
     return () => { active = false }
   }, [dates, weekKey])
 
-  const leave = useOverviewRead(`${year}:${month}:${refresh}`, useCallback(async () => {
-    const response = await payrollService.getLeaveCalendar(year, month)
-    if (!response?.calendar || typeof response.calendar !== 'object' || Array.isArray(response.calendar)) throw new Error('Invalid calendar')
-    return response.calendar
-  }, [year, month]))
-  const corrections = useOverviewRead(`${year}:${month}:${refresh}`, useCallback(async () => {
-    const rows = await payrollService.getAttendanceOverrides(year, month)
-    if (!Array.isArray(rows)) throw new Error('Invalid corrections')
-    return [...rows].sort((a, b) => (Date.parse(b.created_at) || 0) - (Date.parse(a.created_at) || 0))
-  }, [year, month]))
-  const holidays = useOverviewRead(`${year}:${refresh}`, useCallback(() => loadHolidays(year), [year]))
   const approvals = useOverviewRead(String(refresh), useCallback(async () => {
     const response = await payrollService.getPendingLeaveApprovals()
     if (!Array.isArray(response?.results) || !Number.isSafeInteger(response.count) || response.count !== response.results.length) throw new Error('Invalid approval queue')
-    return response
-  }, []))
-  const health = useOverviewRead(String(refresh), useCallback(async () => {
-    const response = await ts.fetchHealth()
-    if (typeof response?.ping?.ok !== 'boolean') throw new Error('Invalid health')
     return response
   }, []))
   const branchState = useOverviewRead(`${branchYearsKey}:${branch}:${refresh}`, useCallback(async () => {
@@ -135,10 +102,9 @@ export default function AttendanceOverviewTab({ date, today, onDateChange, onOpe
     const resource = week.key === weekKey ? week.days[day] || EMPTY : EMPTY
     return { date: day, label: dateObject(day).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }), records: branchReady && resource.state === 'loaded' ? resource.data.filter(row => filterRow(row, Number(day.slice(0, 4)))).length : null, state: resource.state }
   })
-  const approvedLeave = leave.state === 'loaded' ? Object.values(leave.data).filter(days => Boolean(days?.[date])).length : null
-  const selectedHolidays = holidays.state === 'loaded' ? holidays.data.filter(item => item.date === date && item.is_active !== false) : []
-  const recent = corrections.state === 'loaded' ? corrections.data.slice(0, 5) : []
-  const attention = attentionExpanded ? totals.attention : totals.attention.slice(0, 5)
+  const pendingLeave = approvals.state === 'loaded' ? approvals.data.count : null
+  const openSessions = totals.openShifts == null ? '—' : totals.openShifts
+  const attentionRequired = totals.late > 0 || (typeof totals.openShifts === 'number' && totals.openShifts > 0) || (typeof pendingLeave === 'number' && pendingLeave > 0)
   const metric = value => ready ? format(value) : '—'
   const stepDate = delta => {
     const next = dateObject(date)
@@ -148,7 +114,6 @@ export default function AttendanceOverviewTab({ date, today, onDateChange, onOpe
   const changeDate = value => {
     if (value <= today && overviewDateKeys(value).length) {
       onDateChange(value)
-      setAttentionExpanded(false)
       setExportError('')
     }
   }
@@ -159,11 +124,25 @@ export default function AttendanceOverviewTab({ date, today, onDateChange, onOpe
     catch { setExportError('The daily report could not be exported. Please try again.') }
     finally { setExportBusy(false) }
   }
-  const sourceHealth = health.data?.data_source
-  const sourceValue = health.state === 'loaded' ? health.data.ping.ok ? ({ manual: 'Upload storage available', mirror: 'Mirror records available', sqlserver: 'Connection available' })[sourceHealth] || 'Available' : 'Unavailable / no records' : health.state === 'loading' ? 'Loading…' : 'Unavailable'
-  const dataStatus = resource => resource.state === 'loaded' ? 'Loaded' : resource.state === 'loading' ? 'Loading…' : 'Unavailable'
+
+  const deptIssues = useMemo(() => {
+    const counts = new Map()
+    totals.attention.forEach(item => {
+      const dept = empDept(item.row)
+      counts.set(dept, (counts.get(dept) || 0) + 1)
+    })
+    return [...counts.entries()].map(([dept, count]) => ({ dept, count })).sort((a, b) => b.count - a.count)
+  }, [totals.attention])
+
+  const todayPoint = trend[trend.length - 1]
+  const todayRecords = todayPoint.records == null ? totals.records : todayPoint.records
+  const prevPoints = trend.slice(0, -1).filter(point => point.records != null)
+  const prevAvg = prevPoints.length ? prevPoints.reduce((sum, point) => sum + point.records, 0) / prevPoints.length : 0
+  const changePct = prevAvg > 0 ? Math.round(((todayRecords - prevAvg) / prevAvg) * 100) : 0
+  const changeLabel = changePct > 0 ? `↑ ${changePct}% versus previous week` : changePct < 0 ? `↓ ${Math.abs(changePct)}% versus previous week` : '— versus previous week'
 
   return <section className="att-overview" aria-label="Attendance overview">
+    {/* ── Filters (unchanged) ── */}
     <div className="att-filter-panel att-overview-toolbar">
       <div className="att-date-navigation">
         <button type="button" className="att-button" aria-label="Previous overview day" disabled={exportBusy} onClick={() => stepDate(-1)}><Icons.ChevronLeftIcon /></button>
@@ -184,78 +163,74 @@ export default function AttendanceOverviewTab({ date, today, onDateChange, onOpe
     {branch !== 'all' && branchState.state !== 'loaded' && <PanelState resource={branchState} label="Branch attendance" onRetry={retry} />}
     {current.state !== 'loaded' && <PanelState resource={current} label="Daily attendance" onRetry={retry} />}
 
-    <dl className="att-summary att-overview-summary" aria-label="Overview attendance summary">
-      {[
-        ['Attendance records', metric(totals.records), Icons.UsersIcon, 'neutral', 'Filtered records'],
-        ['Check-ins', metric(totals.checkIns), Icons.UserIcon, 'good', 'Recorded first punch'],
-        ['Approved leave', format(approvedLeave), Icons.CalendarDaysIcon, 'blue', 'All permitted employees'],
-        ['Late records', metric(totals.late), Icons.ClockIcon, 'warn', 'Source late flag'],
-        ['Attention items', metric(totals.attention.length), Icons.ExclamationTriangleIcon, 'warn', 'Filtered records'],
-        ['Pending leave', approvals.state === 'loaded' ? format(approvals.data.count) : '—', Icons.ClockIcon, 'warn', 'For your review · all dates'],
-      ].map(([label, value, Icon, tone, note]) => <div key={label} className="att-summary-item" data-tone={tone}><Icon /><div><dt>{label}</dt><dd>{value}</dd><small>{note}</small></div></div>)}
-    </dl>
-
-    <div className="att-overview-grid">
-      <div className="att-overview-main">
-        <section className="att-overview-card" aria-label="Requires attention">
-          <header><div><h2>Requires attention</h2><p>Open shifts, late arrivals and recorded overtime</p></div><button type="button" className="att-overview-link" disabled={!ready || !totals.attention.length} onClick={() => setAttentionExpanded(value => !value)}>{attentionExpanded ? 'Show less' : `View all (${ready ? totals.attention.length : '—'})`}<Icons.ChevronRightIcon /></button></header>
-          {!ready ? <p className="att-overview-empty">Attendance details are unavailable until the selected records load.</p> : !attention.length ? <p className="att-overview-empty">{rows.length ? 'No attention items in the returned records.' : 'No attendance records match this date and filters.'}</p> : <div className="att-overview-table-scroll"><table className="att-overview-table att-overview-attention"><thead><tr><th>Type</th><th>Issue</th><th>Employee</th><th>Department</th><th>Details</th><th>Action</th></tr></thead><tbody>{attention.map(item => <tr key={item.key}><td><span className="att-overview-tone" data-tone={item.tone === 'warning' ? 'warn' : 'blue'}>{item.tone === 'warning' ? <Icons.ExclamationTriangleIcon /> : <Icons.InformationCircleIcon />}{item.tone === 'warning' ? 'Warning' : 'Info'}</span></td><td>{item.issue}</td><td>{empName(item.row)}</td><td>{empDept(item.row)}</td><td>{item.detail}</td><td><button type="button" className="att-overview-review" aria-label={`Review ${empName(item.row)}`} onClick={() => onOpenDaily(date, String(item.row.employee_code || empName(item.row)))}>Review</button></td></tr>)}</tbody></table></div>}
-        </section>
-
-        <section className="att-overview-card" aria-label="Attendance by department">
-          <header><h2>Attendance by department</h2><button type="button" className="att-overview-link" onClick={() => onOpenDaily(date)}>Open daily register<Icons.ChevronRightIcon /></button></header>
-          {ready && totals.departments.length ? <div className="att-overview-table-scroll"><table className="att-overview-table att-overview-departments"><thead><tr><th>Department</th><th>Records</th><th>Check-ins</th><th>Open shifts</th><th>Regular hours</th><th>Check-in share</th></tr></thead><tbody>{totals.departments.map(item => <tr key={item.dept}><td>{item.dept}</td><td>{format(item.records)}</td><td>{format(item.checkIns)}</td><td>{format(item.openShifts)}</td><td>{hours(item.regularHours)}</td><td><span className="att-overview-bar"><span><i style={{ width: `${item.checkInShare || 0}%` }} /></span><b>{format(item.checkInShare)}%</b></span></td></tr>)}</tbody></table></div> : <p className="att-overview-empty">{ready ? 'No department records for this selection.' : 'Department figures unavailable.'}</p>}
-          <p className="att-overview-footnote">Share of returned records with a check-in. Records can include multiple sessions per employee.</p>
-        </section>
-
-        <section className="att-overview-card" aria-label="Seven-day attendance trend">
-          <header><h2>7-day attendance trend</h2><span className="att-overview-chart-key"><i />Attendance records</span></header>
-          <div className="att-overview-trend"><div className="att-overview-chart" role="img" aria-label={trend.map(point => `${point.label}: ${point.records == null ? 'unavailable' : `${point.records} records`}`).join('; ')}>
-            <ResponsiveContainer width="100%" height={180}><LineChart data={trend} margin={{ top: 10, right: 12, bottom: 4, left: -22 }}><CartesianGrid stroke="#e9eff7" strokeDasharray="3 3" /><XAxis dataKey="label" tick={{ fontSize: 10, fill: '#526c92' }} axisLine={{ stroke: '#c7d5e7' }} tickLine={false} /><YAxis allowDecimals={false} tick={{ fontSize: 10, fill: '#526c92' }} axisLine={false} tickLine={false} /><Tooltip formatter={value => [format(value), 'Records']} /><Line type="linear" dataKey="records" stroke="#1765ff" strokeWidth={2} dot={{ r: 3, fill: '#1765ff', stroke: 'white', strokeWidth: 1 }} connectNulls={false} isAnimationActive={false} /></LineChart></ResponsiveContainer>
-          </div><aside><span>Selected day</span><strong>{metric(totals.records)}</strong><span>Days loaded</span><b>{trend.filter(point => point.state === 'loaded').length} of 7</b><p><Icons.InformationCircleIcon />Recorded counts; a scheduled workforce denominator is not available.</p></aside></div>
-          {trend.some(point => point.state === 'error') && <div className="att-overview-footnote" role="alert">Unavailable days: {trend.filter(point => point.state === 'error').map(point => point.label).join(', ')}. <button className="att-overview-link" type="button" onClick={retry}>Retry trend</button></div>}
-        </section>
+    {/* ── SECTION 1: Attendance Snapshot ── */}
+    <section className="att-snapshot" aria-label="Attendance snapshot">
+      <div className="att-snapshot-card">
+        <div className="att-snapshot-head">
+          <h2>Attendance Today</h2>
+          <span className={`att-snapshot-status ${attentionRequired ? 'att-snapshot-status-warn' : 'att-snapshot-status-ok'}`}>Status: {attentionRequired ? 'Attention Required' : 'All Clear'}</span>
+        </div>
+        <div className="att-snapshot-body">
+          <div className="att-snapshot-item"><span className="att-snapshot-value">{metric(totals.records)}</span><span className="att-snapshot-label">Employees Recorded</span></div>
+          <div className="att-snapshot-item"><span className="att-snapshot-value">{metric(totals.late)}</span><span className="att-snapshot-label">Late Records</span></div>
+          <div className="att-snapshot-item"><span className="att-snapshot-value">{openSessions}</span><span className="att-snapshot-label">Open Sessions</span></div>
+          <div className="att-snapshot-item"><span className="att-snapshot-value">{pendingLeave == null ? '—' : format(pendingLeave)}</span><span className="att-snapshot-label">Pending Leave Requests</span></div>
+        </div>
       </div>
+    </section>
 
-      <div className="att-overview-side">
-        <section className="att-overview-card" aria-label="Daily summary">
-          <header><h2>Daily summary</h2><button type="button" className="att-overview-link" onClick={() => onOpenMatrix(date)}>Open monthly matrix</button></header>
-          <dl className="att-overview-facts">
-            <div><dt><Icons.ClockIcon />Configured standard day</dt><dd>{hours(ATT_STANDARD_DAILY_HOURS)}</dd></div>
-            <div><dt><Icons.PlayIcon />Source regular hours</dt><dd>{ready ? hours(totals.regularHours) : '—'}</dd></div>
-            <div><dt><Icons.ChartBarIcon />Recorded OT · unapproved</dt><dd>{ready ? hours(totals.overtimeHours) : '—'}</dd></div>
-            <div><dt><Icons.CalendarDaysIcon />Expected hours / variance</dt><dd className="att-overview-muted">Not available</dd></div>
-            <div><dt><Icons.CalendarDaysIcon />Public holidays · all regions</dt><dd>{holidays.state === 'loaded' ? selectedHolidays.length ? selectedHolidays.map(item => `${item.name}${item.region ? ` (${item.region})` : ''}`).join(', ') : 'None listed' : '—'}</dd></div>
-          </dl><p className="att-overview-footnote">{current.state === 'loaded' ? current.source : 'Source unavailable'} · {dateLabel(date)}. Source hours exclude HR corrections; open-shift hours may change.</p>
-          {holidays.state === 'error' && <PanelState resource={holidays} label="Public holidays" onRetry={retry} />}
-        </section>
+    {/* ── SECTION 2: Quick Metrics ── */}
+    <section className="att-quick-metrics" aria-label="Quick metrics">
+      <div className="att-metric-card"><Icons.UsersIcon className="att-metric-icon" aria-hidden="true" /><div className="att-metric-text"><dt>Attendance</dt><dd>{metric(totals.records)}</dd></div></div>
+      <div className="att-metric-card"><Icons.ClockIcon className="att-metric-icon" aria-hidden="true" /><div className="att-metric-text"><dt>Late Records</dt><dd>{metric(totals.late)}</dd></div></div>
+      <div className="att-metric-card"><Icons.CalendarDaysIcon className="att-metric-icon" aria-hidden="true" /><div className="att-metric-text"><dt>Open Sessions</dt><dd>{openSessions}</dd></div></div>
+      <div className="att-metric-card"><Icons.ClockIcon className="att-metric-icon" aria-hidden="true" /><div className="att-metric-text"><dt>Pending Leave</dt><dd>{pendingLeave == null ? '—' : format(pendingLeave)}</dd></div></div>
+    </section>
 
-        <section className="att-overview-card" aria-label="Data health">
-          <header><h2>Data health</h2><button type="button" className="att-overview-link" onClick={retry}>Refresh status</button></header>
-          <dl className="att-overview-facts">
-            {[[health, 'Attendance source', sourceValue], [current, 'Selected-day records', dataStatus(current)], [leave, 'Approved leave calendar', dataStatus(leave)], [corrections, 'HR corrections', dataStatus(corrections)]].map(([resource, label, value]) => <div key={label}><dt>{resource.state === 'error' || (label === 'Attendance source' && resource.data?.ping?.ok === false) ? <Icons.ExclamationTriangleIcon className="att-overview-warn" /> : resource.state === 'loaded' ? <Icons.CheckCircleIcon className="att-overview-good" /> : <Icons.ClockIcon />}{label}</dt><dd>{value}</dd></div>)}
-          </dl>
-          {health.state === 'loaded' && (health.data.ping.latest_upload || health.data.ping.latest_event) && <p className="att-overview-footnote">{health.data.ping.latest_upload ? 'Latest upload' : 'Latest recorded event'}: {timestamp(health.data.ping.latest_upload || health.data.ping.latest_event)}. This is not a sync heartbeat.</p>}
-          {health.state === 'error' && <PanelState resource={health} label="Source health" onRetry={retry} />}
-          {leave.state === 'error' && <PanelState resource={leave} label="Approved leave" onRetry={retry} />}
-        </section>
-
-        <section className="att-overview-card" aria-label="Pending leave approvals">
-          <header><h2>Pending leave approvals{approvals.state === 'loaded' ? ` (${approvals.data.count})` : ''}</h2><Link className="att-overview-link" to="/hr/leave-requests">View all</Link></header>
-          <PanelState resource={approvals} label="Leave approvals" onRetry={retry} empty={approvals.state === 'loaded' && !approvals.data.count ? 'No leave requests are waiting for your review.' : ''} />
-          {approvals.state === 'loaded' && approvals.data.count > 0 && <div className="att-overview-table-scroll"><table className="att-overview-table att-overview-approvals"><thead className="sr-only"><tr><th>Leave type</th><th>Employee</th><th>Starts</th><th>Action</th></tr></thead><tbody>{approvals.data.results.slice(0, 3).map(item => <tr key={item.id}><td><span className="att-overview-inline"><Icons.ClockIcon />{item.leave_type_detail?.name || 'Leave request'}</span></td><td>{item.employee_name || item.employee_code}</td><td>{item.start_date ? dateLabel(item.start_date) : '—'}</td><td><Link className="att-overview-link" to={`/hr/leave-requests/${encodeURIComponent(item.id)}`}>Review</Link></td></tr>)}</tbody></table></div>}
-          <p className="att-overview-footnote">Your current review queue · all dates and departments.</p>
-        </section>
-
-        <section className="att-overview-card" aria-label="Recent corrections">
-          <header><h2>Recent corrections</h2><button type="button" className="att-overview-link" onClick={() => onOpenMatrix(date)}>Open matrix</button></header>
-          <PanelState resource={corrections} label="HR corrections" onRetry={retry} empty={corrections.state === 'loaded' && !recent.length ? 'No active corrections for this month.' : ''} />
-          {recent.length > 0 && <div className="att-overview-table-scroll"><table className="att-overview-table att-overview-corrections"><thead><tr><th>Employee</th><th>Original</th><th>Corrected</th><th>Recorded by</th><th>Created</th></tr></thead><tbody>{recent.map(item => <tr key={item.id}><td><button type="button" className="att-overview-link" onClick={() => onOpenMatrix(item.date, item.employee_code)}>{item.employee_name || item.employee_code}</button><small>{item.date ? dateLabel(item.date) : '—'}</small></td><td>{hours(overviewNumber(item.original_hours))}</td><td>{hours(overviewNumber(item.override_hours))}</td><td>{item.created_by_name || '—'}</td><td>{timestamp(item.created_at)}</td></tr>)}</tbody></table></div>}
-          <p className="att-overview-footnote">Active corrections for {dateObject(date).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })} · all permitted employees. These are recorded changes.</p>
-        </section>
+    {/* ── SECTION 3: Needs Attention ── */}
+    <section className="att-needs-attention" aria-label="Needs attention">
+      <h2>Needs Attention</h2>
+      <div className="att-attention-list">
+        <AttentionCard title="Late Records" sub={`${totals.late} employees need review`} onClick={() => onOpenDaily(date)} />
+        <AttentionCard title="Open Sessions" sub={`${openSessions} attendance sessions require closure`} onClick={() => onOpenDaily(date)} />
+        <Link to="/hr/leave-requests" className="att-attention-link"><AttentionCard title="Pending Leave" sub={`${pendingLeave == null ? '—' : pendingLeave} requests awaiting approval`} onClick={() => {}} /></Link>
       </div>
-    </div>
-    <p className="att-overview-scope">Filters apply to attendance records, department figures and trend. Leave and corrections retain their stated scope. Excel includes all permitted records for the selected date.</p>
+    </section>
+
+    {/* ── SECTION 4: Department Highlights ── */}
+    <section className="att-department-highlights" aria-label="Department highlights">
+      <h2>Department Highlights</h2>
+      <div className="att-department-list">
+        {deptIssues.slice(0, 6).map(item => (
+          <div key={item.dept} className="att-department-chip"><span className="att-department-name">{item.dept}</span><span className="att-department-count">{item.count} Issues</span></div>
+        ))}
+        {deptIssues.length === 0 && <p className="att-empty">No departments require attention.</p>}
+      </div>
+    </section>
+
+    {/* ── SECTION 5: Attendance Trend ── */}
+    <section className="att-trend" aria-label="Attendance trend">
+      <div className="att-trend-card">
+        <div className="att-trend-head">
+          <div>
+            <h2>Today&apos;s Attendance</h2>
+            <p>Weekly Trend</p>
+          </div>
+          <span className={`att-trend-change ${changePct > 0 ? 'att-trend-change-up' : changePct < 0 ? 'att-trend-change-down' : ''}`}>{changeLabel}</span>
+        </div>
+        <div className="att-trend-chart" role="img" aria-label={trend.map(point => `${point.label}: ${point.records == null ? 'unavailable' : `${point.records} records`}`).join('; ')}>
+          <ResponsiveContainer width="100%" height={200}>
+            <LineChart data={trend} margin={{ top: 8, right: 16, bottom: 28, left: 8 }}>
+              <CartesianGrid stroke="#e9eff7" strokeDasharray="3 3" />
+              <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#526c92' }} axisLine={{ stroke: '#c7d5e7' }} tickLine={false} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#526c92' }} axisLine={false} tickLine={false} hide={true} />
+              <Tooltip formatter={value => [`${value} records`, 'Attendance']} />
+              <Line type="linear" dataKey="records" stroke="#1765ff" strokeWidth={2} dot={{ r: 3, fill: '#1765ff', stroke: 'white', strokeWidth: 1 }} connectNulls={false} isAnimationActive={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+        <p className="att-trend-footnote">Recorded counts for the selected week. Unavailable days appear as gaps.</p>
+      </div>
+    </section>
   </section>
 }
-
