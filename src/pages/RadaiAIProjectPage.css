@@ -1,0 +1,81 @@
+.radai-ai-page {
+  --ai-ink: #10182e;
+  --ai-purple: #2e2292;
+  --ai-line: #dce1eb;
+  color: var(--ai-ink);
+  background: #fff;
+  font-family: Arial, "Helvetica Neue", sans-serif;
+  margin-top: -12px;
+  height: calc(100% + 12px);
+}
+.radai-ai-nav { width: 239px; padding: 0 20px; border-right: 1px solid var(--ai-line); background: #fff; }
+.radai-ai-nav-heading { height: 74px; white-space: nowrap; }
+.radai-ai-nav-heading svg { color: #4a32ee; }
+.radai-ai-nav-actions { display: grid; gap: 7px; }
+.radai-ai-nav-action { height: 45px; color: #18213a; }
+.radai-ai-nav-primary, .radai-ai-project-row.is-active { background: #e9edff; color: #21158d; }
+.radai-ai-nav-scroll { padding-top: 17px; }
+.radai-ai-nav-section { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 0 4px; font-size: 14px; font-weight: 700; text-align: left; }
+.radai-ai-project-row { margin-top: 5px; color: #17203a; }
+.radai-ai-project-row svg { color: #261692; }
+.radai-ai-create-project, .radai-ai-recent-row { display: flex; align-items: center; gap: 13px; width: 100%; min-height: 40px; padding: 0 14px; text-align: left; font-size: 14px; }
+.radai-ai-recent { margin-top: 21px; padding-top: 10px; border-top: 1px solid var(--ai-line); }
+.radai-ai-recent-row { min-height: 39px; }
+.radai-ai-content-layout { overflow: hidden; }
+.radai-ai-main { display: flex; flex-direction: column; background: #fff; }
+.radai-ai-toolbar { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 12px; height: 67px; margin: 0 22px; border-bottom: 1px solid #e4e7ef; font-size: 14px; }
+.radai-ai-toolbar button:first-child { font-weight: 400; }
+.radai-ai-context-toggle { display: flex; flex: none; align-items: center; gap: 9px; height: 36px; padding: 0 12px; border: 1px solid var(--ai-line); border-radius: 9px; font-weight: 600; }
+.radai-ai-main-inner { display: flex; flex: 1; min-height: 0; flex-direction: column; overflow-y: auto; padding: 32px 28px 24px; }
+.radai-ai-chat { max-width: none; }
+.radai-ai-messages { flex: 1; }
+.radai-ai-user-message { max-width: 78%; }
+.radai-ai-user-content { position: relative; padding-right: 53px; }
+.radai-ai-user-message > div > p { background: #efedff; padding: 13px 17px; font-size: 16px; line-height: 1.55; }
+.radai-ai-user-avatar { position: absolute; top: 2px; right: 0; display: grid; width: 39px; height: 39px; place-items: center; border-radius: 11px; background: #eeebff; color: #3022a5; font-weight: 600; }
+.radai-ai-user-time { align-self: flex-end; margin-right: 60px; color: #8c96ad; font-size: 12px; }
+.radai-ai-assistant-message { max-width: 86%; }
+.radai-ai-assistant-heading { display: flex; align-items: center; gap: 15px; min-height: 38px; margin-bottom: 8px; font-size: 14px; }
+.radai-ai-assistant-heading > span { display: flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 10px; background: #eeebff; color: #4c30ef; }
+.radai-ai-assistant-heading time { color: #8c96ad; font-weight: 400; }
+.radai-ai-answer-card { margin-left: 53px; padding: 15px; border: 1px solid #d6dbe7; border-radius: 10px; background: #fff; }
+.radai-ai-answer-card .text-sm { font-size: 15px; line-height: 1.7; }
+.radai-ai-composer { flex: none; min-height: 105px; margin-top: auto; border-color: #4e43bd; border-radius: 15px; box-shadow: 0 2px 7px #1c25520a; }
+.radai-ai-chat.is-empty .radai-ai-composer { margin-top: 0; }
+.radai-ai-composer textarea { order: -1; min-height: 43px; padding: 5px 9px; font-size: 15px; }
+.radai-ai-composer-actions { display: none; }
+.radai-ai-composer-footer { align-items: center; border: 0; padding-top: 0; }
+.radai-ai-add-context { display: flex; align-items: center; gap: 9px; min-height: 36px; padding: 0 13px; border: 1px solid var(--ai-line); border-radius: 9px; font-size: 14px; font-weight: 600; }
+.radai-ai-composer-footer select { margin-left: auto; min-height: 39px; font-size: 13px; }
+.radai-ai-composer-footer button[type="submit"] { background: #2d238f; }
+.radai-ai-add-menu { position: fixed; z-index: 1000; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; background: #fff; color: #10182e; font-family: Arial, "Helvetica Neue", sans-serif; box-shadow: 0 14px 36px #17203a26; }
+.radai-ai-add-menu.is-above { transform: translateY(-100%); }
+.radai-ai-add-menu > button { flex: none; min-height: 40px; }
+.radai-ai-add-menu > button span { min-width: 0; }
+.radai-ai-prompt-starters { margin-top: 20px; padding-bottom: 18px; }
+.radai-ai-prompt-starters h2 { margin-bottom: 10px; color: #58637c; font-size: 13px; font-weight: 700; }
+.radai-ai-prompt-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.radai-ai-prompt-chip { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; max-width: 100%; padding: 7px 12px; border: 1px solid #dce1eb; border-radius: 999px; background: #fff; color: #202944; font-size: 13px; line-height: 1.3; text-align: left; transition: border-color .15s, background-color .15s; }
+.radai-ai-prompt-chip:hover { border-color: #aaa4ea; background: #f6f4ff; }
+.radai-ai-prompt-chip:focus-visible { outline: 2px solid #4e43bd; outline-offset: 2px; }
+.radai-ai-prompt-chip svg { flex: none; color: #3c2db0; }
+.radai-ai-chat:not(.is-empty) .radai-ai-prompt-starters { order: 1; margin-top: 0; padding-bottom: 10px; }
+.radai-ai-chat:not(.is-empty) .radai-ai-prompt-list { flex-wrap: nowrap; overflow-x: auto; padding: 2px 2px 5px; }
+.radai-ai-chat:not(.is-empty) .radai-ai-prompt-chip { flex: none; }
+.radai-ai-chat:not(.is-empty) .radai-ai-composer { order: 2; margin-top: 0; }
+.radai-ai-chat:not(.is-empty) .radai-ai-file-creation { order: 3; }
+.radai-ai-context { flex: none; width: 333px; overflow-y: auto; border-left: 1px solid var(--ai-line); padding: 0 22px; background: #fff; }
+.radai-ai-context-header { display: flex; align-items: center; justify-content: space-between; height: 67px; border-bottom: 1px solid var(--ai-line); }
+.radai-ai-context-header h2 { font-size: 15px; font-weight: 700; }
+.radai-ai-context-section { padding: 19px 0 21px; border-bottom: 1px solid var(--ai-line); font-size: 14px; }
+.radai-ai-context-section h3 { margin-bottom: 9px; font-size: 14px; font-weight: 700; }
+.radai-ai-context-section p { color: #626b80; }
+.radai-ai-instructions { white-space: pre-wrap; padding: 12px 14px; border: 1px solid var(--ai-line); border-radius: 9px; background: #fcfcfe; line-height: 1.48; }
+.radai-ai-sources { display: grid; gap: 8px; }
+.radai-ai-source { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 0 14px; border: 1px solid var(--ai-line); border-radius: 9px; text-align: left; }
+.radai-ai-source span:nth-child(2) { flex: 1; }
+.radai-ai-source-add { display: flex; align-items: center; gap: 10px; width: 100%; height: 37px; margin-top: 14px; padding: 0 16px; border-radius: 8px; background: #f0edff; color: #2e2292; font-weight: 600; }
+@media (max-width: 1250px) { .radai-ai-context { width: 285px; } .radai-ai-nav { width: 215px; padding: 0 12px; } }
+@media (max-width: 1050px) { .radai-ai-context { position: absolute; z-index: 15; right: 0; top: 0; bottom: 0; box-shadow: -6px 0 24px #17203a12; } }
+@media (max-width: 768px) { .radai-ai-page { margin-top: -8px; height: calc(100% + 8px); } .radai-ai-nav { width: 239px; padding: 0 20px; } .radai-ai-main-inner { padding: 20px 14px; } .radai-ai-toolbar { margin: 0 14px; } .radai-ai-assistant-message { max-width: 100%; } .radai-ai-answer-card { margin-left: 0; } .radai-ai-user-message { max-width: 90%; } }
+@media (max-width: 600px) { .radai-ai-toolbar { height: auto; min-height: 67px; flex-wrap: wrap; padding: 10px 0; } .radai-ai-toolbar-actions { width: 100%; } .radai-ai-context-toggle { height: 32px; padding: 0 9px; font-size: 12px; } }
