@@ -19,7 +19,7 @@ export const createConversation = projectId => unwrap(apiClient.post(conversatio
 export const getConversation = (projectId, id) => unwrap(apiClient.get(`${conversations(projectId)}${id}/`))
 export const renameConversation = (projectId, id, title) => unwrap(apiClient.patch(`${conversations(projectId)}${id}/`, { title }))
 export const archiveConversation = (projectId, id) => unwrap(apiClient.delete(`${conversations(projectId)}${id}/`))
-export const sendConversationMessage = (projectId, id, question, requestId) => unwrap(apiClient.post(`${conversations(projectId)}${id}/send/`, { question, request_id: requestId }, { timeout: 90000 }))
+export const sendConversationMessage = (projectId, id, question, requestId, tool = null) => unwrap(apiClient.post(`${conversations(projectId)}${id}/send/`, { question, request_id: requestId, ...(tool ? { tool } : {}) }, { timeout: 90000 }))
 export const listEngineeringEvidence = projectId => unwrap(apiClient.get('/pid-checker-v2/engineering-evidence/', { params: { project_id: projectId } }))
 export const getEngineeringReview = extractionId => unwrap(apiClient.get(`/pid-checker-v2/engineering-evidence/${encodeURIComponent(extractionId)}/review/`))
 export const validateEngineeringEvidence = (extractionId, lineListId) => unwrap(apiClient.post(`/pid-checker-v2/engineering-evidence/${encodeURIComponent(extractionId)}/validate/`, { line_list_id: lineListId }))
