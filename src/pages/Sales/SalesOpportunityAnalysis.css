@@ -1424,23 +1424,23 @@
 .soa-ref-go { --ref-tone: #087a4c; --ref-border: #a9dec4; --ref-fill: #eaf8f0; border-left-color: #14925d; }
 .soa-ref-no_go { --ref-tone: #b52a45; --ref-border: #efb9c2; --ref-fill: #ffedf0; border-left-color: #cf3d56; }
 .soa-ref-decision_required { --ref-tone: #1a5ea9; --ref-border: #b7d5f6; --ref-fill: #eaf3ff; border-left-color: #2474d4; }
-.soa-ref-recommendation > p { margin: 0 0 4px; color: #242b3b; font-size: 10px; font-weight: 750; text-transform: uppercase; }
+.soa-ref-recommendation > p { margin: 0 0 6px; color: #242b3b; font-size: 12px; font-weight: 750; text-transform: uppercase; }
 .soa-ref-recommendation h3 { margin: 0 0 6px; color: var(--ref-tone); font-size: 23px; line-height: 1.1; letter-spacing: -.02em; font-weight: 800; }
-.soa-ref-recommendation > div { color: #253146; font-size: 11px; line-height: 1.45; font-weight: 400; }
+.soa-ref-recommendation > div { color: #253146; font-size: 14px; line-height: 1.55; font-weight: 500; overflow-wrap: anywhere; }
 .soa-ref-driver-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
 .soa-ref-driver-card { min-width: 0; overflow: hidden; border: 1px solid #cfdbea; border-radius: 8px; background: #fff; }
-.soa-ref-driver-card h4 { margin: 0; padding: 7px 11px; color: #1d2a3f; font-size: 11px; line-height: 1.3; font-weight: 700; }
+.soa-ref-driver-card h4 { margin: 0; padding: 9px 11px; color: #1d2a3f; font-size: 13px; line-height: 1.35; font-weight: 700; }
 .soa-ref-positive h4 { background: #e5f6ee; }
 .soa-ref-concerns h4 { background: #fff0d9; }
 .soa-ref-driver-card ul { display: grid; gap: 5px; margin: 0; padding: 8px 10px 9px; list-style: none; }
-.soa-ref-driver-card li { display: flex; align-items: flex-start; gap: 8px; min-width: 0; color: #223047; font-size: 10px; line-height: 1.35; font-weight: 400; }
+.soa-ref-driver-card li { display: flex; align-items: flex-start; gap: 8px; min-width: 0; color: #223047; font-size: 13px; line-height: 1.5; font-weight: 500; overflow-wrap: anywhere; }
 .soa-ref-driver-card li svg { flex: 0 0 15px; stroke-width: 2.6; }
 .soa-ref-positive li svg { color: #07844e; }
 .soa-ref-concerns li svg { color: #d48000; }
 .soa-ref-next { padding: 11px 15px 12px; border: 1px solid #a8ceff; border-radius: 8px; background: linear-gradient(135deg, #dfecff, #e9f4ff); }
 .soa-ref-next h4 { margin: 0 0 12px; color: #142e7b; font-size: 14px; font-weight: 750; }
 .soa-ref-next ol { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 0 0 12px; padding: 0; list-style: none; }
-.soa-ref-next li { min-width: 0; position: relative; display: grid; grid-template-rows: 18px auto; gap: 5px; color: #1c2c44; font-size: 10px; line-height: 1.35; font-weight: 400; }
+.soa-ref-next li { min-width: 0; position: relative; display: grid; grid-template-rows: 18px auto; gap: 5px; color: #1c2c44; font-size: 12px; line-height: 1.45; font-weight: 500; }
 .soa-ref-next li::before { content: ""; position: absolute; top: 9px; left: 16px; right: -12px; border-top: 1px solid #8bb8f4; }
 .soa-ref-next li:last-child::before { right: 0; }
 .soa-ref-step-icon { width: 20px; height: 20px; position: relative; z-index: 1; display: grid; place-items: center; border-radius: 50%; background: #0968df; color: #fff; }
@@ -1460,9 +1460,9 @@
 .soa-ref-detail h4 { margin: 0 0 6px; color: #23344e; font-size: 12px; font-weight: 700; }
 .soa-ref-detail ul { margin: 0; padding-left: 19px; color: #34445c; font-size: 11px; line-height: 1.5; }
 .soa-ref-detail li { margin: 4px 0; }
-.soa-ref-citations { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 9px; margin-top: 9px; padding-top: 7px; border-top: 1px solid rgba(84, 107, 140, .2); font-size: 10px; line-height: 1.3; }
+.soa-ref-citations { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 9px; margin-top: 9px; padding-top: 7px; border-top: 1px solid rgba(84, 107, 140, .2); font-size: 12px; line-height: 1.4; }
 .soa-ref-citations > span:first-child { color: #53647c; font-weight: 650; }
-.soa-ref-citations button, .soa-ref-citation-text { display: inline-flex; align-items: center; gap: 3px; max-width: 100%; font: inherit; font-size: 10px; font-weight: 400; overflow-wrap: anywhere; }
+.soa-ref-citations button, .soa-ref-citation-text { display: inline-flex; align-items: center; gap: 3px; max-width: 100%; font: inherit; font-size: 12px; font-weight: 500; overflow-wrap: anywhere; }
 .soa-ref-citations button { border: 0; padding: 1px 0; background: transparent; color: #155eb2; text-align: left; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 .soa-ref-citations button:hover { color: #074187; }
 .soa-ref-citations button:focus-visible { outline: 2px solid #5842ed; outline-offset: 2px; }

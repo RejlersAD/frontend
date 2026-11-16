@@ -12,6 +12,7 @@ import {
 import salesService from "../../services/sales.service";
 import { validateAnalysis, analysisProgress } from "./salesOpportunityAnalysis";
 import { buildAnalysisContent } from "./salesAnalysisContent";
+import { analysisDueDateTime } from "./salesAnalysisDeadline";
 import { assessmentCitations } from "./salesAnalysisCitations";
 import { noGoBrief } from "./salesDecisionBrief";
 import SalesOpportunityFilePreview from "./SalesOpportunityFilePreview";
@@ -44,27 +45,9 @@ const decisionLabel = (value) =>
     insufficient_evidence: "INSUFFICIENT EVIDENCE",
   })[String(value || "").toLowerCase()] || "INSUFFICIENT EVIDENCE";
 
-function scopeSummary(facts, summary) {
-  const text = [...values(facts.scope), ...values(facts.technologies)]
-    .join(" ")
-    .toLowerCase();
-  const areas = [];
-  if (/\b(?:erp|sap|s\/4hana|oneerp)\b/.test(text))
-    areas.push("ERP transformation");
-  if (/\b(?:gbs|global business services|operating model)\b/.test(text))
-    areas.push("GBS operating model design");
-  if (/\binfrastructure\b/.test(text)) areas.push("infrastructure design");
-  if (/\bcyber(?:security| security)\b/.test(text)) areas.push("cybersecurity");
-  if (areas.length)
-    return (
-      "The opportunity centers on " +
-      areas.join(", ") +
-      " across the client's operations."
-    );
-  if (!isMissing(summary.project_type))
-    return "The opportunity covers " + summary.project_type + " services.";
-  return "Review the tender scope with the client and bid team.";
-}
+const firstFact = (facts, key) => values(facts[key])[0] || "";
+const briefFact = (value, max = 190) =>
+  value.length > max ? `${value.slice(0, max).trimEnd()}…` : value;
 
 export default function SalesOpportunityAnalysis({ record, onAction }) {
   const [data, setData] = useState(null);
@@ -145,17 +128,19 @@ export default function SalesOpportunityAnalysis({ record, onAction }) {
             ? "Prepare the EOI response"
             : "Record the governed bid decision",
         ];
-  const scope = scopeSummary(facts, summary);
+  const scope = firstFact(facts, "scope");
+  const deliverable = firstFact(facts, "deliverables");
+  const deadline = analysisDueDateTime(record, summary);
   const narrative = !hasEvaluation
     ? "Review the tender and internal bid position before committing. Confirm the key scope and commercial requirements before recording a decision."
     : recommendation === "NO-GO"
-      ? scope + " The recorded decision is to decline the pursuit."
-      : recommendation === "INSUFFICIENT EVIDENCE"
-        ? scope + " Rejlers' capability, qualification compliance, named resources, commercial position and win probability require approved internal evidence before a bid recommendation."
-      : scope +
-        (recommendation === "GO"
-          ? " Proceed with the bid."
-          : " Pursue the opportunity after specialist capacity, resource availability, and commercial acceptance are confirmed.");
+      ? (record.bid_decision_reason || "The recorded decision is to decline this pursuit.")
+      : [
+          scope ? `Client request: ${briefFact(scope)}.` : "Client scope needs source review.",
+          deliverable ? `Required output: ${briefFact(deliverable)}.` : "Required deliverables need confirmation.",
+          `Submission due: ${deadline}.`,
+          evaluation.decision?.decision_rationale || "Review capability, resources, schedule and commercial terms before deciding.",
+        ].join(" ");
 
   useEffect(() => {
     if (tab !== "Correspondence" || !officialDecision) return undefined;
@@ -333,6 +318,8 @@ export default function SalesOpportunityAnalysis({ record, onAction }) {
     "Strategic Fit": ["client", "project_name", "locations"],
     "Resource Requirements": ["disciplines", "locations", "timeline"],
     "Execution & Schedule Risk": ["key_risks", "timeline", "technologies"],
+    "Commercial Attractiveness": ["commercial_model", "payment_terms", "contract_type"],
+    "Schedule Feasibility": ["timeline", "submission_details"],
   };
 
   return (
@@ -418,13 +405,13 @@ export default function SalesOpportunityAnalysis({ record, onAction }) {
             }
             aria-labelledby="soa-recommendation"
           >
-            <p>{officialDecision ? "Recorded bid decision" : "Executive recommendation"}</p>
+            <p>{officialDecision ? "Recorded bid decision" : "Executive Summary & Recommendation"}</p>
             <h3 id="soa-recommendation">{recommendation}</h3>
             <div>{narrative}{data?.source_gaps?.length > 0 && (
-              <> Source review is incomplete: {data.source_gaps.map((gap) =>
-                `${gap.name} (${String(gap.reason || gap.status || "incomplete").replaceAll("_", " ")})`).join("; ")}.</>
+              <> Source review is incomplete for {data.source_gaps.length} file(s); see the source inventory.</>
             )}</div>
             {tenderBasis([
+              "submission_details",
               "scope",
               "technologies",
               "deliverables",
@@ -434,12 +421,14 @@ export default function SalesOpportunityAnalysis({ record, onAction }) {
           </section>
           <div className="soa-ref-driver-grid">
             <section className="soa-ref-driver-card soa-ref-positive">
-              <h4>Decision Drivers ? Tender Evidence</h4>
+              <h4>Decision Drivers · Tender Evidence</h4>
               <ul>{asList(content.drivers).map((item) => <li key={item}><Check size={13} aria-hidden="true" /><span>{item}</span></li>)}</ul>
+              {tenderBasis(["scope", "deliverables", "submission_details"])}
             </section>
             <section className="soa-ref-driver-card soa-ref-concerns">
               <h4>Key Concerns</h4>
               <ul>{asList(content.concerns).map((item) => <li key={item}><HelpCircle size={13} aria-hidden="true" /><span>{item}</span></li>)}</ul>
+              {tenderBasis(["key_risks", "timeline"])}
             </section>
           </div>
           <section className="soa-ref-next">

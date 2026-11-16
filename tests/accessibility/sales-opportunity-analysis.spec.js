@@ -7,7 +7,7 @@ import {
 
 const pane = (page) =>
   page.getByRole("region", {
-    name: "Opportunity analysis Radai",
+    name: "Management opportunity briefing",
     exact: true,
   });
 const citation = {
@@ -283,12 +283,9 @@ test("denied and wrong-opportunity responses show errors without leaking cached 
 test("keyboard tab navigation and responsive Analysis remain accessible", async ({
   page,
 }) => {
-  await setup(page);
+  await setup(page, { copilot: true });
   await expect(
-    pane(page).getByRole("region", {
-      name: "What is this opportunity?",
-      exact: true,
-    }),
+    pane(page).getByRole("heading", { name: "INSUFFICIENT EVIDENCE" }),
   ).toBeVisible();
   const results = await new AxeBuilder({ page }).include(".soa").analyze();
   expect(results.violations).toEqual([]);

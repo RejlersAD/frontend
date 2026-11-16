@@ -105,14 +105,14 @@
   grid-column: span 2;
 }
 .sbd-card dt {
-  font-size: 11px;
+  font-size: 12px;
   color: #64748b;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 .sbd-card dd {
   margin: 3px 0 0;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: #152a45;
   overflow-wrap: anywhere;
@@ -194,13 +194,36 @@
   padding: 12px;
 }
 .sbd-textarea {
+  box-sizing: border-box;
   width: 100%;
   border: 1px solid #93c5fd;
   border-radius: 8px;
   padding: 12px;
   font-size: 14px;
   line-height: 1.6;
+  color: #16294a;
+  resize: vertical;
 }
+.sbd-snapshot h4 { margin: 0 0 13px; color: #152a45; font-size: 16px; line-height: 1.4; font-weight: 700; }
+.sbd-justify label { display: block; margin-bottom: 8px; color: #213956; font-size: 14px; font-weight: 700; }
+.sbd-justify-meta { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 6px; color: #64748b; font-size: 12px; }
+.sbd-reason-links { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 10px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #e5ebf3; }
+.sbd-reason-links > span { flex-basis: 100%; color: #475569; font-size: 12px; font-weight: 700; }
+.sbd-reason-links button { border: 0; border-radius: 6px; padding: 5px 7px; background: #eff6ff; color: #1d4ed8; font: inherit; font-size: 13px; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; text-align: left; }
+.sbd-reason-links button:hover, .sbd-reason-links button:focus-visible { background: #dbeafe; }
+.sbd-reason-links button:disabled { opacity: 0.55; cursor: default; }
+.sbd-manager-reason { margin-top: 12px; }
+.sbd-manager-reason label { display: block; margin-bottom: 5px; color: #213956; font-size: 13px; font-weight: 700; }
+.sbd-manager-reason textarea { box-sizing: border-box; width: 100%; border: 1px solid #b6c7dc; border-radius: 8px; padding: 10px 12px; background: #fff; color: #16294a; font: inherit; font-size: 13px; line-height: 1.5; resize: vertical; }
+.sbd-manager-reason textarea:focus-visible { outline: 2px solid #2563eb; outline-offset: 1px; }
+.sbd-manager-reason p { margin: 5px 0 0; color: #8a4b05; font-size: 12px; line-height: 1.45; }
+.sbd-manager-reason .sbd-reason-intro { margin: 0 0 8px; color: #475569; font-size: 13px; }
+.sbd-reason-options { display: grid; gap: 7px; margin-bottom: 10px; }
+.sbd-reason-option { display: grid; gap: 3px; width: 100%; padding: 9px 11px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; color: #16294a; text-align: left; cursor: pointer; font: inherit; font-size: 12px; line-height: 1.4; }
+.sbd-reason-option:hover, .sbd-reason-option:focus-visible { border-color: #2563eb; background: #f8fbff; }
+.sbd-reason-option strong { font-size: 13px; }
+.sbd-reason-option small { color: #64748b; font-size: 11px; }
+.sbd-reason-option:disabled { opacity: 0.6; cursor: default; }
 .sbd-loading {
   color: #475569;
   font-size: 13px;

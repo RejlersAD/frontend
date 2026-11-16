@@ -74,8 +74,8 @@ test("Rejlers evidence enriches existing sections without implying internal capa
       text: "Provide FEED services", source_file: "SOW.pdf", source_page: "Page 8",
     }] }],
   }] } });
-  assert.equal(result.detailedSections.length, 4);
-  assert.equal(result.summaryRows.length, 7);
+  assert.equal(result.detailedSections.length, 6);
+  assert.equal(result.summaryRows.length, 8);
   assert.match(result.detailedSections[0].bullets.join(" "), /Provide FEED services.*SOW.pdf, Page 8/);
   assert.match(result.concerns.join(" "), /capability and qualification compliance unconfirmed/);
   assert.doesNotMatch(JSON.stringify(result), /92%|Fully compliant|Strong position/);

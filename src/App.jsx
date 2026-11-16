@@ -30,6 +30,7 @@ import RequestPasswordReset from "./pages/RequestPasswordReset";
 import TermsOfService from "./pages/TermsOfService";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import Dashboard from "./pages/Dashboard";
+import RadaiIntelligencePage from "./pages/RadaiAIProjectPage";
 const ExecutiveDashboard = React.lazy(
   () => import("./pages/Executive/ExecutiveDashboard"),
 );
@@ -642,6 +643,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <Dashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="radai-intelligence"
+              element={
+                <ProtectedRoute>
+                  <RadaiIntelligencePage />
                 </ProtectedRoute>
               }
             />
