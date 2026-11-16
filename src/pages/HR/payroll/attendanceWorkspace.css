@@ -376,3 +376,301 @@
   .attendance-workspace .att-yearly-export-panel { left: 0; right: 0; width: auto; }
   .attendance-workspace .att-yearly .att-table-scroll { max-height: 45vh; }
 }
+
+/* ════════════════════════════════════════════════════════════════════════════════
+   Overview tab redesign — lightweight daily summary (Microsoft Fluent 2)
+   Only the Overview content area is styled; filters and other tabs are untouched.
+   ═════════════════════════════════════════════════════════════════════════════════ */
+
+.attendance-workspace .att-snapshot { margin: 0 0 14px; }
+
+.attendance-workspace .att-snapshot-card {
+  background: #fff;
+  border: 1px solid var(--att-border);
+  border-radius: 12px;
+  padding: 18px 20px;
+}
+
+.attendance-workspace .att-snapshot-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.attendance-workspace .att-snapshot-card h2 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 650;
+  color: var(--att-ink);
+  letter-spacing: -0.2px;
+}
+
+.attendance-workspace .att-snapshot-status {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+
+.attendance-workspace .att-snapshot-status.att-snapshot-status-warn {
+  background: #fff7ec;
+  color: #c25a00;
+  border: 1px solid #f3d9b3;
+}
+
+.attendance-workspace .att-snapshot-status.att-snapshot-status-ok {
+  background: #f0f7f0;
+  color: #1e7a3c;
+  border: 1px solid #d8e8d4;
+}
+
+.attendance-workspace .att-snapshot-body {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.attendance-workspace .att-snapshot-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.attendance-workspace .att-snapshot-value {
+  font-size: 29px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--att-ink);
+  letter-spacing: -0.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.attendance-workspace .att-snapshot-label {
+  font-size: 12px;
+  color: var(--att-muted);
+  line-height: 1.5;
+}
+
+/* ── Quick Metrics ── */
+
+.attendance-workspace .att-quick-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0 0 16px;
+}
+
+.attendance-workspace .att-metric-card {
+  background: #fff;
+  border: 1px solid #e4eaf2;
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.attendance-workspace .att-metric-icon {
+  width: 20px;
+  height: 20px;
+  color: #607595;
+  flex-shrink: 0;
+}
+
+.attendance-workspace .att-metric-text { min-width: 0; }
+
+.attendance-workspace .att-metric-card dt {
+  margin: 0 0 2px;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--att-muted);
+}
+
+.attendance-workspace .att-metric-card dd {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--att-ink);
+  letter-spacing: -0.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Needs Attention ── */
+
+.attendance-workspace .att-needs-attention { margin: 0 0 16px; }
+
+.attendance-workspace .att-needs-attention h2 {
+  margin: 0 0 10px;
+  font-size: 16px;
+  font-weight: 650;
+  color: var(--att-ink);
+  letter-spacing: -0.2px;
+}
+
+.attendance-workspace .att-attention-list { display: flex; flex-direction: column; gap: 8px; }
+
+.attendance-workspace .att-attention-card {
+  background: #fff;
+  border: 1px solid #e4eaf2;
+  border-radius: 8px;
+  padding: 11px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  text-decoration: none;
+  color: inherit;
+}
+
+.attendance-workspace .att-attention-card:hover {
+  border-color: #b8cdf5;
+  box-shadow: 0 2px 8px rgba(22, 60, 106, 0.06);
+}
+
+.attendance-workspace .att-attention-card:focus-visible {
+  outline: 2px solid var(--att-link);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.attendance-workspace .att-attention-body { min-width: 0; }
+
+.attendance-workspace .att-attention-title {
+  display: block;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--att-ink);
+}
+
+.attendance-workspace .att-attention-sub {
+  display: block;
+  font-size: 12px;
+  color: var(--att-muted);
+  margin-top: 1px;
+}
+
+.attendance-workspace .att-attention-chevron {
+  width: 14px;
+  height: 14px;
+  color: #93a5bd;
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
+/* ── Department Highlights ── */
+
+.attendance-workspace .att-department-highlights { margin: 0 0 16px; }
+
+.attendance-workspace .att-department-highlights h2 {
+  margin: 0 0 10px;
+  font-size: 16px;
+  font-weight: 650;
+  color: var(--att-ink);
+  letter-spacing: -0.2px;
+}
+
+.attendance-workspace .att-department-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.attendance-workspace .att-department-chip {
+  background: #f4f8fd;
+  border: 1px solid #e4eaf2;
+  border-radius: 20px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--att-ink);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.attendance-workspace .att-department-name { color: #354e71; }
+
+.attendance-workspace .att-department-count {
+  color: #c25a00;
+  font-weight: 700;
+}
+
+.attendance-workspace .att-empty {
+  font-size: 12px;
+  color: var(--att-muted);
+  padding: 16px 0;
+  text-align: center;
+}
+
+/* ── Attendance Trend ── */
+
+.attendance-workspace .att-trend { margin: 0 0 14px; }
+
+.attendance-workspace .att-trend-card {
+  background: #fff;
+  border: 1px solid var(--att-border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  min-width: 0;
+}
+
+.attendance-workspace .att-trend-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.attendance-workspace .att-trend-card h2 {
+  margin: 0 0 2px;
+  font-size: 19px;
+  font-weight: 650;
+  color: var(--att-ink);
+  letter-spacing: -0.2px;
+}
+
+.attendance-workspace .att-trend-card p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--att-muted);
+}
+
+.attendance-workspace .att-trend-change {
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.attendance-workspace .att-trend-change.att-trend-change-up { color: #1e7a3c; }
+.attendance-workspace .att-trend-change.att-trend-change-down { color: #c25a00; }
+
+.attendance-workspace .att-trend-chart {
+  min-width: 0;
+  height: 200px;
+}
+
+.attendance-workspace .att-trend-footnote {
+  font-size: 10px;
+  color: var(--att-muted);
+  margin: 8px 0 0;
+  line-height: 1.5;
+}
+
+/* ── Responsive ── */
+
+@media (max-width: 768px) {
+  .attendance-workspace .att-snapshot-body { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .attendance-workspace .att-quick-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
