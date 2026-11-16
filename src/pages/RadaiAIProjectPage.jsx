@@ -123,6 +123,7 @@ export default function RadaiAIProjectPage() {
   const menuItemRefs = useRef([]);
   const retry = useRef(null);
   const project = projects.find((row) => String(row.id) === projectId);
+  const selectedProvider = models.find((row) => row.model_id === selectedModel)?.provider;
   const entryDisabled = (entry) => {
     if (entry.id === "addProject") return projects.length === 0;
     if (entry.id === "skills") return false;
@@ -297,7 +298,7 @@ export default function RadaiAIProjectPage() {
           : crypto.randomUUID();
       retry.current = { id: requestId, question };
       const attachmentIds = attachments.map((a) => a.id);
-      const result = await sendAIMessage(project?.id, id, question, requestId, selectedModel, attachmentIds);
+      const result = await sendAIMessage(project?.id, id, question, requestId, selectedProvider, selectedModel, attachmentIds);
       setMessages(result.conversation.messages || []);
       setDraft("");
       setAttachments([]);
@@ -1130,7 +1131,7 @@ export default function RadaiAIProjectPage() {
                     onChange={(event) => setSelectedModel(event.target.value)}
                     className="max-w-[170px] shrink-0 rounded-lg border border-[var(--rd-border-soft)] bg-[var(--rd-surface)] px-2 py-2 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--rd-accent)]"
                   >
-                    <option value="">{models.length ? "Model" : "No local model"}</option>
+                    <option value="">{models.length ? "Model" : "No model available"}</option>
                     {models.map((row) => (
                       <option key={row.model_id} value={row.model_id}>
                         {row.label}
@@ -1148,7 +1149,7 @@ export default function RadaiAIProjectPage() {
                 </div>
                 {!selectedModel && (
                   <p role="status" className="mt-2 text-xs text-[var(--rd-text-muted)]">
-                    {modelError || "No local Ollama model is configured for RADAI Intelligence."}
+                    {modelError || "No chat model is configured for RADAI Intelligence. An administrator can configure Claude in AI API keys."}
                   </p>
                 )}
                 <div className="mt-4 flex flex-wrap gap-1.5">
