@@ -40,6 +40,9 @@ export const archiveAIProject = id => unwrap(apiClient.delete(aiProject(id)))
 export const listAIMembers = id => unwrap(apiClient.get(`${aiProject(id)}members/`))
 export const addAIMember = (id, payload) => unwrap(apiClient.post(`${aiProject(id)}members/`, payload))
 export const removeAIMember = (id, userId) => unwrap(apiClient.delete(`${aiProject(id)}members/${encodeURIComponent(userId)}/`))
+export const searchAIEmployees = (search, signal) => unwrap(apiClient.get('/users/employees/active_employees/', {
+  params: { search: search.trim().split(/\s+/)[0], minimal: 'true' }, signal, suppressErrorToast: true,
+}))
 export const getAIInstructions = id => unwrap(apiClient.get(`${aiProject(id)}instructions/`))
 export const saveAIInstructions = (id, payload) => unwrap(apiClient.put(`${aiProject(id)}instructions/`, payload))
 export const getAIActivity = id => unwrap(apiClient.get(`${aiProject(id)}activity/`))

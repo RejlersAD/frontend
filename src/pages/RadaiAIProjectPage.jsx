@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -43,9 +44,12 @@ import {
   downloadAIAttachment,
   generateAIDocument,
   downloadAIGeneratedDocument,
+  getAIInstructions,
+  listAIKnowledge,
 } from "../services/radaiIntelligence.service";
 import RadaiAIWorkspace from "./RadaiAIWorkspace";
 import RadaiConversationHistory from "./RadaiConversationHistory";
+import "./RadaiAIProjectPage.css";
 
 const quickActions = [
   {
@@ -62,6 +66,36 @@ const quickActions = [
     label: "Compare Revisions",
     icon: GitCompare,
     text: "Compare available document revisions. Cite differences you can verify.",
+  },
+  {
+    label: "Check tag consistency",
+    icon: Search,
+    text: "Check equipment, line, and valve tags across the available project documents. List mismatches with source locations, and identify documents that are missing.",
+  },
+  {
+    label: "Review line list",
+    icon: FileSearch,
+    text: "Review the available line list against related P&IDs. Identify verifiable differences in line numbers, sizes, services, and connections with citations.",
+  },
+  {
+    label: "Draft review comments",
+    icon: MessageCircle,
+    text: "Draft review comments for the available engineering documents. Include the exact source location, the observed issue, and a question for the responsible engineer.",
+  },
+  {
+    label: "Identify missing evidence",
+    icon: FileSearch,
+    text: "Identify missing or conflicting evidence needed for an engineering review. Separate confirmed facts from open questions and cite the available sources.",
+  },
+  {
+    label: "Summarize technical risks",
+    icon: FileText,
+    text: "Summarize technical risks supported by the available project documents. Cite each source and mark assumptions that need engineering review.",
+  },
+  {
+    label: "Prepare handover questions",
+    icon: MessageCircle,
+    text: "Prepare concise engineering handover questions from the available project documents. Group them by discipline and cite the evidence behind each question.",
   },
 ];
 
@@ -83,6 +117,20 @@ const GENERATION_FORMATS = [
 ];
 
 const FILE_SIZE_LIMIT = 12 * 1024 * 1024;
+const getMenuPosition = (trigger) => {
+  const rect = trigger.getBoundingClientRect();
+  const width = Math.min(280, window.innerWidth - 16);
+  const roomAbove = rect.top - 16;
+  const roomBelow = window.innerHeight - rect.bottom - 16;
+  const above = roomAbove > roomBelow;
+  return {
+    left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
+    top: above ? rect.top - 8 : rect.bottom + 8,
+    maxHeight: Math.max(48, Math.min(440, (above ? roomAbove : roomBelow) - 8)),
+    above,
+    width,
+  };
+};
 
 export default function RadaiAIProjectPage() {
   const [projects, setProjects] = useState([]);
@@ -98,6 +146,12 @@ export default function RadaiAIProjectPage() {
   const [filter, setFilter] = useState("");
   const [query, setQuery] = useState("");
   const [history, setHistory] = useState([]);
+  const [recentChats, setRecentChats] = useState([]);
+  const [contextOpen, setContextOpen] = useState(true);
+  const [projectTab, setProjectTab] = useState("Instructions");
+  const [projectInstructions, setProjectInstructions] = useState(null);
+  const [projectSources, setProjectSources] = useState([]);
+  const [contextError, setContextError] = useState("");
   const [messages, setMessages] = useState([]);
   const [conversationId, setConversationId] = useState(null);
   const [draft, setDraft] = useState("");
@@ -119,10 +173,33 @@ export default function RadaiAIProjectPage() {
   const [fileCreationBusy, setFileCreationBusy] = useState(false);
   const composer = useRef(null);
   const actionTrigger = useRef(null);
+  const actionMenu = useRef(null);
   const fileInput = useRef(null);
   const menuItemRefs = useRef([]);
   const retry = useRef(null);
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const reposition = () => {
+      if (actionTrigger.current) setMenuAnchor(getMenuPosition(actionTrigger.current));
+    };
+    const closeOnOutsideClick = (event) => {
+      if (!actionTrigger.current?.contains(event.target) && !actionMenu.current?.contains(event.target)) {
+        setMenuOpen(false);
+        setAddToProjectOpen(false);
+      }
+    };
+    reposition();
+    window.addEventListener("resize", reposition);
+    window.addEventListener("scroll", reposition, true);
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    return () => {
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", reposition, true);
+      document.removeEventListener("pointerdown", closeOnOutsideClick);
+    };
+  }, [menuOpen]);
   const project = projects.find((row) => String(row.id) === projectId);
+  const usedSources = [...messages].reverse().find((message) => message.role === "assistant" && message.sources?.length)?.sources || [];
   const selectedProvider = models.find((row) => row.model_id === selectedModel)?.provider;
   const entryDisabled = (entry) => {
     if (entry.id === "addProject") return projects.length === 0;
@@ -184,9 +261,35 @@ export default function RadaiAIProjectPage() {
       clearTimeout(timer);
     };
   }, [projectId, view, query]);
+  useEffect(() => {
+    let active = true;
+    listAIConversations(projectId, "")
+      .then((result) => { if (active) setRecentChats((result.results || []).slice(0, 3)); })
+      .catch(() => { if (active) setRecentChats([]); });
+    return () => { active = false; };
+  }, [projectId, conversationId, messages.length]);
+  useEffect(() => {
+    if (!projectId) {
+      setProjectInstructions(null);
+      setProjectSources([]);
+      setContextError("");
+      return;
+    }
+    let active = true;
+    Promise.all([getAIInstructions(projectId), listAIKnowledge(projectId)])
+      .then(([instructions, knowledge]) => {
+        if (!active) return;
+        setProjectInstructions(instructions);
+        setProjectSources(knowledge.results || []);
+        setContextError("");
+      })
+      .catch(() => { if (active) setContextError("Project context could not be loaded."); });
+    return () => { active = false; };
+  }, [projectId, view]);
   const select = (row) => {
     if (busy) return;
     setProjectId(String(row.id));
+    setProjectTab("Instructions");
     setView("project");
     setMessages([]);
     setConversationId(null);
@@ -236,6 +339,7 @@ export default function RadaiAIProjectPage() {
       });
       await reload();
       setProjectId(String(row.id));
+      setProjectTab("Instructions");
       setView("project");
       setName("");
       setDescription("");
@@ -362,9 +466,7 @@ export default function RadaiAIProjectPage() {
   };
   const toggleMenu = (event) => {
     setAddToProjectOpen(false);
-    if (event) {
-      setMenuAnchor({ x: event.currentTarget.getBoundingClientRect().left, y: event.currentTarget.getBoundingClientRect().bottom });
-    }
+    if (event) setMenuAnchor(getMenuPosition(event.currentTarget));
     setMenuOpen((open) => !open);
     if (!menuOpen) {
       setMenuFocus(0);
@@ -525,7 +627,7 @@ export default function RadaiAIProjectPage() {
   };
 
   return (
-    <div className="relative flex h-full min-h-0 w-full overflow-hidden bg-[var(--rd-bg)] font-sans text-[var(--rd-text)]">
+    <div className="radai-ai-page relative flex h-full min-h-0 w-full overflow-hidden font-sans">
       {mobileNav && (
         <button
           type="button"
@@ -537,10 +639,10 @@ export default function RadaiAIProjectPage() {
       <aside
         id="ai-nav"
         aria-label="RADAI Intelligence navigation"
-        className={`${mobileNav ? "translate-x-0" : "-translate-x-full lg:translate-x-0"} absolute inset-y-0 left-0 z-20 flex w-[220px] flex-none flex-col border-r border-[var(--rd-border-soft)] bg-[var(--rd-surface)] px-3 py-4 transition-transform lg:relative`}
+        className={`${mobileNav ? "translate-x-0" : "-translate-x-full lg:translate-x-0"} radai-ai-nav absolute inset-y-0 left-0 z-20 flex flex-none flex-col transition-transform lg:relative`}
       >
-        <div className="mb-6 flex items-center justify-between px-2">
-          <span className="text-sm font-semibold">Workspace</span>
+        <div className="radai-ai-nav-heading flex items-center justify-between">
+          <span className="flex items-center gap-3 text-sm font-semibold"><Sparkles size={23} /> RADAI Intelligence</span>
           <button
             type="button"
             aria-label="Close workspace navigation"
@@ -550,12 +652,10 @@ export default function RadaiAIProjectPage() {
             <X size={18} />
           </button>
         </div>
-        <nav aria-label="Workspace sections" className="space-y-1">
+        <nav aria-label="Workspace sections" className="radai-ai-nav-actions">
           {[
-            { id: "chat", label: "New Chat", icon: Plus },
+            { id: "chat", label: "New chat", icon: Plus },
             { id: "search", label: "Search", icon: Search },
-            { id: "projects", label: "Projects", icon: Folder },
-            { id: "history", label: "History", icon: History },
           ].map((item) => (
             <button
               key={item.id}
@@ -565,23 +665,21 @@ export default function RadaiAIProjectPage() {
                   ? newChat()
                   : (setView(item.id), setMobileNav(false))
               }
-              className={`flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--rd-accent)] ${view === item.id ? "bg-[var(--rd-primary-soft)] text-[var(--rd-primary)]" : "text-[var(--rd-text-muted)] hover:bg-[var(--rd-bg)]"}`}
+              className={`radai-ai-nav-action flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--rd-accent)] ${item.id === "chat" ? "radai-ai-nav-primary" : ""}`}
             >
               <item.icon size={17} />
               {item.label}
             </button>
           ))}
         </nav>
-        <div className="mt-7 min-h-0 flex-1 overflow-y-auto border-t border-[var(--rd-border-soft)] pt-5">
-          <p className="px-3 text-xs font-semibold uppercase text-[var(--rd-text-faint)]">
-            Recent Projects
-          </p>
+        <div className="radai-ai-nav-scroll min-h-0 flex-1 overflow-y-auto">
+          <button type="button" onClick={() => setView("projects")} className="radai-ai-nav-section"><Folder size={18} /> Projects</button>
           {projects.slice(0, 8).map((row) => (
             <button
               key={row.id}
               type="button"
-              onClick={() => select(row)}
-              className="mt-2 flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm hover:bg-[var(--rd-bg)]"
+              onClick={() => selectProjectInChat(row)}
+              className={`radai-ai-project-row flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm ${projectId === String(row.id) ? "is-active" : ""}`}
             >
               <Folder size={16} className="shrink-0" />
               <span className="truncate">{row.name}</span>
@@ -592,6 +690,12 @@ export default function RadaiAIProjectPage() {
               No projects yet. You can still start a general chat.
             </p>
           )}
+          <button type="button" onClick={() => setView("projects")} className="radai-ai-create-project"><Plus size={17} /> Create project</button>
+          <div className="radai-ai-recent">
+            <button type="button" onClick={() => setView("history")} className="radai-ai-nav-section"><History size={18} /> Recent chats</button>
+            {recentChats.map((row) => <button key={row.id} type="button" onClick={() => open(row.id)} className="radai-ai-recent-row"><MessageCircle size={16} /><span className="truncate">{row.title && row.title !== "New conversation" ? row.title : "Untitled chat"}</span></button>)}
+            {!recentChats.length && <p className="px-3 pt-2 text-xs text-[var(--rd-text-muted)]">No recent chats</p>}
+          </div>
         </div>
       </aside>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -603,7 +707,13 @@ export default function RadaiAIProjectPage() {
           </button>
           <span className="ml-2 truncate text-sm font-semibold">RADAI Intelligence</span>
         </div>
-        <main className="min-h-0 flex-1 overflow-y-auto px-4 py-8 sm:px-8">
+        <div className="radai-ai-content-layout flex min-h-0 flex-1">
+        <main className="radai-ai-main min-h-0 min-w-0 flex-1 overflow-y-auto">
+          <div className="radai-ai-toolbar">
+            <div className="truncate"><button type="button" onClick={() => setView("projects")}>Projects</button><span className="mx-3 text-slate-400">/</span><strong>{project?.name || "General chat"}</strong></div>
+            {project && <div className="radai-ai-toolbar-actions flex items-center gap-2">{view !== "project" && <button type="button" onClick={() => { setProjectTab("Members"); setView("project"); }} className="radai-ai-context-toggle"><Users size={16} /> People</button>}<button type="button" onClick={() => setContextOpen((open) => !open)} className="radai-ai-context-toggle"><FileText size={16} /> Project context</button></div>}
+          </div>
+          <div className="radai-ai-main-inner">
           {error && (
             <p
               role="alert"
@@ -790,6 +900,7 @@ export default function RadaiAIProjectPage() {
             <RadaiAIWorkspace
               key={project.id}
               project={project}
+              initialTab={projectTab}
               onStartChat={newChat}
               onProjectUpdated={reload}
             />
@@ -819,7 +930,7 @@ export default function RadaiAIProjectPage() {
               }}
             />
           ) : (
-            <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col">
+            <div className={`radai-ai-chat mx-auto flex min-h-full w-full max-w-5xl flex-col ${messages.length ? "" : "is-empty"}`}>
               {!messages.length ? (
                 <div className="mb-8 text-center">
                   <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--rd-ai-soft)] text-[var(--rd-ai)]">
@@ -834,23 +945,20 @@ export default function RadaiAIProjectPage() {
                 </div>
               ) : (
                 <>
-                  {project && (
-                    <p className="mb-3 text-xs text-[var(--rd-text-faint)]">
-                      Project knowledge in use: {project.name}
-                    </p>
-                  )}
-                  <div aria-live="polite" className="mb-6 space-y-6">
+                  <div aria-live="polite" className="radai-ai-messages mb-6 space-y-6">
                     {messages.map((message) => (
                       <div
                         key={message.id}
                         className="flex w-full flex-col"
                       >
                         {message.role === "user" ? (
-                          <div className="ml-auto max-w-[75%]">
-                            <div className="flex flex-col gap-1">
+                          <div className="radai-ai-user-message ml-auto max-w-[75%]">
+                            <div className="radai-ai-user-content flex flex-col gap-1">
                               <p className="rounded-xl bg-[var(--rd-surface-subtle)] p-3.5 text-sm leading-6">
                                 {message.content}
                               </p>
+                              <span className="radai-ai-user-avatar" aria-hidden="true">U</span>
+                              {message.created_at && <time className="radai-ai-user-time">{new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>}
                               {Boolean(message.attachments?.length) && (
                                 <div className="mt-2 flex flex-wrap gap-1.5">
                                   {message.attachments.map((att) => (
@@ -877,7 +985,9 @@ export default function RadaiAIProjectPage() {
                             </div>
                           </div>
                         ) : (
-                          <div className="max-w-[90%]">
+                          <div className="radai-ai-assistant-message max-w-[90%]">
+                            <div className="radai-ai-assistant-heading"><span><Sparkles size={19} /></span><strong>RADAI Intelligence</strong>{message.created_at && <time>{new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>}</div>
+                            <div className="radai-ai-answer-card">
                             <div className="text-sm leading-7 break-words">
                               <ReactMarkdown
                                 remarkPlugins={[remarkGfm]}
@@ -941,6 +1051,7 @@ export default function RadaiAIProjectPage() {
                                 ))}
                               </div>
                             )}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -950,7 +1061,7 @@ export default function RadaiAIProjectPage() {
               )}
               <form
                 onSubmit={send}
-                className="flex w-full flex-col gap-2 rounded-xl border border-[var(--rd-border-soft)] bg-[var(--rd-surface)] p-2.5 shadow-[var(--rd-shadow-card)] relative"
+                className="radai-ai-composer flex w-full flex-col gap-2 rounded-xl border border-[var(--rd-border-soft)] bg-[var(--rd-surface)] p-2.5 shadow-[var(--rd-shadow-card)] relative"
               >
                 <input
                   type="file"
@@ -960,10 +1071,9 @@ export default function RadaiAIProjectPage() {
                   multiple
                   onChange={handleFileSelect}
                 />
-                <div className="flex items-center gap-2">
+                <div className="radai-ai-composer-actions flex items-center gap-2">
                   <button
                     type="button"
-                    ref={actionTrigger}
                     aria-haspopup="menu"
                     aria-expanded={menuOpen}
                     aria-label="Add files or actions"
@@ -1037,18 +1147,18 @@ export default function RadaiAIProjectPage() {
                       event.currentTarget.form?.requestSubmit();
                     }
                   }}
-                  placeholder="Message RADAI Intelligence"
+                  placeholder={project ? `Ask about ${project.name}...` : "Message RADAI Intelligence"}
                   className="w-full resize-none min-h-[56px] bg-transparent px-3 py-2.5 text-sm leading-6 outline-none placeholder:text-[var(--rd-text-faint)]"
                 />
-                {menuOpen && (
+                {menuOpen && menuAnchor && createPortal(
                   <div
-                    className={`absolute z-30 mt-1.5 w-[220px] flex flex-col gap-1 rounded-lg border border-[var(--rd-border-soft)] bg-[var(--rd-surface)] shadow-[var(--rd-shadow-card)] p-1`}
-                    style={{ left: menuAnchor?.x ?? 0, top: menuAnchor?.y ?? 0 }}
+                    ref={actionMenu}
+                    className={`radai-ai-add-menu ${menuAnchor.above ? "is-above" : ""} flex flex-col gap-1 rounded-lg border border-[var(--rd-border-soft)] bg-[var(--rd-surface)] shadow-[var(--rd-shadow-card)] p-1`}
+                    style={{ left: menuAnchor.left, top: menuAnchor.top, width: menuAnchor.width, maxHeight: menuAnchor.maxHeight }}
                     role="menu"
                     aria-label="Add actions"
                     tabIndex={-1}
                     onKeyDown={onMenuKeyDown}
-                    onMouseLeave={closeMenu}
                   >
                     {addToProjectOpen ? (
                       <>
@@ -1118,9 +1228,10 @@ export default function RadaiAIProjectPage() {
                       <Download size={15} className="shrink-0" />
                       Create file from chat
                     </button>
-                  </div>
+                  </div>, document.body
                 )}
-                <div className="flex flex-wrap items-end justify-between gap-2 border-t border-[var(--rd-border-soft)] pt-2">
+                <div className="radai-ai-composer-footer flex flex-wrap items-end justify-between gap-2 border-t border-[var(--rd-border-soft)] pt-2">
+                  <button type="button" ref={actionTrigger} onClick={toggleMenu} aria-haspopup="menu" aria-expanded={menuOpen} className="radai-ai-add-context"><Plus size={17} /> Add context</button>
                   <label htmlFor="ai-chat-model" className="sr-only">
                     Chat model
                   </label>
@@ -1152,25 +1263,28 @@ export default function RadaiAIProjectPage() {
                     {modelError || "No chat model is configured for RADAI Intelligence. An administrator can configure Claude in AI API keys."}
                   </p>
                 )}
-                <div className="mt-4 flex flex-wrap gap-1.5">
-                  {quickActions.map((action) => (
-                    <button
-                      type="button"
-                      key={action.label}
-                      onClick={() => {
-                        setDraft(action.text);
-                        requestAnimationFrame(() => composer.current?.focus());
-                      }}
-                      className="flex min-h-[26px] items-center gap-1.5 rounded-full border border-[var(--rd-border-soft)] bg-[var(--rd-surface)] px-2.5 py-1 text-xs hover:bg-[var(--rd-surface-subtle)]"
-                    >
-                      <action.icon size={14} />
-                      {action.label}
-                    </button>
-                  ))}
-                </div>
               </form>
+                <section className="radai-ai-prompt-starters" aria-labelledby="radai-ai-prompt-starters-title">
+                  <h2 id="radai-ai-prompt-starters-title">Prompt Starters</h2>
+                  <div className="radai-ai-prompt-list">
+                    {quickActions.map((action) => (
+                      <button
+                        type="button"
+                        key={action.label}
+                        onClick={() => {
+                          setDraft(action.text);
+                          requestAnimationFrame(() => composer.current?.focus());
+                        }}
+                        className="radai-ai-prompt-chip"
+                      >
+                        <action.icon size={15} aria-hidden="true" />
+                        {action.label}
+                      </button>
+                    ))}
+                  </div>
+                </section>
               {fileCreationOpen && (
-                <div className="mt-4 rounded-xl border border-[var(--rd-border-soft)] bg-[var(--rd-surface)] p-3 shadow-[var(--rd-shadow-card)]">
+                <div className="radai-ai-file-creation mt-4 rounded-xl border border-[var(--rd-border-soft)] bg-[var(--rd-surface)] p-3 shadow-[var(--rd-shadow-card)]">
                   <h3 className="text-sm font-semibold mb-2">Create file from chat</h3>
                   <form onSubmit={generateDocument} className="space-y-2">
                     <label className="block text-xs font-medium text-[var(--rd-text-muted)]">
@@ -1232,7 +1346,19 @@ export default function RadaiAIProjectPage() {
               )}
             </div>
           )}
+          </div>
         </main>
+        {project && contextOpen && <aside className="radai-ai-context" aria-label="Project context">
+          <div className="radai-ai-context-header"><h2>Project context</h2><button type="button" onClick={() => setContextOpen(false)} aria-label="Close project context"><X size={18} /></button></div>
+          <section className="radai-ai-context-section"><h3>Project instructions</h3>
+            {contextError ? <p role="alert">{contextError}</p> : projectInstructions ? <div className="radai-ai-instructions">{["role_behavior", "goals", "response_format", "terminology", "standards", "evidence_requirements", "constraints"].map((key) => projectInstructions[key]).filter(Boolean).join("\n\n") || "No project instructions added yet."}</div> : <p>Loading instructions...</p>}
+          </section>
+          <section className="radai-ai-context-section"><h3>{usedSources.length ? "Sources used" : "Project sources"}</h3>
+            {usedSources.length ? <div className="radai-ai-sources">{usedSources.map((source, index) => <button key={`${source.source_id}-${index}`} type="button" onClick={() => downloadSource(source)} className="radai-ai-source"><FileText size={18} /><span className="truncate">{source.document}{source.revision ? ` · Rev ${source.revision}` : ""}</span><span aria-hidden="true">···</span></button>)}</div> : projectSources.length ? <div className="radai-ai-sources">{projectSources.map((source) => <button key={source.id} type="button" onClick={() => { setProjectTab("Knowledge"); setView("project"); }} className="radai-ai-source"><FileText size={18} /><span className="truncate">{source.name}{source.version ? ` · Rev ${source.version}` : ""}</span><span aria-hidden="true">···</span></button>)}</div> : <p>No project sources yet.</p>}
+            <button type="button" onClick={() => { setProjectTab("Knowledge"); setView("project"); }} className="radai-ai-source-add"><Plus size={18} /> Add source</button>
+          </section>
+        </aside>}
+        </div>
       </div>
     </div>
   );
