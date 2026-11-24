@@ -24,6 +24,7 @@ import SalesOpportunityFilePreview from "./SalesOpportunityFilePreview";
 import { SalesDocumentTag } from "./SalesDocumentType";
 import SalesDocumentVersionUpload from "./SalesDocumentVersionUpload";
 import useDocumentClassificationPolling from "./useDocumentClassificationPolling";
+import SalesBackgroundProgress from "./SalesBackgroundProgress";
 import {
   documentDate,
   documentType,
@@ -750,6 +751,13 @@ export default function SalesOpportunityDocuments({
             </button>
           </div>
         </header>
+        {storage === "radai" && (
+          <SalesBackgroundProgress
+            dealId={String(record.id)}
+            nudge={ready ? listing.files.length : null}
+            onRefresh={onRefresh}
+          />
+        )}
         <div className="sod-tools">
           <label className="sow-search">
             <Search />

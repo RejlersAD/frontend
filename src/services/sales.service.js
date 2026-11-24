@@ -18,6 +18,15 @@ const EMAIL_REQUEST_OPTIONS = {
 };
 
 class SalesService {
+  async getWorkspaceZipImports(dealId, signal) {
+    return (
+      await apiClient.get(
+        `${BASE_URL}/deals/${encodeURIComponent(dealId)}/workspace/zip-imports/`,
+        { ...EMAIL_REQUEST_OPTIONS, signal },
+      )
+    ).data;
+  }
+
   async getOpportunityAnalysis(id, signal) {
     return (
       await apiClient.get(`${BASE_URL}/deals/${id}/analysis/`, {
