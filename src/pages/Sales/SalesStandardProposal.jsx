@@ -678,9 +678,7 @@ export default function SalesStandardProposal({ quoteId, dealId, onPrepared }) {
                     <span className="ssp-step">1</span>Choose tender documents
                   </h4>
                   <p className="ssp-muted">
-                    Select the client&apos;s tender documents and correspondence
-                    the proposal must answer. Tender ZIP files are unpacked into
-                    the Tender folder automatically.
+                    Select tender files. for proposal generation.
                   </p>
                   {documents === null ? (
                     <p className="ssp-muted" role="status">
@@ -891,10 +889,7 @@ export default function SalesStandardProposal({ quoteId, dealId, onPrepared }) {
                     <span className="ssp-step">3</span>Generate proposal
                   </h4>
                   <p className="ssp-muted">
-                    Writes the technical proposal from the selected tender
-                    documents in the Rejlers standard. The result is one PDF,
-                    saved as the next version of the proposal and opened for
-                    review.
+                   Generates the proposal from selected tender files, saves it as a new version, and opens it for review.
                     {current ? " Approvals start again for the new version." : ""}
                   </p>
                   <button

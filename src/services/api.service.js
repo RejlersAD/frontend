@@ -4,6 +4,7 @@ import { STORAGE_KEYS } from '../config/app.config'
 import { toast } from 'react-toastify'
 import { clearDevicePushSession } from './pushDeviceSession'
 import { REDIRECT_AFTER_LOGIN_KEY } from '../config/solutions.config'
+import { isExpectedAccessDenied, isPasswordExpiredResponse, markExpectedAccessDenied } from './apiErrorPolicy'
 
 const DEBUG_HTTP_LOGS = import.meta.env.DEV
 const debugHttpLog = (...args) => {
@@ -275,12 +276,15 @@ apiClient.interceptors.response.use(
       return Promise.reject(error)
     }
     const originalRequest = error.config
+    const expectedAccessDenied = isExpectedAccessDenied(error)
+    if (expectedAccessDenied) markExpectedAccessDenied(error)
     // silentTimeout: per-request opt-in (not URL-wide) — lets one caller of a
     // shared endpoint suppress the toast while another caller of that same
     // endpoint still surfaces errors normally.
     const _silent = _isSilentTimeoutEndpoint(error.config?.url || '') ||
       error.config?.silentTimeout === true ||
-      error.config?.suppressErrorToast === true || error.config?.sensitiveRequest === true
+      error.config?.suppressErrorToast === true || error.config?.sensitiveRequest === true ||
+      expectedAccessDenied
     
     // Enhanced error logging for debugging — but stay quiet for background
     // pollers so DevTools doesn't drown in red on a slow worker.
@@ -350,7 +354,7 @@ apiClient.interceptors.response.use(
     }
 
     // Handle password expiry errors
-    if (error.response?.status === 403 && error.response?.data?.error === 'password_expired') {
+    if (isPasswordExpiredResponse(error)) {
       console.warn('[API] 🔒 Password expired, redirecting to change password...');
       
       toast.error(error.response.data.message || 'Your password has expired. Please change it.');
@@ -428,16 +432,6 @@ apiClient.interceptors.response.use(
       const silent = _silent || _isSilentAuthEndpoint(originalRequest?.url || '')
       if (silent) {
         return Promise.reject(error)
-      }
-
-      // Suppress 403 for non-admin endpoints
-      if (error.response?.status === 403) {
-        const silentForbidden = [
-          '/rbac/ai-champion/champion/current',
-        ]
-        if (silentForbidden.some(e => (originalRequest?.url || '').includes(e))) {
-          return Promise.reject(error)
-        }
       }
 
       let errorMessage = 'An error occurred';
