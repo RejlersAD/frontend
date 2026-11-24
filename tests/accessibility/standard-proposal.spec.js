@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { Buffer } from 'node:buffer'
 import AxeBuilder from '@axe-core/playwright'
 import { openPreparation } from '../fixtures/proposal-preparation-api'
 
@@ -49,7 +50,21 @@ function content(version, approved = {}) {
 async function standardApi(page, state) {
   await page.route('**/api/v1/sales/**', async route => {
     const request = route.request(), url = new URL(request.url()), path = url.pathname, method = request.method()
-    const body = ['POST', 'PUT', 'PATCH'].includes(method) ? request.postDataJSON() : null
+    let body = null
+    if (['POST', 'PUT', 'PATCH'].includes(method)) { try { body = request.postDataJSON() } catch { body = null } }  // multipart uploads
+    if (/\/workspace\/evidence\/[a-z_]+\/$/.test(path)) {
+      const required = ['Relevant project references', 'FEED experience list']
+      if (method === 'POST') {
+        state.evidence.push({ id: `radai-e${state.evidence.length + 1}`, name: 'Project references.pdf', size: 10 })
+        state.calls.push('evidence:upload')
+        return route.fulfill({ status: 201, json: { section_key: 'experience', required, files: state.evidence } })
+      }
+      return route.fulfill({ json: { section_key: 'experience', required, files: state.evidence } })
+    }
+    if (/\/workspace\/evidence\/[a-z_]+\/[^/]+\/$/.test(path) && method === 'DELETE') {
+      state.evidence = []
+      return route.fulfill({ json: { section_key: 'experience', required: [], files: [] } })
+    }
     if (/\/quotes\/[^/]+\/workspace\/$/.test(path) && method === 'GET') {
       return route.fulfill({ json: { quote_id: 'q', builder: 'standard', current: state.version ? { id: `v${state.version}`, version: state.version, content: content(state.version, state.approved) } : null,
         history: state.version ? [{ id: `v${state.version}`, version: state.version, created_at: '2026-11-23T08:00:00Z', reason: 'generated from tender' }] : [] } })
@@ -107,7 +122,7 @@ async function standardApi(page, state) {
 }
 
 async function open(page, options = {}) {
-  const state = { version: 1, approved: {}, jobs: [{ id: 'job-1', status: 'succeeded', attempts: 1, result_version: 1 }], reviews: [], calls: [], selection: [], ...options }
+  const state = { version: 1, approved: {}, jobs: [{ id: 'job-1', status: 'succeeded', attempts: 1, result_version: 1 }], reviews: [], calls: [], selection: [], evidence: [], ...options }
   await openPreparation(page, { beforeOpen: async target => standardApi(target, state) })
   const root = page.getByRole('region', { name: 'Technical proposal', exact: true })
   await expect(root).toBeVisible()
@@ -172,6 +187,23 @@ test('evidence review shows the draft and its tender sources, approves and rewri
   expect(state.calls).toContain('rebuild:schedule:Use months instead of weeks')
   expect(await root.innerText()).not.toMatch(INTERNAL)
   await root.screenshot({ path: 'test-results/standard-proposal-review.png' })
+})
+
+test('evidence sections take company evidence inline and add it to the PDF', async ({ page }) => {
+  const { state, root } = await open(page)
+  await root.getByRole('tab', { name: 'Evidence review', exact: true }).click()
+  const experience = root.getByRole('listitem').filter({ hasText: '2.1 PREVIOUS EXPERIENCE' }).first()
+  await expect(experience.locator('details')).toHaveAttribute('open', '')
+  await expect(experience.getByText('Needed: Relevant project references, FEED experience list.')).toBeVisible()
+  await expect(experience.getByText('No evidence uploaded yet.', { exact: false })).toBeVisible()
+  await experience.getByLabel('Upload evidence for 2.1 PREVIOUS EXPERIENCE').setInputFiles({ name: 'Project references.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n%%EOF') })
+  await expect(experience.getByText('Project references.pdf')).toBeVisible()
+  await expect(experience.getByText('Not yet in the PDF')).toBeVisible()
+  await experience.getByRole('button', { name: 'Add evidence to the PDF' }).click()
+  await expect.poll(() => state.calls.find(call => call.startsWith('rebuild:experience:'))).toBe('rebuild:experience:Company evidence updated')
+  expect(state.calls).toContain('evidence:upload')
+  const audit = await new AxeBuilder({ page }).include('[aria-label="2.1 PREVIOUS EXPERIENCE evidence"]').withTags(['wcag2a', 'wcag2aa']).analyze()
+  expect(audit.violations).toEqual([])
 })
 
 test('preview loads the proposal PDF and jumps to a section', async ({ page }) => {

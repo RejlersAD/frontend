@@ -119,3 +119,8 @@ section.ssp .ssp-note { display: flex; flex-direction: column; gap: 4px; font-we
 .ssp-draft { margin: 6px 0 10px; padding: 10px 12px; background: #f8faff; border-left: 3px solid #c9bfff; border-radius: 4px; }
 .ssp-draft p { white-space: pre-line; font-size: 13px; color: #364460; }
 section.ssp a.spg-button { text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+section.ssp .ssp-evidence { display: grid; gap: 8px; margin: 12px 0; padding: 12px; border: 1px dashed #c9cfe0; border-radius: 6px; background: #fafbff; }
+section.ssp .ssp-evidence h5 { margin: 0; }
+section.ssp .ssp-icon-button { display: inline-flex; align-items: center; justify-content: center; margin-left: auto; padding: 4px; border: 0; border-radius: 4px; background: transparent; color: #4b5068; cursor: pointer; }
+section.ssp .ssp-icon-button:hover, section.ssp .ssp-icon-button:focus-visible { background: #ebe6ff; }
+section.ssp .ssp-icon-button:disabled { cursor: not-allowed; opacity: .5; }

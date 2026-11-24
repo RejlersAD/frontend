@@ -16,6 +16,7 @@ import {
 import { Link } from "react-router-dom";
 import salesService from "../../services/sales.service";
 import { proposalTabKey } from "./SalesProposalWorkspace";
+import SalesProposalEvidence from "./SalesProposalEvidence";
 import {
   folderLabel,
   pageLabel,
@@ -409,14 +410,14 @@ export default function SalesStandardProposal({ quoteId, dealId, onPrepared }) {
         ? `${section.title} approved.`
         : `${section.title} returned for changes.`,
     );
-  const rebuild = (section) =>
+  const rebuild = (section, reason = note.trim()) =>
     run(
       `rebuild-${section.key}`,
       async () => {
         const result = await salesService.regenerateTechnicalProposalSection(
           quoteId,
           section.key,
-          { expected_version: version, reason: note.trim() },
+          { expected_version: version, reason },
         );
         setJob(result.job);
       },
@@ -991,6 +992,16 @@ export default function SalesStandardProposal({ quoteId, dealId, onPrepared }) {
                                 ? "No tender source was cited."
                                 : section.kindLabel + "."}
                             </p>
+                          )}
+                          {section.kind === "evidence" && (
+                            <SalesProposalEvidence
+                              quoteId={quoteId}
+                              section={section}
+                              disabled={generating}
+                              onInclude={(item) =>
+                                rebuild(item, note.trim() || "Company evidence updated")
+                              }
+                            />
                           )}
                           <IssueList
                             issues={{

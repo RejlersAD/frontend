@@ -1365,6 +1365,31 @@ class SalesService {
     )).data;
   }
 
+  async getProposalEvidence(quoteId, sectionKey) {
+    return (await apiClient.get(
+      `${BASE_URL}/quotes/${encodeURIComponent(quoteId)}/workspace/evidence/${encodeURIComponent(sectionKey)}/`,
+      EMAIL_REQUEST_OPTIONS,
+    )).data;
+  }
+
+  async uploadProposalEvidence(quoteId, sectionKey, file, requestId, options = {}) {
+    const body = new FormData();
+    body.append("file", file);
+    body.append("upload_request_id", requestId);
+    return (await apiClient.post(
+      `${BASE_URL}/quotes/${encodeURIComponent(quoteId)}/workspace/evidence/${encodeURIComponent(sectionKey)}/`,
+      body,
+      { ...EMAIL_REQUEST_OPTIONS, timeout: API_TIMEOUT_UPLOAD, onUploadProgress: options.onUploadProgress },
+    )).data;
+  }
+
+  async removeProposalEvidence(quoteId, sectionKey, fileId) {
+    return (await apiClient.delete(
+      `${BASE_URL}/quotes/${encodeURIComponent(quoteId)}/workspace/evidence/${encodeURIComponent(sectionKey)}/${encodeURIComponent(fileId)}/`,
+      EMAIL_REQUEST_OPTIONS,
+    )).data;
+  }
+
   async regenerateTechnicalProposalSection(quoteId, sectionKey, payload) {
     return (await apiClient.post(
       `${BASE_URL}/quotes/${encodeURIComponent(quoteId)}/workspace/sections/${encodeURIComponent(sectionKey)}/regenerate/`,
