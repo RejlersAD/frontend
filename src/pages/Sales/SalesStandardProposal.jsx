@@ -144,6 +144,9 @@ export default function SalesStandardProposal({ quoteId, dealId, onPrepared }) {
   const [notice, setNotice] = useState("");
   const [documents, setDocuments] = useState(null);
   const [documentsError, setDocumentsError] = useState("");
+  // Tender text must be scanned (document analysis) before the proposal can use it.
+  const [needsScan, setNeedsScan] = useState(false);
+  const [scan, setScan] = useState(null); // { done, total } while scanning
   const [selected, setSelected] = useState([]);
   const [savedSelection, setSavedSelection] = useState([]);
   const [check, setCheck] = useState(null);
@@ -231,6 +234,7 @@ export default function SalesStandardProposal({ quoteId, dealId, onPrepared }) {
 
   const loadDocuments = useCallback(async () => {
     setDocumentsError("");
+    setNeedsScan(false);
     try {
       const selection = await salesService.getProposalSourceSelection(dealId);
       // Tender packages often exceed one registry page (200); read them all.
@@ -256,8 +260,18 @@ export default function SalesStandardProposal({ quoteId, dealId, onPrepared }) {
       setDocuments(rows);
       setSelected(chosen);
       setSavedSelection(selection.source_keys || []);
+      // A scan started after upload may still be reading files; show its progress.
+      salesService
+        .getOpportunityAnalysis(dealId)
+        .then((analysis) => {
+          const counts = analysis?.counts || {};
+          if (counts.queued > 0)
+            setScan({ done: counts.total - counts.queued, total: counts.total });
+        })
+        .catch(() => {});
     } catch (failure) {
       setDocuments([]);
+      setNeedsScan(Boolean(failure?.response?.data?.analysis));
       setDocumentsError(
         errorText(failure, "The tender documents could not be loaded."),
       );
@@ -267,6 +281,43 @@ export default function SalesStandardProposal({ quoteId, dealId, onPrepared }) {
   useEffect(() => {
     if (view === "Generate" && documents === null) loadDocuments();
   }, [view, documents, loadDocuments]);
+
+  const scanDocuments = async () => {
+    const started = await run("scan", () =>
+      salesService.startOpportunityAnalysis(dealId),
+    );
+    if (started) {
+      setNeedsScan(false);
+      setDocumentsError("");
+      setScan({ done: 0, total: started.counts?.total || 0 });
+    }
+  };
+
+  // Follow the document scan; reload the document list once every file has been read.
+  useEffect(() => {
+    if (!scan) return undefined;
+    const timer = setTimeout(async () => {
+      try {
+        const analysis = await salesService.getOpportunityAnalysis(dealId);
+        const counts = analysis?.counts || {};
+        const total = counts.total || 0;
+        const pending = analysis?.stale ? total : counts.queued || 0;
+        if (["failed", "blocked"].includes(analysis?.status) && !pending) {
+          setScan(null);
+          setDocumentsError("Some documents could not be scanned. Scan again or check the files.");
+          setNeedsScan(true);
+        } else if (total && !pending) {
+          setScan(null);
+          setDocuments(null); // reload the now-readable documents
+        } else {
+          setScan({ done: Math.max(0, total - pending), total });
+        }
+      } catch {
+        setScan((previous) => (previous ? { ...previous } : previous)); // keep polling
+      }
+    }, POLL_MS);
+    return () => clearTimeout(timer);
+  }, [scan, dealId]);
 
   // Fetch the compiled binder once per revision when Preview opens.
   const pdfRequested = useRef(null);
@@ -634,8 +685,42 @@ export default function SalesStandardProposal({ quoteId, dealId, onPrepared }) {
                     <p className="ssp-muted" role="status">
                       Loading documents…
                     </p>
+                  ) : scan ? (
+                    <div className="ssp-alert" role="status">
+                      <p>
+                        Scanning tender documents… {scan.done} of{" "}
+                        {scan.total || "?"} read. You can leave this page; the
+                        scan continues in the background.
+                      </p>
+                      <div
+                        className="ssp-meter"
+                        role="progressbar"
+                        aria-label="Document scan progress"
+                        aria-valuemin={0}
+                        aria-valuemax={scan.total || 1}
+                        aria-valuenow={scan.done}
+                      >
+                        <span
+                          style={{
+                            width: `${scan.total ? Math.round((100 * scan.done) / scan.total) : 0}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
                   ) : documentsError ? (
-                    <p className="ssp-alert ssp-alert-warn">{documentsError}</p>
+                    <div className="ssp-alert ssp-alert-warn">
+                      <p>{documentsError}</p>
+                      {needsScan && (
+                        <button
+                          type="button"
+                          className="spg-button spg-primary"
+                          disabled={Boolean(busy)}
+                          onClick={scanDocuments}
+                        >
+                          {busy === "scan" ? "Starting scan…" : "Scan tender documents"}
+                        </button>
+                      )}
+                    </div>
                   ) : !documents.length ? (
                     <p className="ssp-muted">
                       No documents are available yet. Upload them to the
