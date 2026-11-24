@@ -284,3 +284,49 @@ for (const width of [1366, 390]) test(`proposal review remains usable without do
   }
   expect(state.pageErrors).toEqual([]);
 });
+
+const technicalWorkspace = () => ({
+  builder: 'standard',
+  current: { id: 'v3', version: 3, content: { template_version: 'rejlers_authored_v1', sections: [
+    { key: 'cover', title: 'COVER PAGE', kind: 'cover', pages: [1, 1], blocks: [] },
+    { key: 'schedule', title: '2.4 WORK SCHEDULE', kind: 'authored', pages: [2, 2], blocks: [
+      { type: 'part', text: 'WORK SCHEDULE' },
+      { type: 'paragraph', text: 'The work is completed within 26 weeks.', citations: ['T1'] },
+      { type: 'table', text: '', columns: ['Activity', 'Duration'], rows: [['FEED', '26 weeks']], citations: ['T1'] },
+    ] },
+  ] } },
+});
+
+test('standard proposals can be edited in the canvas and the PDF is rebuilt as the next version', async ({ page }) => {
+  await page.setViewportSize({ width: 1586, height: 992 });
+  const state = await prepareProposalReview(page, { technicalWorkspace: technicalWorkspace() });
+  await ready(page);
+  await page.getByRole('tab', { name: 'Edit content', exact: true }).click();
+  const editor = page.getByRole('complementary', { name: 'Edit proposal content' });
+  await expect(editor.getByLabel('Section', { exact: true })).toHaveValue('schedule');
+  await expect(page.getByLabel('Page number', { exact: true })).toHaveValue('2');
+  await expect(editor.getByText('WORK SCHEDULE', { exact: true })).toBeVisible();
+  await editor.getByLabel('Paragraph 2 text').fill('The work is completed within six months of kick-off.');
+  await editor.getByLabel('Table 3 row 1 column 2').fill('6 months');
+  await expect(editor.getByRole('button', { name: 'Save & update PDF' })).toBeDisabled();
+  await expect(editor.getByRole('alert')).toContainText('Add a reason for the edit.');
+  await editor.getByLabel('Reason for the edit').fill('Client asked for months');
+  await editor.getByRole('button', { name: 'Save & update PDF' }).click();
+  await expect(editor.getByRole('status').filter({ hasText: 'Updating the PDF' })).toBeVisible();
+  await expect(editor.getByText('Saved as proposal version 4.', { exact: false })).toBeVisible({ timeout: 20000 });
+  const edit = state.mutations.find(item => item.action === 'edit')
+  expect(edit.path).toContain('/workspace/sections/schedule/content/');
+  expect(edit.body).toMatchObject({ expected_version: 3, reason: 'Client asked for months' });
+  expect(edit.body.blocks.map(block => [block.type, block.ref])).toEqual([['part', 0], ['paragraph', 1], ['table', 2]]);
+  expect(edit.body.blocks[2].rows).toEqual([['FEED', '6 months']]);
+  const axe = await new AxeBuilder({ page }).include('.spr-review').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+  expect(axe.violations).toEqual([]);
+  expect(state.pageErrors).toEqual([]);
+});
+
+test('comment-only PDFs keep the review panel without an edit tab', async ({ page }) => {
+  await prepareProposalReview(page);
+  await ready(page);
+  await expect(page.getByRole('tab', { name: 'Edit content', exact: true })).toHaveCount(0);
+  await expect(review(page)).toBeVisible();
+});
