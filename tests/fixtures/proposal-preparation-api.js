@@ -66,6 +66,8 @@ export async function openPreparation(page, options = {}) {
     if (status === 'committed-network-error') return route.abort('failed')
     return route.fulfill({ json: result })
   })
+  // Optional extra API routes (registered last, so they take precedence) before the tab mounts.
+  if (options.beforeOpen) await options.beforeOpen(page, state)
   await page.getByLabel('Selected proposal', { exact: true }).getByRole('tab', { name: 'Preparation', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Proposal preparation', exact: true })).toBeVisible()
   return state

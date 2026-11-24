@@ -52,18 +52,32 @@ export const getAIKnowledge = (id, documentId) => unwrap(apiClient.get(`${aiProj
 export const downloadAIKnowledge = (id, documentId) => apiClient.get(`${aiProject(id)}knowledge/${documentId}/download/`, { responseType: 'blob' })
 export const archiveAIKnowledge = (id, documentId) => unwrap(apiClient.delete(`${aiProject(id)}knowledge/${documentId}/`))
 export const listAIConversations = (id, q = '') => unwrap(apiClient.get(aiConversations(id), { params: q ? { q } : {} }))
+// Recent chats across general chat and all your projects, newest first (each row carries its project).
+export const listRecentAIConversations = (q = '', limit = 50) => unwrap(apiClient.get(`${aiBase}conversations/recent/`, { params: { limit, ...(q ? { q } : {}) } }))
 export const createAIConversation = id => unwrap(apiClient.post(aiConversations(id), {}))
 export const getAIConversation = (id, conversationId) => unwrap(apiClient.get(`${aiConversations(id)}${conversationId}/`))
 export const updateAIConversation = (id, conversationId, title) => unwrap(apiClient.patch(`${aiConversations(id)}${conversationId}/`, { title }))
 export const archiveAIConversation = (id, conversationId) => unwrap(apiClient.delete(`${aiConversations(id)}${conversationId}/`))
 export const shareAIConversation = (id, conversationId, userId) => unwrap(apiClient.post(`${aiProject(id)}conversations/${conversationId}/share/`, { user_id: userId }))
-export const sendAIMessage = (id, conversationId, question, requestId, provider, model, attachmentIds = []) => unwrap(apiClient.post(`${aiConversations(id)}${conversationId}/send/`, { question, request_id: requestId, provider, model, attachment_ids: attachmentIds }, { timeout: 240000 }))
+export const sendAIMessage = (id, conversationId, question, requestId, provider, model, attachmentIds = [], webSearch = false, skillId = null) => unwrap(apiClient.post(`${aiConversations(id)}${conversationId}/send/`, { question, request_id: requestId, provider, model, attachment_ids: attachmentIds, ...(webSearch ? { web_search: true } : {}), ...(skillId ? { skill_id: skillId } : {}) }, { timeout: 240000 }))
+export const listAISkills = () => unwrap(apiClient.get(`${aiBase}skills/`))
+export const createAISkill = payload => unwrap(apiClient.post(`${aiBase}skills/`, payload))
+export const updateAISkill = (skillId, payload) => unwrap(apiClient.patch(`${aiBase}skills/${encodeURIComponent(skillId)}/`, payload))
+export const deleteAISkill = skillId => unwrap(apiClient.delete(`${aiBase}skills/${encodeURIComponent(skillId)}/`))
 
 export const uploadAIAttachment = (projectId, conversationId, file) => {
   const body = new FormData()
   body.append('file', file)
   return unwrap(apiClientLongTimeout.post(`${aiConversations(projectId)}${conversationId}/attachments/`, body))
 }
+
+// Add to project: move a general chat into a project and/or save its attached files as project knowledge.
+export const addChatToProject = (currentProjectId, conversationId, payload) => unwrap(apiClientLongTimeout.post(`${aiConversations(currentProjectId)}${conversationId}/add-to-project/`, payload))
+
+// Connectors: records from other RADAI modules, attached to a conversation like an upload.
+export const listAIConnectors = () => unwrap(apiClient.get(`${aiBase}connectors/`))
+export const searchAIConnector = (connector, q, signal) => unwrap(apiClient.get(`${aiBase}connectors/${encodeURIComponent(connector)}/search/`, { params: q ? { q } : {}, signal, suppressErrorToast: true }))
+export const connectAIAttachment = (projectId, conversationId, connector, itemId) => unwrap(apiClientLongTimeout.post(`${aiConversations(projectId)}${conversationId}/attachments/connect/`, { connector, item_id: itemId }))
 
 export const downloadAIAttachment = (projectId, conversationId, attachmentId) => apiClient.get(
   `${aiConversations(projectId)}${conversationId}/attachments/${attachmentId}/download/`,
