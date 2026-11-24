@@ -654,6 +654,11 @@ function App() {
                 </ProtectedRoute>
               }
             />
+            {/* Team & Enterprise lives inside RADAI Intelligence; keep the old address working. */}
+            <Route
+              path="teams"
+              element={<Navigate to="/radai-intelligence?view=teams" replace />}
+            />
             {/* Shared Project Organizer — standalone management page for cross-tool projects */}
             <Route
               path="project-organizer/projects"

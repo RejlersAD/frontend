@@ -7,20 +7,22 @@ import {
   Bot,
   ChevronDown,
   Download,
-  FileSearch,
   FileText,
   Folder,
   FolderPlus,
-  GitCompare,
   Globe,
   History,
+  Maximize2,
   Menu,
+  Minimize2,
   MessageCircle,
+  Pin,
   Palette,
   Paperclip,
   Plus,
   Plug,
   Search,
+  ShieldCheck,
   Sparkles,
   Trash2,
   Users,
@@ -34,78 +36,46 @@ import {
   getAIConversation,
   getAIProject,
   listAIChatModels,
-  listAIConversations,
+  listRecentAIConversations,
   listAIProjects,
   sendAIMessage,
   updateAIConversation,
   updateAIProject,
   uploadAIAttachment,
+  connectAIAttachment,
+  addChatToProject,
   downloadAIKnowledge,
   downloadAIAttachment,
   generateAIDocument,
   downloadAIGeneratedDocument,
   getAIInstructions,
   listAIKnowledge,
+  listAISkills,
 } from "../services/radaiIntelligence.service";
+import { useSearchParams } from "react-router-dom";
 import RadaiAIWorkspace from "./RadaiAIWorkspace";
-import RadaiConversationHistory from "./RadaiConversationHistory";
+import RadaiProjectsBoard from "./RadaiProjectsBoard";
+import RadaiConnectorsDialog from "./RadaiConnectorsDialog";
+import RadaiAddToProjectDialog from "./RadaiAddToProjectDialog";
+import RadaiSkillsDialog from "./RadaiSkillsDialog";
+import RadaiPromptStarters, { recordSkillUse } from "./RadaiPromptStarters";
+import RadaiConversationHistory, { chatTitle, readPinnedChats, relativeTime, writePinnedChats } from "./RadaiConversationHistory";
+import TeamsGovernancePage from "./TeamsGovernancePage";
 import "./RadaiAIProjectPage.css";
 
-const quickActions = [
-  {
-    label: "Review P&ID",
-    icon: FileSearch,
-    text: "Help me plan a P&ID review. Cite exact project evidence when a project is selected.",
-  },
-  {
-    label: "Analyze Document",
-    icon: FileText,
-    text: "Analyze the relevant project documents. Separate source evidence from interpretation.",
-  },
-  {
-    label: "Compare Revisions",
-    icon: GitCompare,
-    text: "Compare available document revisions. Cite differences you can verify.",
-  },
-  {
-    label: "Check tag consistency",
-    icon: Search,
-    text: "Check equipment, line, and valve tags across the available project documents. List mismatches with source locations, and identify documents that are missing.",
-  },
-  {
-    label: "Review line list",
-    icon: FileSearch,
-    text: "Review the available line list against related P&IDs. Identify verifiable differences in line numbers, sizes, services, and connections with citations.",
-  },
-  {
-    label: "Draft review comments",
-    icon: MessageCircle,
-    text: "Draft review comments for the available engineering documents. Include the exact source location, the observed issue, and a question for the responsible engineer.",
-  },
-  {
-    label: "Identify missing evidence",
-    icon: FileSearch,
-    text: "Identify missing or conflicting evidence needed for an engineering review. Separate confirmed facts from open questions and cite the available sources.",
-  },
-  {
-    label: "Summarize technical risks",
-    icon: FileText,
-    text: "Summarize technical risks supported by the available project documents. Cite each source and mark assumptions that need engineering review.",
-  },
-  {
-    label: "Prepare handover questions",
-    icon: MessageCircle,
-    text: "Prepare concise engineering handover questions from the available project documents. Group them by discipline and cite the evidence behind each question.",
-  },
-];
+const FOCUS_KEY = "radai.intelligence.focus";
+
+// Team & Enterprise lives inside RADAI Intelligence as its own section.
+const TEAMS_ON = import.meta.env.VITE_ENABLE_ENTERPRISE_TEAMS === "true";
+
 
 const menuEntries = [
   { id: "upload", label: "Upload or add files", icon: Paperclip, supported: true },
-  { id: "addProject", label: "Add to project", icon: FolderPlus, supported: false },
-  { id: "skills", label: "Skills", icon: Bot, supported: true },
-  { id: "connectors", label: "Connectors", icon: Plug, supported: false },
-  { id: "design", label: "Design system", icon: Palette, supported: false },
-  { id: "web", label: "Web search", icon: Globe, supported: false },
+  { id: "addProject", label: "Add to project", icon: FolderPlus, supported: true, hint: "Move chat, save files" },
+  { id: "skills", label: "Skills", icon: Bot, supported: true, hint: "P&ID review, CRS replies…" },
+  { id: "connectors", label: "Connectors", icon: Plug, supported: true, hint: "Project documents, line lists" },
+  { id: "design", label: "Design system", icon: Palette, supported: true },
+  { id: "web", label: "Web search", icon: Globe, supported: true },
 ];
 
 const GENERATION_FORMATS = [
@@ -139,14 +109,47 @@ export default function RadaiAIProjectPage() {
   const [modelError, setModelError] = useState("");
   const [projectId, setProjectId] = useState("");
   const [view, setView] = useState("chat");
+  // Teams & Governance opens as a full-window console over the page.
+  const [teamsOpen, setTeamsOpen] = useState(false);
+  const [connectorsOpen, setConnectorsOpen] = useState(false);
+  const [addProjectOpen, setAddProjectOpen] = useState(false);
+  const [skillsOpen, setSkillsOpen] = useState(false);
+  const [activeSkill, setActiveSkill] = useState(null);  // stays on for the chat until removed
+  // Skills catalogue for prompt starters (built-in + custom). Refreshed when the Skills dialog closes.
+  const [skillCatalog, setSkillCatalog] = useState([]);
+  const loadSkillCatalog = () => listAISkills().then((r) => setSkillCatalog([...(r.custom || []), ...(r.results || [])])).catch(() => setSkillCatalog([]));
+  useEffect(() => { loadSkillCatalog(); }, []);
+  // Web search: allowed per organization policy (Claude only); switched on per chat by the user.
+  const [webStatus, setWebStatus] = useState({ allowed: false, reason: "" });
+  const [webSearch, setWebSearch] = useState(false);
+  // Design system for generated Word/PDF/Excel files: Rejlers branding (default) or plain. Remembered per browser.
+  const [design, setDesign] = useState(() => { try { return localStorage.getItem("radai.intelligence.design") === "plain" ? "plain" : "rejlers"; } catch { return "rejlers"; } });
+  useEffect(() => { try { localStorage.setItem("radai.intelligence.design", design); } catch { /* storage unavailable */ } }, [design]);
+  // Focus mode: the chat fills the whole window (app menu and header hidden). Remembered per browser.
+  const [focusMode, setFocusMode] = useState(() => { try { return localStorage.getItem(FOCUS_KEY) === "1"; } catch { return false; } });
+  // ?view=teams (used by the old /teams address) opens Teams & Governance, then clears itself.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    if (searchParams.get("view") !== "teams") return;
+    if (TEAMS_ON) setTeamsOpen(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete("view");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+  useEffect(() => {
+    try { localStorage.setItem(FOCUS_KEY, focusMode ? "1" : "0"); } catch { /* storage unavailable: keep the in-memory setting */ }
+    if (!focusMode) return undefined;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = previous; };
+  }, [focusMode]);
   const [mobileNav, setMobileNav] = useState(false);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [folder, setFolder] = useState("");
-  const [filter, setFilter] = useState("");
   const [query, setQuery] = useState("");
   const [history, setHistory] = useState([]);
   const [recentChats, setRecentChats] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const [pinnedChats, setPinnedChats] = useState(readPinnedChats);
   const [contextOpen, setContextOpen] = useState(true);
   const [projectTab, setProjectTab] = useState("Instructions");
   const [projectInstructions, setProjectInstructions] = useState(null);
@@ -155,13 +158,21 @@ export default function RadaiAIProjectPage() {
   const [messages, setMessages] = useState([]);
   const [conversationId, setConversationId] = useState(null);
   const [draft, setDraft] = useState("");
-  const [renameId, setRenameId] = useState(null);
-  const [renameValue, setRenameValue] = useState("");
-  const [confirmArchive, setConfirmArchive] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  // Esc leaves full-window mode, unless something on top of the chat should take Esc first.
+  useEffect(() => {
+    if (!focusMode) return undefined;
+    const onKey = (event) => {
+      if (event.key !== "Escape" || event.defaultPrevented || teamsOpen || menuOpen || mobileNav) return;
+      if (document.querySelector("[role=dialog][aria-modal=true]")) return;
+      setFocusMode(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [focusMode, teamsOpen, menuOpen, mobileNav]);
   const [menuAnchor, setMenuAnchor] = useState(null);
   const [addToProjectOpen, setAddToProjectOpen] = useState(false);
   const [menuFocus, setMenuFocus] = useState(0);
@@ -202,12 +213,14 @@ export default function RadaiAIProjectPage() {
   const usedSources = [...messages].reverse().find((message) => message.role === "assistant" && message.sources?.length)?.sources || [];
   const selectedProvider = models.find((row) => row.model_id === selectedModel)?.provider;
   const entryDisabled = (entry) => {
-    if (entry.id === "addProject") return projects.length === 0;
+    if (entry.id === "web") return !webStatus.allowed;
     if (entry.id === "skills") return false;
     return !entry.supported;
   };
   const entryNotSupportedReason = (entry) => {
-    if (entry.id === "addProject") return projects.length === 0 ? "No projects available." : null;
+    if (entry.id === "web") return webStatus.allowed ? (webSearch ? "Turn web search off" : "Let RADAI search the public web for this chat") : webStatus.reason;
+    if (entry.id === "design") return design === "rejlers" ? "Generated Word, PDF and Excel files use Rejlers branding. Click for plain files." : "Generated files are plain. Click to use Rejlers branding.";
+    if (entry.id === "addProject") return "Move this chat into a project or save its files as project knowledge";
     if (!entry.supported) return "Not available in this phase.";
     return null;
   };
@@ -238,6 +251,10 @@ export default function RadaiAIProjectPage() {
       if (active) {
         setModels(result.models || []);
         setSelectedModel(result.default_model || "");
+        setWebStatus(result.web_search || { allowed: false, reason: "" });
+        if (result.policy_restricted && !(result.models || []).length) {
+          setModelError("Your organization's approved AI model list doesn't include any model configured here. Ask an organization admin to update it in Teams & Governance.");
+        }
       }
     }).catch(() => { if (active) { setModels([]); setModelError("Model list could not be loaded. Check the Django connection."); } });
     return () => { active = false; };
@@ -245,29 +262,52 @@ export default function RadaiAIProjectPage() {
   useEffect(() => {
     if (!["search", "history"].includes(view)) return;
     let active = true;
+    setHistoryLoading(true);
     const timer = setTimeout(
       () =>
-        listAIConversations(projectId, query)
+        listRecentAIConversations(query.trim(), 200)
           .then((result) => {
-            if (active) setHistory(result.results || []);
+            if (!active) return;
+            setHistory(result.results || []);
+            setHistoryError("");
           })
-          .catch(() => {
-            if (active) setError("Conversation history is unavailable.");
-          }),
+          .catch(() => { if (active) setHistoryError("Chat history is unavailable. Check the Django connection."); })
+          .finally(() => { if (active) setHistoryLoading(false); }),
       query ? 250 : 0,
     );
     return () => {
       active = false;
       clearTimeout(timer);
     };
-  }, [projectId, view, query]);
+  }, [view, query]);
+  // Left-panel Recent: your newest chats across general chat and every project (pinned first).
   useEffect(() => {
     let active = true;
-    listAIConversations(projectId, "")
-      .then((result) => { if (active) setRecentChats((result.results || []).slice(0, 3)); })
+    listRecentAIConversations("", 30)
+      .then((result) => { if (active) setRecentChats(result.results || []); })
       .catch(() => { if (active) setRecentChats([]); });
     return () => { active = false; };
-  }, [projectId, conversationId, messages.length]);
+  }, [conversationId, messages.length, projects.length]);
+  const togglePin = (id) => {
+    setPinnedChats((previous) => {
+      const next = previous.includes(id) ? previous.filter((x) => x !== id) : [id, ...previous];
+      writePinnedChats(next);
+      return next;
+    });
+  };
+  const forgetChat = (row) => {
+    setHistory((previous) => previous.filter((item) => item.id !== row.id));
+    setRecentChats((previous) => previous.filter((item) => item.id !== row.id));
+    if (pinnedChats.includes(row.id)) togglePin(row.id);
+    if (row.id === conversationId) { setConversationId(null); setMessages([]); }
+  };
+  const retitleChat = (row, title) => {
+    const update = (list) => list.map((item) => (item.id === row.id ? { ...item, title } : item));
+    setHistory(update);
+    setRecentChats(update);
+  };
+  const pinnedRecent = recentChats.filter((row) => pinnedChats.includes(row.id));
+  const recentList = [...pinnedRecent, ...recentChats.filter((row) => !pinnedChats.includes(row.id))].slice(0, Math.max(7, pinnedRecent.length));
   useEffect(() => {
     if (!projectId) {
       setProjectInstructions(null);
@@ -289,7 +329,7 @@ export default function RadaiAIProjectPage() {
   const select = (row) => {
     if (busy) return;
     setProjectId(String(row.id));
-    setProjectTab("Instructions");
+    setProjectTab("Overview");
     setView("project");
     setMessages([]);
     setConversationId(null);
@@ -313,6 +353,18 @@ export default function RadaiAIProjectPage() {
     retry.current = null;
     requestAnimationFrame(() => composer.current?.focus());
   };
+  // ?project=<id> (the "Open" link in Teams & Governance) selects that AI project once the list has loaded.
+  useEffect(() => {
+    const wanted = searchParams.get("project");
+    if (!wanted || !projects.length) return;
+    const row = projects.find((item) => String(item.id) === wanted);
+    if (row) selectProjectInChat(row);
+    else setError("You don't have access to that AI project. Ask its owner or your team admin.");
+    const next = new URLSearchParams(searchParams);
+    next.delete("project");
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- selectProjectInChat only sets state
+  }, [searchParams, projects]);
   const newChat = () => {
     if (busy) return;
     setView("chat");
@@ -326,64 +378,68 @@ export default function RadaiAIProjectPage() {
     retry.current = null;
     requestAnimationFrame(() => composer.current?.focus());
   };
-  const create = async (event) => {
-    event.preventDefault();
-    if (!name.trim()) return;
+  // Projects board actions. Each returns true on success so the board can close its form or prompt.
+  const createProject = async (payload) => {
     setBusy(true);
     setError("");
     try {
-      const row = await createAIProject({
-        name: name.trim(),
-        description,
-        folder,
-      });
+      const row = await createAIProject(payload);
       await reload();
       setProjectId(String(row.id));
       setProjectTab("Instructions");
       setView("project");
-      setName("");
-      setDescription("");
-      setFolder("");
+      return true;
     } catch {
       setError("Project could not be created.");
+      return false;
     } finally {
       setBusy(false);
     }
   };
-  const rename = async (row) => {
-    if (!renameValue.trim()) return;
+  const renameProject = async (row, value) => {
+    if (!value.trim()) return false;
     try {
-      await updateAIProject(row.id, { name: renameValue.trim() });
+      await updateAIProject(row.id, { name: value.trim() });
       await reload();
-      setRenameId(null);
+      return true;
     } catch {
       setError("Project could not be renamed.");
+      return false;
     }
   };
-  const archive = async (row) => {
+  const archiveProject = async (row) => {
     try {
       await archiveAIProject(row.id);
       await reload();
-      setConfirmArchive(null);
       if (String(row.id) === projectId) {
         setProjectId("");
         newChat();
       }
+      return true;
     } catch {
       setError("Project could not be archived.");
+      return false;
     }
   };
-  const open = async (id) => {
+  // Open any chat: a row from Recent or history carries its project, so switch to that project first.
+  const open = async (target) => {
+    if (busy) return;
+    const row = typeof target === "object" ? target : { id: target, project: project ? { id: project.id } : null };
+    const pid = row.project ? String(row.project.id) : "";
     try {
-      if (project) await getAIProject(project.id);
-      const row = await getAIConversation(project?.id, id);
-      setMessages(row.messages || []);
-      setConversationId(row.id);
+      if (pid) await getAIProject(pid);
+      const full = await getAIConversation(pid || undefined, row.id);
+      if (pid !== projectId) setProjectId(pid);
+      setMessages(full.messages || []);
+      setConversationId(full.id);
       setView("chat");
       setError("");
       setAttachments([]);
+      setDraft("");
+      setMobileNav(false);
+      retry.current = null;
     } catch {
-      setError("Project or conversation access changed.");
+      setError("That chat is no longer available. Its project may be archived or your access changed.");
     }
   };
   const send = async (event) => {
@@ -402,7 +458,7 @@ export default function RadaiAIProjectPage() {
           : crypto.randomUUID();
       retry.current = { id: requestId, question };
       const attachmentIds = attachments.map((a) => a.id);
-      const result = await sendAIMessage(project?.id, id, question, requestId, selectedProvider, selectedModel, attachmentIds);
+      const result = await sendAIMessage(project?.id, id, question, requestId, selectedProvider, selectedModel, attachmentIds, webSearch && webStatus.allowed, activeSkill?.id);
       setMessages(result.conversation.messages || []);
       setDraft("");
       setAttachments([]);
@@ -457,6 +513,63 @@ export default function RadaiAIProjectPage() {
     setAttachments((previous) => [...previous, ...newAttachments]);
     event.target.value = "";
     requestAnimationFrame(() => composer.current?.focus());
+  };
+  // Connectors: attach a record from another RADAI module (creates the conversation if needed).
+  const attachFromConnector = async (connector, item) => {
+    let targetConversationId = conversationId;
+    if (!targetConversationId) {
+      targetConversationId = (await createAIConversation(project?.id)).id;
+      setConversationId(targetConversationId);
+    }
+    const uploaded = await connectAIAttachment(project?.id, targetConversationId, connector, item.id);
+    setAttachments((previous) => [...previous, {
+      id: uploaded.id, name: uploaded.name, size: uploaded.size, content_type: uploaded.content_type,
+      sha256: uploaded.sha256, status: "ready", source: connector,
+    }]);
+    return uploaded;
+  };
+  // Skills: turn one on (prefilling its starting message when the box is empty) and select the first [placeholder].
+  const applySkill = (skill) => {
+    setSkillsOpen(false);
+    setActiveSkill(skill);
+    if (skill) recordSkillUse(skill.id);
+    if (skill && !draft.trim()) {
+      setDraft(skill.starter);
+      requestAnimationFrame(() => {
+        const box = composer.current;
+        if (!box) return;
+        box.focus();
+        const start = skill.starter.indexOf("[");
+        const end = skill.starter.indexOf("]", start);
+        if (start >= 0 && end > start && box.setSelectionRange) box.setSelectionRange(start, end + 1);
+      });
+    } else {
+      requestAnimationFrame(() => composer.current?.focus());
+    }
+  };
+  // Add to project: files attached anywhere in this chat (sent or still waiting to be sent).
+  const chatFiles = (() => {
+    const seen = new Map();
+    for (const message of messages) for (const file of message.attachments || []) if (file?.id != null) seen.set(String(file.id), { id: file.id, name: file.name });
+    for (const file of attachments) if (file?.id != null) seen.set(String(file.id), { id: file.id, name: file.name });
+    return [...seen.values()];
+  })();
+  const createProjectForChat = async (name) => {
+    const row = await createAIProject({ name, description: "", folder: "", visibility: "private" });
+    await reload();
+    return row;
+  };
+  const addCurrentChatToProject = async (target, payload) => {
+    const result = await addChatToProject(project?.id, conversationId, { ...payload, workspace_id: target.id });
+    if (result.moved) setProjectId(String(target.id));  // same conversation, now inside the project
+    await reload();
+    return result;
+  };
+  const openProjectChat = async (id) => {
+    let row = projects.find((item) => String(item.id) === String(id));
+    if (!row) row = (await listAIProjects()).results?.find((item) => String(item.id) === String(id));
+    setAddProjectOpen(false);
+    if (row) selectProjectInChat(row);
   };
   const removeAttachment = (id) => {
     setAttachments((previous) => previous.filter((a) => a.id !== id));
@@ -517,13 +630,34 @@ export default function RadaiAIProjectPage() {
       return;
     }
     if (entry.id === "addProject") {
-      setAddToProjectOpen(true);
+      setMenuOpen(false);
+      setAddProjectOpen(true);
+      return;
+    }
+    if (entry.id === "connectors") {
+      setMenuOpen(false);
+      setConnectorsOpen(true);
+      return;
+    }
+    if (entry.id === "design") {
+      setDesign((current) => (current === "rejlers" ? "plain" : "rejlers"));
+      return;
+    }
+    if (entry.id === "web") {
+      setMenuOpen(false);
+      const next = !webSearch;
+      // Web search runs on Claude only: switch to the first Claude model when turning it on.
+      if (next && selectedProvider !== "anthropic") {
+        const claude = models.find((row) => row.provider === "anthropic");
+        if (claude) setSelectedModel(claude.model_id);
+      }
+      setWebSearch(next);
+      requestAnimationFrame(() => composer.current?.focus());
       return;
     }
     if (entry.id === "skills") {
       setMenuOpen(false);
-      setDraft(draft ? `${draft}\n\n` : "");
-      requestAnimationFrame(() => composer.current?.focus());
+      setSkillsOpen(true);
       return;
     }
   };
@@ -551,6 +685,7 @@ export default function RadaiAIProjectPage() {
         content: fileCreationContent,
         format: fileCreationFormat,
         filename: fileCreationFilename || `radai-${fileCreationFormat}`,
+        design,
       });
       const messagesUpdate = [...messages, {
         id: `gen-${Date.now()}`,
@@ -590,6 +725,10 @@ export default function RadaiAIProjectPage() {
     }
   };
   const downloadSource = async (source) => {
+    if (source.url) {  // web search result: open the page
+      window.open(source.url, "_blank", "noopener,noreferrer");
+      return;
+    }
     if (String(source.source_id).startsWith("attachment-")) {
       return downloadAttachment(conversationId, Number(String(source.source_id).slice(11)), source.document);
     }
@@ -627,91 +766,150 @@ export default function RadaiAIProjectPage() {
   };
 
   return (
-    <div className="radai-ai-page relative flex h-full min-h-0 w-full overflow-hidden font-sans">
+    <div className={`radai-ai-page relative flex h-full min-h-0 w-full overflow-hidden font-sans ${focusMode ? "radai-ai-focus" : ""}`}>
       {mobileNav && (
         <button
           type="button"
           aria-label="Close workspace navigation"
           onClick={() => setMobileNav(false)}
-          className="absolute inset-0 z-10 bg-slate-950/30 lg:hidden"
+          className="absolute inset-0 z-10 bg-slate-950/30 xl:hidden"
         />
       )}
+      {skillsOpen && <RadaiSkillsDialog activeSkillId={activeSkill?.id || ""} onClose={() => { setSkillsOpen(false); loadSkillCatalog(); requestAnimationFrame(() => composer.current?.focus()); }} onUse={(skill) => { applySkill(skill); loadSkillCatalog(); }} />}
+      {addProjectOpen && (
+        <RadaiAddToProjectDialog
+          projects={projects}
+          currentProject={project || null}
+          hasConversation={Boolean(conversationId)}
+          hasMessages={messages.length > 0}
+          chatFiles={chatFiles}
+          onClose={() => { setAddProjectOpen(false); requestAnimationFrame(() => composer.current?.focus()); }}
+          onCreateProject={createProjectForChat}
+          onSubmit={addCurrentChatToProject}
+          onOpenProject={openProjectChat}
+        />
+      )}
+      {connectorsOpen && <RadaiConnectorsDialog onClose={() => { setConnectorsOpen(false); requestAnimationFrame(() => composer.current?.focus()); }} onAttach={attachFromConnector} />}
+      {teamsOpen && TEAMS_ON && createPortal(<TeamsGovernancePage fullscreen onClose={() => setTeamsOpen(false)} />, document.body)}
       <aside
         id="ai-nav"
         aria-label="RADAI Intelligence navigation"
-        className={`${mobileNav ? "translate-x-0" : "-translate-x-full lg:translate-x-0"} radai-ai-nav absolute inset-y-0 left-0 z-20 flex flex-none flex-col transition-transform lg:relative`}
+        className={`${mobileNav ? "translate-x-0" : "-translate-x-full xl:translate-x-0"} radai-ai-nav absolute inset-y-0 left-0 z-20 flex flex-none flex-col transition-transform xl:relative`}
       >
         <div className="radai-ai-nav-heading flex items-center justify-between">
-          <span className="flex items-center gap-3 text-sm font-semibold"><Sparkles size={23} /> RADAI Intelligence</span>
+          <span className="radai-ai-brand"><span className="radai-ai-brand-mark" aria-hidden="true"><Sparkles size={16} /></span>RADAI Intelligence</span>
           <button
             type="button"
             aria-label="Close workspace navigation"
             onClick={() => setMobileNav(false)}
-            className="rounded-md p-2 lg:hidden"
+            className="radai-ai-icon-btn xl:hidden"
           >
             <X size={18} />
           </button>
         </div>
         <nav aria-label="Workspace sections" className="radai-ai-nav-actions">
-          {[
-            { id: "chat", label: "New chat", icon: Plus },
-            { id: "search", label: "Search", icon: Search },
-          ].map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() =>
-                item.id === "chat"
-                  ? newChat()
-                  : (setView(item.id), setMobileNav(false))
-              }
-              className={`radai-ai-nav-action flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--rd-accent)] ${item.id === "chat" ? "radai-ai-nav-primary" : ""}`}
-            >
-              <item.icon size={17} />
-              {item.label}
-            </button>
-          ))}
+          <button type="button" onClick={() => newChat()} className="radai-ai-new-chat"><Plus size={16} />New chat</button>
+          <button
+            type="button"
+            onClick={() => { setView("search"); setMobileNav(false); }}
+            aria-current={view === "search" ? "page" : undefined}
+            className={`radai-ai-search-trigger ${view === "search" ? "is-active" : ""}`}
+          >
+            <Search size={15} /><span>Search chats</span>
+          </button>
         </nav>
         <div className="radai-ai-nav-scroll min-h-0 flex-1 overflow-y-auto">
-          <button type="button" onClick={() => setView("projects")} className="radai-ai-nav-section"><Folder size={18} /> Projects</button>
-          {projects.slice(0, 8).map((row) => (
-            <button
-              key={row.id}
-              type="button"
-              onClick={() => selectProjectInChat(row)}
-              className={`radai-ai-project-row flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm ${projectId === String(row.id) ? "is-active" : ""}`}
-            >
-              <Folder size={16} className="shrink-0" />
-              <span className="truncate">{row.name}</span>
-            </button>
-          ))}
-          {!projects.length && (
-            <p className="px-3 pt-3 text-xs text-[var(--rd-text-muted)]">
-              No projects yet. You can still start a general chat.
-            </p>
-          )}
-          <button type="button" onClick={() => setView("projects")} className="radai-ai-create-project"><Plus size={17} /> Create project</button>
-          <div className="radai-ai-recent">
-            <button type="button" onClick={() => setView("history")} className="radai-ai-nav-section"><History size={18} /> Recent chats</button>
-            {recentChats.map((row) => <button key={row.id} type="button" onClick={() => open(row.id)} className="radai-ai-recent-row"><MessageCircle size={16} /><span className="truncate">{row.title && row.title !== "New conversation" ? row.title : "Untitled chat"}</span></button>)}
-            {!recentChats.length && <p className="px-3 pt-2 text-xs text-[var(--rd-text-muted)]">No recent chats</p>}
+          <div className="radai-ai-nav-group">
+            <div className="radai-ai-nav-label">
+              <button type="button" onClick={() => setView("projects")}>Projects</button>
+              <button type="button" onClick={() => setView("projects")} className="radai-ai-icon-btn" aria-label="Create project" title="Create project"><Plus size={15} /></button>
+            </div>
+            {projects.slice(0, 8).map((row) => (
+              <button
+                key={row.id}
+                type="button"
+                onClick={() => selectProjectInChat(row)}
+                className={`radai-ai-project-row ${projectId === String(row.id) ? "is-active" : ""}`}
+              >
+                <Folder size={15} className="shrink-0" />
+                <span className="truncate">{row.name}</span>
+              </button>
+            ))}
+            {!projects.length && <p className="radai-ai-nav-empty">No projects yet. You can still start a general chat.</p>}
+          </div>
+          <div className="radai-ai-nav-group">
+            <div className="radai-ai-nav-label">
+              <button type="button" onClick={() => { setView("history"); setMobileNav(false); }}>Recent</button>
+              <button type="button" onClick={() => { setView("history"); setMobileNav(false); }} className="radai-ai-nav-more" title="All chats">
+                <History size={13} aria-hidden="true" />All
+              </button>
+            </div>
+            {recentList.map((row) => {
+              const isPinned = pinnedChats.includes(row.id);
+              const isOpen = view === "chat" && conversationId === row.id;
+              return (
+                <div key={row.id} className={`radai-ai-recent-item ${isOpen ? "is-active" : ""}`}>
+                  <button type="button" onClick={() => open(row)} className="radai-ai-recent-row" aria-current={isOpen ? "true" : undefined}
+                    title={`${chatTitle(row)} · ${row.project ? row.project.name : "General"}`}>
+                    {isPinned ? <Pin size={13} className="shrink-0" /> : <MessageCircle size={14} className="shrink-0" />}
+                    <span className="min-w-0 flex-1">
+                      <span className="radai-ai-recent-title">{chatTitle(row)}</span>
+                      <span className="radai-ai-recent-meta">{row.project ? <><Folder size={10} aria-hidden="true" />{row.project.name}</> : "General"}<span aria-hidden="true">·</span>{relativeTime(row.updated_at)}</span>
+                    </span>
+                  </button>
+                  <button type="button" onClick={() => togglePin(row.id)} className={`radai-ai-recent-pin ${isPinned ? "is-on" : ""}`} aria-pressed={isPinned}
+                    aria-label={isPinned ? `Unpin ${chatTitle(row)}` : `Pin ${chatTitle(row)}`} title={isPinned ? "Unpin" : "Pin to top"}>
+                    <Pin size={12} />
+                  </button>
+                </div>
+              );
+            })}
+            {!recentChats.length && <p className="radai-ai-nav-empty">No chats yet. Your questions will appear here.</p>}
+            {recentChats.length > recentList.length && (
+              <button type="button" onClick={() => { setView("history"); setMobileNav(false); }} className="radai-ai-recent-all">View all chats</button>
+            )}
           </div>
         </div>
+        {TEAMS_ON && (
+          <div className="radai-ai-nav-footer">
+            <button
+              type="button"
+              onClick={() => { setTeamsOpen(true); setMobileNav(false); }}
+              aria-haspopup="dialog"
+              className="radai-ai-project-row"
+            >
+              <ShieldCheck size={15} className="shrink-0" />
+              <span className="truncate">Teams &amp; Governance</span>
+            </button>
+          </div>
+        )}
       </aside>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <div className="flex h-12 flex-none items-center border-b border-[var(--rd-border-soft)] px-4 lg:hidden">
+        <div className="flex h-12 flex-none items-center border-b border-[var(--rd-border-soft)] px-4 xl:hidden">
           <button type="button" aria-label="Open workspace navigation" aria-controls="ai-nav"
             aria-expanded={mobileNav} onClick={() => setMobileNav(true)}
             className="rounded-md p-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--rd-accent)]">
             <Menu size={19} />
           </button>
           <span className="ml-2 truncate text-sm font-semibold">RADAI Intelligence</span>
+          <button type="button" onClick={() => setFocusMode((on) => !on)} aria-pressed={focusMode}
+            aria-label={focusMode ? "Exit full window" : "Full window"} title={focusMode ? "Exit full window (Esc)" : "Full window"}
+            className="radai-ai-icon-btn ml-auto">
+            {focusMode ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
+          </button>
         </div>
         <div className="radai-ai-content-layout flex min-h-0 flex-1">
         <main className="radai-ai-main min-h-0 min-w-0 flex-1 overflow-y-auto">
           <div className="radai-ai-toolbar">
             <div className="truncate"><button type="button" onClick={() => setView("projects")}>Projects</button><span className="mx-3 text-slate-400">/</span><strong>{project?.name || "General chat"}</strong></div>
-            {project && <div className="radai-ai-toolbar-actions flex items-center gap-2">{view !== "project" && <button type="button" onClick={() => { setProjectTab("Members"); setView("project"); }} className="radai-ai-context-toggle"><Users size={16} /> People</button>}<button type="button" onClick={() => setContextOpen((open) => !open)} className="radai-ai-context-toggle"><FileText size={16} /> Project context</button></div>}
+            <div className="radai-ai-toolbar-actions flex items-center gap-2">
+              {project && view !== "project" && <button type="button" onClick={() => { setProjectTab("Members"); setView("project"); }} className="radai-ai-context-toggle" aria-label="People"><Users size={16} /><span className="radai-ai-toggle-label">People</span></button>}
+              {project && view !== "project" && view !== "projects" && <button type="button" onClick={() => setContextOpen((open) => !open)} className="radai-ai-context-toggle" aria-label="Project context"><FileText size={16} /><span className="radai-ai-toggle-label">Project context</span></button>}
+              <button type="button" onClick={() => setFocusMode((on) => !on)} aria-pressed={focusMode}
+                className="radai-ai-context-toggle radai-ai-focus-toggle" aria-label={focusMode ? "Exit full window" : "Full window"} title={focusMode ? "Exit full window (Esc)" : "Use the whole window"}>
+                {focusMode ? <Minimize2 size={16} /> : <Maximize2 size={16} />}<span className="radai-ai-toggle-label">{focusMode ? "Exit full window" : "Full window"}</span>
+              </button>
+            </div>
           </div>
           <div className="radai-ai-main-inner">
           {error && (
@@ -723,179 +921,16 @@ export default function RadaiAIProjectPage() {
             </p>
           )}
           {view === "projects" ? (
-            <div className="mx-auto max-w-2xl">
-              <h1 className="text-xl font-semibold">Projects</h1>
-              <p className="mt-1 text-sm text-[var(--rd-text-muted)]">
-                Create a private knowledge workspace or open one shared with
-                you.
-              </p>
-              <form
-                onSubmit={create}
-                className="mt-6 space-y-3 rounded-xl border border-[var(--rd-border-soft)] p-4"
-              >
-                <h2 className="text-sm font-semibold">Create project</h2>
-                <label htmlFor="ai-name" className="sr-only">
-                  Project name
-                </label>
-                <input
-                  id="ai-name"
-                  required
-                  maxLength={160}
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  placeholder="Piping Specification Assistant"
-                  className="rd-input w-full"
-                />
-                <label htmlFor="ai-desc" className="sr-only">
-                  Description
-                </label>
-                <textarea
-                  id="ai-desc"
-                  maxLength={4000}
-                  value={description}
-                  onChange={(event) => setDescription(event.target.value)}
-                  placeholder="What will this workspace help with?"
-                  className="rd-input w-full"
-                  rows={2}
-                />
-                <label htmlFor="ai-folder" className="sr-only">
-                  Folder (optional)
-                </label>
-                <input
-                  id="ai-folder"
-                  maxLength={120}
-                  value={folder}
-                  onChange={(event) => setFolder(event.target.value)}
-                  placeholder="Folder (optional)"
-                  className="rd-input w-full"
-                />
-                <button
-                  type="submit"
-                  disabled={busy}
-                  className="rd-btn rd-btn-primary"
-                >
-                  <Plus size={16} />
-                  Create project
-                </button>
-              </form>
-              <label
-                htmlFor="ai-filter"
-                className="mt-7 block text-sm font-medium"
-              >
-                Find projects
-              </label>
-              <input
-                id="ai-filter"
-                value={filter}
-                onChange={(event) => setFilter(event.target.value)}
-                placeholder="Search by name or folder"
-                className="rd-input mt-2 w-full"
-              />
-              {loading ? (
-                <p role="status" className="mt-5 text-sm">
-                  Loading projects…
-                </p>
-              ) : (
-                <ul className="mt-5 divide-y divide-[var(--rd-border-soft)]">
-                  {projects
-                    .filter((row) =>
-                      `${row.name} ${row.folder}`
-                        .toLowerCase()
-                        .includes(filter.toLowerCase()),
-                    )
-                    .map((row) => (
-                      <li
-                        key={row.id}
-                        className="flex min-w-0 items-center gap-2 py-2"
-                      >
-                        <button
-                          type="button"
-                          onClick={() => select(row)}
-                          className="min-w-0 flex-1 rounded-lg p-2 text-left hover:bg-[var(--rd-surface)]"
-                        >
-                          <span className="block truncate text-sm font-medium">
-                            {row.name}
-                          </span>
-                          <span className="text-xs text-[var(--rd-text-muted)]">
-                            {row.folder || row.visibility} · {row.role}
-                          </span>
-                        </button>
-                        {row.role === "owner" && (
-                          <>
-                            {renameId === row.id ? (
-                              <form
-                                onSubmit={(event) => {
-                                  event.preventDefault();
-                                  rename(row);
-                                }}
-                                className="flex gap-1"
-                              >
-                                <label
-                                  htmlFor={`rename-${row.id}`}
-                                  className="sr-only"
-                                >
-                                  New name
-                                </label>
-                                <input
-                                  id={`rename-${row.id}`}
-                                  value={renameValue}
-                                  onChange={(event) =>
-                                    setRenameValue(event.target.value)
-                                  }
-                                  className="rd-input w-28"
-                                />
-                                <button
-                                  type="submit"
-                                  className="text-xs underline"
-                                >
-                                  Save
-                                </button>
-                              </form>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setRenameId(row.id);
-                                  setRenameValue(row.name);
-                                }}
-                                className="text-xs underline"
-                              >
-                                Rename
-                              </button>
-                            )}
-                            {confirmArchive === row.id ? (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => archive(row)}
-                                  className="text-xs underline"
-                                >
-                                  Confirm archive
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setConfirmArchive(null)}
-                                  className="text-xs underline"
-                                >
-                                  Cancel
-                                </button>
-                              </>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => setConfirmArchive(row.id)}
-                                className="text-xs underline"
-                              >
-                                Archive
-                              </button>
-                            )}
-                          </>
-                        )}
-                      </li>
-                    ))}
-                </ul>
-              )}
-            </div>
+            <RadaiProjectsBoard
+              projects={projects}
+              loading={loading}
+              busy={busy}
+              onCreate={createProject}
+              onOpenChat={selectProjectInChat}
+              onOpenSettings={select}
+              onRename={renameProject}
+              onArchive={archiveProject}
+            />
           ) : view === "project" && project ? (
             <RadaiAIWorkspace
               key={project.id}
@@ -903,45 +938,49 @@ export default function RadaiAIProjectPage() {
               initialTab={projectTab}
               onStartChat={newChat}
               onProjectUpdated={reload}
+              onManageTeams={() => setTeamsOpen(true)}
             />
           ) : view === "history" || view === "search" ? (
             <RadaiConversationHistory
-              project={project}
-              search={view === "search"}
+              rows={history}
+              loading={historyLoading}
+              error={historyError}
               query={query}
               onQueryChange={setQuery}
-              conversations={history}
-              loading={false}
-              error=""
+              focusSearch={view === "search"}
+              initialFilter={projectId || "all"}
+              activeId={conversationId}
+              pinned={pinnedChats}
+              onTogglePin={togglePin}
               onOpen={open}
+              onNewChat={newChat}
               onRename={async (row, title) => {
-                await updateAIConversation(project?.id, row.id, title);
-                setHistory((previous) =>
-                  previous.map((item) =>
-                    item.id === row.id ? { ...item, title } : item,
-                  ),
-                );
+                await updateAIConversation(row.project?.id, row.id, title);
+                retitleChat(row, title);
               }}
               onArchive={async (row) => {
-                await archiveAIConversation(project?.id, row.id);
-                setHistory((previous) =>
-                  previous.filter((item) => item.id !== row.id),
-                );
+                await archiveAIConversation(row.project?.id, row.id);
+                forgetChat(row);
               }}
             />
           ) : (
             <div className={`radai-ai-chat mx-auto flex min-h-full w-full max-w-5xl flex-col ${messages.length ? "" : "is-empty"}`}>
               {!messages.length ? (
-                <div className="mb-8 text-center">
-                  <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--rd-ai-soft)] text-[var(--rd-ai)]">
+                <div className="radai-ai-hero">
+                  <div className="radai-ai-hero-mark" aria-hidden="true">
                     <Sparkles size={22} />
                   </div>
-                  <p className="mt-4 text-sm font-semibold text-[var(--rd-text-muted)]">
-                    RADAI Intelligence
+                  <p className="radai-ai-hero-eyebrow">
+                    {project ? <><Folder size={13} aria-hidden="true" />{project.name}</> : "RADAI Intelligence"}
                   </p>
-                  <h1 className="mt-3 text-2xl font-semibold sm:text-3xl">
+                  <h1 className="radai-ai-hero-title">
                     What can we work on today?
                   </h1>
+                  <p className="radai-ai-hero-sub">
+                    {project
+                      ? "Answers use this project's instructions and sources, with citations."
+                      : "Ask about drawings, line lists, CRS comments, tenders or project documents."}
+                  </p>
                 </div>
               ) : (
                 <>
@@ -1215,6 +1254,17 @@ export default function RadaiAIProjectPage() {
                             {!entry.supported && (
                               <span className="ml-auto text-xs text-[var(--rd-text-faint)]">Coming soon</span>
                             )}
+                            {entry.id === "design" && (
+                              <span className={`ml-auto rounded-full px-2 py-0.5 text-[11px] font-medium ${design === "rejlers" ? "bg-[var(--ai-soft-nav)] text-[var(--ai-purple)]" : "bg-[var(--ai-surface-subtle)] text-[var(--ai-muted)]"}`}>
+                                {design === "rejlers" ? "Rejlers" : "Plain"}
+                              </span>
+                            )}
+                            {entry.id === "web" && (
+                              <span className={`ml-auto rounded-full px-2 py-0.5 text-[11px] font-medium ${!webStatus.allowed ? "text-[var(--rd-text-faint)]" : webSearch ? "bg-[var(--ai-soft-nav)] text-[var(--ai-purple)]" : "bg-[var(--ai-surface-subtle)] text-[var(--ai-muted)]"}`}>
+                                {!webStatus.allowed ? "Unavailable" : webSearch ? "On" : "Off"}
+                              </span>
+                            )}
+                            {entry.hint && !disabled && <span className="ml-auto truncate pl-2 text-[11px] text-[var(--rd-text-faint)]">{entry.hint}</span>}
                           </button>
                         );
                       })
@@ -1230,8 +1280,21 @@ export default function RadaiAIProjectPage() {
                     </button>
                   </div>, document.body
                 )}
-                <div className="radai-ai-composer-footer flex flex-wrap items-end justify-between gap-2 border-t border-[var(--rd-border-soft)] pt-2">
-                  <button type="button" ref={actionTrigger} onClick={toggleMenu} aria-haspopup="menu" aria-expanded={menuOpen} className="radai-ai-add-context"><Plus size={17} /> Add context</button>
+                <div className="radai-ai-composer-footer flex flex-nowrap items-center justify-between gap-2 border-t border-[var(--rd-border-soft)] pt-2">
+                  <button type="button" ref={actionTrigger} onClick={toggleMenu} aria-haspopup="menu" aria-expanded={menuOpen} className="radai-ai-add-context" aria-label="Add context"><Plus size={17} /><span className="radai-ai-add-context-label">Add context</span></button>
+                  {activeSkill && (
+                    <span className="radai-ai-web-chip" title={activeSkill.description}>
+                      <button type="button" className="inline-flex min-w-0 items-center gap-1.5" onClick={() => setSkillsOpen(true)} aria-label={`Skill: ${activeSkill.name}. Change skill`}>
+                        <Bot size={14} /><span className="radai-ai-add-context-label max-w-[140px] truncate">{activeSkill.name}</span>
+                      </button>
+                      <button type="button" onClick={() => setActiveSkill(null)} aria-label="Turn off skill" className="grid place-items-center"><X size={12} /></button>
+                    </span>
+                  )}
+                  {webSearch && webStatus.allowed && (
+                    <button type="button" onClick={() => setWebSearch(false)} className="radai-ai-web-chip" title="Web search is on for this chat. Click to turn it off." aria-label="Turn off web search">
+                      <Globe size={14} /><span className="radai-ai-add-context-label">Web search</span><X size={12} />
+                    </button>
+                  )}
                   <label htmlFor="ai-chat-model" className="sr-only">
                     Chat model
                   </label>
@@ -1240,7 +1303,7 @@ export default function RadaiAIProjectPage() {
                     aria-label="Chat model"
                     value={selectedModel}
                     onChange={(event) => setSelectedModel(event.target.value)}
-                    className="max-w-[170px] shrink-0 rounded-lg border border-[var(--rd-border-soft)] bg-[var(--rd-surface)] px-2 py-2 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--rd-accent)]"
+                    className="min-w-0 max-w-[170px] shrink rounded-lg border border-[var(--rd-border-soft)] bg-[var(--rd-surface)] px-2 py-2 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--rd-accent)]"
                   >
                     <option value="">{models.length ? "Model" : "No model available"}</option>
                     {models.map((row) => (
@@ -1253,7 +1316,7 @@ export default function RadaiAIProjectPage() {
                     type="submit"
                     disabled={!selectedModel || !draft.trim() || busy}
                     aria-label="Send message"
-                    className="flex h-10 min-w-10 items-center justify-center rounded-lg bg-[var(--rd-primary)] px-3 text-white disabled:opacity-40"
+                    className="flex h-10 min-w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--rd-primary)] px-3 text-white disabled:opacity-40"
                   >
                     {busy ? "Sending…" : <ArrowUp size={17} />}
                   </button>
@@ -1264,25 +1327,15 @@ export default function RadaiAIProjectPage() {
                   </p>
                 )}
               </form>
-                <section className="radai-ai-prompt-starters" aria-labelledby="radai-ai-prompt-starters-title">
-                  <h2 id="radai-ai-prompt-starters-title">Prompt Starters</h2>
-                  <div className="radai-ai-prompt-list">
-                    {quickActions.map((action) => (
-                      <button
-                        type="button"
-                        key={action.label}
-                        onClick={() => {
-                          setDraft(action.text);
-                          requestAnimationFrame(() => composer.current?.focus());
-                        }}
-                        className="radai-ai-prompt-chip"
-                      >
-                        <action.icon size={15} aria-hidden="true" />
-                        {action.label}
-                      </button>
-                    ))}
-                  </div>
-                </section>
+                <RadaiPromptStarters
+                  skills={skillCatalog}
+                  activeSkillId={activeSkill?.id || ""}
+                  projectName={project?.name || ""}
+                  fileNames={chatFiles.map((file) => file.name || "")}
+                  inConversation={messages.length > 0}
+                  onPick={applySkill}
+                  onBrowse={() => setSkillsOpen(true)}
+                />
               {fileCreationOpen && (
                 <div className="radai-ai-file-creation mt-4 rounded-xl border border-[var(--rd-border-soft)] bg-[var(--rd-surface)] p-3 shadow-[var(--rd-shadow-card)]">
                   <h3 className="text-sm font-semibold mb-2">Create file from chat</h3>
@@ -1348,13 +1401,13 @@ export default function RadaiAIProjectPage() {
           )}
           </div>
         </main>
-        {project && contextOpen && <aside className="radai-ai-context" aria-label="Project context">
+        {project && contextOpen && view !== "projects" && view !== "project" && <aside className="radai-ai-context" aria-label="Project context">
           <div className="radai-ai-context-header"><h2>Project context</h2><button type="button" onClick={() => setContextOpen(false)} aria-label="Close project context"><X size={18} /></button></div>
           <section className="radai-ai-context-section"><h3>Project instructions</h3>
             {contextError ? <p role="alert">{contextError}</p> : projectInstructions ? <div className="radai-ai-instructions">{["role_behavior", "goals", "response_format", "terminology", "standards", "evidence_requirements", "constraints"].map((key) => projectInstructions[key]).filter(Boolean).join("\n\n") || "No project instructions added yet."}</div> : <p>Loading instructions...</p>}
           </section>
           <section className="radai-ai-context-section"><h3>{usedSources.length ? "Sources used" : "Project sources"}</h3>
-            {usedSources.length ? <div className="radai-ai-sources">{usedSources.map((source, index) => <button key={`${source.source_id}-${index}`} type="button" onClick={() => downloadSource(source)} className="radai-ai-source"><FileText size={18} /><span className="truncate">{source.document}{source.revision ? ` · Rev ${source.revision}` : ""}</span><span aria-hidden="true">···</span></button>)}</div> : projectSources.length ? <div className="radai-ai-sources">{projectSources.map((source) => <button key={source.id} type="button" onClick={() => { setProjectTab("Knowledge"); setView("project"); }} className="radai-ai-source"><FileText size={18} /><span className="truncate">{source.name}{source.version ? ` · Rev ${source.version}` : ""}</span><span aria-hidden="true">···</span></button>)}</div> : <p>No project sources yet.</p>}
+            {usedSources.length ? <div className="radai-ai-sources">{usedSources.map((source, index) => <button key={`${source.source_id}-${index}`} type="button" onClick={() => downloadSource(source)} className="radai-ai-source" title={source.url || undefined}>{source.url ? <Globe size={18} /> : <FileText size={18} />}<span className="truncate">{source.document}{source.revision ? ` · Rev ${source.revision}` : ""}</span><span aria-hidden="true">···</span></button>)}</div> : projectSources.length ? <div className="radai-ai-sources">{projectSources.map((source) => <button key={source.id} type="button" onClick={() => { setProjectTab("Knowledge"); setView("project"); }} className="radai-ai-source"><FileText size={18} /><span className="truncate">{source.name}{source.version ? ` · Rev ${source.version}` : ""}</span><span aria-hidden="true">···</span></button>)}</div> : <p>No project sources yet.</p>}
             <button type="button" onClick={() => { setProjectTab("Knowledge"); setView("project"); }} className="radai-ai-source-add"><Plus size={18} /> Add source</button>
           </section>
         </aside>}

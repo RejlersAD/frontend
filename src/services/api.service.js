@@ -66,6 +66,19 @@ const AUTH_RESILIENCE_CONFIG = {
     '/auth/login',
     '/auth/logout',
   ],
+  // Background pollers/telemetry. Sent with `X-RADAI-Background: 1` so they never count as
+  // user activity for the organization's session idle timeout (Team & Enterprise policy).
+  BACKGROUND_ENDPOINTS: [
+    '/notifications/',
+    '/usage_tracking/',
+    '/activity/heartbeat',
+    '/users/employees/my-profile-photo/',
+    '/rbac/ai-champion/track/',
+    '/rbac/ai-champion/champion/current/',
+    '/health/',
+    '/spec-customization/paper-spec/',
+    '/process-datasheet/mov-job-status/',
+  ],
   // Maximum number of queued requests waiting on a single in-flight refresh.
   // Prevents memory blow-up if something goes very wrong.
   MAX_REFRESH_QUEUE: 50,
@@ -87,17 +100,26 @@ const _isSilentAuthEndpoint = (url = '') =>
 const _isSilentTimeoutEndpoint = (url = '') =>
   AUTH_RESILIENCE_CONFIG.SILENT_TIMEOUT_ENDPOINTS.some((s) => url.includes(s))
 
+const _isBackgroundEndpoint = (url = '') =>
+  AUTH_RESILIENCE_CONFIG.BACKGROUND_ENDPOINTS.some((s) => url.includes(s))
+
+// The organization's idle-timeout policy ended this session: refreshing won't help.
+// The organization's policy ended this session (idle timeout or a network outside the allowed IP ranges):
+// refreshing won't help, so sign out with the server's explanation.
+const _isIdleTimeout = (error) => error?.response?.status === 401 &&
+  ['session_idle_timeout', 'ip_not_allowed'].includes(error.response.data?.code)
+
 const _isRefreshBlacklisted = (url = '') =>
   AUTH_RESILIENCE_CONFIG.REFRESH_BLACKLIST.some((s) => url.includes(s))
 
-const _clearAuthAndRedirect = (showToast = true) => {
+const _clearAuthAndRedirect = (showToast = true, message = 'Session expired. Please login again.') => {
   void clearDevicePushSession().catch(() => {})
   localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN)
   localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN)
   localStorage.removeItem(STORAGE_KEYS.USER_DATA)
   if (!window.location.pathname.includes('/login')) {
     sessionStorage.setItem(REDIRECT_AFTER_LOGIN_KEY, `${window.location.pathname}${window.location.search}${window.location.hash}`)
-    if (showToast) toast.error('Session expired. Please login again.')
+    if (showToast) toast.error(message)
     setTimeout(() => { window.location.href = '/login' }, 1000)
   }
 }
@@ -215,6 +237,8 @@ apiClient.interceptors.request.use(
       }
     }
     
+    if (_isBackgroundEndpoint(config.url || '')) config.headers['X-RADAI-Background'] = '1'
+
     debugHttpLog('[API Request] 📤', config.method?.toUpperCase(), config.url);
     debugHttpLog('[API Request] Authorization header set:', Boolean(config.headers.Authorization));
     
@@ -339,6 +363,12 @@ apiClient.interceptors.response.use(
       }
       
       return Promise.reject(error);
+    }
+
+    // Organization policy sign-out: refreshing would be refused too
+    if (_isIdleTimeout(error)) {
+      _clearAuthAndRedirect(true, error.response.data.detail || 'You were signed out after a period of inactivity.')
+      return Promise.reject(error)
     }
 
     // Handle token refresh (single-flight, concurrency-safe)
