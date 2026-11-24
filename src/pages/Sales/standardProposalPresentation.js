@@ -176,6 +176,7 @@ export function reviewSections(content) {
     const pages = section.pages || null
     return {
       key: section.key, title: section.title, kind: section.kind || 'authored', kindLabel: kindLabel(section.kind),
+      attachments: Array.isArray(section.attachments) ? section.attachments : [],
       approved: Boolean(section.approved),
       sources: Object.entries(sources).sort((a, b) => b[1] - a[1]).map(([name]) => name),
       preview: paragraphs.filter(item => item.kind !== 'generated').slice(0, 2).map(item => item.text.slice(0, 420)),
