@@ -37,3 +37,27 @@
 .spg-page .spg-workspace-tabs { flex-wrap: wrap; overflow-x: visible; flex-shrink: 0; }
 .spg-page .spg-workspace-tabs button { min-height: 43px; flex-shrink: 0; }
 @media (max-width: 600px) { .spp-comparison { grid-template-columns: minmax(0, 1fr); } .spp-heading .spg-button { width: 100%; justify-content: center; } }
+.spp-builder { border-top: 2px solid #dce3ee; margin-top: 28px; padding-top: 20px; }
+.spp-builder-panel, .spp-builder-summary { border: 1px solid #dce3ee; border-radius: 8px; background: #fff; padding: 14px; margin-top: 14px; }
+.spp-source-list { display: grid; gap: 7px; max-height: 320px; overflow: auto; margin: 10px 0; }
+.spp-source-row { flex-direction: row !important; align-items: center; border: 1px solid #e3e8f1; border-radius: 6px; padding: 9px; margin: 0 !important; }
+.spp-source-row span { min-width: 0; }
+.spp-source-row small, .spp-builder-summary small { display: block; color: #64748b; font-weight: 400; }
+.spp-builder-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.spp-builder-summary > div:first-child { display: flex; align-items: center; gap: 9px; }
+.spp-ready, .spp-blocked { display: inline-flex; align-items: center; gap: 5px; font-weight: 650; border-radius: 999px; padding: 5px 9px; }
+.spp-ready { color: #176046; background: #edfaf3; }
+.spp-blocked { color: #8a5a09; background: #fff8e5; }
+.spp-review-reason { margin-top: 16px !important; }
+.spp-builder-sections { display: grid; gap: 10px; margin: 14px 0; }
+.spp-builder-sections details { border: 1px solid #dce3ee; border-radius: 7px; background: #fff; }
+.spp-builder-sections summary { display: flex; justify-content: space-between; gap: 8px; padding: 11px; }
+.spp-builder-sections summary span { color: #64748b; font-size: 12px; }
+.spp-section-body { border-top: 1px solid #e3e8f1; padding: 10px 12px 12px; }
+.spp-section-body small { color: #64748b; font-weight: 400; }
+.spp-build-report { border: 1px solid #dce3ee; border-radius: 7px; padding: 10px 12px; margin-top: 12px; background: #fff; }
+.spp-build-report ul { margin: 8px 0 0; }
+.spp-builder-table { margin: 12px 0; max-height: 360px; overflow: auto; border: 1px solid #dce3ee; }
+.spp-builder-table table { border-collapse: collapse; width: max-content; min-width: 100%; background: #fff; }
+.spp-builder-table th, .spp-builder-table td { border: 1px solid #dce3ee; padding: 6px 8px; text-align: left; vertical-align: top; }
+.spp-builder-table th { background: #eaf2f8; color: #23466b; position: sticky; top: 0; }

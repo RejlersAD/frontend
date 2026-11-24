@@ -18,6 +18,15 @@ const EMAIL_REQUEST_OPTIONS = {
 };
 
 class SalesService {
+  async getWorkspaceZipImports(dealId, signal) {
+    return (
+      await apiClient.get(
+        `${BASE_URL}/deals/${encodeURIComponent(dealId)}/workspace/zip-imports/`,
+        { ...EMAIL_REQUEST_OPTIONS, signal },
+      )
+    ).data;
+  }
+
   async getOpportunityAnalysis(id, signal) {
     return (
       await apiClient.get(`${BASE_URL}/deals/${id}/analysis/`, {
@@ -1287,6 +1296,96 @@ class SalesService {
         signal,
       })
     ).data;
+  }
+
+  async getProposalSourceRegistry(dealId, params = {}, { signal } = {}) {
+    return (await apiClient.get(
+      `${BASE_URL}/deals/${encodeURIComponent(dealId)}/analysis/registry/`,
+      { ...EMAIL_REQUEST_OPTIONS, params, signal },
+    )).data;
+  }
+
+  async getProposalSourceSelection(dealId, { signal } = {}) {
+    return (await apiClient.get(
+      `${BASE_URL}/deals/${encodeURIComponent(dealId)}/analysis/source-selection/`,
+      { ...EMAIL_REQUEST_OPTIONS, signal },
+    )).data;
+  }
+
+  async saveProposalSourceSelection(dealId, sourceKeys) {
+    return (await apiClient.put(
+      `${BASE_URL}/deals/${encodeURIComponent(dealId)}/analysis/source-selection/`,
+      { source_keys: sourceKeys },
+      EMAIL_REQUEST_OPTIONS,
+    )).data;
+  }
+
+  async getTechnicalProposalWorkspace(quoteId, { signal } = {}) {
+    return (await apiClient.get(
+      `${BASE_URL}/quotes/${encodeURIComponent(quoteId)}/workspace/`,
+      { ...EMAIL_REQUEST_OPTIONS, signal },
+    )).data;
+  }
+
+  async generateTechnicalProposalWorkspace(quoteId) {
+    return (await apiClient.post(
+      `${BASE_URL}/quotes/${encodeURIComponent(quoteId)}/workspace/generate/`,
+      {},
+      EMAIL_REQUEST_OPTIONS,
+    )).data;
+  }
+
+  async getStandardProposalPlan(quoteId, { signal } = {}) {
+    return (await apiClient.get(
+      `${BASE_URL}/quotes/${encodeURIComponent(quoteId)}/workspace/plan/`,
+      { ...EMAIL_REQUEST_OPTIONS, signal },
+    )).data;
+  }
+
+  async getStandardProposalJob(quoteId, jobId = "latest", { signal } = {}) {
+    return (await apiClient.get(
+      `${BASE_URL}/quotes/${encodeURIComponent(quoteId)}/workspace/jobs/${encodeURIComponent(jobId)}/`,
+      { ...EMAIL_REQUEST_OPTIONS, signal },
+    )).data;
+  }
+
+  async saveTechnicalProposalWorkspace(quoteId, payload) {
+    return (await apiClient.patch(
+      `${BASE_URL}/quotes/${encodeURIComponent(quoteId)}/workspace/`,
+      payload,
+      EMAIL_REQUEST_OPTIONS,
+    )).data;
+  }
+
+  async reviewTechnicalProposalWorkspace(quoteId, payload) {
+    return (await apiClient.post(
+      `${BASE_URL}/quotes/${encodeURIComponent(quoteId)}/workspace/review/`,
+      payload,
+      EMAIL_REQUEST_OPTIONS,
+    )).data;
+  }
+
+  async regenerateTechnicalProposalSection(quoteId, sectionKey, payload) {
+    return (await apiClient.post(
+      `${BASE_URL}/quotes/${encodeURIComponent(quoteId)}/workspace/sections/${encodeURIComponent(sectionKey)}/regenerate/`,
+      payload,
+      EMAIL_REQUEST_OPTIONS,
+    )).data;
+  }
+
+  async downloadTechnicalProposalWorkspace(quoteId, format, version) {
+    const response = await apiClient.get(
+      `${BASE_URL}/quotes/${encodeURIComponent(quoteId)}/workspace/${format}/`,
+      {
+        ...EMAIL_REQUEST_OPTIONS,
+        params: version ? { version } : undefined,
+        responseType: "blob",
+      },
+    );
+    return {
+      blob: response.data,
+      filename: responseFilename(response.headers?.["content-disposition"]),
+    };
   }
 
   async getOpportunityDocumentClassification(

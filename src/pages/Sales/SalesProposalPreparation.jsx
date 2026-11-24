@@ -4,6 +4,7 @@ import PropTypes from 'prop-types'
 import { Link } from 'react-router-dom'
 import { AlertCircle, ExternalLink, RefreshCw } from 'lucide-react'
 import * as service from '../../services/proposalPreparation.service'
+import SalesTechnicalProposalBuilder from './SalesTechnicalProposalBuilder'
 import './SalesProposalPreparation.css'
 
 const fields = { scope: 'Scope', deliverables: 'Deliverables', assumptions: 'Assumptions', exclusions: 'Exclusions', disciplines: 'Disciplines', estimated_hours: 'Estimated hours', risks: 'Risks' }
@@ -148,8 +149,10 @@ export default function SalesProposalPreparation({ quoteId, dealId, onPrepared }
   const canConnect = mode === 'create' ? bid?.capabilities?.can_create === true : bid?.capabilities?.can_attach === true
   const canPrepare = data?.capabilities?.can_prepare === true
   const evidence = preview?.evidence || {}
-  return <section className="spp-preparation" aria-label="Proposal preparation" aria-busy={loading || busy}>
-    <div className="spp-heading"><div><h3>Go &amp; proposal preparation</h3><p>Review connected source evidence before updating this proposal.</p></div><button type="button" className="spg-button" disabled={busy || loading || previewLoading} onClick={refreshSources}><RefreshCw size={15} />Refresh preparation</button></div>
+  return <>
+  <SalesTechnicalProposalBuilder quoteId={quoteId} dealId={dealId} onPrepared={onPrepared} />
+  <section className="spp-preparation" aria-label="Proposal preparation" aria-busy={loading || busy}>
+    <div className="spp-heading"><div><h3>Planning workspace (optional)</h3><p>Connect schedule, resources and risks from Planning, and review connected source evidence.</p></div><button type="button" className="spg-button" disabled={busy || loading || previewLoading} onClick={refreshSources}><RefreshCw size={15} />Refresh preparation</button></div>
     {error && <p className="spp-error" role="alert"><AlertCircle size={17} />{error}</p>}
     {notice && <p className="spp-notice" role="status">{notice}</p>}
     {stale && <p className="spp-warning">The proposal or source changed. Refresh preparation to review the current values. Your choices and reason will be retained.</p>}
@@ -183,6 +186,7 @@ export default function SalesProposalPreparation({ quoteId, dealId, onPrepared }
       <section className="spp-history" aria-label="Preparation history"><h4>Captured preparation revisions</h4>{data.history_count > (data.history?.length || 0) && <p>Showing the latest {data.history.length} of {data.history_count} captured revisions.</p>}{data.history?.length ? data.history.map(entry => <details key={entry.id}><summary>Preparation revision {entry.revision} · {entry.source_state === 'current' ? 'Source unchanged' : entry.source_state === 'changed' ? 'Source changed since capture' : 'Source unavailable'}</summary><SourceIdentity source={entry.source} quoteId={quoteId} /><p>Applied fields: {(entry.selected_fields || []).map(field => fields[field] || label(field)).join(', ') || 'Evidence only'}</p><p>Review reason: {entry.reason}</p><p>Captured: {entry.created_at || 'Not recorded'}{entry.created_by?.name ? ` · ${entry.created_by.name}` : ''}</p></details>) : <p>No preparation revision has been captured.</p>}</section>
     </>}
   </section>
+  </>
 }
 SalesProposalPreparation.propTypes = { quoteId: PropTypes.string.isRequired, dealId: PropTypes.string.isRequired, onPrepared: PropTypes.func.isRequired }
 
