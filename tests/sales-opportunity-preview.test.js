@@ -10,7 +10,15 @@ test('active document formats cannot opt into an embedded preview through mislea
   assert.equal(filePreviewType({ name: 'spreadsheet.xlsx' }).kind, 'xlsx');
   assert.equal(filePreviewType({ name: 'proposal.DOCX' }).kind, 'docx');
   assert.equal(filePreviewType({ name: 'Client email.msg' }).kind, 'msg');
-  assert.equal(filePreviewType({ name: 'archive.zip' }).kind, 'unsupported');
+  assert.equal(filePreviewType({ name: 'archive.zip' }).kind, 'zip');
+});
+
+test('ZIP preview lists archive entries with names and sizes', async () => {
+  const { zipSync, strToU8 } = await import('fflate');
+  const archive = zipSync({ 'notes.txt': strToU8('hello'), 'sub/draft.txt': strToU8('draft') }, { level: 6 });
+  const result = await previewContent(new Blob([archive]), filePreviewType({ name: 'archive.zip' }));
+  assert.equal(result.kind, 'zip');
+  assert.deepEqual(result.entries, [{ name: 'notes.txt', size: 5 }, { name: 'sub/draft.txt', size: 5 }]);
 });
 
 test('PDF preview retains exact original bytes and rejects a renamed active document', async () => {

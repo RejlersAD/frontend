@@ -1,4 +1,5 @@
 import { rasterPreview } from './salesRasterPreview.js';
+import { unzipSync } from 'fflate';
 
 export const TEXT_PREVIEW_BYTES = 256 * 1024;
 const imageTypes = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', avif: 'image/avif' };
@@ -20,6 +21,7 @@ export function filePreviewType(file) {
   const imageMime = imageTypes[extension] || Object.values(imageTypes).find(value => value === mime);
   if (imageMime) return { kind: 'image', mime: imageMime };
   if (textExtensions.has(extension) || ['text/plain', 'text/csv', 'application/json'].includes(mime)) return { kind: 'text' };
+  if (extension === 'zip' || mime === 'application/zip') return { kind: 'zip' };
   return { kind: 'unsupported' };
 }
 
@@ -43,6 +45,14 @@ export async function previewContent(blob, type, { signal } = {}) {
     catch { throw new Error('This text encoding cannot be previewed. Download the original to read it.'); }
     if (text.includes('\0')) throw new Error('This file contains binary data. Download the original to inspect it.');
     return { kind: 'text', text, truncated };
+  }
+  if (type.kind === 'zip') {
+    const buffer = new Uint8Array(await blob.arrayBuffer());
+    let archive;
+    try { archive = unzipSync(buffer); }
+    catch { throw new Error('This ZIP archive could not be read. Download the original to inspect it.'); }
+    const entries = Object.entries(archive).map(([name, content]) => ({ name, size: content.byteLength })).sort((a, b) => a.name.localeCompare(b.name));
+    return { kind: 'zip', entries };
   }
   return { kind: 'unsupported' };
 }

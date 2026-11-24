@@ -6,9 +6,21 @@ export const proposalText = value => Array.isArray(value) ? value.map(narrative)
 export const proposalDraftFields = values => Object.fromEntries(proposalTextFields.map(field => [field, proposalText(values[field])]));
 export const proposalLines = text => String(text || '').split('\n').map(item => item.trim()).filter(Boolean);
 
+// Commercial figures are added after the draft exists; a blank one is saved as "not set".
+const optionalCommercialFields = ['total_amount', 'estimated_cost', 'valid_until'];
+
 // Unchanged JSON evidence is omitted rather than flattened back into strings.
 export function proposalEditPayload(draft, saved) {
-  return Object.fromEntries(Object.entries(draft).filter(([field, value]) => !proposalTextFields.includes(field) || value !== proposalText(saved[field])).map(([field, value]) => [field, proposalTextFields.includes(field) && field !== 'scope' ? proposalLines(value) : value]));
+  return Object.fromEntries(Object.entries(draft).filter(([field, value]) => {
+    if (proposalTextFields.includes(field)) return value !== proposalText(saved[field]);
+    if (field === 'estimated_hours') return String(value ?? '') !== String(saved.estimated_hours?.total ?? '');
+    return true;
+  }).map(([field, value]) => {
+    if (proposalTextFields.includes(field) && field !== 'scope') return [field, proposalLines(value)];
+    if (field === 'estimated_hours') return [field, value === '' || value == null ? {} : { total: Number(value) }];
+    if (optionalCommercialFields.includes(field) && value === '') return [field, null];
+    return [field, value];
+  }));
 }
 
 export async function loadPreparationOpportunities(fetchPage) {

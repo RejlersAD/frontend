@@ -44,7 +44,7 @@ import { loadForecastRegister } from "./salesForecastWorkspace.js";
 import SalesFrameworkRegister from "./SalesFrameworkRegister.jsx";
 import { loadFrameworkRegister } from "./salesFrameworkRegister.js";
 import SalesProposalTextField from './SalesProposalTextField';
-import { proposalText, proposalTextFields, proposalEditPayload, proposalLines } from './salesProposalDraft';
+import { proposalText, proposalTextFields, proposalEditPayload } from './salesProposalDraft';
 
 const AREAS = {
   opportunities: {
@@ -154,6 +154,7 @@ const AREAS = {
       ["exclusions", "Exclusions", "textarea"],
       ["total_amount", "Proposed price", "number"],
       ["estimated_cost", "Estimated cost", "number"],
+      ["estimated_hours", "Total estimated hours", "number"],
       ["valid_until", "Valid until", "date"],
       ["payment_terms", "Payment terms", "textarea"],
     ],
@@ -571,7 +572,7 @@ const lifecycleActions = (area, record) => {
     )
       actions.push({ id: "bid_decision", label: "Reverse Go / No-Go decision" });
     if (record.stage === "proposal")
-      actions.push({ id: "ceo_decision", label: "Record CEO go/no-go" });
+      actions.push({ id: "ceo_decision", label: "Record go/no-go approval" });
     if (record.stage === "proposal")
       actions.push({ id: "negotiate", label: "Enter negotiation" });
     if (record.stage === "negotiation")
@@ -1142,7 +1143,7 @@ export default function SalesLifecycleArea() {
     editBaseline.current = structuredClone(record);
     setDraft(
       Object.fromEntries(
-        config.editFields.map(([key]) => [key, area === 'proposals' && proposalTextFields.includes(key) ? proposalText(record?.[key]) : record?.[key] ?? ""]),
+        config.editFields.map(([key]) => [key, area === 'proposals' && proposalTextFields.includes(key) ? proposalText(record?.[key]) : area === 'proposals' && key === 'estimated_hours' ? record?.estimated_hours?.total ?? "" : record?.[key] ?? ""]),
       ),
     );
     setEditing(true);
@@ -1206,7 +1207,8 @@ export default function SalesLifecycleArea() {
     showAction({
       title: "Delete opportunity",
       submitLabel: "Delete opportunity",
-      description: `Permanently delete ${row.deal_code} — ${row.deal_name}? This cannot be undone. Opportunities with a linked document workspace or project handover cannot be deleted.`,
+      danger: true,
+      description: `Permanently delete ${row.deal_code} — ${row.deal_name}? Its Sales documents, generated letters, proposals, preparation history and activity history will also be deleted. Independent Planning workspaces are retained. Opportunities with a project handover cannot be deleted. This cannot be undone.`,
       fields: [],
       deleteId: row.id,
       execute: () => salesService.deleteDeal(row.id),
@@ -1354,7 +1356,7 @@ export default function SalesLifecycleArea() {
             requiresOpportunity: true,
             submitLabel: "Create draft proposal",
             description:
-              "Choose an opportunity with a Go decision. Client identity is inherited and current eligibility is checked.",
+              "Choose an opportunity with a Go decision. Client identity is inherited and current eligibility is checked. The Technical Proposal is written from the tender documents; commercial figures are added before approval.",
             fields: [
               {
                 name: "deal",
@@ -1367,84 +1369,19 @@ export default function SalesLifecycleArea() {
                 label: "Proposal number",
                 required: true,
               },
-              {
-                name: "valid_until",
-                label: "Valid until",
-                type: "date",
-                required: true,
-              },
-              {
-                name: "total_amount",
-                label: "Proposed price",
-                type: "number",
-                min: 0,
-                required: true,
-              },
-              {
-                name: "estimated_cost",
-                label: "Estimated delivery cost",
-                type: "number",
-                min: 0,
-                required: true,
-              },
-              {
-                name: "estimated_hours",
-                label: "Total estimated hours",
-                type: "number",
-                min: 0,
-                required: true,
-              },
-              {
-                name: "currency",
-                label: "Currency",
-                type: "select",
-                required: true,
-                options: ["AED", "USD", "EUR", "GBP", "SAR", "QAR"],
-              },
-              {
-                name: "scope",
-                label: "Scope and execution approach",
-                type: "proposal_text",
-                required: true,
-                full: true,
-              },
-              {
-                name: "deliverables",
-                label: "Deliverables",
-                type: "proposal_text",
-                required: true,
-                full: true,
-                help: "Enter one deliverable per line.",
-              },
-              {
-                name: "assumptions",
-                label: "Assumptions",
-                type: "proposal_text",
-                full: true,
-              },
-              {
-                name: "exclusions",
-                label: "Exclusions",
-                type: "proposal_text",
-                full: true,
-              },
             ],
             execute: (values) => {
               const deal = values._opportunity;
-              const payload = Object.fromEntries(Object.entries(values).filter(([key]) => !key.startsWith('_')));
               if (!deal?.can_create_proposal || String(deal.id) !== String(values.deal)) throw new Error('Choose an eligible opportunity before creating the proposal.');
               return salesService.createQuote({
-                ...payload,
+                deal: values.deal,
+                quote_number: values.quote_number,
                 client: deal.client,
+                currency: deal.currency || values.currency || "AED",
                 version: 1,
                 status: "draft",
-                subtotal: values.total_amount,
                 tax_amount: 0,
                 discount_amount: 0,
-                estimated_hours: { total: Number(values.estimated_hours) },
-                deliverables: proposalLines(values.deliverables),
-                assumptions: proposalLines(values.assumptions),
-                exclusions: proposalLines(values.exclusions),
               });
             },
           },
@@ -1505,7 +1442,7 @@ export default function SalesLifecycleArea() {
         title: "Delete opportunity",
         submitLabel: "Delete opportunity",
         danger: true,
-        description: `Permanently delete ${record.deal_code} — ${record.deal_name}? Generated letters and activity history are removed with it. This cannot be undone.`,
+        description: `Permanently delete ${record.deal_code} — ${record.deal_name}? Its Sales documents, generated letters, proposals, preparation history and activity history will also be deleted. Independent Planning workspaces are retained. Opportunities with a project handover cannot be deleted. This cannot be undone.`,
         fields: [],
         deleteId: record.id,
         execute: () => salesService.deleteDeal(record.id),
@@ -1558,10 +1495,10 @@ export default function SalesLifecycleArea() {
     if (actionId === "ceo_decision")
       return showAction(
         {
-          title: "Record CEO go/no-go",
-          submitLabel: "Record CEO decision",
+          title: "Record go/no-go approval",
+          submitLabel: "Record decision",
           description:
-            "CEO decision is required before proposal drafting can proceed for this opportunity.",
+            "Any user with current Sales access can record this go/no-go decision. The decision and reason remain audited.",
           fields: [
             {
               name: "decision",
