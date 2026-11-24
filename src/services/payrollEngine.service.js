@@ -14,6 +14,19 @@ const payrollEngineService = {
   // ── Dashboard ──────────────────────────────────────────────────────────
   getDashboardSummary: (params = {}) =>
     unwrap(apiClient.get(`${BASE}/dashboard-summary/`, { params })),
+  // Employee self-service: the signed-in employee's own payslips from released runs only
+  listMyPayslips: (limit = 12) =>
+    unwrap(apiClient.get(`${BASE}/payslips/mine/`, { params: { limit } })),
+  downloadMyPayslipXlsx: (id) =>
+    apiClient.get(`${BASE}/payslips/${id}/mine-download/`, { responseType: 'blob' }).then((r) => r.data),
+  // ValueFrame -> Payroll: proposed pending 'absent' deductions, and sending them
+  getValueFrameProposal: (importId) =>
+    unwrap(apiClient.get(`${BASE}/valueframe/${importId}/proposal/`)),
+  sendValueFrameToPayroll: (importId, payload) =>
+    unwrap(apiClient.post(`${BASE}/valueframe/${importId}/send/`, payload)),
+  // Monthly trend, latest run and department breakdown (HR, payroll and finance roles only)
+  getPayrollAnalytics: (months) =>
+    unwrap(apiClient.get(`${BASE}/analytics/`, { params: months ? { months } : {} })),
 
   // ── Employees ──────────────────────────────────────────────────────────
   listEmployees: (params = {}) =>

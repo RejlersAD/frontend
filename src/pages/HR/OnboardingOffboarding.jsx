@@ -1,3 +1,4 @@
+import { ORGANIZATION_NAMES } from '../../config/organizationEntities'
 import { radaiConfirm, radaiAlert, radaiPrompt } from '../../services/radaiDialog'
 /**
  * Onboarding & Offboarding Management
@@ -105,8 +106,8 @@ const EXIT_REASON_CONFIG = {
 }
 
 const BRANCH_CONFIG = {
-  RAD: { label: 'Rejlers Abu Dhabi', color: 'text-blue-600' },
-  RIN: { label: 'Rejlers India', color: 'text-emerald-600' },
+  RAD: { label: ORGANIZATION_NAMES.RAD, color: 'text-blue-600' },
+  RIN: { label: ORGANIZATION_NAMES.RIN, color: 'text-emerald-600' },
 }
 
 

@@ -13,6 +13,7 @@ import './payroll/radaiPayroll.css'
 import { useState, useEffect, useCallback } from 'react'
 import { useSelector } from 'react-redux'
 import { Navigate, useSearchParams } from 'react-router-dom'
+import { PAYROLL_DEEP_LINK_PARAMS } from '../../config/payrollEngine.config'
 import * as HeroIcons from '@heroicons/react/24/outline'
 import {
   PAYROLL_TABS,
@@ -156,7 +157,7 @@ export default function Payroll({ module = 'payroll' }) {
             headerActions={headerActions}
             onViewChange={module === 'leave' ? setLeaveSubtitle : undefined}
             activeRunId={activeRunId}
-            initialTab={activeTab === 'salary' && !activeRunId ? 'employees' : undefined}
+            initialTab={activeTab === 'salary' && !activeRunId ? (searchParams.get(PAYROLL_DEEP_LINK_PARAMS.engineTab) || 'employees') : undefined}
             onSelectRun={(run) => {
               const id = typeof run === 'string' ? run : run?.id
               setActiveRunId(id)

@@ -695,3 +695,17 @@ export const COMPARISON_PROFILE_FALLBACK = [
   { code: 'sympa',      label: 'Sympa (HR master)' },
   { code: 'generic',    label: 'Generic XLSX' },
 ]
+
+// ── Deep links into Payroll Management (soft-coded) ─────────────────
+// /hr/payroll?tab=salary&engineTab=adjustments&adjYear=2026&adjMonth=11&adjSearch=ValueFrame
+// Payroll.jsx forwards `engineTab`; AdjustmentsList reads the adj* filters.
+export const PAYROLL_DEEP_LINK_PARAMS = { engineTab: 'engineTab', year: 'adjYear', month: 'adjMonth', search: 'adjSearch' }
+export const payrollAdjustmentsLink = ({ year, month, search = '' } = {}) => {
+  const params = new URLSearchParams({ tab: 'salary', [PAYROLL_DEEP_LINK_PARAMS.engineTab]: 'adjustments' })
+  if (year) params.set(PAYROLL_DEEP_LINK_PARAMS.year, String(year))
+  if (month) params.set(PAYROLL_DEEP_LINK_PARAMS.month, String(month))
+  if (search) params.set(PAYROLL_DEEP_LINK_PARAMS.search, search)
+  return `/hr/payroll?${params.toString()}`
+}
+// Text every ValueFrame-sourced adjustment description starts with (backend marker).
+export const VALUEFRAME_ADJUSTMENT_SEARCH = 'ValueFrame'

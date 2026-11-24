@@ -15,6 +15,8 @@ import { radaiConfirm, radaiAlert } from '../../../../services/radaiDialog'
  */
 import React, { useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
+import { useSearchParams } from 'react-router-dom'
+import { PAYROLL_DEEP_LINK_PARAMS } from '../../../../config/payrollEngine.config'
 import * as HeroIcons from '@heroicons/react/24/outline'
 import payrollEngineService from '../../../../services/payrollEngine.service'
 import {
@@ -52,13 +54,14 @@ export default function AdjustmentsList() {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [filter, setFilter] = useState({
-    year: today.getFullYear(),
-    month: today.getMonth() + 1,
+  const [searchParams] = useSearchParams()
+  const [filter, setFilter] = useState(() => ({
+    year: Number(searchParams.get(PAYROLL_DEEP_LINK_PARAMS.year)) || today.getFullYear(),
+    month: Number(searchParams.get(PAYROLL_DEEP_LINK_PARAMS.month)) || today.getMonth() + 1,
     status: '',
     kind: '',
-    search: '',
-  })
+    search: searchParams.get(PAYROLL_DEEP_LINK_PARAMS.search) || '',
+  }))
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)

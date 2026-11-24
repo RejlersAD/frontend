@@ -1,3 +1,4 @@
+import { ORGANIZATION_NAMES } from '../../config/organizationEntities'
 import { useEffect, useRef, useState } from 'react'
 import * as Icons from '@heroicons/react/24/outline'
 import apiClient from '../../services/api.service'
@@ -6,7 +7,7 @@ import { getOnboardingInitials } from './onboardingDashboardData'
 import './FullOnboardingOverview.css'
 
 const API = '/onboarding/onboarding'
-const BRANCHES = { RAD: 'Rejlers Abu Dhabi', RIN: 'Rejlers India' }
+const BRANCHES = ORGANIZATION_NAMES
 
 export default function FullOnboardingOverview({ employee = {}, recordId, focusItChecklist = false, focusedChecklistStage, onClose }) {
   const [record, setRecord] = useState(null)

@@ -31,6 +31,8 @@ import payrollService from "../../services/payroll.service";
 import payrollEngineService from "../../services/payrollEngine.service";
 import TimeSheetAnalytics from "./TimeSheetAnalytics";
 import EmployeeDirectoryWorkspace from "./EmployeeDirectoryWorkspace";
+import EmployeeSeparationDialog from "./EmployeeSeparationDialog";
+import { organizationIdOf } from "../../config/organizationEntities";
 import EmployeeRegisterImport from "../../components/HR/EmployeeRegisterImport";
 import ProbationPerformancePanel from "../../components/HR/ProbationPerformancePanel";
 import EmployeeDataQualityPanel from "../../components/HR/EmployeeDataQualityPanel";
@@ -3816,7 +3818,7 @@ const DetailDrawer = ({
       location: emp.location ?? "",
       bio: emp.bio || "",
       is_mfa_enabled: emp.is_mfa_enabled || false,
-      organization: emp.organization?.id || emp.organization_id || "",
+      organization: organizationIdOf(emp),
       department: emp.department || "",
       job_title: emp.job_title || "",
       status: emp.status || "active",
@@ -4211,7 +4213,7 @@ const DetailDrawer = ({
         phone: emp.phone || "",
         location: emp.location ?? "",
         bio: emp.bio || "",
-        organization: emp.organization?.id || emp.organization_id || "",
+        organization: organizationIdOf(emp),
         department: emp.department || "",
         job_title: emp.job_title || "",
         status: emp.status || "active",
@@ -4288,7 +4290,7 @@ const DetailDrawer = ({
     if (field.id === "is_mfa_enabled") return emp.is_mfa_enabled || false;
 
     // Employment fields
-    if (field.id === "organization") return emp.organization?.id || emp.organization_id || "";
+    if (field.id === "organization") return organizationIdOf(emp);
     if (field.id === "department") return emp.department || "";
     if (field.id === "job_title") return emp.job_title || "";
     if (field.id === "status") return emp.status || "active";
@@ -5055,30 +5057,12 @@ export default function HREmployees() {
         return;
       }
       if (action !== "deactivate") return;
-      if (
-        !(await radaiConfirm(
-          `Deactivate ${fullName(emp)}? They will lose access to the system.`,
-        ))
-      )
-        return;
-      try {
-        await rbacService.deactivateUser(
-          emp.id,
-          "Manual deactivation from Employee Management",
-        );
-        if (selectedEmp?.id === emp.id) setSelectedEmp(null);
-        await fetchEmployees();
-      } catch (actionError) {
-        console.error("[HR] Employee deactivation failed:", actionError);
-        (await radaiAlert(
-          actionError?.response?.data?.error ||
-            actionError?.response?.data?.detail ||
-            "Employee could not be deactivated.",
-        ));
-      }
+      // Resignation / termination dialog: aligned with offboarding (see onboarding/separation.py).
+      setSeparationTarget(emp);
     },
-    [fetchEmployees, openEmp, selectedEmp?.id],
+    [openEmp],
   );
+  const [separationTarget, setSeparationTarget] = useState(null);
 
   // ──────── Lazy-load full detail when drawer opens ────────
   // The list endpoint returns a thin payload (no roles list, modules,
@@ -5269,6 +5253,17 @@ export default function HREmployees() {
   // ──────── Render ────────
   return (
     <div className={["table", "dept", "timesheet"].includes(viewMode) ? "employee-directory-reference" : "min-h-screen w-full min-w-0 bg-slate-50 p-4 lg:p-6 dark:bg-slate-950"}>
+      {separationTarget && (
+        <EmployeeSeparationDialog
+          employee={separationTarget}
+          employeeName={fullName(separationTarget)}
+          onClose={() => setSeparationTarget(null)}
+          onDone={() => {
+            detailCacheRef.current.delete(String(separationTarget.id));
+            fetchEmployees();
+          }}
+        />
+      )}
       {["table", "dept", "timesheet"].includes(viewMode) && <EmployeeDirectoryWorkspace
         employees={employees} filteredEmployees={filteredEmployees} paginated={paginated}
         loading={loading} error={error} onRetry={fetchEmployees}

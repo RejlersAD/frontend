@@ -62,7 +62,19 @@ export const downloadSummaryPdf    = (year, month) => downloadBlob(TIMESHEET_END
 export const downloadYearlyExcel   = (year)        => downloadBlob(TIMESHEET_ENDPOINTS.exportYearly,      { year },               `timesheet_yearly_${year}.xlsx`)
 export const downloadYearlyPdf     = (year)        => downloadBlob(TIMESHEET_ENDPOINTS.exportYearlyPdf,   { year },               `timesheet_yearly_${year}.pdf`)
 
+// ValueFrame reconciliation (booked time vs real attendance) ---------------------
+export const listValueFrameImports = () => unwrap(apiClient.get(TIMESHEET_ENDPOINTS.valueframeImports))
+export const uploadValueFrameReport = (file, replace = false) => {
+  const form = new FormData()
+  form.append('file', file)
+  if (replace) form.append('replace', 'true')
+  return unwrap(apiClient.post(TIMESHEET_ENDPOINTS.valueframeImports, form, { headers: { 'Content-Type': 'multipart/form-data' } }))
+}
+export const fetchValueFrameComparison = (id) => unwrap(apiClient.get(`${TIMESHEET_ENDPOINTS.valueframeImports}${id}/comparison/`))
+export const deleteValueFrameImport = (id) => unwrap(apiClient.delete(`${TIMESHEET_ENDPOINTS.valueframeImports}${id}/`))
+
 export default {
+  listValueFrameImports, uploadValueFrameReport, fetchValueFrameComparison, deleteValueFrameImport,
   fetchHealth, listDatabases, listTables, listColumns, previewTable,
   fetchLive, fetchDaily, fetchMonthly, uploadDailyAttendance, fetchUserHistory, lookupByCode,
   fetchMyLiveAttendance, fetchMyMonthlyAttendance, fetchMyDailyAttendance,

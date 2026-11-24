@@ -12,7 +12,8 @@ import {
   BUSINESS_UNITS,
   BUSINESS_AREAS,
   updateEmployeeField,
-  DEFAULT_COMPANY,
+  BRANCH_OPTIONS,
+  companyForBranch,
   EMPLOYEE_COUNTRIES,
   EMPLOYEE_STEPS,
   employeeDefaults,
@@ -998,12 +999,14 @@ export default function CreateEmployeeWizard({ onCancel, onCreated }) {
                         id="employee-branch"
                         name="branch"
                         value={data.branch}
-                        onChange={(event) =>
-                          update("branch", event.target.value)
-                        }
+                        onChange={(event) => {
+                          update("branch", event.target.value);
+                          update("company", companyForBranch(event.target.value));
+                        }}
                       >
-                        <option value="RAD">Rejlers Abu Dhabi (RAD)</option>
-                        <option value="RIN">Rejlers India (RIN)</option>
+                        {BRANCH_OPTIONS.map((entity) => (
+                          <option key={entity.code} value={entity.code}>{entity.name}</option>
+                        ))}
                       </select>
                     </Field>
                     <Field
@@ -1081,7 +1084,7 @@ export default function CreateEmployeeWizard({ onCancel, onCreated }) {
                     {
                       title: "Organisation",
                       rows: [
-                        ["Company", DEFAULT_COMPANY],
+                        ["Company", companyForBranch(data.branch)],
                         ["Business unit", data.business_unit],
                         ["Department", data.division],
                         ["Business area", data.business_area],
@@ -1095,9 +1098,7 @@ export default function CreateEmployeeWizard({ onCancel, onCreated }) {
                         ["Joining date", formatDate(data.joining_date)],
                         [
                           "Branch",
-                          data.branch === "RAD"
-                            ? "Rejlers Abu Dhabi"
-                            : "Rejlers India",
+                          companyForBranch(data.branch),
                         ],
                         ["Initial status", "On probation"],
                         [
@@ -1225,7 +1226,7 @@ export default function CreateEmployeeWizard({ onCancel, onCreated }) {
                       ? managerLabel(selectedManager)
                       : "Not selected",
                   ],
-                  [Icons.BuildingOffice2Icon, "Company", DEFAULT_COMPANY],
+                  [Icons.BuildingOffice2Icon, "Company", companyForBranch(data.branch)],
                   [Icons.MapPinIcon, "Office", data.office || "Not selected"],
                   [
                     Icons.CalendarIcon,

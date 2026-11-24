@@ -1,3 +1,4 @@
+import { organizationIdOf } from './organizationEntities'
 /**
  * Edit User Configuration
  * Centralized soft-coded configuration for editing user details
@@ -369,7 +370,7 @@ export const getFieldValue = (user, fieldName) => {
     'first_name': user?.user?.first_name || user?.first_name || '',
     'last_name': user?.user?.last_name || user?.last_name || '',
     'email': user?.user?.email || user?.email || '',
-    'organization_id': user?.organization?.id || user?.organization_id || '',
+    'organization_id': organizationIdOf(user),
     'department': user?.department || '',
     'job_title': user?.job_title || '',
     'phone': user?.phone || user?.phone_number || '',

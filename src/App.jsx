@@ -107,6 +107,7 @@ import AIAPIKeys from "./pages/Admin/AIAPIKeys";
 import EnquiryDetail from "./pages/Admin/EnquiryDetail";
 import MyEnquiries from "./pages/MyEnquiries";
 import MyEnquiryDetail from "./pages/MyEnquiryDetail";
+import RequisitionApproval from "./pages/RequisitionApproval";
 import EnquiryFeedback from "./pages/EnquiryFeedback";
 import ActivityReports from "./pages/Admin/ActivityReports";
 // SOFT-CODED: Subscription feature disabled for in-house deployment
@@ -1905,6 +1906,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <MyEnquiryDetail />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="requisition-approvals/:id"
+              element={
+                <ProtectedRoute>
+                  <RequisitionApproval />
                 </ProtectedRoute>
               }
             />

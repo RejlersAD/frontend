@@ -170,6 +170,9 @@ export default function EnquiryDetail () {
       <section className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-4">
           <Card title="Original request">
+            {enquiry.inquiry_type === 'talent_requisition' && enquiry.requisition && <dl className="mb-4 grid gap-x-6 gap-y-2 rounded-xl border border-indigo-100 bg-indigo-50/40 p-4 text-xs sm:grid-cols-2">
+              {[['Department / Division', enquiry.requisition.req_department], ['Position', enquiry.requisition.job_title], ['No. of Positions', enquiry.requisition.num_positions], ['Hiring Manager', enquiry.requisition.hiring_manager], ['Target Joining', enquiry.requisition.target_join_date], ['Proposed Package', enquiry.requisition.proposed_salary], ['Selected Candidate', enquiry.requisition.candidate]].filter(([, value]) => value).map(([key, value]) => <div key={key} className="flex justify-between gap-3 border-b border-indigo-100/60 pb-1.5"><dt className="text-slate-500">{key}</dt><dd className="text-right font-semibold text-slate-800">{value}</dd></div>)}
+            </dl>}
             <div className="whitespace-pre-wrap text-sm leading-6 text-slate-700">{enquiry.message}</div>
           </Card>
           {enquiry.attachments?.length > 0 && <Card title={`Attachments · ${enquiry.attachments.length}`}><AttachmentList rows={enquiry.attachments} /></Card>}

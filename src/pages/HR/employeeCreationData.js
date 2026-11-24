@@ -1,6 +1,10 @@
-export const DEFAULT_COMPANY = 'Rejlers International Engineering Solutions AB'
+import { ORGANIZATION_ENTITIES, ORGANIZATION_NAME_LIST, ORGANIZATION_NAMES } from '../../config/organizationEntities'
+export const DEFAULT_COMPANY = ORGANIZATION_NAMES.RAD
+/** Company shown and saved for a branch code: the organization's name. */
+export const companyForBranch = branch => ORGANIZATION_NAMES[branch] || DEFAULT_COMPANY
+export const BRANCH_OPTIONS = ORGANIZATION_ENTITIES
 export const EMPLOYEE_STEPS = ['Personal details', 'Organisation', 'Employment', 'Review & create']
-export const BUSINESS_UNITS = ['Rejlers Abu Dhabi', 'Rejlers India', 'PMC', 'EDC']
+export const BUSINESS_UNITS = ORGANIZATION_NAME_LIST
 export const BUSINESS_AREAS = ['Management', 'Engineering', 'Project Delivery', 'Procurement', 'HR & Administration', 'Finance & IT', 'Business Development & Sales', 'AI', 'QHSE']
 
 export function employeeDefaults() {
@@ -88,7 +92,7 @@ export function readEmployeeDraft(raw) {
     Object.keys(data).forEach(key => {
       if (typeof draft.data[key] === 'string') data[key] = draft.data[key]
     })
-    data.company = DEFAULT_COMPANY
+    data.company = companyForBranch(data.branch)
     data.probation_start_date ||= data.joining_date
     data.probation_end_date ||= sixMonthsAfter(data.probation_start_date)
     return { data, step: Number.isInteger(draft.step) ? Math.max(0, Math.min(3, draft.step)) : 0, savedAt: draft.savedAt, hadPhoto: Boolean(draft.hadPhoto) }

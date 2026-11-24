@@ -1,7 +1,8 @@
 /* eslint-disable react/prop-types */
 import * as HeroIcons from "@heroicons/react/24/outline";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { attendanceAvailability, buildDailyObservation, buildAttendancePattern, buildDepartmentReadiness } from "./hrWorkforcePresentation";
+import payrollEngineService from "../../services/payrollEngine.service";
 import "./HRCommandCenterView.css";
 const Icon = ({
   name,
@@ -173,6 +174,129 @@ function AttendanceChart({
     <details className="hr-wi-chart-data"><summary>View chart data</summary><table><thead><tr><th>Date</th><th>Recorded present</th></tr></thead><tbody>{points.map(point => <tr key={point.date}><td>{point.date}</td><td>{display(point.present)}</td></tr>)}</tbody></table></details>
   </div>;
 }
+// ── Payroll management (payroll engine runs) ──────────────────────────
+const PAYROLL_PERIODS = [[3, "3 months"], [6, "6 months"], [12, "12 months"]];
+const PAYROLL_STATUS_TONES = {
+  draft: "is-slate",
+  hr_approved: "is-blue",
+  finance_approved: "is-amber",
+  released: "is-green"
+};
+const amount = value => {
+  const parsed = Number(value);
+  return value == null || value === "" || !Number.isFinite(parsed) ? null : parsed;
+};
+const money = value => amount(value) == null ? "—" : amount(value).toLocaleString("en-GB", {
+  maximumFractionDigits: 0
+});
+const compactMoney = value => {
+  const parsed = amount(value);
+  if (parsed == null) return "—";
+  if (Math.abs(parsed) >= 1e6) return `${(parsed / 1e6).toFixed(parsed >= 1e7 ? 1 : 2)}M`;
+  if (Math.abs(parsed) >= 1e3) return `${Math.round(parsed / 1e3)}K`;
+  return String(Math.round(parsed));
+};
+const cycleLabel = (row, options = {
+  month: "short",
+  year: "2-digit"
+}) => row ? new Date(row.year, row.month - 1, 1).toLocaleDateString("en-GB", options) : "";
+const signedPct = value => value == null ? null : `${value > 0 ? "+" : ""}${value.toFixed(1)}%`;
+function PayrollChart({
+  trend,
+  loading,
+  currency
+}) {
+  const maximum = Math.max(1, ...trend.map(row => amount(row.gross) || 0));
+  const magnitude = 10 ** Math.floor(Math.log10(maximum));
+  const ceiling = Math.ceil(maximum / magnitude) * magnitude;
+  const width = 620,
+    left = 46,
+    right = 8,
+    top = 16,
+    bottom = 113;
+  const slots = Math.max(trend.length, 3);
+  const step = (width - left - right) / slots;
+  const bar = Math.min(26, step * .3);
+  const y = value => bottom - (amount(value) || 0) / ceiling * (bottom - top);
+  return <div className="hr-wi-chart hr-wi-payroll-chart" aria-busy={loading}>
+    <div className="hr-wi-chart-legend"><span><i />Gross pay</span><span><i className="is-net" />Net pay</span><span className="is-muted">{currency} · per payroll run</span></div>
+    <svg viewBox="0 0 620 159" role="img" aria-label={loading ? "Loading payroll trend" : `Gross and net pay per monthly payroll run in ${currency}.`}>
+      {[0, 1, 2, 3, 4].map(tick => {
+        const ty = bottom - (bottom - top) * tick / 4;
+        return <g key={tick}><line x1={left} x2={width - right} y1={ty} y2={ty} className="hr-wi-chart-grid" /><text x={left - 8} y={ty + 4} textAnchor="end">{compactMoney(ceiling * tick / 4)}</text></g>;
+      })}
+      {trend.map((row, index) => {
+        const x = left + step * index,
+          centre = x + step / 2,
+          isLatest = index === trend.length - 1;
+        return <g key={row.cycle_code}>
+          {isLatest && <rect x={x + 2} y={top - 8} width={step - 4} height={139} rx="5" className="hr-wi-chart-current" />}
+          <line x1={x} x2={x} y1={top} y2={bottom} className="hr-wi-chart-grid" />
+          <rect x={centre - bar - 1} y={y(row.gross)} width={bar} height={bottom - y(row.gross)} fill="url(#hr-payroll-gross)"><title>{cycleLabel(row, { month: "long", year: "numeric" })}: gross {currency} {money(row.gross)}</title></rect>
+          <rect x={centre + 1} y={y(row.net)} width={bar} height={bottom - y(row.net)} fill="url(#hr-payroll-net)"><title>{cycleLabel(row, { month: "long", year: "numeric" })}: net {currency} {money(row.net)}</title></rect>
+          {trend.length <= 6 && <text x={centre} y={Math.max(top - 2, y(row.gross) - 5)} textAnchor="middle" className="hr-wi-chart-value">{compactMoney(row.gross)}</text>}
+          <text x={centre} y={bottom + 17} textAnchor="middle">{cycleLabel(row, { month: "short" })}</text>
+          <text x={centre} y={bottom + 31} textAnchor="middle">{row.year}</text>
+        </g>;
+      })}
+      <defs>
+        <linearGradient id="hr-payroll-gross" x1="0" x2="1"><stop stopColor="#1587ff" /><stop offset="1" stopColor="#0054ff" /></linearGradient>
+        <linearGradient id="hr-payroll-net" x1="0" x2="1"><stop stopColor="#2fc98a" /><stop offset="1" stopColor="#13a36b" /></linearGradient>
+      </defs>
+    </svg>
+    {!trend.length && <p className="hr-wi-chart-empty">{loading ? "Loading payroll runs…" : "No payroll runs yet. Generate a monthly run in Payroll & Salary."}</p>}
+    <details className="hr-wi-chart-data"><summary>View chart data</summary><table><thead><tr><th>Cycle</th><th>Status</th><th>Employees</th><th>Gross</th><th>Deductions</th><th>Net</th></tr></thead><tbody>{trend.map(row => <tr key={row.cycle_code}><td>{row.cycle_code}</td><td>{row.status_label}</td><td>{display(row.employee_count)}</td><td>{money(row.gross)}</td><td>{money(row.deductions)}</td><td>{money(row.net)}</td></tr>)}</tbody></table></details>
+  </div>;
+}
+// The dashboard re-mounts this view while its loaders settle: share one request per period for 30 s.
+const PAYROLL_CACHE_MS = 30000;
+const payrollCache = new Map();
+const loadPayrollAnalytics = (months, refreshKey) => {
+  const hit = payrollCache.get(months);
+  if (hit && hit.refreshKey === refreshKey && Date.now() - hit.at < PAYROLL_CACHE_MS) return hit.promise;
+  const promise = payrollEngineService.getPayrollAnalytics(months);
+  payrollCache.set(months, {
+    promise,
+    refreshKey,
+    at: Date.now()
+  });
+  promise.catch(() => payrollCache.delete(months));
+  return promise;
+};
+function usePayrollAnalytics(months, refreshKey) {
+  const [state, setState] = useState({
+    data: null,
+    loading: true,
+    denied: false,
+    error: false
+  });
+  useEffect(() => {
+    let active = true;
+    setState(previous => ({
+      ...previous,
+      loading: true
+    }));
+    loadPayrollAnalytics(months, refreshKey).then(data => {
+      if (active) setState({
+        data,
+        loading: false,
+        denied: false,
+        error: false
+      });
+    }).catch(error => {
+      if (active) setState({
+        data: null,
+        loading: false,
+        denied: [401, 403].includes(error?.response?.status),
+        error: true
+      });
+    });
+    return () => {
+      active = false;
+    };
+  }, [months, refreshKey]);
+  return state;
+}
 export default function HRCommandCenterView({
   workforce = [],
   live,
@@ -196,6 +320,14 @@ export default function HRCommandCenterView({
 }) {
   const [monthOffset, setMonthOffset] = useState(0);
   const [period, setPeriod] = useState(7);
+  const [payrollMonths, setPayrollMonths] = useState(6);
+  // Re-read payroll at most once a minute: each dashboard loader bumps lastUpdated when it finishes.
+  const payrollRefreshKey = lastUpdated ? Math.floor(new Date(lastUpdated).getTime() / 60000) : 0;
+  const payroll = usePayrollAnalytics(payrollMonths, payrollRefreshKey);
+  const payrollTrend = payroll.data?.trend || [];
+  const payrollLatest = payroll.data?.latest || null;
+  const payrollDepartments = payroll.data?.departments || [];
+  const payrollCurrency = payroll.data?.currency || "AED";
   const [noticeIndex, setNoticeIndex] = useState(0);
   const [noticeDismissed, setNoticeDismissed] = useState(false);
   const decisionRef = useRef(null);
@@ -379,6 +511,28 @@ export default function HRCommandCenterView({
         <div className="hr-wi-table-wrap"><table><thead><tr><th>Name</th><th>Department</th><th>Type</th><th>Effective date</th></tr></thead><tbody>{recentChanges.length ? recentChanges.map((row, index) => <tr key={`${row.id}-${index}`}><td>{employeeName(row)}</td><td>{row.department || "—"}</td><td><span className={`hr-wi-badge ${row.changeType === "Joined" ? "is-green" : "is-rose"}`}>{row.changeType}</span></td><td className="hr-wi-nowrap">{formatDate(row.effectiveDate)}</td></tr>) : <EmptyRow colSpan={4}>{loading ? "Loading employee records…" : workforceError ? "Employee records unavailable." : "No recorded people movements."}</EmptyRow>}</tbody></table></div>
       </Panel>
     </div>
+    {!payroll.denied && <div className="hr-wi-grid hr-wi-middle-grid hr-wi-payroll-grid">
+      <Panel title="Payroll management" subtitle={payrollLatest ? `Monthly payroll runs · ${payrollCurrency} · Latest ${cycleLabel(payrollLatest, { month: "long", year: "numeric" })}` : `Monthly payroll runs · ${payrollCurrency}`} icon="BanknotesIcon" action={<div className="hr-wi-tabs" role="group" aria-label="Payroll history period">{PAYROLL_PERIODS.map(([months, label]) => <button type="button" key={months} aria-pressed={payrollMonths === months} onClick={() => setPayrollMonths(months)}>{label}</button>)}</div>}>
+        <PayrollChart trend={payrollTrend} loading={payroll.loading} currency={payrollCurrency} />
+        {payroll.error ? <p className="hr-wi-payroll-note" role="alert">Payroll analysis could not be loaded. Use Refresh to try again.</p> : payrollLatest && <dl className="hr-wi-payroll-stats">
+          <div><dt>Status</dt><dd><span className={`hr-wi-badge ${PAYROLL_STATUS_TONES[payrollLatest.status] || "is-slate"}`}>{payrollLatest.status_label}</span></dd></div>
+          <div><dt>Gross pay</dt><dd>{money(payrollLatest.gross)}{payrollLatest.gross_change_pct != null && <small className={payrollLatest.gross_change_pct > 0 ? "is-up" : payrollLatest.gross_change_pct < 0 ? "is-down" : ""} title={`Compared with ${payrollLatest.previous_cycle_code}`}>{signedPct(payrollLatest.gross_change_pct)}</small>}</dd></div>
+          <div><dt>Deductions</dt><dd>{money(payrollLatest.deductions)}</dd></div>
+          <div><dt>Net pay</dt><dd>{money(payrollLatest.net)}</dd></div>
+          <div><dt>Employees paid</dt><dd>{display(payrollLatest.employee_count)}{payrollLatest.headcount_change ? <small>{payrollLatest.headcount_change > 0 ? "+" : ""}{payrollLatest.headcount_change}</small> : null}</dd></div>
+          <div><dt>Average net</dt><dd>{money(payrollLatest.average_net)}</dd></div>
+        </dl>}
+      </Panel>
+      <Panel title="Payroll by department" subtitle={payrollLatest ? `Latest run ${payrollLatest.cycle_code} · Gross pay share · ${payrollCurrency}` : "Latest payroll run"} icon="BuildingOffice2Icon" action={<button type="button" className="hr-wi-link" onClick={() => navigate("/hr/payroll")}>Open Payroll & Salary</button>}>
+        <div className="hr-wi-table-wrap"><table><thead><tr><th>Department</th><th className="hr-wi-right">Employees</th><th className="hr-wi-right">Gross pay</th><th>Share</th></tr></thead><tbody>{payrollDepartments.length ? payrollDepartments.map(row => <tr key={row.department}><td>{row.department}</td><td className="hr-wi-right">{display(row.employees)}</td><td className="hr-wi-right hr-wi-nowrap">{money(row.gross)}</td><td><span className="hr-wi-share" title={row.share_pct == null ? undefined : `${row.share_pct}% of gross pay`}><span><i style={{
+                    width: `${Math.min(100, row.share_pct || 0)}%`
+                  }} /></span>{row.share_pct == null ? "—" : `${row.share_pct.toFixed(1)}%`}</span></td></tr>) : <EmptyRow colSpan={4}>{payroll.loading ? "Loading payroll records…" : payroll.error ? "Payroll records unavailable." : "No payroll run to break down yet."}</EmptyRow>}</tbody></table></div>
+        {payroll.data && <div className="hr-wi-payroll-queue">
+          <button type="button" onClick={() => navigate("/hr/payroll")}><span>Payslips awaiting approval</span><strong>{display(payroll.data.pending_payslips)}</strong></button>
+          <button type="button" onClick={() => navigate("/hr/payroll")}><span>Pending adjustments</span><strong>{display(payroll.data.pending_adjustments)}</strong></button>
+        </div>}
+      </Panel>
+    </div>}
     <div className="hr-wi-grid hr-wi-bottom-grid">
       <Panel title="Workforce readiness by department" subtitle="Current attendance status and exceptions · Evidence: attendance records" icon="BuildingOffice2Icon">
         <div className="hr-wi-table-wrap"><table><thead><tr><th>Department</th><th>Present</th><th>Exceptions</th><th>Data coverage</th><th className="hr-wi-right">Next action</th></tr></thead><tbody>{departments.length ? departments.map(row => <tr key={row.department}><td>{row.department}</td><td>{row.present ?? "—"}</td><td className={row.late > 0 ? "hr-wi-warning" : ""}>{row.late == null ? "Unavailable" : `${row.late} late`}</td><td className="hr-wi-muted">{row.coverage}</td><td className="hr-wi-right"><ReviewButton onClick={() => navigate("/hr/employees?tab=timesheet")} label={`Review ${row.department} attendance`} /></td></tr>) : <EmptyRow colSpan={5}>{loading ? "Loading department records…" : "Department attendance evidence unavailable."}</EmptyRow>}</tbody></table></div>

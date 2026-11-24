@@ -22,6 +22,7 @@ export const TIMESHEET_ENDPOINTS = {
   daily:             '/timesheet/daily/',
   monthly:           '/timesheet/monthly/',
   manualUpload:      '/timesheet/manual-upload/',
+  valueframeImports: '/timesheet/valueframe/imports/',
   user:              '/timesheet/user/',
   lookupByCode:      '/timesheet/lookup-by-code/',
   exportDaily:       '/timesheet/export/daily/',

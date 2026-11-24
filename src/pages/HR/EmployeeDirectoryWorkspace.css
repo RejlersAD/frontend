@@ -12,3 +12,6 @@
 .ed-workspace.ed-panel-closed{grid-template-columns:minmax(0,1fr)}
 
 .ed-workspace th button{display:inline-flex;align-items:center;gap:5px;text-transform:inherit;letter-spacing:inherit;font-size:inherit;font-weight:inherit;padding:0;color:inherit}
+
+/* Deactivate account: destructive row action */
+.ed-popover>div>button.ed-danger{color:#be1745;border-top:1px solid #eef2f8;margin-top:4px;border-radius:0 0 4px 4px}.ed-popover>div>button.ed-danger:hover{background:#fff0f3}

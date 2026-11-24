@@ -1734,7 +1734,7 @@ const TimesheetInsights = ({ monthlyTs, userHistory, loading }) => {
 // Section: Payroll Snapshot (read-only)
 // -----------------------------------------------------------------------------
 
-const PayrollSnapshot = ({ salaryInfo, slips, loading, salaryVisible, onToggleSalary }) => {
+const PayrollSnapshot = ({ salaryInfo, slips, loading, error, salaryVisible, onToggleSalary }) => {
   const latest = slips?.[0] || null
   const basic  = parseFloat(salaryInfo?.basic_salary ?? salaryInfo?.basic) || 0
   const gross  = parseFloat(latest?.gross_salary)               || 0
@@ -1849,8 +1849,10 @@ const PayrollSnapshot = ({ salaryInfo, slips, loading, salaryVisible, onToggleSa
                 )
               })}
             </div>
+          ) : error ? (
+            <p role="alert" className="py-4 text-sm text-amber-700">{error}</p>
           ) : (
-            <EmptyNotice icon="DocumentTextIcon" message="No payslips available" />
+            <EmptyNotice icon="DocumentTextIcon" message="No released payslips yet. Payslips appear here once payroll is released." />
           )}
         </SectionCard>
       </div>
@@ -3350,6 +3352,7 @@ export default function EmployeeSelfService() {
     }
   }, [])
   const [loadingPayroll,  setLoadingPayroll]  = useState(true)
+  const [payrollError,    setPayrollError]    = useState('')
   const [loadingNotifications, setLoadingNotifications] = useState(true)
 
   // -- Leave form state --------------------------------------------------------
@@ -3419,7 +3422,7 @@ export default function EmployeeSelfService() {
     setDownloadingOverview(true)
     setOverviewError('')
     try {
-      const blob = await payrollEngineService.downloadPayslipXlsx(slip.id)
+      const blob = await payrollEngineService.downloadMyPayslipXlsx(slip.id)
       const url = URL.createObjectURL(blob)
       const anchor = document.createElement('a')
       anchor.href = url
@@ -3549,13 +3552,19 @@ export default function EmployeeSelfService() {
     const userId  = profile?.user?.id   // Django User UUID for SalarySlip FK lookups
     const empCode = profile?.employee_id // biometric code for EmployeeSalaryInfo lookup
 
+    setPayrollError('')
     Promise.all([
       // Real payslips live in payroll_engine.Payslip (finance.SalarySlip is
-      // always empty — that model is unused). employee_no filters by the
-      // PayrollEmployee's biometric/HR code, matching UserProfile.employee_id.
-      empCode
-        ? payrollEngineService.listPayslips({ employee_no: empCode, page_size: 12 }).catch(() => ({ results: [] }))
-        : Promise.resolve({ results: [] }),
+      // always empty — that model is unused). The self-service endpoint
+      // returns only this employee's payslips from released runs, and works
+      // without payroll module access. A failure is shown, never hidden as
+      // "no payslips".
+      payrollEngineService.listMyPayslips(12).catch(() => {
+        setPayrollError('Your payslips could not be loaded. Try again later or contact HR.')
+        return { results: [] }
+      }),
+      // Payroll master record: readable by payroll staff only; employees fall
+      // back to the figures on their latest released payslip below.
       empCode
         ? payrollEngineService.listEmployees({ search: empCode, is_active: true, page_size: 10 }).catch(() => ({ results: [] }))
         : Promise.resolve({ results: [] }),
@@ -3586,10 +3595,17 @@ export default function EmployeeSelfService() {
       const payrollEmployee = employees.find(e => String(e.employee_no) === String(empCode)) || null
       const infoList = Array.isArray(info) ? info : info?.results || [info]
       const legacyInfo = infoList.find(Boolean) || null
-      setSalaryInfo(payrollEmployee || legacyInfo ? {
+      // Employees without payroll access: salary components from their latest released payslip.
+      const latestSlip = slipList[0]
+      const slipInfo = latestSlip ? {
+        basic: latestSlip.basic, housing: latestSlip.housing, transport: latestSlip.transport,
+        home_leave: latestSlip.home_leave, payment_mode: latestSlip.payment_mode,
+      } : null
+      setSalaryInfo(payrollEmployee || legacyInfo || slipInfo ? {
+        ...(slipInfo || {}),
         ...(legacyInfo || {}),
         ...(payrollEmployee || {}),
-        basic_salary: payrollEmployee?.basic ?? legacyInfo?.basic_salary,
+        basic_salary: payrollEmployee?.basic ?? legacyInfo?.basic_salary ?? slipInfo?.basic,
       } : null)
     }).finally(() => setLoadingPayroll(false))
   }, [profile])
@@ -3806,6 +3822,7 @@ export default function EmployeeSelfService() {
             salaryInfo={salaryInfo}
             slips={slips}
             loading={loadingPayroll}
+            error={payrollError}
             salaryVisible={salaryVisible}
             onToggleSalary={() => setSalaryVisible((visible) => !visible)}
           />

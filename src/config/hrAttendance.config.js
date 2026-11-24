@@ -91,6 +91,7 @@ export const ATTENDANCE_VIEWS = [
   { id: 'summary',  label: 'Monthly matrix', icon: 'TableCellsIcon', description: 'Employee daily hours for the selected month' },
   { id: 'yearly',   label: 'Yearly',    icon: 'ChartBarIcon',       description: '12-month trend per employee' },
   { id: 'reports',  label: 'Reports',   icon: 'ArrowDownTrayIcon',  description: 'Export Excel / PDF' },
+  { id: 'valueframe', label: 'ValueFrame check', icon: 'ScaleIcon', description: 'Compare ValueFrame bookings with real attendance' },
 ]
 export const ATTENDANCE_DEFAULT_VIEW = 'summary'
 

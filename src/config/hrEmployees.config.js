@@ -682,8 +682,8 @@ export const HR_EDITABLE_FIELDS = {
       optionsFrom: 'organizations',  // fetched from rbacService.getOrganizations()
       valueField: 'id',
       labelField: 'name',
-      createOption: true,
-      helpText: 'Search for an organisation or create one. Creating an organisation requires Super Administrator access.'
+      createOption: false,
+      helpText: 'Rejlers Abu Dhabi or Rejlers India (RIN).'
     },
     { id: 'department', label: 'Department', type: 'combobox', createOption: true, placeholder: 'Search or enter a department', required: true, maxLength: 100 },
     { id: 'job_title', label: 'Organizational role / Job title', type: 'combobox', createOption: true, placeholder: 'Search or enter a job title', required: true, maxLength: 100 },

@@ -2,7 +2,7 @@ import { radaiConfirm } from '../../../services/radaiDialog'
 /**
  * Attendance Dashboard — HR Manager Consolidated View
  * ====================================================
- * 5 sub-views: Overview · Daily · Monthly matrix · Yearly · Reports
+ * 6 sub-views: Overview · Daily · Monthly matrix · Yearly · Reports · ValueFrame check
  *
  * Data reuses the existing attendance and HR services.
  * All config, thresholds, colours and labels live in hrAttendance.config.js.
@@ -12,6 +12,7 @@ import './attendanceWorkspace.css'
 import DailyAttendanceTab from './DailyAttendanceTab'
 import YearlyAttendanceTab from './YearlyAttendanceTab'
 import AttendanceOverviewTab from './AttendanceOverviewTab'
+import ValueFrameCheckTab from './ValueFrameCheckTab'
 import { useSelector } from 'react-redux'
 import * as HeroIcons from '@heroicons/react/24/outline'
 import ts from '../../../services/timesheet.service'
@@ -316,7 +317,7 @@ function DownloadReportPanel({ year, month, tsService }) {
 // Summary columns: Total · Days · Normal Hours · Difference
 // All thresholds read from hrAttendance.config.js — no magic numbers here.
 // ─────────────────────────────────────────────────────────────────────────────
-function SummaryTab({ initialDate, initialSearch = '' }) {
+function SummaryTab({ initialDate, initialSearch = '', onOpenValueFrame }) {
   const initNow = initialDate ? new Date(`${initialDate}T12:00:00`) : new Date()
   const [year,          setYear]          = useState(initNow.getFullYear())
   const [month,         setMonth]         = useState(initNow.getMonth() + 1)
@@ -781,6 +782,10 @@ function SummaryTab({ initialDate, initialSearch = '' }) {
       <HeroIcons.ArrowUpTrayIcon aria-hidden="true" />{attendanceUploading ? 'Importing…' : 'Upload daily hours'}
       <input ref={attendanceFileRef} className="att-file-input" aria-label="Upload daily hours" type="file" accept=".xlsx,.csv" onChange={handleAttendanceUpload} disabled={attendanceUploading} />
     </label>}
+    {canEdit && onOpenValueFrame && <button type="button" className="att-button att-valueframe" onClick={onOpenValueFrame}
+      title="Upload the ValueFrame Wage Type Report and compare bookings with real attendance">
+      <HeroIcons.ScaleIcon aria-hidden="true" />ValueFrame check
+    </button>}
   </>
 
   return (
@@ -1589,10 +1594,12 @@ export default function AttendanceDashboard() {
       {view === 'overview' && <AttendanceOverviewTab date={selectedDate} today={TODAY_STR} onDateChange={setSelectedDate}
         onOpenDaily={(date, search = '') => { setSelectedDate(date); setDailyInitialSearch(search); setView('daily') }}
         onOpenMatrix={(date, search = '') => { setMatrixSelection({ initialDate: date, initialSearch: search }); setView('summary') }} /> }
-      {view === 'summary'  && <SummaryTab {...matrixSelection} />}
+      {view === 'summary'  && <SummaryTab {...matrixSelection} onOpenValueFrame={() => setView('valueframe')} />}
       {view === 'daily'    && renderDaily()}
       {view === 'yearly'   && <YearlyAttendanceTab Pagination={TablePagination} />}
       {view === 'reports'  && <ReportsTab todayStr={TODAY_STR} />}
+      {view === 'valueframe' && <ValueFrameCheckTab
+        onOpenEmployee={(code, periodStart) => { setMatrixSelection({ initialDate: periodStart, initialSearch: code }); setView('summary') }} />}
     </div>
   )
 }

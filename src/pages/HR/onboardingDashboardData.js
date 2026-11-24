@@ -1,6 +1,7 @@
+import { ORGANIZATION_NAMES } from '../../config/organizationEntities'
 const ACTIVE_STATUSES = new Set(['initiated', 'documentation', 'equipment', 'access_provisioning', 'training'])
 
-const ENTITY_LABELS = { RAD: 'Rejlers Abu Dhabi', RIN: 'Rejlers India' }
+const ENTITY_LABELS = ORGANIZATION_NAMES
 
 const READINESS_CATEGORIES = [
   { id: 'employee', label: 'Employee data' },

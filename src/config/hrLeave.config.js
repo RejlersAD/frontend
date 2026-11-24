@@ -1,3 +1,4 @@
+import { ORGANIZATION_NAMES } from './organizationEntities'
 /**
  * HR Leave Management — Soft-Coded Configuration
  * ===============================================
@@ -130,14 +131,13 @@ export const countWorkingDays = (from, to) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 7. BRANCH / LEGAL ENTITY DEFINITIONS
-//    RAD = Rejlers International Engineering Solutions AB (UAE)
-//    RIN = Rejlers International Engineering Solutions IN (India)
+//    The two RADAI organizations; names come from config/organizationEntities.js
 // ─────────────────────────────────────────────────────────────────────────────
 export const BRANCHES = [
   {
     id:          'RAD',
-    label:       'Rejlers AB',
-    fullName:    'Rejlers International Engineering Solutions AB',
+    label:       ORGANIZATION_NAMES.RAD,
+    fullName:    ORGANIZATION_NAMES.RAD,
     color:       '#3b82f6',
     // Tailwind classes for pill/badge
     bg:          'bg-blue-50',
@@ -151,8 +151,8 @@ export const BRANCHES = [
   },
   {
     id:          'RIN',
-    label:       'Rejlers IN',
-    fullName:    'Rejlers International Engineering Solutions IN',
+    label:       ORGANIZATION_NAMES.RIN,
+    fullName:    ORGANIZATION_NAMES.RIN,
     color:       '#8b5cf6',
     bg:          'bg-purple-50',
     text:        'text-purple-700',
