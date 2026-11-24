@@ -138,23 +138,17 @@ test('draft creation inherits the opportunity client and retains all input after
   const form = dialog(page, 'Create proposal from opportunity');
   await form.getByLabel('Qualified opportunity', { exact: false }).selectOption('opportunity-1');
   await form.getByLabel(/^Proposal number/).fill('TEST-PROPOSAL-500');
-  await form.getByLabel(/^Valid until/).fill('2026-12-20');
-  await form.getByLabel(/^Proposed price/).fill('275000.50');
-  await form.getByLabel(/^Estimated delivery cost/).fill('190000.25');
-  await form.getByLabel(/^Total estimated hours/).fill('1250');
-  await form.getByLabel(/^Scope and execution approach/).fill('Retain this engineering scope after the failed save.');
-  await form.getByRole('textbox', { name: /^Deliverables/ }).fill('Design basis\nEquipment register');
   await form.getByRole('button', { name: 'Create draft proposal', exact: true }).click();
   await expect(form).toContainText('could not be saved');
-  await expect(form.getByLabel(/^Scope and execution approach/)).toHaveValue('Retain this engineering scope after the failed save.');
+  await expect(form.getByLabel(/^Proposal number/)).toHaveValue('TEST-PROPOSAL-500');
   await form.getByRole('button', { name: 'Create draft proposal', exact: true }).click();
   await expect(form).toHaveCount(0);
   const payload = state.mutations.filter(item => item.action === 'create').at(-1).body;
   expect(payload.client).toBe('client-1');
   expect(payload.status).toBe('draft');
   expect(payload.version).toBe(1);
-  expect(payload.deliverables).toEqual(['Design basis', 'Equipment register']);
-  expect(payload.total_amount).toBe('275000.50');
+  expect(payload.quote_number).toBe('TEST-PROPOSAL-500');
+  expect(payload).not.toHaveProperty('total_amount');
 });
 
 test('existing edit dialog retains failed changes and submitted proposals remain locked', async ({ page }) => {

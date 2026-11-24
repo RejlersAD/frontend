@@ -414,11 +414,11 @@
   border-collapse: collapse;
   font-size: 14px;
   font-weight: 400;
-  line-height: 1.5;
+  line-height: 1.2;
 }
 .sod-table-scroll th {
-  height: 44px;
-  padding: 8px 10px;
+  height: 34px;
+  padding: 5px 8px;
   background: #f4f7fc;
   border: 1px solid #e5ecf7;
   border-left: 0;
@@ -463,16 +463,16 @@
   width: 7%;
 }
 .sod-table-scroll td {
-  height: 66px;
-  padding: 10px;
+  height: 32px;
+  padding: 3px 8px;
   border-bottom: 1px solid #e5ecf7;
   vertical-align: middle;
   color: #142b55;
   font-size: 14px;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
 }
 .sod-table-scroll td:first-child {
-  padding-left: 17px;
+  padding-left: 10px;
 }
 .sod-table-scroll tr.sod-selected-file {
   background: linear-gradient(90deg, #f1edff, #f5f2ff);
@@ -483,7 +483,7 @@
 }
 .sod-file-cell {
   display: flex;
-  gap: 14px;
+  gap: 8px;
   align-items: center;
   min-width: 0;
 }
@@ -495,24 +495,28 @@
   color: var(--sod-ink);
   text-align: left;
   font: inherit;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .sod-file-cell > a {
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .sod-file-icon {
   position: relative;
   display: inline-flex;
   justify-content: center;
   align-items: center;
-  width: 25px;
-  height: 31px;
+  width: 18px;
+  height: 22px;
   flex: none;
   border-radius: 3px 8px 3px 3px;
   color: #fff;
   background: #68809f;
-  font-size: 18px;
+  font-size: 13px;
   font-weight: 400;
 }
 .sod-file-icon::after {
@@ -550,16 +554,23 @@
   height: 25px;
 }
 .sod-time {
-  display: block;
+  display: inline;
   color: #52658e;
-  margin-top: 2px;
+  margin-left: 4px;
 }
 .sod-publication {
   display: inline-flex;
-  padding: 6px 10px;
+  padding: 2px 7px;
   background: #e9edf6;
   border-radius: 5px;
   font-size: 12px;
+}
+.sod-table-scroll .sdc-badge {
+  padding: 2px 6px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .sod-publication-published {
   background: #d7f1e6;

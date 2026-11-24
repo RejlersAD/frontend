@@ -891,7 +891,7 @@ export default function SalesOpportunityDocuments({
                         ) : (
                           <button
                             type="button"
-                            title="Double-click to preview"
+                            title={`${file.name} - double-click to preview`}
                             onClick={() => setSelectedId(file.id)}
                             onKeyDown={(event) => {
                               if (event.key === "Enter") {

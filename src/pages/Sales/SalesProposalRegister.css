@@ -182,6 +182,10 @@
 .spg-check-complete > span:last-child { color: #08754e; }
 .spg-notice, .spg-success { display: flex; gap: 9px; align-items: flex-start; background: #fff8e7; border: 1px solid #f4e3b1; border-radius: 4px; color: #815517; padding: 10px 11px; margin-top: 10px; font-size: 12px; }
 .spg-notice svg, .spg-success svg { flex: 0 0 auto; }
+.spg-notice.spg-next-step { background: #f3f0ff; border-color: #d9d0ff; color: #1f2340; align-items: center; flex-wrap: wrap; margin: 0 0 14px; font-size: 13px; }
+.spg-next-step > div { flex: 1 1 220px; }
+.spg-next-step p { margin: 2px 0 0; color: #4b5068; }
+.spg-next-step svg { color: #5b21f5; }
 .spg-success { background: #ecfaf4; color: #086c4b; border-color: #c9eddf; }
 .spg-workspace-footer { padding: 13px 18px 12px; flex: 0 0 auto; border-top: 1px solid var(--spg-line); }
 .spg-workspace-footer > div { display: flex; gap: 10px; }
