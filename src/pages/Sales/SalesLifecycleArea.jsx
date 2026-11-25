@@ -2143,6 +2143,14 @@ export default function SalesLifecycleArea() {
         onClose={() => setLetterModal({ open: false, letterType: null })}
         deal={record}
         initialLetterType={letterModal.letterType}
+        onLetterGenerated={(letter) => window.dispatchEvent(new CustomEvent(
+          "radai:opportunity-documents-changed",
+          { detail: {
+            opportunityId: String(record.id),
+            folderKey: "correspondence",
+            storage: letter?.attachments?.provider || letter?.custom_data?.attachments?.provider || "radai",
+          } },
+        ))}
       />
       {actionDialog && actionDialog.redesignedBidDecision ? (
         <SalesBidDecisionDialog

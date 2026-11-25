@@ -72,6 +72,15 @@ test('check documents and review sections speak proposal language and hide ident
   assert.doesNotMatch(JSON.stringify(section), /PAR-|REQ-1|STD-4|requirement_ids|03_Proposal/);
 });
 
+test('review sections tolerate incomplete legacy section data', () => {
+  const [section] = reviewSections({ sections: [{ key: 'legacy', title: 'Legacy section' }] });
+  assert.deepEqual(section.preview, []);
+  assert.deepEqual(section.sources, []);
+  assert.deepEqual(section.blockers, []);
+  assert.equal(section.paragraphs, 0);
+  assert.equal(section.kindLabel, 'Written from the tender');
+});
+
 test('authored-mode findings read as actions', () => {
   assert.equal(presentFinding({ severity: 'ERROR', code: 'EVIDENCE_REQUIRED',
     message: 'Previous Experience: company evidence required (Relevant project references, FEED experience list); supplied by the Rejlers Evidence Library' }).title,

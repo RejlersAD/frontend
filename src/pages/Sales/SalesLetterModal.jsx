@@ -347,7 +347,9 @@ export default function SalesLetterModal({
         updatedData
       );
       saved = true;
-      return await refreshLetter(generatedLetter.id);
+      const refreshed = await refreshLetter(generatedLetter.id);
+      onLetterGenerated?.(refreshed);
+      return refreshed;
     } catch (err) {
       const msg = extractApiError(
         err,
@@ -364,7 +366,7 @@ export default function SalesLetterModal({
     } finally {
       setRegenerating(false);
     }
-  }, [deal, generatedLetter, onError, refreshLetter]);
+  }, [deal, generatedLetter, onError, onLetterGenerated, refreshLetter]);
 
   const handleRegeneratePdf = useCallback(async () => {
     if (!generatedLetter) return;
@@ -376,7 +378,8 @@ export default function SalesLetterModal({
         custom_data: generatedLetter.custom_data,
       });
       regenerated = true;
-      await refreshLetter(generatedLetter.id);
+      const refreshed = await refreshLetter(generatedLetter.id);
+      onLetterGenerated?.(refreshed);
     } catch (err) {
       const msg = extractApiError(
         err,
@@ -391,7 +394,7 @@ export default function SalesLetterModal({
     } finally {
       setRegenerating(false);
     }
-  }, [deal, generatedLetter, onError, refreshLetter]);
+  }, [deal, generatedLetter, onError, onLetterGenerated, refreshLetter]);
 
   const handleClose = useCallback(() => {
     onClose?.();

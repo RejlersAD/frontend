@@ -370,6 +370,16 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.sop-message dl > .sop-message-id {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #e5ebf4;
+}
+.sop-message-id dt,
+.sop-message-id dd {
+  color: #173f8a;
+  font-weight: 600;
+}
 .sop-message-text {
   margin: 0;
   padding: 24px;
