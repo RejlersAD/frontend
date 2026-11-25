@@ -3,10 +3,11 @@
  * Shows KPI tiles, payroll runs table, and trend charts.
  * Every KPI tile is clickable — opens a live drill-down report modal.
  */
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useSelector } from 'react-redux'
 import * as HeroIcons from '@heroicons/react/24/outline'
 import PayrollEngine from './PayrollEngine'
+import AttendanceFreshnessBanner from '../../../components/Payroll/AttendanceFreshnessBanner'
 import payrollService from '../../../services/payroll.service'
 import payrollEngineService from '../../../services/payrollEngine.service'
 import {
@@ -771,6 +772,9 @@ export default function PayrollDashboard({ onSelectRun, onSwitchTab, activeRunId
   const [error,        setError]        = useState(null)
   const [reportId,     setReportId]     = useState(null)
   const [trackerData,  setTrackerData]  = useState(null)   // approval pipeline widget
+  const [attendance,   setAttendance]   = useState(null)   // attendance freshness
+  const [attLoading,   setAttLoading]   = useState(false)
+  const [attError,     setAttError]     = useState(null)
 
   // Role — used to gate the Approval Pipeline widget
   // authUser is the raw UserProfileSerializer payload — is_superuser lives on
@@ -781,6 +785,18 @@ export default function PayrollDashboard({ onSelectRun, onSwitchTab, activeRunId
     authUser?.user?.is_superuser ||
     rbacUser?.roles?.some(r => r.code === 'super_admin' || r.code === 'admin')
   ) ?? false
+
+  const currentYear = new Date().getFullYear()
+  const currentMonth = new Date().getMonth() + 1
+
+  const loadAttendance = useCallback((year = currentYear, month = currentMonth) => {
+    setAttLoading(true)
+    setAttError(null)
+    return payrollEngineService.getAttendanceSummary(year, month)
+      .then(setAttendance)
+      .catch(err => setAttError(err?.response?.data?.error || err?.message || 'Attendance data unavailable'))
+      .finally(() => setAttLoading(false))
+  }, [currentMonth, currentYear])
 
   useEffect(() => {
     setLoading(true)
@@ -818,7 +834,11 @@ export default function PayrollDashboard({ onSelectRun, onSwitchTab, activeRunId
       }
       setSummary(s)
     }).catch((e) => setError(e.message)).finally(() => setLoading(false))
-  }, [])
+
+    // Attendance freshness — attendance is the key input to payroll.
+    // Load independently so one slow call doesn't block the whole dashboard.
+    loadAttendance()
+  }, [currentMonth, currentYear, loadAttendance])
 
   // Approval tracker — loaded separately; only for super-admins.
   // getApprovalTracker isn't implemented yet (no backend endpoint exists) —
@@ -850,6 +870,14 @@ export default function PayrollDashboard({ onSelectRun, onSwitchTab, activeRunId
           <KpiTile key={kpi.id} kpi={kpi} summary={summary} onClick={() => setReportId(kpi.id)} />
         ))}
       </div>
+
+      {/* Attendance Freshness Banner — attendance is the key input to payroll */}
+      <AttendanceFreshnessBanner
+        summary={attendance}
+        loading={attLoading}
+        error={attError}
+        onRefresh={() => loadAttendance(summary?.current_year ?? currentYear, summary?.current_month ?? currentMonth)}
+      />
 
       <section className="radai-payroll-module min-w-0" aria-label="Payroll management workspace">
         <PayrollEngine activeRunId={activeRunId} initialTab={activeRunId ? undefined : initialTab || 'runs'} onSelectRun={onSelectRun} onSwitchTab={onSwitchTab} />
