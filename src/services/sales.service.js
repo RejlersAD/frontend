@@ -1398,6 +1398,14 @@ class SalesService {
     )).data;
   }
 
+  async saveTechnicalProposalLayout(quoteId, payload) {
+    return (await apiClient.post(
+      `${BASE_URL}/quotes/${encodeURIComponent(quoteId)}/workspace/layout/`,
+      payload,
+      EMAIL_REQUEST_OPTIONS,
+    )).data;
+  }
+
   async regenerateTechnicalProposalSection(quoteId, sectionKey, payload) {
     return (await apiClient.post(
       `${BASE_URL}/quotes/${encodeURIComponent(quoteId)}/workspace/sections/${encodeURIComponent(sectionKey)}/regenerate/`,

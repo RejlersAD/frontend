@@ -5,6 +5,12 @@ import Table from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
+import Underline from '@tiptap/extension-underline';
+import TextStyle from '@tiptap/extension-text-style';
+import FontFamily from '@tiptap/extension-font-family';
+import Color from '@tiptap/extension-color';
+import Highlight from '@tiptap/extension-highlight';
+import TextAlign from '@tiptap/extension-text-align';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { textMatches } from './proposalDocumentModel';
@@ -21,11 +27,42 @@ const ProposalPart = Node.create({
   renderHTML: ({ node }) => ['h1', { class: 'spde-part', contenteditable: 'false', title: 'Chapter heading set by the proposal plan' }, node.attrs.text],
 });
 
+/** Font size in points on the text style mark (rendered by the server as run size). */
+const FontSize = Extension.create({
+  name: 'fontSize',
+  addGlobalAttributes: () => [{
+    types: ['textStyle'],
+    attributes: {
+      fontSize: {
+        default: null,
+        parseHTML: (element) => (/^\d+(\.\d+)?pt$/.test(element.style.fontSize) ? element.style.fontSize : null),
+        renderHTML: (attrs) => (attrs.fontSize ? { style: `font-size: ${attrs.fontSize}` } : {}),
+      },
+    },
+  }],
+  addCommands: () => ({
+    setFontSize: (size) => ({ chain }) => chain().setMark('textStyle', { fontSize: size }).run(),
+    unsetFontSize: () => ({ chain }) => chain().setMark('textStyle', { fontSize: null }).removeEmptyTextStyle().run(),
+  }),
+});
+
+/** Paragraph left and first-line indent in points, set with the ruler. */
+const Indent = Extension.create({
+  name: 'paragraphIndent',
+  addGlobalAttributes: () => [{
+    types: ['paragraph', 'heading'],
+    attributes: {
+      indentLeft: { default: null, keepOnSplit: true, parseHTML: () => null, renderHTML: (attrs) => (attrs.indentLeft ? { style: `margin-left: ${attrs.indentLeft}pt` } : {}) },
+      indentFirst: { default: null, keepOnSplit: true, parseHTML: () => null, renderHTML: (attrs) => (attrs.indentFirst ? { style: `text-indent: ${attrs.indentFirst}pt` } : {}) },
+    },
+  }],
+});
+
 /** Links blocks to the stored block they came from. Never copied on Enter or taken from pasted HTML. */
 const BlockRef = Extension.create({
   name: 'blockRef',
   addGlobalAttributes: () => [{
-    types: ['paragraph', 'heading', 'bulletList', 'table'],
+    types: ['paragraph', 'heading', 'bulletList', 'orderedList', 'table'],
     attributes: {
       ref: { default: null, keepOnSplit: false, parseHTML: () => null, renderHTML: (attrs) => (Number.isInteger(attrs.ref) ? { 'data-ref': attrs.ref } : {}) },
       role: { default: null, keepOnSplit: false, parseHTML: () => null, renderHTML: (attrs) => (attrs.role ? { 'data-role': attrs.role } : {}) },
@@ -109,15 +146,22 @@ const Comments = Extension.create({
   },
 });
 
-/** Only what the Rejlers renderer can rebuild: no inline formatting, numbered lists, quotes or code. */
+/** Everything the Rejlers renderer rebuilds in the PDF and Word file. No code, quotes or line breaks. */
 export function proposalExtensions({ onCommentSelect } = {}) {
   return [
     StarterKit.configure({
-      heading: { levels: [2, 3] },
-      bold: false, italic: false, strike: false, code: false, codeBlock: false, blockquote: false,
-      horizontalRule: false, hardBreak: false, orderedList: false, listItem: false,
+      heading: { levels: [1, 2, 3] },
+      code: false, codeBlock: false, blockquote: false, horizontalRule: false, hardBreak: false, listItem: false,
     }),
-    ListItem.extend({ content: 'paragraph' }),
+    ListItem.extend({ content: 'paragraph (bulletList | orderedList)*' }),
+    Underline,
+    TextStyle,
+    FontFamily,
+    FontSize,
+    Color,
+    Highlight.configure({ multicolor: true }),
+    TextAlign.configure({ types: ['heading', 'paragraph'], alignments: ['left', 'center', 'right', 'justify'], defaultAlignment: null }),
+    Indent,
     ProposalPart,
     BlockRef,
     Table.configure({ resizable: false, allowTableNodeSelection: false }),

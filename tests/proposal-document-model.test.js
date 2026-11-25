@@ -67,3 +67,23 @@ test('word count and search positions', () => {
   assert.deepEqual(textMatches([{ text: 'Design basis and design review', start: 10 }], 'design'), [{ from: 10, to: 16 }, { from: 27, to: 33 }]);
   assert.deepEqual(textMatches([{ text: 'abc', start: 1 }], ''), []);
 });
+
+test('reviewer formatting, numbered and nested lists and header-less tables round-trip', () => {
+  const formatted = [
+    { type: 'heading', text: 'Overview', level: 1, align: 'center' },
+    { type: 'paragraph', text: 'Bold and red text', align: 'justify', indent: { left: 18, first: -9 },
+      runs: [{ text: 'Bold', bold: true }, { text: ' and ' }, { text: 'red text', color: '#C00000', size: 12, font: 'Calibri', highlight: '#FFFF00' }] },
+    { type: 'bullets', text: '', items: ['One', 'Detail', 'Two'], markers: ['number', 'bullet', 'number'], levels: [0, 1, 0],
+      item_runs: [null, [{ text: 'Detail', italic: true }], null] },
+    { type: 'table', text: '', header: false, columns: ['', ''], rows: [['From:', 'Rejlers']], cell_runs: { '0:0': [{ text: 'From:', bold: true }] } },
+  ];
+  const blocks = docToBlocks(blocksToDoc(formatted));
+  assert.deepEqual(blocks.map((block) => Object.fromEntries(Object.entries(block).filter(([key]) => key !== 'ref'))), formatted);
+  assert.deepEqual(blocks.map((block) => block.ref), [0, 1, 2, 3]);
+  assert.equal(sameBlocks(formatted, blocks), true);
+});
+
+test('unformatted runs collapse to plain text', () => {
+  const doc = blocksToDoc([{ type: 'paragraph', text: 'plain', runs: [{ text: 'plain' }] }]);
+  assert.deepEqual(docToBlocks(doc), [{ type: 'paragraph', text: 'plain', ref: 0 }]);
+});
