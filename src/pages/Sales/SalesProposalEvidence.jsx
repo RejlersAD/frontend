@@ -69,9 +69,12 @@ export default function SalesProposalEvidence({ quoteId, section, disabled, onIn
 
   return (
     <div className="ssp-evidence" aria-label={`${section.title} evidence`}>
-      <h5>Company evidence</h5>
+      <h5>{section.kind === "authored" ? "Enclosed documents" : "Company evidence"}</h5>
       {state.required.length > 0 && (
-        <p className="ssp-muted">Needed: {state.required.join(", ")}.</p>
+        <p className="ssp-muted">
+          {section.kind === "authored" ? "You can enclose" : "Needed"}: {state.required.join(", ")}.
+          {section.kind === "authored" && " They follow the section text in the PDF."}
+        </p>
       )}
       {state.loading ? (
         <p className="ssp-muted" role="status">Loading evidence…</p>
@@ -144,6 +147,7 @@ SalesProposalEvidence.propTypes = {
   section: PropTypes.shape({
     key: PropTypes.string.isRequired,
     title: PropTypes.string.isRequired,
+    kind: PropTypes.string,
     attachments: PropTypes.arrayOf(PropTypes.shape({ id: PropTypes.string, name: PropTypes.string })),
   }).isRequired,
   disabled: PropTypes.bool,

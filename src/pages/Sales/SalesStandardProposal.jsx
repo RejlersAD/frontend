@@ -165,6 +165,12 @@ export default function SalesStandardProposal({ quoteId, dealId, onPrepared }) {
   const version = workspace?.current?.version || null;
   const status = proposalStatus(current, job);
   const sections = useMemo(() => reviewSections(current), [current]);
+  // Sections that accept uploaded documents: evidence sections, and authored sections such as
+  // 2.6 Specific HSE Requirements whose documents follow the drafted text.
+  const evidenceKeys = useMemo(
+    () => new Set(workspace?.current?.evidence_sections || []),
+    [workspace],
+  );
   const issues = useMemo(
     () => presentFindings(current?.build_findings),
     [current],
@@ -988,7 +994,7 @@ export default function SalesStandardProposal({ quoteId, dealId, onPrepared }) {
                                 : section.kindLabel + "."}
                             </p>
                           )}
-                          {section.kind === "evidence" && (
+                          {(section.kind === "evidence" || evidenceKeys.has(section.key)) && (
                             <SalesProposalEvidence
                               quoteId={quoteId}
                               section={section}
