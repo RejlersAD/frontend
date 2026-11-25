@@ -28,7 +28,7 @@
 .spr-pdf-icon { display: inline-flex; justify-content: center; align-items: center; width: 27px; height: 31px; flex: none; background: #da2536; color: #fff; border-radius: 3px; font-size: 9px; font-weight: 700; }
 .spr-file-name { display: flex; flex-direction: column; min-width: 0; }
 .spr-file-name strong { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.spr-file-name small { color: var(--spr-muted); font-size: 12px; }
+.spr-file-name small { color: var(--spr-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .spr-revision-select, .spr-zoom-select { min-height: 32px; padding: 4px 24px 4px 8px; border: 1px solid var(--spr-line); border-radius: 4px; background-color: #fff; color: var(--spr-ink); }
 .spr-page-controls { display: flex; align-items: center; gap: 5px; padding: 0 14px; border-left: 1px solid var(--spr-line); border-right: 1px solid var(--spr-line); white-space: nowrap; }
 .spr-page-input { width: 42px; height: 30px; padding: 3px; text-align: center; border: 1px solid var(--spr-line); border-radius: 4px; color: var(--spr-ink); background: #fff; }

@@ -130,6 +130,12 @@ export async function prepareProposalReview(page, configuration = {}) {
         { id: 'edit-job', status: 'succeeded', attempts: 1, result_version: state.technicalWorkspace.current.version + 1 }];
       return route.fulfill({ status: 202, json: { job: { id: 'edit-job', status: 'queued', attempts: 0, summary: { mode: 'edit' } } } });
     }
+    if (state.technicalWorkspace && path.endsWith(`/quotes/${proposalId}/workspace/layout/`)) {
+      state.mutations.push({ action: 'layout', body, path });
+      state.editJobs = [{ id: 'edit-job', status: 'running', attempts: 1, result_version: null },
+        { id: 'edit-job', status: 'succeeded', attempts: 1, result_version: state.technicalWorkspace.current.version + 1 }];
+      return route.fulfill({ status: 202, json: { job: { id: 'edit-job', status: 'queued', attempts: 0, summary: { mode: 'edit' } } } });
+    }
     if (state.technicalWorkspace && /\/workspace\/jobs\/[^/]+\/$/.test(path)) {
       const next = state.editJobs?.length > 1 ? state.editJobs.shift() : state.editJobs?.[0];
       if (next?.status === 'succeeded') state.technicalWorkspace.current.version = next.result_version;

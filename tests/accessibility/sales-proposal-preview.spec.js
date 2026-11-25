@@ -287,8 +287,13 @@ for (const width of [1366, 390]) test(`proposal review remains usable without do
 
 const technicalWorkspace = () => ({
   builder: 'standard',
-  current: { id: 'v3', version: 3, content: { template_version: 'rejlers_authored_v1', sections: [
-    { key: 'cover', title: 'COVER PAGE', kind: 'cover', pages: [1, 1], blocks: [] },
+  current: { id: 'v3', version: 3, content: { template_version: 'rejlers_authored_v1',
+    layout: { header_lines: ['Technical Proposal', 'Confidential'], footer_lines: ['Rejlers International Engineering Solutions AB', 'Abu Dhabi'] },
+    sections: [
+    { key: 'cover', title: 'COVER PAGE', kind: 'cover', pages: [1, 1], override: false, blocks: [
+      { type: 'paragraph', text: 'PROPOSAL', align: 'center', runs: [{ text: 'PROPOSAL', bold: true, size: 14 }] },
+      { type: 'paragraph', text: 'VF-2026-0142', align: 'center', runs: [{ text: 'VF-2026-0142', bold: true, size: 20 }] },
+    ] },
     { key: 'schedule', title: '2.4 WORK SCHEDULE', kind: 'authored', pages: [2, 2], blocks: [
       { type: 'part', text: 'WORK SCHEDULE' },
       { type: 'paragraph', text: 'The work is completed within 26 weeks.', citations: ['T1'] },
@@ -333,18 +338,19 @@ test('comment-only PDFs keep the review panel without an edit tab', async ({ pag
 });
 
 test('generated proposals open as a Word-style editable document saved through the section API', async ({ page }, testInfo) => {
+  test.setTimeout(90000);
   await page.setViewportSize({ width: 1586, height: 992 });
   const state = await prepareProposalReview(page, { technicalWorkspace: technicalWorkspace() });
   const toolbar = page.getByLabel('Proposal document controls');
   await expect(toolbar.getByRole('button', { name: 'Source PDF', exact: true })).toBeVisible({ timeout: 50000 });
   await expect(toolbar.getByRole('status')).toHaveText(/Saved/);
-  await expect(page.getByRole('heading', { name: 'Page 1 is generated' })).toBeVisible();
-  await page.getByRole('button', { name: 'Go to the first editable section' }).click();
+  // The cover is a generated page that can now be edited too.
+  await expect(page.getByText('Generated cover page: edit it directly.', { exact: false })).toBeVisible();
+  await page.getByRole('button', { name: 'Go to page 2' }).click();
 
   const content = page.getByLabel('2.4 WORK SCHEDULE content');
   await expect(content).toBeVisible();
   await expect(content.getByText('WORK SCHEDULE', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Bold' })).toBeDisabled();
   await expect(page.getByText('Unavailable', { exact: true })).toBeVisible();
 
   // Find counts matches across paragraphs and table cells.
@@ -392,12 +398,120 @@ test('generated proposals open as a Word-style editable document saved through t
   await expect(toolbar.getByRole('status')).toHaveText(/Saved/);
   // Page thumbnails stay beside the editor; a generated page shows the way back to editable content.
   await expect(page.getByRole('button', { name: 'Go to page 2' })).toBeVisible();
-  await page.getByRole('button', { name: 'Go to page 1' }).click();
-  await expect(page.getByRole('heading', { name: 'Page 1 is generated' })).toBeVisible();
+  await page.getByRole('button', { name: 'Go to page 3' }).click();
+  await expect(page.getByRole('heading', { name: 'Page 3 is generated' })).toBeVisible();
   await page.getByRole('button', { name: 'Go to page 2' }).click();
   await expect(content).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('proposal-document-editor.png') });
   const axe = await new AxeBuilder({ page }).include('.spde').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
   expect(axe.violations).toEqual([]);
   expect(state.pageErrors).toEqual([]);
+});
+
+test('document editor formatting, header and footer, and generated pages are saved for the PDF', async ({ page }) => {
+  test.setTimeout(150000);   // three saves, each polled until the rebuilt version is shown
+  await page.setViewportSize({ width: 1586, height: 992 });
+  const state = await prepareProposalReview(page, { technicalWorkspace: technicalWorkspace() });
+  await expect(page.getByRole('button', { name: 'Source PDF', exact: true })).toBeVisible({ timeout: 50000 });
+
+  // Generated cover page: editable, saved as a manual version of the page.
+  const cover = page.getByLabel('COVER PAGE content');
+  await expect(cover.getByText('PROPOSAL', { exact: true })).toBeVisible();
+  await cover.getByText('PROPOSAL', { exact: true }).click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' DOCUMENT');
+  await page.getByRole('tab', { name: 'File', exact: true }).click();
+  await page.getByRole('button', { name: 'Save & update PDF' }).first().click();
+  await page.getByLabel('Reason for the edit').fill('Cover wording');
+  await page.locator('.spde-save-bar').getByRole('button', { name: 'Save & update PDF' }).click();
+  await expect(page.getByText('Saved as proposal version 4.', { exact: false })).toBeVisible({ timeout: 20000 });
+  const coverEdit = state.mutations.find(item => item.action === 'edit');
+  expect(coverEdit.path).toContain('/workspace/sections/cover/content/');
+  expect(coverEdit.body.blocks[0]).toMatchObject({ type: 'paragraph', text: 'PROPOSAL DOCUMENT', align: 'center', ref: 0 });
+  expect(coverEdit.body.blocks[0].runs).toEqual([{ text: 'PROPOSAL DOCUMENT', bold: true, size: 14 }]);
+
+  // Character and paragraph formatting in an authored section.
+  await page.getByRole('button', { name: 'Go to page 2' }).click();
+  const content = page.getByLabel('2.4 WORK SCHEDULE content');
+  await content.getByText('The work is completed within 26 weeks.').dblclick();
+  await page.getByRole('tab', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Bold', exact: true }).click();
+  await page.getByLabel('Font size', { exact: true }).selectOption('12');
+  await page.getByRole('button', { name: 'Centre', exact: true }).click();
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.getByRole('button', { name: 'Numbered list', exact: true }).click();
+  await page.keyboard.type('First step');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('Second step');
+  await page.getByLabel('Section title').fill('Programme of works');
+  await page.getByRole('slider', { name: 'Left indent' }).focus();
+  await page.keyboard.press('ArrowRight');
+  await page.getByRole('tab', { name: 'File', exact: true }).click();
+  await page.getByRole('button', { name: 'Save & update PDF' }).first().click();
+  await page.getByLabel('Reason for the edit').fill('Format the schedule');
+  await page.locator('.spde-save-bar').getByRole('button', { name: 'Save & update PDF' }).click();
+  await expect(page.getByText('Saved as proposal version 5.', { exact: false })).toBeVisible({ timeout: 20000 });
+  const edit = state.mutations.filter(item => item.action === 'edit').pop();
+  expect(edit.body.title).toBe('Programme of works');
+  const paragraph = edit.body.blocks.find(block => block.type === 'paragraph');
+  expect(paragraph).toMatchObject({ align: 'center', ref: 1 });
+  expect(paragraph.runs.some(run => run.bold && run.size === 12)).toBe(true);
+  const list = edit.body.blocks.find(block => block.type === 'bullets');
+  expect(list).toMatchObject({ items: ['First step', 'Second step'], markers: ['number', 'number'] });
+
+  // Header and footer text for every page.
+  await page.getByRole('tab', { name: 'Layout', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit header & footer' }).click();
+  await page.getByLabel('Header line 2').fill('Strictly Confidential');
+  await page.getByLabel('Footer line 2').fill('Abu Dhabi, United Arab Emirates');
+  await page.getByRole('tab', { name: 'File', exact: true }).click();
+  await page.getByRole('button', { name: 'Save & update PDF' }).first().click();
+  await page.getByLabel('Reason for the header and footer change').fill('Client classification');
+  await page.locator('.spde-save-bar').getByRole('button', { name: 'Save & update PDF' }).click();
+  await expect(page.getByText('Saved as proposal version 6.', { exact: false })).toBeVisible({ timeout: 20000 });
+  const layout = state.mutations.find(item => item.action === 'layout');
+  expect(layout.body).toMatchObject({ expected_version: 5, reason: 'Client classification', layout: {
+    header_lines: ['Technical Proposal', 'Strictly Confidential'],
+    footer_lines: ['Rejlers International Engineering Solutions AB', 'Abu Dhabi, United Arab Emirates'] } });
+  const axe = await new AxeBuilder({ page }).include('.spde').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+  expect(axe.violations).toEqual([]);
+  expect(state.pageErrors).toEqual([]);
+});
+
+test('long sections are laid out on separate A4 pages with header and footer on each', async ({ page }, testInfo) => {
+  test.setTimeout(90000);
+  await page.setViewportSize({ width: 1586, height: 992 });
+  const workspace = technicalWorkspace();
+  workspace.current.content.sections.push({ key: 'execution', title: '3. EXECUTION PLAN', kind: 'authored', pages: [3, 6], blocks: [
+    { type: 'part', text: 'METHOD STATEMENT' },
+    ...Array.from({ length: 30 }, (_, index) => ({ type: 'paragraph', text: `Paragraph ${index + 1}: Rejlers will carry out the engineering activities described in the scope of work, coordinate interfaces with the Company and record every deliverable in the document register.` })),
+    { type: 'table', text: '', columns: ['Deliverable', 'Discipline', 'Status'], rows: Array.from({ length: 40 }, (_, index) => [`Deliverable ${index + 1}`, 'Process', 'Draft']) },
+  ] });
+  await prepareProposalReview(page, { technicalWorkspace: workspace });
+  await expect(page.getByRole('button', { name: 'Source PDF', exact: true })).toBeVisible({ timeout: 50000 });
+  await page.getByRole('button', { name: 'Go to page 3' }).click();
+  const content = page.getByLabel('3. EXECUTION PLAN content');
+  await expect(content.getByText('Paragraph 30:', { exact: false })).toBeAttached();
+  await expect(page.locator('.spde-page')).toHaveCount(await page.locator('.spde-page').count());
+  await expect.poll(async () => page.locator('.spde-page').count()).toBeGreaterThanOrEqual(3);
+  await expect(page.locator('.spde-page-number').first()).toContainText('Page 1 of');
+  await expect.poll(async () => page.locator('.spde-content .spde-page-break').count()).toBeGreaterThanOrEqual(2);
+  // No block starts inside a footer, header or gap: every block top is within a page's text area.
+  const misplaced = await page.evaluate(() => {
+    const sheet = document.querySelector('.spde-sheet');
+    const zoom = Number(getComputedStyle(sheet).zoom) || 1;
+    const origin = sheet.getBoundingClientRect().top;
+    const units = [...document.querySelectorAll('.spde-content > p, .spde-content > h1, .spde-content tr, .spde-content li')];
+    return units.filter((element) => {
+      const rect = element.getBoundingClientRect();
+      const padding = parseFloat(getComputedStyle(element.matches('tr') ? element.firstElementChild : element).paddingTop) || 0;
+      const top = (rect.top - origin) / zoom + (element.classList.contains('spde-page-break') ? padding : 0);
+      const offset = top % (1123 + 24);
+      return offset < 112 - 2 || offset > 1123 - 100;
+    }).length;
+  });
+  expect(misplaced).toBe(0);
+  await page.locator('.spde-stage').evaluate((stage) => { stage.scrollTop = 1420; });
+  await page.screenshot({ path: testInfo.outputPath('proposal-a4-pages.png') });
 });
