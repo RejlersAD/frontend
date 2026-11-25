@@ -15,7 +15,7 @@ const errorText = (failure, fallback) => {
  * Company evidence for one evidence section (project references, CVs, organisation charts).
  * Files are enclosed in that section of the PDF the next time the section is rebuilt.
  */
-export default function SalesProposalEvidence({ quoteId, section, disabled, onInclude }) {
+export default function SalesProposalEvidence({ quoteId, section, disabled, replaces = false, onInclude }) {
   const [state, setState] = useState({ loading: true, files: [], required: [], error: "" });
   const [busy, setBusy] = useState("");
   const [progress, setProgress] = useState(0);
@@ -73,7 +73,9 @@ export default function SalesProposalEvidence({ quoteId, section, disabled, onIn
       {state.required.length > 0 && (
         <p className="ssp-muted">
           {section.kind === "authored" ? "You can enclose" : "Needed"}: {state.required.join(", ")}.
-          {section.kind === "authored" && " They follow the section text in the PDF."}
+          {section.kind === "authored" && (replaces
+            ? " An uploaded document replaces the drafted text in the PDF."
+            : " They follow the section text in the PDF.")}
         </p>
       )}
       {state.loading ? (
@@ -151,5 +153,6 @@ SalesProposalEvidence.propTypes = {
     attachments: PropTypes.arrayOf(PropTypes.shape({ id: PropTypes.string, name: PropTypes.string })),
   }).isRequired,
   disabled: PropTypes.bool,
+  replaces: PropTypes.bool,
   onInclude: PropTypes.func.isRequired,
 };

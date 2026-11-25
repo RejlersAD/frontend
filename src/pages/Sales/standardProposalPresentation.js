@@ -199,6 +199,7 @@ const JOB_ERRORS = {
   invalid_selection: 'The selected documents are no longer available. Check the documents and generate again.',
   build_failed: 'The proposal could not be built. Try again; if it fails again, contact support.',
   attempts_exhausted: 'The proposal could not be built after several attempts. Contact support.',
+  ai_provider_unavailable: 'The AI service rejected every request, so no new version was saved and the current proposal is unchanged. An administrator should check the AI credential and credit (Admin › AI providers), then generate again.',
 }
 
 export function presentJob(job) {
