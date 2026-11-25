@@ -60,8 +60,32 @@ const FINDINGS = {
     };
   },
   SECTION_NO_SOURCE: (message) => ({
-    title: `${(/section (.+?) has no source/i.exec(message) || [])[1] || "A required section"} has no document`,
-    detail: "Add the document to the proposal folder and generate again.",
+    title: `${(/section (.+?) has no source/i.exec(message) || [])[1] || "A required section"} has no tender source`,
+    detail: "Select the tender documents that cover it and generate again.",
+  }),
+  SECTION_NOT_DRAFTED: (message) => ({
+    title: `${message.split(":")[0]} could not be written`,
+    detail: `${message.split(":").slice(1).join(":").trim()}. Rewrite the section or generate again.`.replace(/^\. /, ""),
+  }),
+  UNSUPPORTED_STATEMENT_REMOVED: (message) => ({
+    title: message,
+    detail: "Statements without a tender source are never included in the proposal.",
+  }),
+  OPEN_POINT: (message) => ({
+    title: message.split(": ").slice(1).join(": ") || message,
+    detail: `Raised while writing ${message.split(": ")[0]}.`,
+  }),
+  EVIDENCE_REQUIRED: (message) => ({
+    title: `${message.split(":")[0]} needs company evidence`,
+    detail: `${(/\(([^)]+)\)/.exec(message) || [])[1] || "Company documents"} – supplied by the Rejlers Evidence Library.`,
+  }),
+  REQUIREMENT_NOT_ADDRESSED: (message) => ({
+    title: message.split(";")[0],
+    detail: "Check them in the compliance matrix at the end of the proposal.",
+  }),
+  REVIEW_NOT_ATTACHED: () => ({
+    title: "The PDF was not attached to the review canvas",
+    detail: "Attach it from Review & comments.",
   }),
   COMPONENT_NO_SOURCE: (message) => ({
     title: `Document missing in ${(/^(.+?):/.exec(message) || [])[1] || "a section"}`,
