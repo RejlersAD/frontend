@@ -345,7 +345,7 @@ test('generated proposals open as a Word-style editable document saved through t
   await expect(toolbar.getByRole('button', { name: 'Source PDF', exact: true })).toBeVisible({ timeout: 50000 });
   await expect(toolbar.getByRole('status')).toHaveText(/Saved/);
   // The cover is a generated page that can now be edited too.
-  await expect(page.getByText('This cover page is generated from the template.', { exact: false })).toBeVisible();
+  await expect(page.getByText('Generated cover page: edit it directly.', { exact: false })).toBeVisible();
   await page.getByRole('button', { name: 'Go to page 2' }).click();
 
   const content = page.getByLabel('2.4 WORK SCHEDULE content');
@@ -477,4 +477,41 @@ test('document editor formatting, header and footer, and generated pages are sav
   const axe = await new AxeBuilder({ page }).include('.spde').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
   expect(axe.violations).toEqual([]);
   expect(state.pageErrors).toEqual([]);
+});
+
+test('long sections are laid out on separate A4 pages with header and footer on each', async ({ page }, testInfo) => {
+  test.setTimeout(90000);
+  await page.setViewportSize({ width: 1586, height: 992 });
+  const workspace = technicalWorkspace();
+  workspace.current.content.sections.push({ key: 'execution', title: '3. EXECUTION PLAN', kind: 'authored', pages: [3, 6], blocks: [
+    { type: 'part', text: 'METHOD STATEMENT' },
+    ...Array.from({ length: 30 }, (_, index) => ({ type: 'paragraph', text: `Paragraph ${index + 1}: Rejlers will carry out the engineering activities described in the scope of work, coordinate interfaces with the Company and record every deliverable in the document register.` })),
+    { type: 'table', text: '', columns: ['Deliverable', 'Discipline', 'Status'], rows: Array.from({ length: 40 }, (_, index) => [`Deliverable ${index + 1}`, 'Process', 'Draft']) },
+  ] });
+  await prepareProposalReview(page, { technicalWorkspace: workspace });
+  await expect(page.getByRole('button', { name: 'Source PDF', exact: true })).toBeVisible({ timeout: 50000 });
+  await page.getByRole('button', { name: 'Go to page 3' }).click();
+  const content = page.getByLabel('3. EXECUTION PLAN content');
+  await expect(content.getByText('Paragraph 30:', { exact: false })).toBeAttached();
+  await expect(page.locator('.spde-page')).toHaveCount(await page.locator('.spde-page').count());
+  await expect.poll(async () => page.locator('.spde-page').count()).toBeGreaterThanOrEqual(3);
+  await expect(page.locator('.spde-page-number').first()).toContainText('Page 1 of');
+  await expect.poll(async () => page.locator('.spde-content .spde-page-break').count()).toBeGreaterThanOrEqual(2);
+  // No block starts inside a footer, header or gap: every block top is within a page's text area.
+  const misplaced = await page.evaluate(() => {
+    const sheet = document.querySelector('.spde-sheet');
+    const zoom = Number(getComputedStyle(sheet).zoom) || 1;
+    const origin = sheet.getBoundingClientRect().top;
+    const units = [...document.querySelectorAll('.spde-content > p, .spde-content > h1, .spde-content tr, .spde-content li')];
+    return units.filter((element) => {
+      const rect = element.getBoundingClientRect();
+      const padding = parseFloat(getComputedStyle(element.matches('tr') ? element.firstElementChild : element).paddingTop) || 0;
+      const top = (rect.top - origin) / zoom + (element.classList.contains('spde-page-break') ? padding : 0);
+      const offset = top % (1123 + 24);
+      return offset < 112 - 2 || offset > 1123 - 100;
+    }).length;
+  });
+  expect(misplaced).toBe(0);
+  await page.locator('.spde-stage').evaluate((stage) => { stage.scrollTop = 1420; });
+  await page.screenshot({ path: testInfo.outputPath('proposal-a4-pages.png') });
 });

@@ -12,6 +12,7 @@ import { proposalExtensions, commentKey, searchKey } from './proposalDocumentExt
 import { FONTS, FONT_SIZES, blocksProblem, blocksToDoc, docToBlocks, sameBlocks, wordCount } from './proposalDocumentModel';
 import { DOCUMENT_KINDS, editableSections, sectionForPage } from './proposalSectionEdit';
 import SalesProposalDocumentRuler, { SHEET_WIDTH } from './SalesProposalDocumentRuler';
+import { PAGE, Pagination, paginate } from './proposalDocumentPagination';
 import './SalesProposalDocumentEditor.css';
 
 const POLL_MS = 4000;
@@ -69,11 +70,13 @@ function SectionDocument({ section, quoteNumber, versionLabel, editable, busy, t
   const [showRuler, setShowRuler] = useState(true);
   const [, setTick] = useState(0);
   const stageRef = useRef(null);
+  const sheetRef = useRef(null);
+  const [pages, setPages] = useState(1);
   const findRef = useRef(null);
   const reasonRef = useRef(null);
   const selectThread = useRef(onThreadSelect);
   selectThread.current = onThreadSelect;
-  const extensions = useMemo(() => proposalExtensions({ onCommentSelect: (id) => selectThread.current?.(id) }), []);
+  const extensions = useMemo(() => [...proposalExtensions({ onCommentSelect: (id) => selectThread.current?.(id) }), Pagination], []);
 
   const editor = useEditor({
     extensions,
@@ -198,6 +201,27 @@ function SectionDocument({ section, quoteNumber, versionLabel, editable, busy, t
 
   // Open at "fit page width" when the A4 page is wider than the canvas.
   const ready = Boolean(editor);
+  // Lay the content out on A4 pages after every change (and when zoom or fonts change).
+  useEffect(() => {
+    if (!editor) return undefined;
+    let frame = 0;
+    let rounds = 0;
+    const run = () => {
+      frame = 0;
+      const result = paginate(editor, sheetRef.current, zoom, rounds < 4);
+      if (!result) return;
+      setPages(result.pages);
+      if (result.changed) rounds += 1;
+    };
+    const schedule = ({ transaction } = {}) => {
+      if (transaction?.docChanged) rounds = 0;
+      if (!frame) frame = requestAnimationFrame(run);
+    };
+    editor.on('transaction', schedule);
+    schedule();
+    document.fonts?.ready?.then(() => schedule());
+    return () => { editor.off('transaction', schedule); if (frame) cancelAnimationFrame(frame); };
+  }, [editor, zoom]);
   useEffect(() => {
     const width = stageRef.current?.clientWidth || 0;
     if (ready && width && width - 48 < SHEET_WIDTH) setZoom(Math.max(0.5, Math.floor(((width - 48) / SHEET_WIDTH) * 20) / 20));
@@ -398,51 +422,64 @@ function SectionDocument({ section, quoteNumber, versionLabel, editable, busy, t
           <SalesProposalDocumentRuler zoom={zoom} left={Number(indent.indentLeft) || 0} first={Number(indent.indentFirst) || 0}
             disabled={!can || inList || inTable} onChange={setIndent} />
         )}
-        <article className={`spde-sheet${showSources ? ' show-sources' : ''}${headerMode ? ' is-header-mode' : ''}`} style={{ zoom }} aria-label={`Editable page: ${title || section.title}`}>
-          <header className="spde-sheet-header">
-            {headerMode ? (
-              <div className="spde-hf-fields">
-                {layoutDraft.header_lines.map((line, index) => (
-                  <input key={index} aria-label={`Header line ${index + 1}`} maxLength={200} value={line}
-                    onChange={(event) => setLayoutDraft((draft) => ({ ...draft, header_lines: draft.header_lines.map((value, i) => (i === index ? event.target.value : value)) }))} />
-                ))}
-                <span className="spde-hf-auto">{quoteNumber} (automatic)</span>
+        <article ref={sheetRef} className={`spde-sheet${showSources ? ' show-sources' : ''}${headerMode ? ' is-header-mode' : ''}`}
+          style={{ zoom, height: pages * (PAGE.height + PAGE.gap) - PAGE.gap }} aria-label={`Editable pages: ${title || section.title}`}>
+          {Array.from({ length: pages }, (_, index) => {
+            const top = index * (PAGE.height + PAGE.gap);
+            const editingBands = headerMode && index === 0;
+            return (
+              <div key={index} className="spde-page-frame" aria-hidden={editingBands ? undefined : 'true'}>
+                <div className="spde-page" style={{ top }} />
+                <header className={`spde-band spde-band-header${editingBands ? ' is-editing' : ''}`} style={{ top }}>
+                  {editingBands ? (
+                    <div className="spde-hf-fields">
+                      {layoutDraft.header_lines.map((line, lineIndex) => (
+                        <input key={lineIndex} aria-label={`Header line ${lineIndex + 1}`} maxLength={200} value={line}
+                          onChange={(event) => setLayoutDraft((draft) => ({ ...draft, header_lines: draft.header_lines.map((value, i) => (i === lineIndex ? event.target.value : value)) }))} />
+                      ))}
+                      <span className="spde-hf-auto">{quoteNumber} (automatic)</span>
+                    </div>
+                  ) : (
+                    <span>{(layout?.header_lines?.[0] || 'Technical Proposal')} · {quoteNumber}{layout?.header_lines?.[1] ? ` · ${layout.header_lines[1]}` : ''}</span>
+                  )}
+                  <img src="/rejlers-logo.svg" alt={index === 0 ? 'Rejlers' : ''} />
+                </header>
+                <footer className={`spde-band spde-band-footer${editingBands ? ' is-editing' : ''}`} style={{ top: top + PAGE.height - PAGE.bottom }}>
+                  {editingBands ? (
+                    <div className="spde-hf-fields spde-hf-footer">
+                      {layoutDraft.footer_lines.map((line, lineIndex) => (
+                        <input key={lineIndex} aria-label={`Footer line ${lineIndex + 1}`} maxLength={200} value={line}
+                          onChange={(event) => setLayoutDraft((draft) => ({ ...draft, footer_lines: draft.footer_lines.map((value, i) => (i === lineIndex ? event.target.value : value)) }))} />
+                      ))}
+                    </div>
+                  ) : (
+                    <>
+                      <span className="spde-footer-lines">{(layout?.footer_lines || []).map((line, lineIndex) => <span key={lineIndex}>{line}</span>)}</span>
+                      <span className="spde-page-number">{quoteNumber} | {versionLabel} · Page {index + 1} of {pages}</span>
+                    </>
+                  )}
+                </footer>
+                {index < pages - 1 && <div className="spde-page-gap" style={{ top: top + PAGE.height }} />}
               </div>
-            ) : (
-              <span>{(layout?.header_lines?.[0] || 'Technical Proposal')} · {quoteNumber}{layout?.header_lines?.[1] ? ` · ${layout.header_lines[1]}` : ''}</span>
+            );
+          })}
+          <div className="spde-flow" style={{ padding: `${PAGE.top}px ${PAGE.side}px 0` }}>
+            {generated && (
+              <p className="spde-generated-note">
+                {section.override ? `Your edited version of the ${generated}. It is used in every rebuild until you reset it (File › Reset to generated page).`
+                  : `Generated ${generated}: edit it directly. Saving keeps your version in the PDF and Word file${section.kind === 'cover' ? ' (as a text cover page without the designed background)' : ''}.`}
+              </p>
             )}
-            <img src="/rejlers-logo.svg" alt="Rejlers" />
-          </header>
-          {generated && (
-            <p className="spde-generated-note">
-              {section.override ? `Your edited version of the ${generated}. It replaces the generated page in every rebuild until you reset it (File › Reset to generated page).`
-                : `This ${generated} is generated from the template. Saving changes here replaces it with your version.`}
-            </p>
-          )}
-          <input className="spde-section-title" aria-label="Section title" value={title} maxLength={200} disabled={!can}
-            title="The contents page and divider page use this title" onChange={(event) => setTitle(event.target.value)} />
-          <EditorContent editor={editor} />
-          <footer className="spde-sheet-footer">
-            {headerMode ? (
-              <div className="spde-hf-fields spde-hf-footer">
-                {layoutDraft.footer_lines.map((line, index) => (
-                  <input key={index} aria-label={`Footer line ${index + 1}`} maxLength={200} value={line}
-                    onChange={(event) => setLayoutDraft((draft) => ({ ...draft, footer_lines: draft.footer_lines.map((value, i) => (i === index ? event.target.value : value)) }))} />
-                ))}
-              </div>
-            ) : (
-              <>
-                <span className="spde-footer-lines">{(layout?.footer_lines || []).map((line, index) => <span key={index}>{line}</span>)}</span>
-                <span>{quoteNumber} | {versionLabel} · {pageLabel(section.pages)} in PDF</span>
-              </>
-            )}
-          </footer>
+            <input className="spde-section-title" aria-label="Section title" value={title} maxLength={200} disabled={!can}
+              title="The contents page and divider page use this title" onChange={(event) => setTitle(event.target.value)} />
+            <EditorContent editor={editor} />
+          </div>
         </article>
       </div>
 
       <footer className="spde-status" aria-label="Document status">
         <span>{title || section.title}</span>
-        <span>{pageLabel(section.pages)} of the PDF</span>
+        <span>{pages} {pages === 1 ? 'page' : 'pages'} · {pageLabel(section.pages)} of the PDF</span>
         <span>{words.toLocaleString()} words</span>
         <span className="spde-status-zoom">
           <button type="button" aria-label="Zoom out" disabled={zoom <= ZOOMS[0]} onClick={() => setZoom((value) => ZOOMS.slice().reverse().find((step) => step < value) || ZOOMS[0])}><ZoomOut aria-hidden="true" /></button>
