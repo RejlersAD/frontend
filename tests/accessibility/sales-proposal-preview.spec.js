@@ -300,6 +300,7 @@ const technicalWorkspace = () => ({
 test('standard proposals can be edited in the canvas and the PDF is rebuilt as the next version', async ({ page }) => {
   await page.setViewportSize({ width: 1586, height: 992 });
   const state = await prepareProposalReview(page, { technicalWorkspace: technicalWorkspace() });
+  await page.getByRole('button', { name: 'Source PDF', exact: true }).click({ timeout: 50000 });
   await ready(page);
   await page.getByRole('tab', { name: 'Edit content', exact: true }).click();
   const editor = page.getByRole('complementary', { name: 'Edit proposal content' });
@@ -329,4 +330,74 @@ test('comment-only PDFs keep the review panel without an edit tab', async ({ pag
   await ready(page);
   await expect(page.getByRole('tab', { name: 'Edit content', exact: true })).toHaveCount(0);
   await expect(review(page)).toBeVisible();
+});
+
+test('generated proposals open as a Word-style editable document saved through the section API', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1586, height: 992 });
+  const state = await prepareProposalReview(page, { technicalWorkspace: technicalWorkspace() });
+  const toolbar = page.getByLabel('Proposal document controls');
+  await expect(toolbar.getByRole('button', { name: 'Source PDF', exact: true })).toBeVisible({ timeout: 50000 });
+  await expect(toolbar.getByRole('status')).toHaveText(/Saved/);
+  await expect(page.getByRole('heading', { name: 'Page 1 is generated' })).toBeVisible();
+  await page.getByRole('button', { name: 'Go to the first editable section' }).click();
+
+  const content = page.getByLabel('2.4 WORK SCHEDULE content');
+  await expect(content).toBeVisible();
+  await expect(content.getByText('WORK SCHEDULE', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Bold' })).toBeDisabled();
+  await expect(page.getByText('Unavailable', { exact: true })).toBeVisible();
+
+  // Find counts matches across paragraphs and table cells.
+  await page.getByRole('button', { name: 'Find', exact: true }).click();
+  await page.getByLabel('Find', { exact: true }).fill('weeks');
+  await expect(page.getByText('1 of 2', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Close find' }).click();
+
+  // Reword the sourced paragraph, add a new paragraph, change a table cell.
+  await content.getByText('The work is completed within 26 weeks.').click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' Mobilisation starts at kick-off.');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('Reviewer note on the schedule.');
+  await content.getByRole('cell', { name: '26 weeks' }).click();
+  await page.keyboard.press('End');
+  await page.keyboard.press('Shift+Home');
+  await page.keyboard.type('6 months');
+  await expect(toolbar.getByRole('status')).toHaveText(/Unsaved changes/);
+
+  // Comment on selected text: the quote becomes the comment anchor.
+  await content.getByText('Reviewer note on the schedule.').dblclick();
+  await page.getByRole('tab', { name: 'Review', exact: true }).click();
+  await page.getByRole('button', { name: 'New comment' }).click();
+  await page.getByLabel('Add a comment').fill('Confirm the schedule with the client.');
+  await page.getByRole('button', { name: 'Post', exact: true }).click();
+  await expect(page.getByText('Comment saved.')).toBeVisible();
+  const comment = state.mutations.find(item => item.action === 'comment');
+  expect(comment.body).toMatchObject({ page_number: 2, context: '2.4 WORK SCHEDULE', anchor: { rects: [] } });
+  expect(comment.body.anchor.quote.length).toBeGreaterThan(0);
+
+  await page.getByRole('tab', { name: 'File', exact: true }).click();
+  await page.getByRole('button', { name: 'Save & update PDF' }).first().click();
+  await page.getByLabel('Reason for the edit').fill('Client asked for months');
+  await page.locator('.spde-save-bar').getByRole('button', { name: 'Save & update PDF' }).click();
+  await expect(page.getByText('Saved as proposal version 4.', { exact: false })).toBeVisible({ timeout: 20000 });
+  const edit = state.mutations.find(item => item.action === 'edit');
+  expect(edit.path).toContain('/workspace/sections/schedule/content/');
+  expect(edit.body).toMatchObject({ expected_version: 3, reason: 'Client asked for months' });
+  expect(edit.body.blocks.map(block => [block.type, block.ref])).toEqual([['part', 0], ['paragraph', 1], ['paragraph', undefined], ['table', 2]]);
+  expect(edit.body.blocks[1].text).toBe('The work is completed within 26 weeks. Mobilisation starts at kick-off.');
+  expect(edit.body.blocks[3].rows).toEqual([['FEED', '6 months']]);
+
+  await expect(content).toBeVisible();
+  await expect(toolbar.getByRole('status')).toHaveText(/Saved/);
+  // Page thumbnails stay beside the editor; a generated page shows the way back to editable content.
+  await expect(page.getByRole('button', { name: 'Go to page 2' })).toBeVisible();
+  await page.getByRole('button', { name: 'Go to page 1' }).click();
+  await expect(page.getByRole('heading', { name: 'Page 1 is generated' })).toBeVisible();
+  await page.getByRole('button', { name: 'Go to page 2' }).click();
+  await expect(content).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('proposal-document-editor.png') });
+  const axe = await new AxeBuilder({ page }).include('.spde').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+  expect(axe.violations).toEqual([]);
+  expect(state.pageErrors).toEqual([]);
 });

@@ -160,3 +160,20 @@
 .spe-footer { position: sticky; bottom: -18px; display: grid; gap: 6px; padding: 10px 0 4px; border-top: 1px solid var(--spr-line); background: #fff; }
 .spe-footer-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .spe-problem { margin: 0; color: #b42318; font-size: 12px; }
+
+/* Word-style document view toolbar (generated Technical Proposals). */
+.spr-doc-icon { display: inline-flex; justify-content: center; align-items: center; width: 27px; height: 31px; flex: none; border-radius: 3px; background: #185abd; color: #fff; font-size: 14px; font-weight: 700; }
+.spr-source-link { display: inline-flex; align-items: center; gap: 5px; flex: none; padding: 0 6px; border: 0; background: none; color: var(--spr-purple); text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
+.spr-source-link svg { width: 15px; height: 15px; }
+.spr-edit-document { flex: none; min-height: 32px; padding: 4px 10px; }
+.spr-save-status { display: inline-flex; align-items: center; gap: 7px; padding: 0 14px; color: #33466f; white-space: nowrap; }
+.spr-save-status svg { width: 17px; height: 17px; }
+.spr-save-status[data-state='saved'] > svg:first-child { color: #1f9d62; }
+.spr-save-status[data-state='unsaved'] > svg:first-child { color: #b75d0b; }
+.spr-save-status[data-state='error'] > svg:first-child { color: #b42318; }
+.spr-save-status[data-state='updating'] > svg:first-child { color: var(--spr-purple); }
+.spr-divider { width: 1px; height: 22px; margin: 0 8px; background: var(--spr-line); }
+.spr-mode { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 4px 0 10px; border: 1px solid var(--spr-line); border-radius: 5px; color: var(--spr-ink); }
+.spr-mode svg { width: 16px; height: 16px; color: var(--spr-muted); }
+.spr-mode select { height: 30px; border: 0; background: transparent; color: var(--spr-ink); font-weight: 500; }
+.spr-notice-success { border-bottom-color: #bcdccb; background: #effaf4; color: #166346; }

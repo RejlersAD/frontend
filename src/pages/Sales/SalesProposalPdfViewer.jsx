@@ -116,7 +116,7 @@ function PdfNavigation({ pdf, outline, pageNumber, onPageChange }) {
   </aside>;
 }
 
-function PdfReviewDocument({ url, title, pageNumber, onPageChange, zoom, onZoomChange, threads, selectedThreadId, onThreadSelect, onSelection, onDocumentLoad, onError, ariaLabel }) {
+function PdfReviewDocument({ url, title, pageNumber, onPageChange, zoom, onZoomChange, threads, selectedThreadId, onThreadSelect, onSelection, onDocumentLoad, onError, ariaLabel, stage }) {
   const [loaded, setLoaded] = useState(null);
   const [outline, setOutline] = useState([]);
   const [error, setError] = useState('');
@@ -135,6 +135,7 @@ function PdfReviewDocument({ url, title, pageNumber, onPageChange, zoom, onZoomC
   const currentZoom = clampPdfZoom(zoom);
   const currentPaint = paint?.pageNumber === currentPage && paint?.width === width && paint?.zoom === currentZoom ? paint : null;
   const pageThreads = threads.filter(thread => thread.page_number === currentPage);
+  const custom = Boolean(stage);
 
   useEffect(() => {
     if (!url) return undefined;
@@ -175,19 +176,20 @@ function PdfReviewDocument({ url, title, pageNumber, onPageChange, zoom, onZoomC
 
   useEffect(() => {
     const element = stageRef.current;
+    if (!element) return undefined;
     const measure = () => setWidth(Math.max(0, element.clientWidth - 56));
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
-  }, []);
+  }, [custom]);
 
   useEffect(() => {
     if (pdf && currentPage !== Number(pageNumber)) callbacks.current.onPageChange?.(currentPage);
   }, [pdf, currentPage, pageNumber]);
 
   useEffect(() => {
-    if (!pdf || !width) return undefined;
+    if (!pdf || !width || custom) return undefined;
     let disposed = false;
     let renderTask;
     let textLayer;
@@ -224,7 +226,7 @@ function PdfReviewDocument({ url, title, pageNumber, onPageChange, zoom, onZoomC
       setPageError(message); setRendering(false); callbacks.current.onError?.(message);
     }).finally(() => pageProxy?.cleanup());
     return () => { disposed = true; renderTask?.cancel(); textLayer?.cancel(); pageProxy?.cleanup(); };
-  }, [pdf, loaded, width, currentPage, currentZoom, title]);
+  }, [pdf, loaded, width, currentPage, currentZoom, title, custom]);
 
   useEffect(() => { stageRef.current?.scrollTo(0, 0); }, [currentPage]);
 
@@ -267,7 +269,7 @@ function PdfReviewDocument({ url, title, pageNumber, onPageChange, zoom, onZoomC
 
   return <div className="sales-proposal-pdf-viewer" role="region" aria-label={ariaLabel}>
     <PdfNavigation pdf={pdf} outline={outline} pageNumber={currentPage} onPageChange={onPageChange} />
-    <section className="sppdf-stage" ref={stageRef} aria-label="PDF page canvas" tabIndex={0}
+    {stage ? <div className="sppdf-custom-stage">{stage}</div> : <section className="sppdf-stage" ref={stageRef} aria-label="PDF page canvas" tabIndex={0}
       aria-busy={Boolean(url) && !error && (!pdf || rendering)} onKeyDown={event => {
         if (event.target !== event.currentTarget) return;
         if (['PageDown', 'PageUp'].includes(event.key) && pdf) {
@@ -306,16 +308,16 @@ function PdfReviewDocument({ url, title, pageNumber, onPageChange, zoom, onZoomC
             </div>
             {currentPaint && !pageError && <div className="sppdf-page-caption">Page {currentPage} of {pdf?.numPages}</div>}
           </>}
-    </section>
+    </section>}
   </div>;
 }
 
 export default function SalesProposalPdfViewer({ url = '', documentKey, title = 'Proposal PDF', pageNumber = 1, onPageChange, zoom = 1, onZoomChange,
-  threads = EMPTY_THREADS, selectedThreadId = null, onThreadSelect, onSelection, onDocumentLoad, onError, ariaLabel = 'Proposal PDF pages' }) {
+  threads = EMPTY_THREADS, selectedThreadId = null, onThreadSelect, onSelection, onDocumentLoad, onError, ariaLabel = 'Proposal PDF pages', stage = null }) {
   // A changed revision or protected Blob must never display the previous PDF,
   // even during the first render before effects clean up old worker tasks.
   return <PdfReviewDocument key={`${documentKey || ''}:${url}`} {...{ url, title, pageNumber, onPageChange, zoom, onZoomChange,
-    threads, selectedThreadId, onThreadSelect, onSelection, onDocumentLoad, onError, ariaLabel }} />;
+    threads, selectedThreadId, onThreadSelect, onSelection, onDocumentLoad, onError, ariaLabel, stage }} />;
 }
 
 PdfThumbnail.propTypes = { pdf: PropTypes.object.isRequired, pageNumber: PropTypes.number.isRequired, selected: PropTypes.bool, onSelect: PropTypes.func.isRequired };
@@ -324,6 +326,7 @@ PdfReviewDocument.propTypes = {
   url: PropTypes.string, title: PropTypes.string, ariaLabel: PropTypes.string, pageNumber: PropTypes.number, onPageChange: PropTypes.func.isRequired,
   zoom: PropTypes.number, onZoomChange: PropTypes.func, threads: PropTypes.array, selectedThreadId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
   onThreadSelect: PropTypes.func, onSelection: PropTypes.func, onDocumentLoad: PropTypes.func, onError: PropTypes.func,
+  stage: PropTypes.node,
 };
 SalesProposalPdfViewer.propTypes = { ...PdfReviewDocument.propTypes, documentKey: PropTypes.oneOfType([PropTypes.string, PropTypes.number]) };
 
