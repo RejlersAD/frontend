@@ -14,6 +14,11 @@ const payrollEngineService = {
   // ── Dashboard ──────────────────────────────────────────────────────────
   getDashboardSummary: (params = {}) =>
     unwrap(apiClient.get(`${BASE}/dashboard-summary/`, { params })),
+
+  // ── Attendance basis for payroll review and release ────────────────────
+  // Payroll-ready attendance facts per employee per month.
+  getAttendanceSummary: (year, month) =>
+    unwrap(apiClient.get(`${BASE}/attendance-summary/`, { params: { year, month } })),
   // Employee self-service: the signed-in employee's own payslips from released runs only
   listMyPayslips: (limit = 12) =>
     unwrap(apiClient.get(`${BASE}/payslips/mine/`, { params: { limit } })),
