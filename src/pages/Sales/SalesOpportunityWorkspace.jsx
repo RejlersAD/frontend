@@ -104,6 +104,18 @@ export default function SalesOpportunityWorkspace({ record, active = true, explo
     if (sourceReady && !error && folderKey) loadFiles(folderKey);
     else { filesRequest.current++; setListing({ files: [], next_cursor: null }); setFilesLoading(false); setFilesError(''); }
   }, [folderKey, sourceReady, error, loadFiles]);
+  useEffect(() => {
+    const refreshGeneratedDocuments = event => {
+      const detail = event.detail || {};
+      if (String(detail.opportunityId || '') !== String(record.id)) return;
+      void loadWorkspace(true);
+      if (sourceReady && folderKey === detail.folderKey && storage === detail.storage) {
+        void loadFiles(folderKey);
+      }
+    };
+    window.addEventListener('radai:opportunity-documents-changed', refreshGeneratedDocuments);
+    return () => window.removeEventListener('radai:opportunity-documents-changed', refreshGeneratedDocuments);
+  }, [record.id, sourceReady, storage, folderKey, loadWorkspace, loadFiles]);
   const openFolder = key => { if (!explorer && onOpenExplorer) { onOpenExplorer(key); return; } setFolderKey(key); setQuery(''); setNotice(''); if (explorer) onOpenExplorer?.(key); };
   const closeFolder = () => { filesRequest.current++; setFolderKey(''); setQuery(''); setFilesError(''); setFilesLoading(false); };
 

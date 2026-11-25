@@ -295,10 +295,11 @@ export default defineConfig(({ mode }) => {
     optimizeDeps: {
       // Scan the application entry rather than archived builds and HTML reports.
       entries: ['index.html'],
-      // Rebuild after every dev-server restart. This deliberately trades a
-      // few seconds of startup time for deterministic collaboration: an old
-      // node_modules/.vite bundle can never survive a branch pull/restart.
-      force: true,
+      // Reuse the dependency cache across normal restarts. Vite invalidates it
+      // when package metadata or this configuration changes; forcing every
+      // restart can saturate esbuild on the Docker/Windows bind mount and make
+      // the health endpoint stop responding.
+      force: false,
       include: [
         ...officePreviewDependencies,
         '@emotion/styled',

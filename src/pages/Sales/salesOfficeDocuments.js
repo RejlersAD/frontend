@@ -18,6 +18,26 @@ function exactBuffer(value) {
 
 function byteLength(value) { return encoder.encode(value).byteLength; }
 
+function portalMessageId(...values) {
+  for (const value of values) {
+    if (typeof value !== 'string') continue;
+    const match = value.match(/\bMessage\s+ID\s*:\s*(MSG[A-Z0-9_-]{5,})\b/i);
+    if (match) return match[1].toUpperCase();
+  }
+  return '';
+}
+
+function readablePlainMessage(value) {
+  if (typeof value !== 'string') return '';
+  return value
+    .replace(/\r\n?/g, '\n')
+    .replace(/\s*<mailto:[^>\r\n]+>/gi, '')
+    .replace(/<https?:\/\/[^>\r\n]+>/gi, '[Link]')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 function base64(bytes) {
   let binary = '';
   for (let offset = 0; offset < bytes.length; offset += 32768) binary += String.fromCharCode(...bytes.subarray(offset, offset + 32768));
@@ -282,7 +302,7 @@ export function parseMessage(value) {
   const recipientList = kind => recipients.slice(0, MAX_RECIPIENTS).filter(item => own(item, 'recipType') === kind).map(item => address(item)).filter(Boolean).join('; ');
   const originalBody = own(fields, 'body');
   let bodyText = typeof originalBody === 'string' && originalBody.trim() ? originalBody : '';
-  let bodyHtml = bodyText ? '' : decodedHtml(fields, notices);
+  let bodyHtml = decodedHtml(fields, notices);
   if (bodyText && byteLength(bodyText) > MESSAGE_BYTES) {
     const bytes = encoder.encode(bodyText);
     bodyText = new TextDecoder().decode(bytes.subarray(0, MESSAGE_BYTES - 65536), { stream: true });
@@ -297,10 +317,13 @@ export function parseMessage(value) {
   } else if (!bodyText && !bodyHtml && !notices.some(notice => notice.includes('body'))) {
     notices.push('No readable message body is available. Download the original to inspect it.');
   }
+  const messageId = portalMessageId(bodyText, bodyHtml);
+  bodyText = readablePlainMessage(bodyText);
   const result = {
     kind: 'msg', subject: text(own(fields, 'subject'), 4096), sender: address(fields, true),
     to: recipientList('to'), cc: recipientList('cc'),
     date: text(own(fields, 'clientSubmitTime') || own(fields, 'messageDeliveryTime'), 128),
+    messageId,
     bodyText, bodyHtml,
     attachments: attachments.slice(0, MAX_ATTACHMENTS).map(item => ({
       name: text(own(item, 'fileName') || own(item, 'fileNameShort') || own(item, 'name'), 1024) || 'Unnamed attachment',
@@ -597,7 +620,8 @@ export function parseEml(value) {
     to: emlFormatAddresses(own(headers, 'to') || ''),
     cc: own(headers, 'cc') ? emlFormatAddresses(own(headers, 'cc')) : '',
     date: emlFormatDate(emlDecodeHeader(own(headers, 'date') || '')),
-    bodyText,
+    messageId: portalMessageId(bodyText, bodyHtml),
+    bodyText: readablePlainMessage(bodyText),
     bodyHtml,
     attachments,
     ...(notices.length ? { notice: notices.join(' ') } : {}),

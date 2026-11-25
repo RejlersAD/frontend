@@ -171,6 +171,11 @@ export default function SalesStandardProposal({ quoteId, dealId, onPrepared }) {
     () => new Set(workspace?.current?.evidence_sections || []),
     [workspace],
   );
+  // Sections whose uploaded document replaces the drafted text (a signed qualification statement).
+  const replacingKeys = useMemo(
+    () => new Set(workspace?.current?.evidence_replaces || []),
+    [workspace],
+  );
   const issues = useMemo(
     () => presentFindings(current?.build_findings),
     [current],
@@ -998,6 +1003,7 @@ export default function SalesStandardProposal({ quoteId, dealId, onPrepared }) {
                             <SalesProposalEvidence
                               quoteId={quoteId}
                               section={section}
+                              replaces={replacingKeys.has(section.key)}
                               disabled={generating}
                               onInclude={(item) =>
                                 rebuild(item, note.trim() || "Company evidence updated")
