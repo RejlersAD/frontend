@@ -1,6 +1,8 @@
 /** Pure helpers for editing one Technical Proposal section in the review canvas. */
 
 export const EDITABLE_KINDS = ['authored', 'not_applicable'];
+/** Sections the Word-style canvas editor opens, generated pages included (they become manual versions). */
+export const DOCUMENT_KINDS = ['authored', 'not_applicable', 'cover', 'letter', 'compliance'];
 export const NEW_BLOCK_TYPES = [
   ['paragraph', 'Paragraph'],
   ['bullets', 'Bullet list'],
@@ -19,7 +21,9 @@ export function toEditable(blocks = []) {
     id: nextId(),
     ref: index,
     type: block.type,
-    level: block.level === 3 ? 3 : 2,
+    level: [1, 2, 3].includes(block.level) ? block.level : 2,
+    header: block.header !== false,
+    original: block,
     text: block.text || '',
     items: [...(block.items || [])],
     columns: [...(block.columns || [])],
@@ -30,7 +34,7 @@ export function toEditable(blocks = []) {
 
 export function newRow(type) {
   return {
-    id: nextId(), ref: null, type, level: 2, text: '',
+    id: nextId(), ref: null, type, level: 2, text: '', header: true, original: null,
     items: type === 'bullets' ? [''] : [],
     columns: type === 'table' ? ['Item', 'Detail'] : [],
     rows: type === 'table' ? [['', '']] : [],
@@ -38,21 +42,47 @@ export function newRow(type) {
   };
 }
 
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+/** Formatting made in the document editor survives an edit here while the text it formats is unchanged. */
+function keepFormat(row, record) {
+  const original = row.original;
+  if (!original || record.type === 'part') return record;
+  const kept = { ...record };
+  for (const key of ['align', 'indent']) if (original[key] !== undefined) kept[key] = original[key];
+  if (original.runs && (original.text || '') === (record.text || '')) kept.runs = original.runs;
+  if (record.type === 'bullets') {
+    const sameItems = same(original.items || [], record.items);
+    if (sameItems && original.item_runs) kept.item_runs = original.item_runs;
+    for (const key of ['markers', 'levels']) {
+      if (original[key] && original[key].length === record.items.length) kept[key] = original[key];
+    }
+  }
+  if (record.type === 'table') {
+    if (original.header === false) kept.header = false;
+    if (original.column_runs && same(original.columns || [], record.columns)) kept.column_runs = original.column_runs;
+    if (original.cell_runs && same(original.rows || [], record.rows)) kept.cell_runs = original.cell_runs;
+  }
+  return kept;
+}
+
 /** API payload: only the fields each block type uses. */
 export function toPayload(rows) {
-  return rows.map((row) => {
-    const base = { type: row.type, ...(row.ref === null ? {} : { ref: row.ref }) };
-    if (row.type === 'part') return { ...base, text: row.text };
-    if (row.type === 'heading') return { ...base, text: row.text.trim(), level: row.level };
-    if (row.type === 'paragraph') return { ...base, text: row.text.trim() };
-    if (row.type === 'bullets') return { ...base, text: row.text.trim(), items: row.items.map((item) => item.trim()) };
-    return {
-      ...base,
-      text: row.text.trim(),
-      columns: row.columns.map((value) => value.trim()),
-      rows: row.rows.map((cells) => cells.map((cell) => cell.trim())),
-    };
-  });
+  return rows.map((row) => keepFormat(row, payloadOf(row)));
+}
+
+function payloadOf(row) {
+  const base = { type: row.type, ...(row.ref === null ? {} : { ref: row.ref }) };
+  if (row.type === 'part') return { ...base, text: row.text };
+  if (row.type === 'heading') return { ...base, text: row.text.trim(), level: row.level };
+  if (row.type === 'paragraph') return { ...base, text: row.text.trim() };
+  if (row.type === 'bullets') return { ...base, text: row.text.trim(), items: row.items.map((item) => item.trim()) };
+  return {
+    ...base,
+    text: row.text.trim(),
+    columns: row.columns.map((value) => value.trim()),
+    rows: row.rows.map((cells) => cells.map((cell) => cell.trim())),
+  };
 }
 
 export function isDirty(blocks, rows) {
@@ -74,7 +104,7 @@ export function editProblem(rows, reason) {
     if (row.type === 'bullets' && (!row.items.length || row.items.some((item) => !item.trim()))) {
       return `${at}: remove empty bullet items.`;
     }
-    if (row.type === 'table' && (!row.columns.length || row.columns.some((c) => !c.trim()) || !row.rows.length)) {
+    if (row.type === 'table' && (!row.columns.length || (row.header !== false && row.columns.some((c) => !c.trim())) || !row.rows.length)) {
       return `${at}: a table needs named columns and at least one row.`;
     }
     if ((row.type === 'paragraph' && tooLong(row.text, LIMITS.paragraph))
@@ -104,6 +134,6 @@ export function sectionForPage(sections, page) {
     && page >= section.pages[0] && page <= section.pages[1]) || null;
 }
 
-export function editableSections(content) {
-  return (content?.sections || []).filter((section) => EDITABLE_KINDS.includes(section.kind));
+export function editableSections(content, kinds = EDITABLE_KINDS) {
+  return (content?.sections || []).filter((section) => kinds.includes(section.kind));
 }

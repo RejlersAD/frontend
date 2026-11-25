@@ -76,3 +76,6 @@
   .sppdf-page-count { padding: 6px 12px; }
   .sppdf-stage { min-height: 350px; }
 }
+
+/* Another view (the document editor) shown beside the page thumbnails. */
+.sppdf-custom-stage { display: flex; min-width: 0; min-height: 0; overflow: hidden; }
