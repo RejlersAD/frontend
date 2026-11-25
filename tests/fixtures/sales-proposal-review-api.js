@@ -122,6 +122,19 @@ export async function prepareProposalReview(page, configuration = {}) {
       commands.set(body.request_id, result);
       return route.fulfill({ status: action === 'bind' || action === 'comment' ? 201 : 200, json: result });
     }
+    // Optional standard Technical Proposal workspace for the in-canvas editor.
+    if (state.technicalWorkspace && path.endsWith(`/quotes/${proposalId}/workspace/`)) return route.fulfill({ json: state.technicalWorkspace });
+    if (state.technicalWorkspace && /\/workspace\/sections\/[a-z_]+\/content\/$/.test(path)) {
+      state.mutations.push({ action: 'edit', body, path });
+      state.editJobs = [{ id: 'edit-job', status: 'running', attempts: 1, result_version: null },
+        { id: 'edit-job', status: 'succeeded', attempts: 1, result_version: state.technicalWorkspace.current.version + 1 }];
+      return route.fulfill({ status: 202, json: { job: { id: 'edit-job', status: 'queued', attempts: 0, summary: { mode: 'edit' } } } });
+    }
+    if (state.technicalWorkspace && /\/workspace\/jobs\/[^/]+\/$/.test(path)) {
+      const next = state.editJobs?.length > 1 ? state.editJobs.shift() : state.editJobs?.[0];
+      if (next?.status === 'succeeded') state.technicalWorkspace.current.version = next.result_version;
+      return route.fulfill({ json: { job: next || null } });
+    }
     if (path.endsWith('/workspace/')) return route.fulfill({ json: { status: 'not_configured', can_upload: false,
       radai_storage: { status: 'ready', can_upload: true, max_upload_bytes: state.maxUploadBytes, folders: [] } } });
     if (path.endsWith('/workspace/folders/proposal/files/')) return route.fulfill({ json: { files: state.availableFiles || [{

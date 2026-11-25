@@ -1390,6 +1390,14 @@ class SalesService {
     )).data;
   }
 
+  async saveTechnicalProposalSectionContent(quoteId, sectionKey, payload) {
+    return (await apiClient.post(
+      `${BASE_URL}/quotes/${encodeURIComponent(quoteId)}/workspace/sections/${encodeURIComponent(sectionKey)}/content/`,
+      payload,
+      EMAIL_REQUEST_OPTIONS,
+    )).data;
+  }
+
   async regenerateTechnicalProposalSection(quoteId, sectionKey, payload) {
     return (await apiClient.post(
       `${BASE_URL}/quotes/${encodeURIComponent(quoteId)}/workspace/sections/${encodeURIComponent(sectionKey)}/regenerate/`,
