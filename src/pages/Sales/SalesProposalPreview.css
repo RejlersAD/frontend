@@ -177,3 +177,5 @@
 .spr-mode svg { width: 16px; height: 16px; color: var(--spr-muted); }
 .spr-mode select { height: 30px; border: 0; background: transparent; color: var(--spr-ink); font-weight: 500; }
 .spr-notice-success { border-bottom-color: #bcdccb; background: #effaf4; color: #166346; }
+.spr-toolbar-center { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.spr-toolbar-center .spr-page-controls { border-left: 1px solid var(--spr-line); }

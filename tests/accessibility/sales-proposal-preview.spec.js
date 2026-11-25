@@ -305,7 +305,6 @@ const technicalWorkspace = () => ({
 test('standard proposals can be edited in the canvas and the PDF is rebuilt as the next version', async ({ page }) => {
   await page.setViewportSize({ width: 1586, height: 992 });
   const state = await prepareProposalReview(page, { technicalWorkspace: technicalWorkspace() });
-  await page.getByRole('button', { name: 'Source PDF', exact: true }).click({ timeout: 50000 });
   await ready(page);
   await page.getByRole('tab', { name: 'Edit content', exact: true }).click();
   const editor = page.getByRole('complementary', { name: 'Edit proposal content' });
@@ -342,7 +341,8 @@ test('generated proposals open as a Word-style editable document saved through t
   await page.setViewportSize({ width: 1586, height: 992 });
   const state = await prepareProposalReview(page, { technicalWorkspace: technicalWorkspace() });
   const toolbar = page.getByLabel('Proposal document controls');
-  await expect(toolbar.getByRole('button', { name: 'Source PDF', exact: true })).toBeVisible({ timeout: 50000 });
+  await ready(page);                                   // opens as the generated PDF (Viewing)
+  await page.getByLabel('Document mode').selectOption('editing');
   await expect(toolbar.getByRole('status')).toHaveText(/Saved/);
   // The cover is a generated page that can now be edited too.
   await expect(page.getByText('Generated cover page: edit it directly.', { exact: false })).toBeVisible();
@@ -399,7 +399,8 @@ test('generated proposals open as a Word-style editable document saved through t
   // Page thumbnails stay beside the editor; a generated page shows the way back to editable content.
   await expect(page.getByRole('button', { name: 'Go to page 2' })).toBeVisible();
   await page.getByRole('button', { name: 'Go to page 3' }).click();
-  await expect(page.getByRole('heading', { name: 'Page 3 is generated' })).toBeVisible();
+  await expect(page.getByText('Page 3 is built automatically', { exact: false })).toBeVisible();
+  await expect(mainCanvas(page)).toBeVisible();     // generated-only pages stay visible as the PDF page
   await page.getByRole('button', { name: 'Go to page 2' }).click();
   await expect(content).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('proposal-document-editor.png') });
@@ -412,7 +413,8 @@ test('document editor formatting, header and footer, and generated pages are sav
   test.setTimeout(150000);   // three saves, each polled until the rebuilt version is shown
   await page.setViewportSize({ width: 1586, height: 992 });
   const state = await prepareProposalReview(page, { technicalWorkspace: technicalWorkspace() });
-  await expect(page.getByRole('button', { name: 'Source PDF', exact: true })).toBeVisible({ timeout: 50000 });
+  await ready(page);
+  await page.getByLabel('Document mode').selectOption('editing');
 
   // Generated cover page: editable, saved as a manual version of the page.
   const cover = page.getByLabel('COVER PAGE content');
@@ -489,7 +491,8 @@ test('long sections are laid out on separate A4 pages with header and footer on 
     { type: 'table', text: '', columns: ['Deliverable', 'Discipline', 'Status'], rows: Array.from({ length: 40 }, (_, index) => [`Deliverable ${index + 1}`, 'Process', 'Draft']) },
   ] });
   await prepareProposalReview(page, { technicalWorkspace: workspace });
-  await expect(page.getByRole('button', { name: 'Source PDF', exact: true })).toBeVisible({ timeout: 50000 });
+  await ready(page);
+  await page.getByLabel('Document mode').selectOption('editing');
   await page.getByRole('button', { name: 'Go to page 3' }).click();
   const content = page.getByLabel('3. EXECUTION PLAN content');
   await expect(content.getByText('Paragraph 30:', { exact: false })).toBeAttached();
