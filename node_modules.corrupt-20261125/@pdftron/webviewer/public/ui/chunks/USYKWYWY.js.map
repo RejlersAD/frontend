@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../../src/ui/src/hooks/useDirectionalChevronIcons/index.js", "../../../src/ui/src/hooks/useDirectionalChevronIcons/useDirectionalChevronIcons.js"],
+  "sourcesContent": ["import useDirectionalChevronIcons from './useDirectionalChevronIcons';\n\nexport default useDirectionalChevronIcons;", "\nimport useIsRTL from 'hooks/useIsRTL';\n\nconst useDirectionalChevronIcons = (forceLtr = false) => {\n  const isRTL = useIsRTL();\n  const isRightToLeft = forceLtr ? false : isRTL;\n  const startChevronIcon = isRightToLeft ? 'icon-chevron-right' : 'icon-chevron-left';\n  const endChevronIcon = isRightToLeft ? 'icon-chevron-left' : 'icon-chevron-right';\n  return { startChevronIcon, endChevronIcon };\n};\n\nexport default useDirectionalChevronIcons;"],
+  "mappings": "kFAAAA,IAAAC,IAAAC,ICAAC,IAAAC,IAAAC,IAGA,IAAMC,EAA6B,CAACC,EAAW,KAAU,CACvD,IAAMC,EAAQC,EAAS,EACjBC,EAAgBH,EAAW,GAAQC,EAGzC,MAAO,CAAE,iBAFgBE,EAAgB,qBAAuB,oBAErC,eADJA,EAAgB,oBAAsB,oBACnB,CAC5C,EAEOC,EAAQL,EDTf,IAAOM,EAAQA",
+  "names": ["init_dirname", "init_buffer", "init_process", "init_dirname", "init_buffer", "init_process", "useDirectionalChevronIcons", "forceLtr", "isRTL", "useIsRTL_default", "isRightToLeft", "useDirectionalChevronIcons_default", "useDirectionalChevronIcons_default"]
+}
