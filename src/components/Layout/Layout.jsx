@@ -1,37 +1,26 @@
-import React, { useLayoutEffect, useRef } from 'react'
+import React, { useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import Header from './Header'
-import FinanceCommandHeader from '../Finance/FinanceCommandHeader'
-import ProcurementOverviewHeader from './ProcurementOverviewHeader'
 import Footer from './Footer'
 import Sidebar from './Sidebar'
-import ProcurementApprovalReminder from '../ProcurementApprovalReminder'
-import useAuthenticatedPhoto from '../../hooks/useAuthenticatedPhoto'
-import useSidebarLayout from '../../hooks/useSidebarLayout'
-import { ProfilePhotoContext } from './ProfilePhotoContext'
-import { HelpContextProvider } from '../help/HelpContext'
-import ContextualHelpDrawer from '../help/ContextualHelpDrawer'
+import {
+  HEADER_HEIGHT_CLASS,
+  getMainMarginClass,
+} from '../../config/layout.config'
 
 /**
  * Layout Component
  * Smart layout wrapper with sidebar, header and footer.
- * Sidebar widths come from config/layout.config.js; the flex content fills
- * the remaining space as the navigation expands or collapses.
+ * Sidebar width + main-content offset are driven by config/layout.config.js
+ * so the two stay in sync (no overlap, no gap).
  */
 
 const Layout = () => {
   const location = useLocation()
-  const { isAuthenticated, user } = useSelector((state) => state.auth)
-  const authenticatedProfilePhoto = useAuthenticatedPhoto(isAuthenticated ? '/users/employees/my-profile-photo/' : null, `${user?.id || user?.user?.id}:${user?.profile_photo || ''}`)
-  const {
-    isDesktop,
-    sidebarOpen,
-    setSidebarOpen,
-    sidebarCollapsed,
-    setSidebarCollapsed,
-  } = useSidebarLayout()
-  const applicationContentRef = useRef(null)
+  const { isAuthenticated } = useSelector((state) => state.auth)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   // Public pages render their own navigation experience and should not show
   // the shared authenticated shell even when the user is logged in.
@@ -40,7 +29,6 @@ const Layout = () => {
     '/home',
     '/login',
     '/enquiry',
-    '/enquiries',
     '/solutions',
     '/about',
     '/services/pid-analysis',
@@ -52,7 +40,6 @@ const Layout = () => {
     '/terms-of-service',
     '/privacy-policy',
     '/setup-password',
-    '/candidate-forms',
     '/reset-password',
     '/request-password-reset',
     '/forgot-password',
@@ -65,77 +52,35 @@ const Layout = () => {
 
   const showSidebar = isAuthenticated && !isPublicRoute
   const showHeader = isAuthenticated && !isPublicRoute
-  const isApplicationShell = isAuthenticated && !isPublicRoute
-  const isMobileDrawerOpen = showSidebar && sidebarOpen && !isDesktop
-
-  useLayoutEffect(() => {
-    const content = applicationContentRef.current
-    content?.toggleAttribute('inert', isMobileDrawerOpen)
-    return () => content?.removeAttribute('inert')
-  }, [isMobileDrawerOpen])
-
-  const isPurchaseRecommendationFormRoute = (
-    location.pathname === '/procurement/requisitions/new'
-    || /^\/procurement\/requisitions\/[^/]+\/edit$/.test(location.pathname)
-  )
-  const isPurchaseOrderFormRoute = location.pathname === '/procurement/orders/new'
-  const isOpportunityRegister = location.pathname === '/sales/opportunities'
-  const isProposalRegister = location.pathname === '/sales/proposals'
-  const isClientRegister = location.pathname === '/sales/clients'
-  const isForecastWorkspace = location.pathname === '/sales/forecasts'
-  const isFrameworkWorkspace = location.pathname === '/sales/frameworks'
-  const isProposalPreview = /^\/sales\/proposals\/[^/]+\/preview\/?$/.test(location.pathname)
-  const isViewportWorkspace = ['/dashboard', '/executive', '/approvals', '/notifications', '/admin/enquiries', '/radai-intelligence'].includes(location.pathname) || isOpportunityRegister || isProposalRegister || isProposalPreview || isClientRegister || isForecastWorkspace || isFrameworkWorkspace
-  const isVendorWorkspace = location.pathname === '/procurement/vendors'
-  const isFlushWorkspace = ['/profile', '/hr/Employeprofile'].includes(location.pathname)
-  const isFinanceCommandWorkspace = ['/finance', '/finance/'].includes(location.pathname)
-  const isProcurementOverview = ['/procurement', '/procurement/'].includes(location.pathname)
-  const isHRDashboard = ['/hr', '/hr/', '/hr/talent-acquisition'].includes(location.pathname)
   // Hide the shared footer on public pages that render their own or are auth flow pages.
-  const showFooter = !isPublicRoute && !isPurchaseRecommendationFormRoute && !isPurchaseOrderFormRoute && !isViewportWorkspace && !isFlushWorkspace && !isFinanceCommandWorkspace && !isProcurementOverview && !isHRDashboard
+  const showFooter = !isPublicRoute
 
-  const application = (
-    <div className={`${isApplicationShell ? 'h-dvh overflow-hidden' : 'min-h-screen'} flex bg-gray-50 dark:bg-gray-900`}>
-      {showSidebar && (
-        <Sidebar
-          isOpen={sidebarOpen}
-          setIsOpen={setSidebarOpen}
-          isCollapsed={sidebarCollapsed}
-          setIsCollapsed={setSidebarCollapsed}
-        />
+  const mainMarginClass = getMainMarginClass(showSidebar, sidebarOpen, sidebarCollapsed)
+  const contentOffsetClass = showHeader ? HEADER_HEIGHT_CLASS : ''
+
+  return (
+    <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
+      {showHeader && (
+        <Header sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} showSidebar={showSidebar} />
       )}
-
-      <div
-        id="application-content"
-        ref={applicationContentRef}
-        aria-hidden={isMobileDrawerOpen ? true : undefined}
-        className="isolate flex min-h-0 min-w-0 flex-1 flex-col"
-      >
-        {showHeader && isFinanceCommandWorkspace && <FinanceCommandHeader sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} profilePhotoUrl={authenticatedProfilePhoto} />}
-        {showHeader && isProcurementOverview && <ProcurementOverviewHeader sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} profilePhotoUrl={authenticatedProfilePhoto} />}
-        {showHeader && !isFinanceCommandWorkspace && !isProcurementOverview && (
-          <Header
-            sidebarOpen={sidebarOpen}
-            setSidebarOpen={setSidebarOpen}
-            showSidebar={showSidebar}
-            profilePhotoUrl={authenticatedProfilePhoto}
+      <div className={`flex flex-1 ${contentOffsetClass}`}>
+        {showSidebar && (
+          <Sidebar
+            isOpen={sidebarOpen}
+            setIsOpen={setSidebarOpen}
+            isCollapsed={sidebarCollapsed}
+            setIsCollapsed={setSidebarCollapsed}
           />
         )}
-        <main className={`main-content min-w-0 flex-1 overflow-x-hidden transition-all duration-300 ${isApplicationShell ? 'min-h-0' : ''} ${isVendorWorkspace ? 'supplier-workspace-main' : ''} ${isProcurementOverview ? 'procurement-overview-main' : ''} ${isForecastWorkspace || isFrameworkWorkspace ? 'overflow-y-auto min-[1101px]:overflow-y-hidden' : isOpportunityRegister || isProposalRegister || isClientRegister ? 'overflow-y-auto min-[1001px]:overflow-y-hidden' : isProposalPreview ? 'overflow-y-auto min-[801px]:overflow-y-hidden' : isViewportWorkspace ? 'overflow-y-hidden' : isApplicationShell ? 'overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : ''} ${showHeader && !isFlushWorkspace && !isFinanceCommandWorkspace && !isProcurementOverview && !isHRDashboard && !isOpportunityRegister && !isProposalRegister && !isProposalPreview && !isClientRegister && !isForecastWorkspace && !isFrameworkWorkspace ? 'pt-2 sm:pt-3' : ''}`}>
+        <main
+          className={`main-content flex-grow min-w-0 transition-all duration-300 ${mainMarginClass} overflow-x-hidden`}
+        >
           <Outlet />
         </main>
-        {showFooter && <Footer />}
-        {showHeader && location.pathname !== '/executive' && <ProcurementApprovalReminder />}
       </div>
-
-      {showHeader && <ContextualHelpDrawer />}
+      {showFooter && <Footer />}
     </div>
   )
-
-  return isApplicationShell
-    ? <ProfilePhotoContext.Provider value={{ photo: authenticatedProfilePhoto, userId: user?.user?.id || user?.id, email: user?.email || user?.user?.email }}><HelpContextProvider>{application}</HelpContextProvider></ProfilePhotoContext.Provider>
-    : application
 }
 
 export default Layout
-

@@ -60,32 +60,8 @@ const FINDINGS = {
     };
   },
   SECTION_NO_SOURCE: (message) => ({
-    title: `${(/section (.+?) has no source/i.exec(message) || [])[1] || "A required section"} has no tender source`,
-    detail: "Select the tender documents that cover it and generate again.",
-  }),
-  SECTION_NOT_DRAFTED: (message) => ({
-    title: `${message.split(":")[0]} could not be written`,
-    detail: `${message.split(":").slice(1).join(":").trim()}. Rewrite the section or generate again.`.replace(/^\. /, ""),
-  }),
-  UNSUPPORTED_STATEMENT_REMOVED: (message) => ({
-    title: message,
-    detail: "Statements without a tender source are never included in the proposal.",
-  }),
-  OPEN_POINT: (message) => ({
-    title: message.split(": ").slice(1).join(": ") || message,
-    detail: `Raised while writing ${message.split(": ")[0]}.`,
-  }),
-  EVIDENCE_REQUIRED: (message) => ({
-    title: `${message.split(":")[0]} needs company evidence`,
-    detail: `${(/\(([^)]+)\)/.exec(message) || [])[1] || "Company documents"} – supplied by the Rejlers Evidence Library.`,
-  }),
-  REQUIREMENT_NOT_ADDRESSED: (message) => ({
-    title: message.split(";")[0],
-    detail: "Check them in the compliance matrix at the end of the proposal.",
-  }),
-  REVIEW_NOT_ATTACHED: () => ({
-    title: "The PDF was not attached to the review canvas",
-    detail: "Attach it from Review & comments.",
+    title: `${(/section (.+?) has no source/i.exec(message) || [])[1] || "A required section"} has no document`,
+    detail: "Add the document to the proposal folder and generate again.",
   }),
   COMPONENT_NO_SOURCE: (message) => ({
     title: `Document missing in ${(/^(.+?):/.exec(message) || [])[1] || "a section"}`,
@@ -223,13 +199,20 @@ export const kindLabel = (kind) => KIND_LABELS[kind] || "Generated";
 // Coverage of one section from the document check (plan) or a saved proposal section.
 export function sectionCoverage(entry) {
   if (!Array.isArray(entry?.components)) {
-    const documents = (Array.isArray(entry?.documents) ? entry.documents : []).map((name) => ({
+    const documents = (
+      Array.isArray(entry?.documents) ? entry.documents : []
+    ).map((name) => ({
       name: fileName(name),
       pages: null,
     }));
-    const state = entry?.kind === "authored"
-      ? documents.length ? "complete" : "missing"
-      : entry?.kind === "evidence" ? "evidence" : "standard";
+    const state =
+      entry?.kind === "authored"
+        ? documents.length
+          ? "complete"
+          : "missing"
+        : entry?.kind === "evidence"
+          ? "evidence"
+          : "standard";
     return { documents, state, label: kindLabel(entry?.kind) };
   }
   const components = entry?.components || [];
@@ -258,16 +241,24 @@ export function reviewSections(content) {
   const registry = content?.evidence_registry || {};
   const sections = Array.isArray(content?.sections) ? content.sections : [];
   return sections.map((section) => {
-    const paragraphs = Array.isArray(section?.paragraphs) ? section.paragraphs : [];
-    const cited = [...new Set(paragraphs.flatMap((item) =>
-      Array.isArray(item?.evidence_ids) ? item.evidence_ids : []))];
+    const paragraphs = Array.isArray(section?.paragraphs)
+      ? section.paragraphs
+      : [];
+    const cited = [
+      ...new Set(
+        paragraphs.flatMap((item) =>
+          Array.isArray(item?.evidence_ids) ? item.evidence_ids : [],
+        ),
+      ),
+    ];
     const sourceCounts = {};
     for (const id of cited) {
       const entry = registry[id];
       if (!entry) continue;
-      const name = entry.kind === "standard"
-        ? "Rejlers standard methodology"
-        : fileName(entry.source);
+      const name =
+        entry.kind === "standard"
+          ? "Rejlers standard methodology"
+          : fileName(entry.source);
       if (name) sourceCounts[name] = (sourceCounts[name] || 0) + 1;
     }
     for (const paragraph of paragraphs) {
@@ -276,26 +267,35 @@ export function reviewSections(content) {
     }
     const authored = paragraphs.filter((item) => item?.kind !== "generated");
     const issues = presentFindings(section.findings);
-    const pages = Array.isArray(section?.pages) && section.pages.length ? section.pages : null;
+    const pages =
+      Array.isArray(section?.pages) && section.pages.length
+        ? section.pages
+        : null;
     return {
       key: section.key,
       title: section.title,
       kind: section.kind || "authored",
       kindLabel: kindLabel(section.kind || "authored"),
-      attachments: Array.isArray(section.attachments) ? section.attachments : [],
+      attachments: Array.isArray(section.attachments)
+        ? section.attachments
+        : [],
       approved: Boolean(section.approved),
       required: Boolean(section.required),
       sources: Object.entries(sourceCounts)
         .sort((a, b) => b[1] - a[1])
         .map(([name]) => name),
-      preview: authored.slice(0, 2)
+      preview: authored
+        .slice(0, 2)
         .map((item) => String(item?.text || "").slice(0, 420))
         .filter(Boolean),
       paragraphs: authored.length,
       blockers: issues.blockers,
       checks: issues.checks,
       pages,
-      firstPage: pages?.[0] || paragraphs.find((item) => item?.binder_pages)?.binder_pages?.[0] || null,
+      firstPage:
+        pages?.[0] ||
+        paragraphs.find((item) => item?.binder_pages)?.binder_pages?.[0] ||
+        null,
     };
   });
 }
@@ -317,8 +317,6 @@ const JOB_ERRORS = {
     "The proposal could not be built. Try again; if it fails again, contact support.",
   attempts_exhausted:
     "The proposal could not be built after several attempts. Contact support.",
-  ai_provider_unavailable:
-    "The AI service rejected every request, so no new version was saved and the current proposal is unchanged. An administrator should check the AI credential and credit (Admin › AI providers), then generate again.",
 };
 
 export function presentJob(job) {
