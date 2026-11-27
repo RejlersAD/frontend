@@ -329,3 +329,13 @@
   .radai-ai-history-actions { padding-right: 4px; }
   .radai-ai-history-actions button { width: 28px; }
 }
+/* Phone layout fixes (presentation only): answer heading wraps its labels under the name,
+   and answer tables keep readable column widths and scroll sideways inside their own box. */
+@media (max-width: 640px) {
+  .radai-ai-assistant-heading { flex-wrap: wrap; gap: 6px 10px; }
+  .radai-ai-assistant-heading > strong, .radai-ai-assistant-heading time { white-space: nowrap; }
+  .radai-ai-assistant-heading .radai-ai-meta { flex-basis: 100%; margin-left: 0; }
+  .radai-ai-meta > span { white-space: nowrap; }
+  .radai-ai-table th, .radai-ai-table td { min-width: 8.5rem; }
+  .radai-ai-table th:first-child, .radai-ai-table td:first-child { min-width: 7rem; }
+}

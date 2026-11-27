@@ -461,8 +461,8 @@ const DashSummaryCard = ({ projectsData = [] }) => {
 
   return (
     <>
-      {/* ✅ UPDATED: Responsive Grid - Adjusted for 5 cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 sm:gap-5 md:gap-6">
+      {/* ✅ UPDATED: Responsive Grid - 2-up on phones (last card spans the row), 3 on lg, 5 on xl */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-5 md:gap-6 [&>*:last-child]:col-span-2 lg:[&>*:last-child]:col-span-1">
         {pendingActivitiesSummary.map((item) => (
           <Card
             key={item.title}
@@ -470,15 +470,15 @@ const DashSummaryCard = ({ projectsData = [] }) => {
               (typeof item.value === 'number' && item.value === 0)
                 ? 'cursor-default opacity-90'
                 : 'cursor-pointer'
-            } bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 w-full max-w-none`}
+            } bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 w-full min-w-0 max-w-none`}
             onClick={() => handleOpen(item)}
           >
             <CardHeader className="p-3 sm:p-4 md:p-5">
               <div className={`w-fit rounded-lg p-2 transition-colors ${item.color}`}>
                 <item.icon size={20} className="sm:w-6 sm:h-6 md:w-7 md:h-7" />
               </div>
-              <div className="flex items-start justify-between w-full gap-2">
-                <p className="card-title font-semibold text-xs sm:text-sm md:text-sm leading-tight flex-1">
+              <div className="flex flex-wrap items-start justify-between w-full gap-1 sm:gap-2">
+                <p className="card-title min-w-0 w-full sm:w-auto sm:flex-1 font-semibold text-xs sm:text-sm md:text-sm leading-tight">
                   {item.title}
                 </p>
                 <div className="flex-shrink-0">

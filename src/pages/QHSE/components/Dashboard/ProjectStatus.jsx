@@ -402,7 +402,31 @@ const ProjectStatus = ({ projectsData = [], loading = false, onRefresh }) => {
 
       {/* Filter Buttons SECOND */}
       <Box sx={{ mb: 2, mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-        <ButtonGroup variant="outlined" size="small" className="bg-white dark:bg-slate-800">
+        <ButtonGroup
+          variant="outlined"
+          size="small"
+          className="bg-white dark:bg-slate-800"
+          sx={(theme) => ({
+            // Phones: 2 x 2 grid of separate buttons instead of one squeezed row
+            [theme.breakpoints.down('sm')]: {
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: 1,
+              width: '100%',
+              backgroundColor: 'transparent !important',
+              boxShadow: 'none',
+              '& .MuiButtonGroup-grouped': {
+                borderRadius: '8px !important',
+                marginLeft: '0 !important',
+                fontSize: '0.72rem',
+                whiteSpace: 'nowrap',
+              },
+              '& .MuiButtonGroup-grouped.MuiButton-outlined': {
+                borderColor: 'currentColor',
+              },
+            },
+          })}
+        >
           <Button 
             variant={activeFilter === 'ALL' ? 'contained' : 'outlined'}
             onClick={() => handleFilterChange('ALL')}
@@ -442,7 +466,7 @@ const ProjectStatus = ({ projectsData = [], loading = false, onRefresh }) => {
       {/* Main Table */}
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 shadow-lg">
         {/* Header */}
-        <div className="p-6 border-b border-gray-200 dark:border-slate-800 bg-gray-50 dark:bg-slate-800 rounded-t-xl">
+        <div className="p-3 sm:p-6 border-b border-gray-200 dark:border-slate-800 bg-gray-50 dark:bg-slate-800 rounded-t-xl">
           <Box 
             display="flex" 
             alignItems="center" 
@@ -470,7 +494,7 @@ const ProjectStatus = ({ projectsData = [], loading = false, onRefresh }) => {
               </Typography>
             </Box> */}
             
-            <Box display="flex" gap={2} alignItems="center">
+            <Box display="flex" gap={2} alignItems="center" sx={{ width: { xs: '100%', sm: 'auto' } }}>
               <TextField
                 size="small"
                 placeholder="Search projects..."
@@ -486,7 +510,8 @@ const ProjectStatus = ({ projectsData = [], loading = false, onRefresh }) => {
                   className: "!text-gray-900 dark:!text-slate-100"
                 }}
                 sx={{ 
-                  minWidth: isMobile ? '200px' : '300px',
+                  minWidth: isMobile ? 0 : '300px',
+                  width: { xs: '100%', sm: 'auto' },
                   '& .MuiOutlinedInput-root': {
                     borderRadius: 2,
                     '& fieldset': {
@@ -770,7 +795,19 @@ const ProjectStatus = ({ projectsData = [], loading = false, onRefresh }) => {
             className="!text-gray-900 dark:!text-slate-100"
             sx={{
               '& .MuiTablePagination-toolbar': {
-                minHeight: '52px'
+                minHeight: '52px',
+                flexWrap: 'wrap',
+                rowGap: 0.5,
+                px: { xs: 1, sm: 2 }
+              },
+              '& .MuiTablePagination-spacer': {
+                display: { xs: 'none', sm: 'block' }
+              },
+              '& .MuiTablePagination-input': {
+                mr: { xs: 1, sm: 4 }
+              },
+              '& .MuiTablePagination-actions': {
+                ml: { xs: 'auto', sm: 2.5 }
               },
               '& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows': {
                 fontWeight: 500

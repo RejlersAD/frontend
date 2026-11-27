@@ -38,7 +38,7 @@ import { generateQHSETimelineData } from './utils/chartUtils';
 
 const GeneralQHSE = () => {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-slate-50">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-slate-50 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900">
       <Routes>
         <Route index element={<QHSEDashboard />} />
         <Route path="/" element={<QHSEDashboard />} />
@@ -221,7 +221,7 @@ const QHSEDashboard = () => {
           }
         ` : ''}
       `}</style>
-      <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
+      <div className="p-3 sm:p-6 lg:p-8 w-full max-w-[1800px] min-w-0 mx-auto">
         {/* Header */}
         <MainHeader 
         title="QHSE Dashboard"
@@ -231,7 +231,7 @@ const QHSEDashboard = () => {
         isRefreshing={isRefreshing}
         className="mb-6"
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           {/* Sidebar toggle */}
           <Tooltip title={sidebarVisible ? 'Hide Sidebar' : 'Show Sidebar'}>
             <IconButton
@@ -268,27 +268,27 @@ const QHSEDashboard = () => {
       </MainHeader>
 
       {/* Navigation Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
         {navCards.map((card) => (
           <button
             key={card.path}
             onClick={() => navigate(card.path)}
-            className="group relative overflow-hidden rounded-xl bg-white p-6 shadow-lg hover:shadow-2xl transition-all duration-300 border border-gray-200 hover:border-gray-300"
+            className="group relative min-w-0 overflow-hidden rounded-xl bg-white dark:bg-slate-900 p-3 sm:p-5 xl:p-6 shadow-lg hover:shadow-2xl transition-all duration-300 border border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600"
           >
             {card.badge && (
-              <div className="absolute top-3 right-3 px-2 py-1 text-xs font-bold text-white bg-gradient-to-r from-purple-500 to-pink-500 rounded-full animate-pulse">
+              <div className="absolute top-2 right-2 sm:top-3 sm:right-3 px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-xs font-bold text-white bg-gradient-to-r from-purple-500 to-pink-500 rounded-full animate-pulse">
                 {card.badge}
               </div>
             )}
-            <div className="flex items-start space-x-4">
-              <div className={`flex-shrink-0 p-3 rounded-lg bg-gradient-to-br ${card.color} text-white group-hover:scale-110 transition-transform duration-300`}>
-                <card.icon className="h-6 w-6" />
+            <div className="flex flex-col sm:flex-row items-start gap-2 sm:gap-4">
+              <div className={`flex-shrink-0 p-2 sm:p-3 rounded-lg bg-gradient-to-br ${card.color} text-white group-hover:scale-110 transition-transform duration-300`}>
+                <card.icon className="h-5 w-5 sm:h-6 sm:w-6" />
               </div>
-              <div className="flex-1 text-left">
-                <h3 className="text-lg font-semibold text-gray-900 mb-1 group-hover:text-blue-600 transition-colors">
+              <div className="flex-1 min-w-0 text-left">
+                <h3 className="text-sm sm:text-base xl:text-lg font-semibold leading-snug text-gray-900 dark:text-slate-100 mb-0.5 sm:mb-1 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                   {card.title}
                 </h3>
-                <p className="text-sm text-gray-600">
+                <p className="hidden sm:block text-xs xl:text-sm text-gray-600 dark:text-slate-400">
                   {card.description}
                 </p>
               </div>
@@ -344,7 +344,7 @@ const SummaryViewWrapper = () => {
 
 const DetailedViewWrapper = () => {
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
+    <div className="p-3 sm:p-6 lg:p-8 w-full max-w-[1800px] min-w-0 mx-auto">
       <DetailedView />
     </div>
   );

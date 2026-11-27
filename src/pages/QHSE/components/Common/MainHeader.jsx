@@ -49,33 +49,33 @@ export const MainHeader = ({
   }, [lastUpdated, dataLastChanged]);
 
   return (
-    <header className="mb-8">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
+    <header className="mb-6 sm:mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+        <div className="flex items-start sm:items-center gap-3 sm:gap-4 min-w-0">
           {showLogo && (
             logoUrl ? (
               <img
                 src={logoUrl}
                 alt="QHSE Logo"
-                className="drop-shadow-md w-16 h-16 rounded-full object-cover"
+                className="drop-shadow-md w-12 h-12 sm:w-16 sm:h-16 shrink-0 rounded-full object-cover"
               />
             ) : (
-              <div className="p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl shadow-lg">
-                <ShieldCheck className="w-10 h-10 text-white" />
+              <div className="shrink-0 p-2.5 sm:p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl shadow-lg">
+                <ShieldCheck className="w-7 h-7 sm:w-10 sm:h-10 text-white" />
               </div>
             )
           )}
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">
               {title}
             </h1>
             <p className="text-gray-600 dark:text-gray-300 text-sm sm:text-base">
               {subtitle}
             </p>
             
-            {showLiveStatus && <div className="p-2">
-              <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
-                <div className={`w-2 h-2 rounded-full animate-pulse ${
+            {showLiveStatus && <div className="pt-2 sm:p-2">
+              <div className="flex items-start sm:items-center gap-2 text-green-700 dark:text-green-300">
+                <div className={`w-2 h-2 shrink-0 mt-1 sm:mt-0 rounded-full animate-pulse ${
                   isRefreshing ? 'bg-blue-500' : 'bg-green-500'
                 }`}></div>
                 <span className="text-xs font-medium">
@@ -89,7 +89,7 @@ export const MainHeader = ({
         
         {/* Control buttons */}
         {children && (
-          <div className="flex items-center gap-2 ml-auto">
+          <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
             {children}
           </div>
         )}

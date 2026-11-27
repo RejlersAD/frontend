@@ -87,9 +87,9 @@ function Notice({ tone = "info", children }) {
 function UpgradeHint({ needed }) {
   return (
     <Notice>
-      <span className="inline-flex items-center gap-2">
-        <Lock className="h-4 w-4" />
-        This needs the <strong>{EDITION_LABEL[needed]}</strong> edition. Ask your platform administrator to upgrade your organization.
+      <span className="inline-flex items-start gap-2 sm:items-center">
+        <Lock className="mt-0.5 h-4 w-4 shrink-0 sm:mt-0" />
+        <span>This needs the <strong>{EDITION_LABEL[needed]}</strong> edition. Ask your platform administrator to upgrade your organization.</span>
       </span>
     </Notice>
   );
