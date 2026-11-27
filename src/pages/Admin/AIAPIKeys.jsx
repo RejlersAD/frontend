@@ -73,22 +73,36 @@ function KeyForm({ credential, overview, onSaved, onClose, onDenied }) {
   </SettingsDialog>
 }
 
-function ProviderForm({ provider, onSaved, onClose, onDenied }) {
+function ProviderForm({ provider, credentials, onSaved, onClose, onDenied }) {
   const [enabled, setEnabled] = useState(provider.enabled), [model, setModel] = useState(provider.model || '')
+  // The key this provider uses: its enabled keys, with the current default preselected.
+  const usable = credentials.filter(row => row.provider === provider.provider && (row.enabled || row.is_selected))
+  const current = usable.find(row => row.is_selected)
+  const [keyId, setKeyId] = useState(String(current?.id || usable.find(row => row.enabled)?.id || ''))
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
   const inFlight = useRef(false)
   const submit = async event => {
     event.preventDefault()
     if (inFlight.current) return
     inFlight.current = true; setBusy(true); setError('')
-    try { onSaved(await API.updateAIProvider(provider.provider, { expected_revision: provider.revision, enabled, model: model.trim() }), 'Provider settings updated.') }
+    try {
+      let next = await API.updateAIProvider(provider.provider, { expected_revision: provider.revision, enabled, model: model.trim() })
+      const chosen = usable.find(row => String(row.id) === keyId)
+      if (chosen && !chosen.is_selected) {
+        // Selecting a key changes the provider's revision, so use the one the first save returned.
+        const latest = next.credentials.find(row => row.id === chosen.id)
+        const providerRevision = next.providers.find(row => row.provider === provider.provider)?.revision ?? 0
+        next = await API.selectAIKey(chosen.id, { expected_revision: latest?.revision ?? chosen.revision, expected_provider_revision: providerRevision })
+      }
+      onSaved(next, 'Provider settings updated.')
+    }
     catch (reason) { setError(API.aiKeyError(reason)); if ([401, 403].includes(reason?.response?.status)) onDenied() }
     finally { inFlight.current = false; setBusy(false) }
   }
   return <SettingsDialog title={`${providerName(provider.provider)} settings`} busy={busy} onClose={onClose}><form onSubmit={submit}>
     <p>Disabling a managed provider stops central AI use for that provider. Legacy credentials will not be activated instead.</p>
     {error && <p role="alert" className="aik-message aik-warning">{error}</p>}
-    <fieldset disabled={busy}><label className="aik-check"><input type="checkbox" checked={enabled} onChange={event => setEnabled(event.target.checked)} /> Enable provider</label><label>Default model (optional)<input value={model} maxLength={160} onChange={event => setModel(event.target.value)} autoComplete="off" /><small>Leave blank to retain each module’s supported model. A model must be supported by the consuming module.</small></label></fieldset>
+    <fieldset disabled={busy}><label>Key in use{usable.length ? <select value={keyId} onChange={event => setKeyId(event.target.value)}>{!current && <option value="" disabled>Choose a saved key</option>}{usable.map(row => <option key={row.id} value={row.id} disabled={!row.enabled}>{row.label}{row.is_selected ? ' (current)' : ''}{row.enabled ? '' : ' - disabled'}</option>)}</select> : <small>No {providerName(provider.provider)} key is saved yet. Close this window and use Add API key first.</small>}{usable.length > 0 && <small>RADAI sends {providerName(provider.provider)} requests with this key.</small>}</label><label className="aik-check"><input type="checkbox" checked={enabled} onChange={event => setEnabled(event.target.checked)} /> Enable provider</label><label>Default model (optional)<input value={model} maxLength={160} onChange={event => setModel(event.target.value)} autoComplete="off" /><small>Leave blank to retain each module’s supported model. A model must be supported by the consuming module.</small></label></fieldset>
     <footer><button type="button" className="aik-button" disabled={busy} onClick={onClose}>Cancel</button><button className="aik-button aik-primary" disabled={busy}>Save provider</button></footer>
   </form></SettingsDialog>
 }
@@ -150,7 +164,7 @@ function AIKeysConsole() {
       </div><p className="aik-footnote"><ShieldCheck size={16} />Keys remain on the server. Connection tests verify only the named model at the recorded time; extraction results still need review.</p>
     </>}
     {dialog?.type === 'add' || dialog?.type === 'edit' ? <KeyForm credential={dialog.credential} overview={overview} onSaved={saved} onClose={() => setDialog(null)} onDenied={deny} /> : null}
-    {dialog?.type === 'provider' && <ProviderForm provider={dialog.provider} onSaved={saved} onClose={() => setDialog(null)} onDenied={deny} />}
+    {dialog?.type === 'provider' && <ProviderForm provider={dialog.provider} credentials={overview?.credentials || []} onSaved={saved} onClose={() => setDialog(null)} onDenied={deny} />}
     {dialog?.type === 'test' && <TestForm credential={dialog.credential} provider={dialog.provider} onSaved={saved} onClose={() => setDialog(null)} onDenied={deny} />}
     {dialog?.type === 'delete' && <SettingsDialog title="Remove AI API key" busy={busy} onClose={() => setDialog(null)}><div className="aik-dialog-body"><p>Remove <strong>{dialog.credential.label}</strong>? {dialog.credential.is_selected ? 'This is the default key. A replacement will not be selected automatically.' : 'The selected default key will remain unchanged.'}</p>{error && <p role="alert" className="aik-message aik-warning">{error}</p>}<footer><button className="aik-button" disabled={busy} onClick={() => setDialog(null)}>Cancel</button><button className="aik-button aik-danger" disabled={busy} onClick={() => mutate(() => API.deleteAIKey(dialog.credential.id, revisions(dialog.credential)), 'Credential removed.')}>Remove key</button></footer></div></SettingsDialog>}
   </section>

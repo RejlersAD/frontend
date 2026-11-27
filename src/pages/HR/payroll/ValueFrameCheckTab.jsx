@@ -150,7 +150,7 @@ export default function ValueFrameCheckTab({ onOpenEmployee }) {
             </label>
           )}
           {current && <button type="button" className="att-button" onClick={exportCsv} disabled={!rows.length}><Icon name="ArrowDownTrayIcon" />Export</button>}
-          {current && summary?.flagged > 0 && <button type="button" className="att-button vf-to-payroll" onClick={() => setSendOpen(true)}
+          {current && summary?.flagged > 0 && summary?.attendance_available !== false && <button type="button" className="att-button vf-to-payroll" onClick={() => setSendOpen(true)}
             title="Send booked-but-not-present days to Payroll Management as pending deductions"><Icon name="BanknotesIcon" />Send to Payroll</button>}
           {current && <button type="button" className="att-button vf-delete" onClick={removeImport} aria-label="Delete this ValueFrame upload" title="Delete this upload"><Icon name="TrashIcon" /></button>}
           <label className={`att-button att-upload ${uploading ? 'is-busy' : ''}`}>
@@ -163,6 +163,11 @@ export default function ValueFrameCheckTab({ onOpenEmployee }) {
 
       {notice && <p className="vf-notice" role="status"><Icon name="CheckCircleIcon" />{notice}</p>}
       {error && <p className="vf-error" role="alert"><Icon name="ExclamationTriangleIcon" />{error}</p>}
+      {summary?.attendance_available === false && (
+        <p className="vf-error" role="alert"><Icon name="ExclamationTriangleIcon" />
+          Real-time attendance is not reachable right now (Monthly matrix source unavailable), so present days and actual hours show 0.
+          These results are not reliable and cannot be sent to Payroll. Refresh once the Monthly matrix shows data again.</p>
+      )}
       {current?.warnings?.length > 0 && <p className="vf-warn"><Icon name="InformationCircleIcon" />{current.warnings.join(' ')}</p>}
 
       {!loading && !imports.length && !error && (

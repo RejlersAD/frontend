@@ -16,6 +16,9 @@ import {
   Menu,
   Minimize2,
   MessageCircle,
+  MessageSquarePlus,
+  MoreHorizontal,
+  Pencil,
   Pin,
   Palette,
   Paperclip,
@@ -23,7 +26,6 @@ import {
   Plug,
   Search,
   ShieldCheck,
-  Sparkles,
   Trash2,
   Users,
   X,
@@ -38,7 +40,7 @@ import {
   listAIChatModels,
   listRecentAIConversations,
   listAIProjects,
-  sendAIMessage,
+  streamAIMessage,
   updateAIConversation,
   updateAIProject,
   uploadAIAttachment,
@@ -59,9 +61,29 @@ import RadaiConnectorsDialog from "./RadaiConnectorsDialog";
 import RadaiAddToProjectDialog from "./RadaiAddToProjectDialog";
 import RadaiSkillsDialog from "./RadaiSkillsDialog";
 import RadaiPromptStarters, { recordSkillUse } from "./RadaiPromptStarters";
+import RadaiUsageMeter from "./RadaiUsageMeter";
+import RadaiStreamingReply, { AnswerMeta, RejlersMark, answerMarkdownComponents } from "./RadaiStreamingReply";
 import RadaiConversationHistory, { chatTitle, readPinnedChats, relativeTime, writePinnedChats } from "./RadaiConversationHistory";
 import TeamsGovernancePage from "./TeamsGovernancePage";
 import "./RadaiAIProjectPage.css";
+import { useSelector } from "react-redux";
+import ProfileAvatar from "../components/Common/ProfileAvatar";
+import { useCurrentProfilePhoto } from "../components/Layout/ProfilePhotoContext";
+import { USER_DISPLAY_CONFIG } from "../config/userDisplay.config";
+
+// The signed-in person's profile photo beside their messages, with their initials when there is none.
+function ChatUserAvatar() {
+  const user = useSelector((state) => state.auth.user);
+  const shared = useCurrentProfilePhoto();
+  const account = user?.user || user;
+  const photo = shared.photo || user?.profile_photo || account?.profile_photo || user?.employee?.profile_photo || "";
+  return (
+    <span className="radai-ai-user-avatar" aria-hidden="true">
+      <ProfileAvatar name={USER_DISPLAY_CONFIG.formatting.getDisplayName(user)} photoUrl={photo}
+        photoEndpoint="/users/employees/my-profile-photo/" className="h-full w-full" />
+    </span>
+  );
+}
 
 const FOCUS_KEY = "radai.intelligence.focus";
 
@@ -76,6 +98,7 @@ const menuEntries = [
   { id: "connectors", label: "Connectors", icon: Plug, supported: true, hint: "Project documents, line lists" },
   { id: "design", label: "Design system", icon: Palette, supported: true },
   { id: "web", label: "Web search", icon: Globe, supported: true },
+  { id: "cowork", label: "Cowork with your team", icon: Users, supported: false },
 ];
 
 const GENERATION_FORMATS = [
@@ -106,6 +129,7 @@ export default function RadaiAIProjectPage() {
   const [projects, setProjects] = useState([]);
   const [models, setModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState("");
+  const [modelScope, setModelScope] = useState("general");  // general chat runs on Gemini Flash
   const [modelError, setModelError] = useState("");
   const [projectId, setProjectId] = useState("");
   const [view, setView] = useState("chat");
@@ -147,6 +171,14 @@ export default function RadaiAIProjectPage() {
   const [query, setQuery] = useState("");
   const [history, setHistory] = useState([]);
   const [recentChats, setRecentChats] = useState([]);
+  const [confirmDelete, setConfirmDelete] = useState(null);  // Recent chat waiting for "Delete?"
+  const [deleteError, setDeleteError] = useState("");
+  const [recentVersion, setRecentVersion] = useState(0);  // bump to reload Recent from the server
+  const [recentMenu, setRecentMenu] = useState(null);  // { row, left, top } for the open "More" menu
+  const [renamingId, setRenamingId] = useState(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const renaming = useRef(null);  // saves once even when Enter and leaving the field both fire
+  const [linkRow, setLinkRow] = useState(null);  // Recent chat being added to a project
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState("");
   const [pinnedChats, setPinnedChats] = useState(readPinnedChats);
@@ -188,6 +220,10 @@ export default function RadaiAIProjectPage() {
   const fileInput = useRef(null);
   const menuItemRefs = useRef([]);
   const retry = useRef(null);
+  // The question being answered and the answer text received so far, until the saved conversation arrives.
+  const [pending, setPending] = useState(null);
+  const streamAbort = useRef(null);
+  useEffect(() => () => streamAbort.current?.abort(), []);
   useEffect(() => {
     if (!menuOpen) return undefined;
     const reposition = () => {
@@ -245,10 +281,13 @@ export default function RadaiAIProjectPage() {
       active = false;
     };
   }, []);
+  // Reload the model menu when the project, or the models its owner allows, change.
+  const projectModelsKey = project ? `${project.default_chat_model || ""}|${(project.chat_models || []).map((row) => row.model_id).join(",")}` : "";
   useEffect(() => {
     let active = true;
-    listAIChatModels().then((result) => {
+    listAIChatModels(projectId || undefined).then((result) => {
       if (active) {
+        setModelScope(result.scope || "general");
         setModels(result.models || []);
         setSelectedModel(result.default_model || "");
         setWebStatus(result.web_search || { allowed: false, reason: "" });
@@ -258,7 +297,7 @@ export default function RadaiAIProjectPage() {
       }
     }).catch(() => { if (active) { setModels([]); setModelError("Model list could not be loaded. Check the Django connection."); } });
     return () => { active = false; };
-  }, []);
+  }, [projectId, projectModelsKey]);
   useEffect(() => {
     if (!["search", "history"].includes(view)) return;
     let active = true;
@@ -287,7 +326,18 @@ export default function RadaiAIProjectPage() {
       .then((result) => { if (active) setRecentChats(result.results || []); })
       .catch(() => { if (active) setRecentChats([]); });
     return () => { active = false; };
-  }, [conversationId, messages.length, projects.length]);
+  }, [conversationId, messages.length, projects.length, recentVersion]);
+  // Chats can change in another tab or window: reload Recent when the reader comes back to this one.
+  useEffect(() => {
+    const reload = () => setRecentVersion((value) => value + 1);
+    const reloadIfShown = () => { if (document.visibilityState === "visible") reload(); };
+    window.addEventListener("focus", reload);
+    document.addEventListener("visibilitychange", reloadIfShown);
+    return () => {
+      window.removeEventListener("focus", reload);
+      document.removeEventListener("visibilitychange", reloadIfShown);
+    };
+  }, []);
   const togglePin = (id) => {
     setPinnedChats((previous) => {
       const next = previous.includes(id) ? previous.filter((x) => x !== id) : [id, ...previous];
@@ -301,6 +351,69 @@ export default function RadaiAIProjectPage() {
     if (pinnedChats.includes(row.id)) togglePin(row.id);
     if (row.id === conversationId) { setConversationId(null); setMessages([]); }
   };
+  // Deleting hides the chat for you (archived on the server, as "Archive" in All chats does).
+  const deleteRecentChat = async (row) => {
+    setDeleteError("");
+    try {
+      await archiveAIConversation(row.project?.id, row.id);
+      setConfirmDelete(null);
+      forgetChat(row);
+      setRecentVersion((value) => value + 1);
+    } catch (error) {
+      if (error?.response?.status === 404) {  // already deleted elsewhere: just drop it from the list
+        setConfirmDelete(null);
+        forgetChat(row);
+        setRecentVersion((value) => value + 1);
+        return;
+      }
+      setDeleteError(error?.response?.status === 403 ? "Only the person who started this chat can delete it." : "The chat could not be deleted. Try again.");
+    }
+  };
+  const openRecentMenu = (row, event) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    setRecentMenu((current) => (current?.row.id === row.id ? null : { row, left: Math.min(rect.left, window.innerWidth - 196), top: rect.bottom + 4 }));
+  };
+  const startRename = (row) => {
+    setRecentMenu(null);
+    setRenamingId(row.id);
+    renaming.current = row.id;
+    setRenameDraft(row.title === "New conversation" ? "" : row.title || "");
+  };
+  const saveRename = async (row) => {
+    if (renaming.current !== row.id) return;
+    renaming.current = null;
+    const title = renameDraft.trim();
+    setRenamingId(null);
+    if (!title || title === row.title) return;
+    setDeleteError("");
+    try {
+      await updateAIConversation(row.project?.id, row.id, title);
+      retitleChat(row, title);
+    } catch (error) {
+      setDeleteError(error?.response?.status === 403 ? "Only the person who started this chat can rename it." : "The chat could not be renamed. Try again.");
+    }
+  };
+  // Add to project from Recent: move a general chat (messages and files) into a project.
+  const linkRecentChat = async (target, payload) => {
+    const result = await addChatToProject(null, linkRow.id, { ...payload, workspace_id: target.id });
+    if (result.moved && linkRow.id === conversationId) setProjectId(String(target.id));
+    await reload();
+    setRecentVersion((value) => value + 1);
+    return result;
+  };
+  useEffect(() => {
+    if (!recentMenu) return undefined;
+    const close = (event) => { if (!event.target?.closest?.(".radai-ai-recent-menu, .radai-ai-recent-more")) setRecentMenu(null); };
+    const onKey = (event) => { if (event.key === "Escape") setRecentMenu(null); };
+    document.addEventListener("pointerdown", close);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("resize", close);
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", close);
+    };
+  }, [recentMenu]);
   const retitleChat = (row, title) => {
     const update = (list) => list.map((item) => (item.id === row.id ? { ...item, title } : item));
     setHistory(update);
@@ -458,18 +571,27 @@ export default function RadaiAIProjectPage() {
           : crypto.randomUUID();
       retry.current = { id: requestId, question };
       const attachmentIds = attachments.map((a) => a.id);
-      const result = await sendAIMessage(project?.id, id, question, requestId, selectedProvider, selectedModel, attachmentIds, webSearch && webStatus.allowed, activeSkill?.id);
+      setPending({ question, attachments, text: "" });
+      const controller = new AbortController();
+      streamAbort.current = controller;
+      const result = await streamAIMessage(project?.id, id, question, requestId, selectedProvider, selectedModel, attachmentIds, webSearch && webStatus.allowed, activeSkill?.id, {
+        signal: controller.signal,
+        onDelta: (text) => setPending((current) => current && { ...current, text: current.text + text }),
+      });
       setMessages(result.conversation.messages || []);
       setDraft("");
       setAttachments([]);
       retry.current = null;
     } catch (exc) {
+      if (exc?.name === "AbortError") return;
       setError(
         exc?.response?.data?.provider ||
           exc?.response?.data?.detail ||
           "The assistant could not answer. Your draft remains available. A configured AI provider is required.",
       );
     } finally {
+      streamAbort.current = null;
+      setPending(null);
       setBusy(false);
     }
   };
@@ -789,6 +911,34 @@ export default function RadaiAIProjectPage() {
           onOpenProject={openProjectChat}
         />
       )}
+      {recentMenu && createPortal(
+        <div className="radai-ai-portal radai-ai-recent-menu" role="menu" aria-label={`Actions for ${chatTitle(recentMenu.row)}`}
+          style={{ left: recentMenu.left, top: recentMenu.top }}>
+          <button type="button" role="menuitem" autoFocus onClick={() => startRename(recentMenu.row)}><Pencil size={14} />Rename</button>
+          {recentMenu.row.project ? (
+            <span className="radai-ai-recent-menu-note" title="Chats that belong to a project stay there, so their citations keep working.">
+              <Folder size={14} />In {recentMenu.row.project.name}
+            </span>
+          ) : (
+            <button type="button" role="menuitem" onClick={() => { setLinkRow(recentMenu.row); setRecentMenu(null); setMobileNav(false); }}><FolderPlus size={14} />Add to project</button>
+          )}
+          <button type="button" role="menuitem" className="is-danger" onClick={() => { setConfirmDelete(recentMenu.row.id); setDeleteError(""); setRecentMenu(null); }}><Trash2 size={14} />Delete</button>
+        </div>,
+        document.body,
+      )}
+      {linkRow && (
+        <RadaiAddToProjectDialog
+          projects={projects}
+          currentProject={null}
+          hasConversation
+          hasMessages
+          chatFiles={[]}
+          onClose={() => setLinkRow(null)}
+          onCreateProject={createProjectForChat}
+          onSubmit={linkRecentChat}
+          onOpenProject={(id) => { setLinkRow(null); openProjectChat(id); }}
+        />
+      )}
       {connectorsOpen && <RadaiConnectorsDialog onClose={() => { setConnectorsOpen(false); requestAnimationFrame(() => composer.current?.focus()); }} onAttach={attachFromConnector} />}
       {teamsOpen && TEAMS_ON && createPortal(<TeamsGovernancePage fullscreen onClose={() => setTeamsOpen(false)} />, document.body)}
       <aside
@@ -797,7 +947,7 @@ export default function RadaiAIProjectPage() {
         className={`${mobileNav ? "translate-x-0" : "-translate-x-full xl:translate-x-0"} radai-ai-nav absolute inset-y-0 left-0 z-20 flex flex-none flex-col transition-transform xl:relative`}
       >
         <div className="radai-ai-nav-heading flex items-center justify-between">
-          <span className="radai-ai-brand"><span className="radai-ai-brand-mark" aria-hidden="true"><Sparkles size={16} /></span>RADAI Intelligence</span>
+          <span className="radai-ai-brand"><span className="radai-ai-brand-mark" aria-hidden="true"><RejlersMark size={15} /></span>RADAI Intelligence</span>
           <button
             type="button"
             aria-label="Close workspace navigation"
@@ -849,6 +999,14 @@ export default function RadaiAIProjectPage() {
               const isOpen = view === "chat" && conversationId === row.id;
               return (
                 <div key={row.id} className={`radai-ai-recent-item ${isOpen ? "is-active" : ""}`}>
+                  {renamingId === row.id ? (
+                    <form className="radai-ai-recent-rename" onSubmit={(event) => { event.preventDefault(); saveRename(row); }}>
+                      <label className="sr-only" htmlFor={`recent-rename-${row.id}`}>Chat title</label>
+                      <input id={`recent-rename-${row.id}`} autoFocus maxLength={160} value={renameDraft} placeholder="Chat title"
+                        onChange={(event) => setRenameDraft(event.target.value)} onBlur={() => saveRename(row)}
+                        onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); renaming.current = null; setRenamingId(null); } }} />
+                    </form>
+                  ) : <>
                   <button type="button" onClick={() => open(row)} className="radai-ai-recent-row" aria-current={isOpen ? "true" : undefined}
                     title={`${chatTitle(row)} · ${row.project ? row.project.name : "General"}`}>
                     {isPinned ? <Pin size={13} className="shrink-0" /> : <MessageCircle size={14} className="shrink-0" />}
@@ -857,13 +1015,30 @@ export default function RadaiAIProjectPage() {
                       <span className="radai-ai-recent-meta">{row.project ? <><Folder size={10} aria-hidden="true" />{row.project.name}</> : "General"}<span aria-hidden="true">·</span>{relativeTime(row.updated_at)}</span>
                     </span>
                   </button>
-                  <button type="button" onClick={() => togglePin(row.id)} className={`radai-ai-recent-pin ${isPinned ? "is-on" : ""}`} aria-pressed={isPinned}
-                    aria-label={isPinned ? `Unpin ${chatTitle(row)}` : `Pin ${chatTitle(row)}`} title={isPinned ? "Unpin" : "Pin to top"}>
-                    <Pin size={12} />
-                  </button>
+                  {confirmDelete === row.id ? (
+                    <span className="radai-ai-recent-confirm" role="group" aria-label={`Delete ${chatTitle(row)}?`}>
+                      <button type="button" className="is-danger" onClick={() => deleteRecentChat(row)} autoFocus>Delete</button>
+                      <button type="button" onClick={() => { setConfirmDelete(null); setDeleteError(""); }}
+                        onKeyDown={(event) => { if (event.key === "Escape") setConfirmDelete(null); }}>Keep</button>
+                    </span>
+                  ) : (
+                    <span className="radai-ai-recent-actions">
+                      <button type="button" onClick={() => togglePin(row.id)} className={`radai-ai-recent-pin ${isPinned ? "is-on" : ""}`} aria-pressed={isPinned}
+                        aria-label={isPinned ? `Unpin ${chatTitle(row)}` : `Pin ${chatTitle(row)}`} title={isPinned ? "Unpin" : "Pin to top"}>
+                        <Pin size={12} />
+                      </button>
+                      <button type="button" onClick={(event) => openRecentMenu(row, event)} className={`radai-ai-recent-pin radai-ai-recent-more ${recentMenu?.row.id === row.id ? "is-open" : ""}`}
+                        aria-label={`More actions for ${chatTitle(row)}`} title="Rename, add to project or delete"
+                        aria-haspopup="menu" aria-expanded={recentMenu?.row.id === row.id}>
+                        <MoreHorizontal size={13} />
+                      </button>
+                    </span>
+                  )}
+                  </>}
                 </div>
               );
             })}
+            {deleteError && <p className="radai-ai-recent-error" role="alert">{deleteError}</p>}
             {!recentChats.length && <p className="radai-ai-nav-empty">No chats yet. Your questions will appear here.</p>}
             {recentChats.length > recentList.length && (
               <button type="button" onClick={() => { setView("history"); setMobileNav(false); }} className="radai-ai-recent-all">View all chats</button>
@@ -903,6 +1078,7 @@ export default function RadaiAIProjectPage() {
           <div className="radai-ai-toolbar">
             <div className="truncate"><button type="button" onClick={() => setView("projects")}>Projects</button><span className="mx-3 text-slate-400">/</span><strong>{project?.name || "General chat"}</strong></div>
             <div className="radai-ai-toolbar-actions flex items-center gap-2">
+              {view === "chat" && (messages.length > 0 || pending) && <button type="button" onClick={newChat} className="radai-ai-context-toggle" aria-label="New chat" title="Start a new chat"><MessageSquarePlus size={16} /><span className="radai-ai-toggle-label">New chat</span></button>}
               {project && view !== "project" && <button type="button" onClick={() => { setProjectTab("Members"); setView("project"); }} className="radai-ai-context-toggle" aria-label="People"><Users size={16} /><span className="radai-ai-toggle-label">People</span></button>}
               {project && view !== "project" && view !== "projects" && <button type="button" onClick={() => setContextOpen((open) => !open)} className="radai-ai-context-toggle" aria-label="Project context"><FileText size={16} /><span className="radai-ai-toggle-label">Project context</span></button>}
               <button type="button" onClick={() => setFocusMode((on) => !on)} aria-pressed={focusMode}
@@ -964,11 +1140,11 @@ export default function RadaiAIProjectPage() {
               }}
             />
           ) : (
-            <div className={`radai-ai-chat mx-auto flex min-h-full w-full max-w-5xl flex-col ${messages.length ? "" : "is-empty"}`}>
-              {!messages.length ? (
+            <div className={`radai-ai-chat mx-auto flex min-h-full w-full max-w-5xl flex-col ${messages.length || pending ? "" : "is-empty"}`}>
+              {!messages.length && !pending ? (
                 <div className="radai-ai-hero">
                   <div className="radai-ai-hero-mark" aria-hidden="true">
-                    <Sparkles size={22} />
+                    <RejlersMark size={22} />
                   </div>
                   <p className="radai-ai-hero-eyebrow">
                     {project ? <><Folder size={13} aria-hidden="true" />{project.name}</> : "RADAI Intelligence"}
@@ -996,7 +1172,7 @@ export default function RadaiAIProjectPage() {
                               <p className="rounded-xl bg-[var(--rd-surface-subtle)] p-3.5 text-sm leading-6">
                                 {message.content}
                               </p>
-                              <span className="radai-ai-user-avatar" aria-hidden="true">U</span>
+                              <ChatUserAvatar />
                               {message.created_at && <time className="radai-ai-user-time">{new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>}
                               {Boolean(message.attachments?.length) && (
                                 <div className="mt-2 flex flex-wrap gap-1.5">
@@ -1025,24 +1201,13 @@ export default function RadaiAIProjectPage() {
                           </div>
                         ) : (
                           <div className="radai-ai-assistant-message max-w-[90%]">
-                            <div className="radai-ai-assistant-heading"><span><Sparkles size={19} /></span><strong>RADAI Intelligence</strong>{message.created_at && <time>{new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>}</div>
+                            <div className="radai-ai-assistant-heading"><span><RejlersMark size={18} /></span><strong>RADAI Intelligence</strong>{message.created_at && <time>{new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>}<AnswerMeta message={message} /></div>
                             <div className="radai-ai-answer-card">
                             <div className="text-sm leading-7 break-words">
                               <ReactMarkdown
                                 remarkPlugins={[remarkGfm]}
                                 skipHtml
-                                components={{
-                                  h1: ({ children }) => <h1 className="mt-4 mb-2 text-base font-semibold">{children}</h1>,
-                                  h2: ({ children }) => <h2 className="mt-4 mb-2 text-sm font-semibold">{children}</h2>,
-                                  h3: ({ children }) => <h3 className="mt-3 mb-1 font-semibold">{children}</h3>,
-                                  p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                                  ul: ({ children }) => <ul className="mb-2 list-disc pl-5">{children}</ul>,
-                                  ol: ({ children }) => <ol className="mb-2 list-decimal pl-5">{children}</ol>,
-                                  pre: ({ children }) => <pre className="my-2 overflow-x-auto rounded-lg bg-[var(--rd-surface-subtle)] p-3 text-xs">{children}</pre>,
-                                  table: ({ children }) => <div className="my-2 overflow-x-auto"><table className="w-full border-collapse text-xs">{children}</table></div>,
-                                  th: ({ children }) => <th className="border border-[var(--rd-border-soft)] p-2 text-left">{children}</th>,
-                                  td: ({ children }) => <td className="border border-[var(--rd-border-soft)] p-2">{children}</td>,
-                                }}
+                                components={answerMarkdownComponents}
                               >
                                 {message.content}
                               </ReactMarkdown>
@@ -1096,11 +1261,36 @@ export default function RadaiAIProjectPage() {
                       </div>
                     ))}
                   </div>
+                  {pending && (
+                    <div className="radai-ai-messages radai-ai-pending mb-6 space-y-6">
+                      <div className="flex w-full flex-col">
+                        <div className="radai-ai-user-message ml-auto max-w-[75%]">
+                          <div className="radai-ai-user-content flex flex-col gap-1">
+                            <p className="rounded-xl bg-[var(--rd-surface-subtle)] p-3.5 text-sm leading-6">{pending.question}</p>
+                            <ChatUserAvatar />
+                            {Boolean(pending.attachments.length) && (
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {pending.attachments.map((att) => (
+                                  <div key={att.id} className="flex items-center gap-1.5 rounded-lg border border-[var(--rd-border-soft)] bg-[var(--rd-surface)] px-2 py-1">
+                                    <FileText size={13} className="shrink-0 text-[var(--rd-text-muted)]" />
+                                    <span className="text-xs truncate max-w-[120px]">{att.name}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex w-full flex-col">
+                        <RadaiStreamingReply text={pending.text} />
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
               <form
                 onSubmit={send}
-                className="radai-ai-composer flex w-full flex-col gap-2 rounded-xl border border-[var(--rd-border-soft)] bg-[var(--rd-surface)] p-2.5 shadow-[var(--rd-shadow-card)] relative"
+                className={`radai-ai-composer flex w-full flex-col gap-2 rounded-xl border border-[var(--rd-border-soft)] bg-[var(--rd-surface)] p-2.5 shadow-[var(--rd-shadow-card)] relative ${pending ? "is-streaming" : ""}`}
               >
                 <input
                   type="file"
@@ -1110,36 +1300,6 @@ export default function RadaiAIProjectPage() {
                   multiple
                   onChange={handleFileSelect}
                 />
-                <div className="radai-ai-composer-actions flex items-center gap-2">
-                  <button
-                    type="button"
-                    aria-haspopup="menu"
-                    aria-expanded={menuOpen}
-                    aria-label="Add files or actions"
-                    onClick={toggleMenu}
-                    className="flex h-9 w-9 items-center justify-center rounded-lg text-[var(--rd-text)] hover:bg-[var(--rd-bg)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--rd-accent)]"
-                  >
-                    <Plus size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={newChat}
-                    aria-label="New chat"
-                    title="New chat"
-                    className="flex h-9 w-9 items-center justify-center rounded-lg text-[var(--rd-text)] hover:bg-[var(--rd-bg)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--rd-accent)]"
-                  >
-                    <MessageCircle size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    aria-disabled
-                    aria-label="Cowork"
-                    title="Cowork is not available in this phase"
-                    className="flex h-9 w-9 items-center justify-center rounded-lg opacity-50 text-[var(--rd-text-muted)] cursor-not-allowed hover:bg-[var(--rd-surface)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--rd-accent)]"
-                  >
-                    <Users size={16} aria-hidden="true" />
-                  </button>
-                </div>
                 {Boolean(attachments.length) && (
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
                     {attachments.map((att) => (
@@ -1281,7 +1441,19 @@ export default function RadaiAIProjectPage() {
                   </div>, document.body
                 )}
                 <div className="radai-ai-composer-footer flex flex-nowrap items-center justify-between gap-2 border-t border-[var(--rd-border-soft)] pt-2">
-                  <button type="button" ref={actionTrigger} onClick={toggleMenu} aria-haspopup="menu" aria-expanded={menuOpen} className="radai-ai-add-context" aria-label="Add context"><Plus size={17} /><span className="radai-ai-add-context-label">Add context</span></button>
+                  <div className="radai-ai-composer-tools">
+                    <button
+                      type="button"
+                      ref={actionTrigger}
+                      aria-haspopup="menu"
+                      aria-expanded={menuOpen}
+                      aria-label="Add files, context or actions"
+                      title="Add files, context or actions"
+                      onClick={toggleMenu}
+                      className="radai-ai-plus"
+                    >
+                      <Plus size={18} />
+                    </button>
                   {activeSkill && (
                     <span className="radai-ai-web-chip" title={activeSkill.description}>
                       <button type="button" className="inline-flex min-w-0 items-center gap-1.5" onClick={() => setSkillsOpen(true)} aria-label={`Skill: ${activeSkill.name}. Change skill`}>
@@ -1295,6 +1467,9 @@ export default function RadaiAIProjectPage() {
                       <Globe size={14} /><span className="radai-ai-add-context-label">Web search</span><X size={12} />
                     </button>
                   )}
+                  </div>
+                  <div className="radai-ai-composer-send">
+                  <RadaiUsageMeter projectId={projectId || undefined} conversationId={conversationId || undefined} refreshKey={messages.length} />
                   <label htmlFor="ai-chat-model" className="sr-only">
                     Chat model
                   </label>
@@ -1303,6 +1478,7 @@ export default function RadaiAIProjectPage() {
                     aria-label="Chat model"
                     value={selectedModel}
                     onChange={(event) => setSelectedModel(event.target.value)}
+                    title={modelScope === "general" && models.length === 1 ? "General chat uses Gemini Flash, the low-cost model. RADAI switches to another model only if it fails." : undefined}
                     className="min-w-0 max-w-[170px] shrink rounded-lg border border-[var(--rd-border-soft)] bg-[var(--rd-surface)] px-2 py-2 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--rd-accent)]"
                   >
                     <option value="">{models.length ? "Model" : "No model available"}</option>
@@ -1320,10 +1496,11 @@ export default function RadaiAIProjectPage() {
                   >
                     {busy ? "Sending…" : <ArrowUp size={17} />}
                   </button>
+                  </div>
                 </div>
                 {!selectedModel && (
                   <p role="status" className="mt-2 text-xs text-[var(--rd-text-muted)]">
-                    {modelError || "No chat model is configured for RADAI Intelligence. An administrator can configure Claude in AI API keys."}
+                    {modelError || "No chat model is configured for RADAI Intelligence. An administrator can configure Claude, OpenAI or Gemini in AI API keys."}
                   </p>
                 )}
               </form>
@@ -1332,7 +1509,7 @@ export default function RadaiAIProjectPage() {
                   activeSkillId={activeSkill?.id || ""}
                   projectName={project?.name || ""}
                   fileNames={chatFiles.map((file) => file.name || "")}
-                  inConversation={messages.length > 0}
+                  inConversation={messages.length > 0 || Boolean(pending)}
                   onPick={applySkill}
                   onBrowse={() => setSkillsOpen(true)}
                 />

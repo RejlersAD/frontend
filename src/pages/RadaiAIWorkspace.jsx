@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import PropTypes from 'prop-types'
 import {
-  Activity, ArrowRight, BookOpen, CheckCircle2, Clock, Download, Eye, FileText, Folder, Link2, Lock, MessageCircle,
+  Activity, ArrowRight, BookOpen, CheckCircle2, Clock, Cpu, Download, Eye, FileText, Folder, Link2, Lock, MessageCircle,
   Pencil, Plus, Save, Search, Settings2, Share2, Sparkles, Trash2, UploadCloud, UserMinus, UserPlus, Users, X,
 } from 'lucide-react'
 import { listProjects } from '../services/projectControl.service'
@@ -10,6 +10,7 @@ import {
   listAIKnowledge, listAIMembers, removeAIMember, saveAIInstructions, searchAIEmployees, uploadAIKnowledge, updateAIProject,
 } from '../services/radaiIntelligence.service'
 import RadaiTeamShare from './RadaiTeamShare'
+import RadaiProjectModels from './RadaiProjectModels'
 
 // Instruction fields, grouped so the form reads as three short sections instead of one long column.
 const FIELD_GROUPS = [
@@ -29,7 +30,7 @@ const FIELD_GROUPS = [
 ]
 const FIELDS = FIELD_GROUPS.flatMap(([, rows]) => rows)
 const TABS = [
-  ['Overview', Sparkles], ['Instructions', BookOpen], ['Knowledge', FileText],
+  ['Overview', Sparkles], ['Instructions', BookOpen], ['Knowledge', FileText], ['Models', Cpu],
   ['Members', Users], ['Activity', Activity], ['Connections', Link2],
 ]
 const STATUS = {
@@ -172,7 +173,10 @@ export default function RadaiAIWorkspace({ project, onStartChat, onProjectUpdate
         ? previous.map(member => String(member.user_id) === String(added.user_id) ? added : member)
         : [...previous, added])
       setEmployeeQuery(''); setSelectedEmployee(null); setEmployeeResults([])
-      setNotice('Project access updated.')
+      // New people get an invitation in Approvals and join only after accepting.
+      setNotice(added.status === 'invited'
+        ? `Invitation sent to ${added.email}. They get a notification and join once they accept it in Approvals.${added.warning ? ` ${added.warning}` : ''}`
+        : 'Project access updated.')
     } catch (err) {
       setError(err?.response?.data?.detail || err?.response?.data?.email?.[0] || 'The employee could not be added. Check the selection and try again.')
     } finally { setBusy(false) }
@@ -327,12 +331,14 @@ export default function RadaiAIWorkspace({ project, onStartChat, onProjectUpdate
       {tab === 'Members' && <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
         <div className={card}>
           <div className={sectionTitle}><Users size={16} />People with access</div>
-          <p className={`mt-1 text-xs ${muted}`}>Members can use this project&apos;s knowledge. Their own conversations stay private unless explicitly shared.</p>
+          <p className={`mt-1 text-xs ${muted}`}>Members can use this project&apos;s knowledge. Their own conversations stay private unless explicitly shared. People you add are invited and join once they accept in Approvals.</p>
           <ul className="mt-3 divide-y divide-[var(--rd-border-soft)]">{members.map(member => <li key={member.user_id} className="flex items-center gap-3 py-3">
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[var(--rd-surface-subtle)] text-xs font-semibold">{initials(personName(member.email))}</span>
             <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{personName(member.email)}</p><p className={`truncate text-xs ${muted}`}>{member.email || `User ${member.user_id}`}</p></div>
+            {member.status === 'invited' && <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-200" title={`Invited ${member.invited_at ? ago(member.invited_at) : ''}. Waiting for them to accept in Approvals.`}><Clock size={11} />Invited</span>}
+            {member.role !== 'owner' && member.rbac_access === false && <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-700 dark:bg-red-950 dark:text-red-200" title="Their RBAC roles don't include RADAI Intelligence. An administrator can grant it in Roles & Access.">No RBAC access</span>}
             <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium capitalize ${member.role === 'owner' ? 'bg-[var(--rd-primary-soft)] text-[var(--rd-primary)]' : 'bg-[var(--rd-surface-subtle)]'}`}>{member.role}</span>
-            {isOwner && member.role !== 'owner' && <button type="button" className="radai-ai-icon-btn hover:!text-[var(--rd-danger)]" onClick={() => run(() => removeAIMember(project.id, member.user_id), 'Member removed.')} aria-label={`Remove ${member.email || member.user_id}`} disabled={busy}><Trash2 size={15} /></button>}
+            {isOwner && member.role !== 'owner' && <button type="button" className="radai-ai-icon-btn hover:!text-[var(--rd-danger)]" onClick={() => run(() => removeAIMember(project.id, member.user_id), member.status === 'invited' ? 'Invitation cancelled.' : 'Member removed.')} aria-label={`${member.status === 'invited' ? 'Cancel invitation for' : 'Remove'} ${member.email || member.user_id}`} title={member.status === 'invited' ? 'Cancel invitation' : 'Remove member'} disabled={busy}><Trash2 size={15} /></button>}
           </li>)}</ul>
         </div>
         <div className="space-y-4">
@@ -356,7 +362,7 @@ export default function RadaiAIWorkspace({ project, onStartChat, onProjectUpdate
                 <span className="block font-medium">{title}</span><span className={`block text-[11px] ${muted}`}>{hint}</span>
               </label>)}
             </div>
-            <button type="submit" disabled={busy || (!selectedEmployee && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(employeeQuery.trim()))} className="rd-btn rd-btn-primary w-full justify-center"><Plus size={16} />Add person</button>
+            <button type="submit" disabled={busy || (!selectedEmployee && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(employeeQuery.trim()))} className="rd-btn rd-btn-primary w-full justify-center"><Plus size={16} />Invite person</button>
             <p className={`text-xs ${muted}`}>You can also enter an exact employee email if search is unavailable.</p>
           </form>}
           {isOwner && <RadaiTeamShare project={project} onChanged={refresh} onManageTeams={onManageTeams} />}
@@ -375,6 +381,9 @@ export default function RadaiAIWorkspace({ project, onStartChat, onProjectUpdate
           </li>
         })}</ol> : <p className={`mt-3 text-sm ${muted}`}>No activity yet.</p>}
       </div>}
+
+      {tab === 'Models' && <RadaiProjectModels project={project} isOwner={isOwner} busy={busy} run={run}
+        onProjectUpdated={onProjectUpdated} card={card} muted={muted} />}
 
       {tab === 'Connections' && <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
         <div className={card}>

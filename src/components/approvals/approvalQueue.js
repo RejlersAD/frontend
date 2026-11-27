@@ -3,6 +3,7 @@
 export const QUEUE_LABELS = {
   leave: 'Leave', payroll: 'Payroll', procurement: 'Procurement',
   purchase_order: 'Purchase orders', invoice: 'Invoices', profile_document: 'ID verification',
+  ai_project_invitation: 'AI projects',
 }
 
 export const UNCONNECTED_QUEUES = {
@@ -47,9 +48,10 @@ export function approvalDetails(item, now = Date.now()) {
   let stage = first(item.approval_stage, item.workflow_stage, item[item._approvalConfig?.statusField], item.status)
   if (type === 'leave') stage = item.review_stage === 'hr_review' || item.status === 'RM_APPROVED' ? 'HR review' : item.status === 'PENDING' ? 'Manager review' : stage
   if (type === 'profile_document') stage = 'Pending verification'
+  if (type === 'ai_project_invitation') stage = 'Awaiting your response'
   const requester = text(first(item.requester_name, item.requested_by_name, item.employee_name, item.issued_by_name, item.created_by_name, item.pr_requester_name, item.user_name, item.user_email))
   return {
-    reference: text(first(item.pr_number, item.requisition_number, item.po_number, item.order_number, item.request_number, item.document_number, `${QUEUE_LABELS[type] || 'Request'} #${item.id}`)),
+    reference: text(first(type === 'ai_project_invitation' ? item.reference : null, item.pr_number, item.requisition_number, item.po_number, item.order_number, item.request_number, item.document_number, `${QUEUE_LABELS[type] || 'Request'} #${item.id}`)),
     title: text(first(item.title, item.description, item.purpose, item.reason, item.document_name, item.leave_type_detail?.name, item.document_type_label, item.document_type, item.leave_type)),
     requester, requesterKey: requester,
     department: text(first(item.department_name, item.employee_department, item.department, item.project_department, item.employee_details?.department)),
@@ -68,7 +70,8 @@ export function normalizeApproval(raw, config, now = Date.now()) {
   item._canDecide = config.id === 'leave' ? raw.can_review === true
     : config.id === 'purchase_order' ? raw.can_approve === true
       : config.id === 'procurement' ? raw.can_approve === true
-        : config.id === 'profile_document' && raw.can_review === true
+        : config.id === 'ai_project_invitation' ? true  // your own invitation: accept or decline
+          : config.id === 'profile_document' && raw.can_review === true
   item._details = approvalDetails(item, now)
   return item
 }

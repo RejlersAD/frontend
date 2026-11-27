@@ -113,6 +113,10 @@ export default function ValueFrameSendToPayroll({ importId, periodLabel, onClose
             <div className="vf-modal-body">
               {!proposal && !error && <p className="vf-none">Preparing payroll proposal…</p>}
               {error && <p className="vf-error" role="alert"><HeroIcons.ExclamationTriangleIcon aria-hidden="true" />{error}</p>}
+              {proposal?.attendance_available === false && (
+                <p className="vf-error" role="alert"><HeroIcons.ExclamationTriangleIcon aria-hidden="true" />
+                  Real-time attendance is not reachable for this period, so nothing can be sent to Payroll.</p>
+              )}
               {proposal && (
                 <>
                   <div className="vf-send-controls">
@@ -155,7 +159,7 @@ export default function ValueFrameSendToPayroll({ importId, periodLabel, onClose
             <div className="vf-modal-foot">
               <span className="vf-send-total">{selectedLines.length} selected · {money(total, currency)} for {targetLabel}</span>
               <button type="button" className="att-button" onClick={onClose} disabled={busy}>Cancel</button>
-              <button type="button" className="att-button att-upload" onClick={send} disabled={busy || !selectedLines.length || !proposal?.can_send}
+              <button type="button" className="att-button att-upload" onClick={send} disabled={busy || !selectedLines.length || !proposal?.can_send || proposal?.attendance_available === false}
                 title={proposal && !proposal.can_send ? 'Only payroll adjustment roles can send.' : undefined}>
                 <HeroIcons.PaperAirplaneIcon aria-hidden="true" />{busy ? 'Sending…' : 'Send to Payroll'}
               </button>

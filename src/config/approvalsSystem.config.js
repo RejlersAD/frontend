@@ -300,6 +300,46 @@ export const APPROVAL_TYPES = {
     }
   },
 
+  AI_PROJECT_INVITATION: {
+    id: 'ai_project_invitation',
+    label: 'AI Project Invitation',
+    pluralLabel: 'AI Project Invitations',
+    icon: 'SparklesIcon',
+    color: 'violet',
+    gradientFrom: '#7c3aed',
+    gradientTo: '#4f46e5',
+    // The endpoint returns only the signed-in person's own pending invitations.
+    apiEndpoint: '/ai-workspaces/invitations/',
+    actionApiEndpoint: '/ai-workspaces/invitations/',
+    actionEndpointMap: { approve: 'accept', reject: 'decline' },
+    moduleCode: 'radai_intelligence',
+    allowedRoles: [],
+    requiresReportingManager: false,
+    filterLogic: 'current_user_endpoint',
+    statusField: 'status',
+    pendingStatuses: ['pending'],
+    stages: [],
+    fieldMapping: {
+      project_name: (item) => item.project?.name,
+      invited_by: (item) => item.requester_name,
+      project_role: (item) => item.role,
+    },
+    displayFields: [
+      { key: 'project_name', label: 'Project', type: 'text' },
+      { key: 'invited_by', label: 'Invited by', type: 'text' },
+      { key: 'project_role', label: 'Your role', type: 'badge' },
+      { key: 'created_at', label: 'Invited', type: 'date' },
+    ],
+    actions: ['view', 'approve', 'reject'],
+    kpi: {
+      enabled: true,
+      title: 'AI Projects',
+      subtitle: 'Invitations for you',
+      countField: 'pending_count',
+      trendCalculation: 'week_over_week',
+    },
+  },
+
   PROFILE_DOCUMENT: {
     id: 'profile_document',
     moduleCode: 'user_mgmt',

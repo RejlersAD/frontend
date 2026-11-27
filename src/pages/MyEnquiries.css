@@ -1,0 +1,241 @@
+/*
+ * My Requests (/my-enquiries and /my-enquiries/:id) — layout and theme only.
+ * Breakpoints follow the page's own width (container queries), not the
+ * viewport, because the app sidebar takes a varying share of the screen.
+ */
+.my-requests {
+  container: my-requests / inline-size;
+}
+
+/* ---------- List page ---------- */
+.my-requests .mr-header {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+.my-requests .mr-header-actions {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.5rem;
+}
+.my-requests .mr-new-btn {
+  flex: 1 1 auto;
+  justify-content: center;
+}
+
+.my-requests .mr-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+.my-requests .mr-metric {
+  padding: 1rem;
+}
+.my-requests .mr-metric-value {
+  font-size: 1.5rem;
+  line-height: 2rem;
+}
+
+.my-requests .mr-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.my-requests .mr-filters {
+  display: flex;
+  width: 100%;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.my-requests .mr-search {
+  flex: 1 1 16rem;
+}
+.my-requests .mr-status {
+  flex: 1 1 11rem;
+}
+
+.my-requests .mr-table {
+  display: none;
+}
+.my-requests .mr-cards {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.75rem;
+  padding: 0.75rem;
+}
+
+@container my-requests (min-width: 520px) {
+  .my-requests .mr-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 1rem;
+  }
+}
+
+@container my-requests (min-width: 640px) {
+  .my-requests .mr-metric {
+    padding: 1.25rem;
+  }
+  .my-requests .mr-metric-value {
+    font-size: 1.875rem;
+    line-height: 2.25rem;
+  }
+}
+
+@container my-requests (min-width: 600px) {
+  .my-requests .mr-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .my-requests .mr-header-actions {
+    width: auto;
+    flex-shrink: 0;
+  }
+  .my-requests .mr-new-btn {
+    flex: none;
+  }
+}
+
+@container my-requests (min-width: 720px) {
+  .my-requests .mr-table {
+    display: block;
+    overflow-x: auto;
+  }
+  .my-requests .mr-cards {
+    display: none;
+  }
+}
+
+@container my-requests (min-width: 980px) {
+  .my-requests .mr-metrics {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1rem;
+  }
+  .my-requests .mr-toolbar {
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: space-between;
+  }
+  .my-requests .mr-filters {
+    width: auto;
+    flex-wrap: nowrap;
+  }
+  .my-requests .mr-search {
+    flex: none;
+    width: 22rem;
+  }
+  .my-requests .mr-status {
+    flex: none;
+    width: 12rem;
+  }
+}
+
+/* ---------- Detail page ---------- */
+.my-requests .mr-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 1rem;
+}
+.my-requests .mr-bubble {
+  max-width: 100%;
+}
+
+@container my-requests (min-width: 560px) {
+  .my-requests .mr-bubble {
+    max-width: 85%;
+  }
+}
+
+@container my-requests (min-width: 980px) {
+  .my-requests .mr-detail-grid {
+    grid-template-columns: minmax(0, 1fr) 340px;
+    gap: 1.25rem;
+  }
+  .my-requests .mr-detail-aside {
+    position: sticky;
+    top: 1rem;
+  }
+}
+
+@container my-requests (min-width: 1280px) {
+  .my-requests .mr-detail-grid {
+    grid-template-columns: minmax(0, 1fr) 380px;
+  }
+}
+
+/* ---------- Dark mode ---------- */
+.dark .my-requests {
+  background-color: #020617;
+  color: var(--app-text);
+}
+.dark .my-requests :is(.bg-white, .bg-slate-50, .bg-slate-50\/70) {
+  background-color: var(--app-surface);
+}
+.dark .my-requests :is(.bg-slate-100, .bg-slate-200, .bg-slate-50\/60, .bg-white\/60, .bg-white\/70) {
+  background-color: var(--app-surface-subtle);
+}
+.dark .my-requests :is(.text-slate-950, .text-slate-900, .text-slate-800, .text-slate-700) {
+  color: var(--app-text);
+}
+.dark .my-requests :is(.text-slate-600, .text-slate-500, .text-slate-400) {
+  color: var(--app-text-muted);
+}
+.dark .my-requests .text-slate-300 {
+  color: #64748b;
+}
+.dark .my-requests :is(.border-slate-100, .border-slate-200, .border-slate-300, .border-white\/20) {
+  border-color: rgba(148, 163, 184, 0.25);
+}
+.dark .my-requests :is(.divide-slate-100) > :not([hidden]) ~ :not([hidden]) {
+  border-color: rgba(148, 163, 184, 0.18);
+}
+/* Default border colour for borders without a colour class (zero specificity). */
+:where(.dark .my-requests) :where(*) {
+  border-color: rgba(148, 163, 184, 0.25);
+}
+.dark .my-requests :is(.hover\:bg-slate-50, .hover\:bg-slate-100):hover {
+  background-color: var(--app-surface-subtle);
+}
+.dark .my-requests :is(.hover\:bg-blue-50\/40, .hover\:bg-blue-50):hover {
+  background-color: rgba(59, 130, 246, 0.1);
+}
+
+/* Tinted chips, badges and notes: tint from the element's own text colour. */
+.dark .my-requests :is(.bg-blue-50, .bg-cyan-50, .bg-amber-50, .bg-violet-50, .bg-indigo-50,
+  .bg-emerald-50, .bg-red-50, .bg-fuchsia-50, .bg-orange-50, .bg-indigo-100, .bg-emerald-100, .bg-red-100) {
+  background-color: color-mix(in srgb, currentColor 14%, transparent);
+}
+.dark .my-requests :is(.bg-blue-50\/60, .bg-indigo-50\/50) {
+  background-color: rgba(99, 102, 241, 0.08);
+}
+.dark .my-requests :is(.border-blue-100, .border-blue-200, .border-cyan-200, .border-amber-200, .border-violet-200,
+  .border-indigo-100, .border-indigo-200, .border-emerald-200, .border-red-200, .border-fuchsia-200, .border-orange-200) {
+  border-color: color-mix(in srgb, currentColor 35%, transparent);
+}
+.dark .my-requests :is(.ring-blue-100, .ring-amber-100, .ring-violet-100, .ring-emerald-100) {
+  --tw-ring-color: color-mix(in srgb, currentColor 30%, transparent);
+}
+.dark .my-requests :is(.text-blue-600, .text-blue-700) { color: #93c5fd; }
+.dark .my-requests .text-cyan-700 { color: #67e8f9; }
+.dark .my-requests :is(.text-amber-600, .text-amber-700) { color: #fcd34d; }
+.dark .my-requests :is(.text-violet-600, .text-violet-700) { color: #c4b5fd; }
+.dark .my-requests .text-indigo-700 { color: #a5b4fc; }
+.dark .my-requests :is(.text-emerald-600, .text-emerald-700, .text-emerald-800) { color: #6ee7b7; }
+.dark .my-requests :is(.text-red-600, .text-red-700) { color: #fca5a5; }
+.dark .my-requests .text-fuchsia-700 { color: #f0abfc; }
+.dark .my-requests :is(.text-orange-700) { color: #fdba74; }
+.dark .my-requests .group:hover .group-hover\:text-blue-700 { color: #bfdbfe; }
+
+/* Form controls */
+.dark .my-requests :is(input, select, textarea):not([type="checkbox"]):not([type="radio"]):not([type="file"]) {
+  background-color: var(--app-surface-subtle);
+  color: var(--app-text);
+}
+.dark .my-requests :is(input, textarea)::placeholder {
+  color: #64748b;
+}
+.dark .my-requests .focus\:ring-blue-100:focus {
+  --tw-ring-color: rgba(59, 130, 246, 0.3);
+}

@@ -888,6 +888,20 @@ export default function TalentAcquisition() {
                         "Department not assigned"}{" "}
                       · {job.is_open ? "Open" : "Closed"}
                     </small>
+                    {job.source === "requisition" && (
+                      <small className="ta-requisition-meta">
+                        Approved requisition {job.requisition_reference || ""}
+                        {` · ${job.positions || 1} position${job.positions === 1 ? "" : "s"}`}
+                        {job.hiring_manager ? ` · Hiring manager: ${job.hiring_manager}` : ""}
+                        {job.target_join_date ? ` · Join by ${new Date(job.target_join_date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}` : ""}
+                        {job.requisition && (
+                          <>
+                            {" · "}
+                            <a href={`/requisition-approvals/${job.requisition}`}>View requisition</a>
+                          </>
+                        )}
+                      </small>
+                    )}
                   </span>
                   {job.source === "rejlers_careers" ? (
                     <a

@@ -1,4 +1,5 @@
 import apiClient, { apiClientLongTimeout } from './api.service'
+import { STORAGE_KEYS } from '../config/app.config'
 
 const base = projectId => `/projects/${encodeURIComponent(projectId)}/`
 const unwrap = request => request.then(response => response.data)
@@ -29,7 +30,12 @@ export const compareKnowledgeRevisions = (projectId, leftId, rightId) => unwrap(
 export const listEPCWorkItems = projectId => unwrap(apiClient.get('/project-control/epc-work-items/', { params: { project: projectId } }))
 
 const aiBase = '/ai-workspaces/'
-export const listAIChatModels = () => unwrap(apiClient.get(`${aiBase}models/`))
+// General chat (no project) always offers Gemini Flash; a project offers the models its owner chose.
+export const listAIChatModels = (projectId) => unwrap(apiClient.get(`${aiBase}models/`, { params: projectId ? { project: projectId } : {} }))
+// Latest chat models each configured provider offers (for a project owner to choose from).
+export const listAIModelCatalog = () => unwrap(apiClient.get(`${aiBase}models/catalog/`, { timeout: 60000 }))
+// Tokens and estimated cost (AED and USD): this chat, your month, and the project for its owner.
+export const getAIUsage = (params) => unwrap(apiClient.get(`${aiBase}usage/`, { params, suppressErrorToast: true }))
 const aiProject = id => `${aiBase}${encodeURIComponent(id)}/`
 const aiConversations = id => id ? `${aiProject(id)}conversations/` : `${aiBase}general/conversations/`
 export const listAIProjects = () => unwrap(apiClient.get(aiBase))
@@ -60,6 +66,42 @@ export const updateAIConversation = (id, conversationId, title) => unwrap(apiCli
 export const archiveAIConversation = (id, conversationId) => unwrap(apiClient.delete(`${aiConversations(id)}${conversationId}/`))
 export const shareAIConversation = (id, conversationId, userId) => unwrap(apiClient.post(`${aiProject(id)}conversations/${conversationId}/share/`, { user_id: userId }))
 export const sendAIMessage = (id, conversationId, question, requestId, provider, model, attachmentIds = [], webSearch = false, skillId = null) => unwrap(apiClient.post(`${aiConversations(id)}${conversationId}/send/`, { question, request_id: requestId, provider, model, attachment_ids: attachmentIds, ...(webSearch ? { web_search: true } : {}), ...(skillId ? { skill_id: skillId } : {}) }, { timeout: 240000 }))
+// Same request as sendAIMessage, but the answer text arrives as it is generated:
+// the server writes {"type":"delta","text"} lines, then one "done" (the usual payload) or "error" line.
+// Sign-in problems (401/403) are re-sent through sendAIMessage so the usual refresh and sign-out handling
+// applies; the request ID makes that safe. Resolves with the same payload as sendAIMessage.
+export const streamAIMessage = async (id, conversationId, question, requestId, provider, model, attachmentIds = [], webSearch = false, skillId = null, { onDelta, signal } = {}) => {
+  const body = { question, request_id: requestId, provider, model, attachment_ids: attachmentIds, stream: true, ...(webSearch ? { web_search: true } : {}), ...(skillId ? { skill_id: skillId } : {}) }
+  const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN)
+  const fallback = () => sendAIMessage(id, conversationId, question, requestId, provider, model, attachmentIds, webSearch, skillId)
+  const response = await fetch(`${apiClient.defaults.baseURL || ''}${aiConversations(id)}${conversationId}/send/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/x-ndjson, application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify(body),
+    signal,
+  })
+  if (response.status === 401 || response.status === 403) return fallback()
+  const fail = (status, data) => Object.assign(new Error(data?.detail || 'The assistant could not answer.'), { response: { status, data } })
+  if (!response.ok) throw fail(response.status, await response.json().catch(() => ({})))
+  if (!(response.headers.get('content-type') || '').includes('ndjson') || !response.body) return response.json()
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  for (;;) {
+    const { value, done } = await reader.read()
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done })
+    const lines = buffer.split('\n')
+    buffer = done ? '' : lines.pop()
+    for (const line of lines) {
+      if (!line.trim()) continue
+      const event = JSON.parse(line)
+      if (event.type === 'delta') onDelta?.(event.text)
+      else if (event.type === 'done') return event
+      else if (event.type === 'error') throw fail(event.status || 502, { detail: event.detail })
+    }
+    if (done) throw fail(502, { detail: 'The answer was interrupted. Open the chat again to check whether it was saved.' })
+  }
+}
 export const listAISkills = () => unwrap(apiClient.get(`${aiBase}skills/`))
 export const createAISkill = payload => unwrap(apiClient.post(`${aiBase}skills/`, payload))
 export const updateAISkill = (skillId, payload) => unwrap(apiClient.patch(`${aiBase}skills/${encodeURIComponent(skillId)}/`, payload))

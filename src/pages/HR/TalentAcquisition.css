@@ -25,3 +25,6 @@
 .ta-detail-body:focus-visible{outline:2px solid #78aaff;outline-offset:-2px}
 @media(max-width:1050px){.talent-acquisition{height:auto;min-height:100%;overflow:visible}.ta-workspace{flex:none}.ta-table-scroll{min-height:300px}.ta-detail{max-height:80dvh}.ta-detail-body{flex-shrink:1}}
 @media(max-width:650px){.ta-list-search{order:3;flex-basis:100%;grid-column:auto}}
+/* Openings that came from an approved talent requisition. */
+.ta-requisition-meta { display: block; margin-top: 2px; color: #5b21b6; }
+.ta-requisition-meta a { color: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }

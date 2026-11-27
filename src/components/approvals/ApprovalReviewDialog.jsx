@@ -5,6 +5,7 @@ import { APPROVAL_ACTIONS, APPROVAL_TYPES } from '../../config/approvalsSystem.c
 import apiClient from '../../services/api.service'
 import LeaveApprovalReview from './LeaveApprovalReview'
 import ProcurementApprovalPreviewModal from './ProcurementApprovalPreviewModal'
+import ProjectInvitationReview from './ProjectInvitationReview'
 import { canReviewProfileDocument } from '../../utils/approvalCapabilities'
 
 const errorText = value => {
@@ -143,6 +144,9 @@ export default function ApprovalReviewDialog({ item, onClose, onDecision, initia
       type={type === 'purchase_order' ? 'po' : 'pr'} recordId={item.id}
       approvalStage={item.approval_stage} canDecide={item._canDecide === true}
       initialAction={initialAction} onClose={onClose} onDecision={() => onDecision?.(item)} />
+  } else if (type === 'ai_project_invitation') {
+    content = <ProjectInvitationReview key={identity} item={item} initialAction={initialAction} onClose={onClose}
+      onDecision={onDecision} />
   } else if (type === 'profile_document') {
     content = <ProfileDocumentReview key={identity} item={item} onClose={onClose}
       onDecision={onDecision} initialAction={initialAction} />
