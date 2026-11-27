@@ -61,7 +61,7 @@ import { searchAIEmployees } from "../services/radaiIntelligence.service";
 
 const RANK = { individual: 0, team: 1, enterprise: 2 };
 const EDITION_LABEL = { individual: "Individual", team: "Team", enterprise: "Enterprise" };
-const FLAG_ON = import.meta.env.VITE_ENABLE_ENTERPRISE_TEAMS === "true";
+const FLAG_ON = import.meta.env.VITE_ENABLE_ENTERPRISE_TEAMS !== "false";
 
 const card = "rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900";
 const input =

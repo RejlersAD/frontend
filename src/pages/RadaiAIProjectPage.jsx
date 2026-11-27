@@ -88,7 +88,7 @@ function ChatUserAvatar() {
 const FOCUS_KEY = "radai.intelligence.focus";
 
 // Team & Enterprise lives inside RADAI Intelligence as its own section.
-const TEAMS_ON = import.meta.env.VITE_ENABLE_ENTERPRISE_TEAMS === "true";
+const TEAMS_ON = import.meta.env.VITE_ENABLE_ENTERPRISE_TEAMS !== "false";
 
 
 const menuEntries = [

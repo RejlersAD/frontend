@@ -8,7 +8,7 @@ import {
 
 // Team & Enterprise: share an AI project with whole teams from inside RADAI Intelligence.
 // The API enforces every rule (owner-only sharing, team linker roles, edition); this only decides what to show.
-const FLAG_ON = import.meta.env.VITE_ENABLE_ENTERPRISE_TEAMS === 'true'
+const FLAG_ON = import.meta.env.VITE_ENABLE_ENTERPRISE_TEAMS !== 'false'
 const TEAM_EDITIONS = ['team', 'enterprise']
 
 // Opens the Teams & Governance section of RADAI Intelligence: in place when the host page
